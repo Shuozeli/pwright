@@ -1,0 +1,11 @@
+{
+  "suite": "cli-download",
+  "recorded_with": "playwright-cli",
+  "recorded_at": "2026-03-13T06:48:33.643Z",
+  "tests": {
+    "should trigger download and verify file": {
+      "status": "fail",
+      "data": {}
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "suite": "screenshot",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T06:45:24.915Z",
+  "tests": {
+    "should capture PNG screenshot": {
+      "status": "pass",
+      "data": {
+        "hasData": true,
+        "isPng": true
+      }
+    },
+    "should capture screenshot of different pages": {
+      "status": "pass",
+      "data": {
+        "hasData": true,
+        "isPng": true
+      }
+    }
+  }
+}

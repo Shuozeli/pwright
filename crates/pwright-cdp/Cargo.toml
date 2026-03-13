@@ -1,0 +1,19 @@
+[package]
+name = "pwright-cdp"
+description = "Raw CDP WebSocket client for Chrome DevTools Protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }
+futures-util = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+async-trait = { workspace = true }

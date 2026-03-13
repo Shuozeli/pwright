@@ -1,0 +1,33 @@
+{
+  "suite": "locator-fill",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T06:45:24.124Z",
+  "tests": {
+    "should fill text input": {
+      "status": "pass",
+      "data": {
+        "value": "Hello World"
+      }
+    },
+    "should fill email input": {
+      "status": "pass",
+      "data": {
+        "value": "test@example.com"
+      }
+    },
+    "should type into input": {
+      "status": "pass",
+      "data": {
+        "value": "secret123"
+      }
+    },
+    "should check and uncheck checkbox": {
+      "status": "pass",
+      "data": {
+        "initial": false,
+        "afterCheck": true,
+        "afterUncheck": false
+      }
+    }
+  }
+}

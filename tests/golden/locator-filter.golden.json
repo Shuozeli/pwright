@@ -1,0 +1,13 @@
+{
+  "suite": "locator-filter",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T07:26:07.150Z",
+  "tests": {
+    "should filter by text content": {
+      "status": "pass",
+      "data": {
+        "text": "Banana"
+      }
+    }
+  }
+}

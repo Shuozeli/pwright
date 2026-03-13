@@ -1,0 +1,49 @@
+{
+  "suite": "cli-content",
+  "recorded_with": "playwright-cli",
+  "recorded_at": "2026-03-13T05:25:23.812Z",
+  "tests": {
+    "should get page URL after navigation": {
+      "status": "pass",
+      "data": {
+        "hasContentPath": true
+      }
+    },
+    "should get page title": {
+      "status": "pass",
+      "data": {
+        "title": "\"Content Page\""
+      }
+    },
+    "should get inner text": {
+      "status": "pass",
+      "data": {
+        "text": "\"Hello pwright\""
+      }
+    },
+    "should evaluate document.cookie": {
+      "status": "pass",
+      "data": {
+        "hasCookie": true
+      }
+    },
+    "should evaluate HTML content": {
+      "status": "pass",
+      "data": {
+        "tag": "\"H1\""
+      }
+    },
+    "should evaluate element count": {
+      "status": "pass",
+      "data": {
+        "count": "3"
+      }
+    },
+    "should check hidden element visibility": {
+      "status": "pass",
+      "data": {
+        "display": "\"none\""
+      }
+    }
+  }
+}

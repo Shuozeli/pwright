@@ -1,0 +1,49 @@
+{
+  "suite": "cli-eval-advanced",
+  "recorded_with": "playwright-cli",
+  "recorded_at": "2026-03-13T05:25:06.345Z",
+  "tests": {
+    "should evaluate boolean true": {
+      "status": "pass",
+      "data": {
+        "value": "true"
+      }
+    },
+    "should evaluate boolean false": {
+      "status": "pass",
+      "data": {
+        "value": "false"
+      }
+    },
+    "should evaluate undefined": {
+      "status": "pass",
+      "data": {
+        "value": "undefined"
+      }
+    },
+    "should evaluate array": {
+      "status": "pass",
+      "data": {
+        "value": "\"[1,2,3]\""
+      }
+    },
+    "should evaluate DOM query": {
+      "status": "pass",
+      "data": {
+        "value": "\"Hello pwright\""
+      }
+    },
+    "should evaluate window dimensions": {
+      "status": "pass",
+      "data": {
+        "type": "\"number\""
+      }
+    },
+    "should handle eval with quotes": {
+      "status": "pass",
+      "data": {
+        "value": "\"single quotes\""
+      }
+    }
+  }
+}

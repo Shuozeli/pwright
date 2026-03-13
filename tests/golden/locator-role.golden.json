@@ -1,0 +1,25 @@
+{
+  "suite": "locator-role",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T07:19:51.703Z",
+  "tests": {
+    "should find button by implicit role": {
+      "status": "pass",
+      "data": {
+        "text": "Submit"
+      }
+    },
+    "should find link by implicit role": {
+      "status": "pass",
+      "data": {
+        "text": "About Us"
+      }
+    },
+    "should find element by explicit role": {
+      "status": "pass",
+      "data": {
+        "text": "Warning message"
+      }
+    }
+  }
+}

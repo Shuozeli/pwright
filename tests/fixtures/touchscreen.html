@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head><title>Touchscreen Test</title></head>
+<body>
+  <div id="target" style="width:200px;height:200px;background:#eee;">
+    Tap me
+  </div>
+  <div id="result">No touch</div>
+  <script>
+    document.getElementById('target').addEventListener('touchstart', function(e) {
+      document.getElementById('result').textContent = 'touched';
+    });
+    // Also listen for click in case touchstart isn't available in headless
+    document.getElementById('target').addEventListener('click', function(e) {
+      document.getElementById('result').textContent = 'touched';
+    });
+  </script>
+</body>
+</html>

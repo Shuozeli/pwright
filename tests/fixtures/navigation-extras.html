@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>Navigation Extras Test</title></head>
+<body>
+  <h1 id="heading">Page 1</h1>
+  <p id="counter">Load count: 1</p>
+  <a href="navigation-extras-page2.html" id="link-page2">Go to Page 2</a>
+  <script>
+    // Track reload count via sessionStorage
+    let count = parseInt(sessionStorage.getItem('loadCount') || '0') + 1;
+    sessionStorage.setItem('loadCount', String(count));
+    document.getElementById('counter').textContent = 'Load count: ' + count;
+  </script>
+</body>
+</html>

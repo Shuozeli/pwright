@@ -1,0 +1,26 @@
+{
+  "suite": "cli-actions",
+  "recorded_with": "playwright-cli",
+  "recorded_at": "2026-03-13T05:24:19.688Z",
+  "tests": {
+    "should click button via ref": {
+      "status": "pass",
+      "data": {
+        "clicked": "\"missing\""
+      }
+    },
+    "should fill input via ref": {
+      "status": "pass",
+      "data": {
+        "value": "\"hello world\""
+      }
+    },
+    "should screenshot to file": {
+      "status": "pass",
+      "data": {
+        "exists": true,
+        "sizeAboveZero": true
+      }
+    }
+  }
+}

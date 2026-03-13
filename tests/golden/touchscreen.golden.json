@@ -1,0 +1,13 @@
+{
+  "suite": "touchscreen",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T07:26:20.133Z",
+  "tests": {
+    "should dispatch touch tap": {
+      "status": "pass",
+      "data": {
+        "result": "touched"
+      }
+    }
+  }
+}

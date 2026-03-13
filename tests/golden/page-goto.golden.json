@@ -1,0 +1,37 @@
+{
+  "suite": "page-goto",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T06:45:22.858Z",
+  "tests": {
+    "should navigate to empty page": {
+      "status": "pass",
+      "data": {
+        "url": "SERVER/empty.html"
+      }
+    },
+    "should navigate to content page": {
+      "status": "pass",
+      "data": {
+        "title": "Content Page"
+      }
+    },
+    "should navigate to data URL": {
+      "status": "pass",
+      "data": {
+        "isDataUrl": true
+      }
+    },
+    "should reload page": {
+      "status": "pass",
+      "data": {
+        "title": "Content Page"
+      }
+    },
+    "should navigate with hash": {
+      "status": "pass",
+      "data": {
+        "hasHash": true
+      }
+    }
+  }
+}

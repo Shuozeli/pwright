@@ -1,0 +1,19 @@
+{
+  "suite": "locator-text",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T07:19:37.286Z",
+  "tests": {
+    "should find by substring text": {
+      "status": "pass",
+      "data": {
+        "text": "Hello World"
+      }
+    },
+    "should find by exact text": {
+      "status": "pass",
+      "data": {
+        "text": "Click Me"
+      }
+    }
+  }
+}

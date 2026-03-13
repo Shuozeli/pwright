@@ -1,0 +1,37 @@
+{
+  "suite": "page-evaluate",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T06:45:22.980Z",
+  "tests": {
+    "should evaluate arithmetic": {
+      "status": "pass",
+      "data": {
+        "result": 6
+      }
+    },
+    "should evaluate string expression": {
+      "status": "pass",
+      "data": {
+        "result": "hello world"
+      }
+    },
+    "should evaluate boolean": {
+      "status": "pass",
+      "data": {
+        "result": false
+      }
+    },
+    "should evaluate null": {
+      "status": "pass",
+      "data": {
+        "result": null
+      }
+    },
+    "should evaluate DOM query": {
+      "status": "pass",
+      "data": {
+        "result": "Content Page"
+      }
+    }
+  }
+}

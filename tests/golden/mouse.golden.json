@@ -1,0 +1,31 @@
+{
+  "suite": "mouse",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T06:45:24.718Z",
+  "tests": {
+    "should click at coordinates": {
+      "status": "pass",
+      "data": {
+        "text": "Clicked 1 times"
+      }
+    },
+    "should hover element": {
+      "status": "pass",
+      "data": {
+        "text": "Hovered!"
+      }
+    },
+    "should double-click element": {
+      "status": "pass",
+      "data": {
+        "text": "Double clicked!"
+      }
+    },
+    "should move mouse to element": {
+      "status": "pass",
+      "data": {
+        "text": "Hovered!"
+      }
+    }
+  }
+}

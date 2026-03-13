@@ -1,0 +1,31 @@
+{
+  "suite": "keyboard",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T06:45:24.367Z",
+  "tests": {
+    "should type text into focused input": {
+      "status": "pass",
+      "data": {
+        "value": "Hello"
+      }
+    },
+    "should press Enter key": {
+      "status": "pass",
+      "data": {
+        "hasEnter": true
+      }
+    },
+    "should press Tab key": {
+      "status": "pass",
+      "data": {
+        "hasTab": true
+      }
+    },
+    "should press arrow keys": {
+      "status": "pass",
+      "data": {
+        "hasArrow": true
+      }
+    }
+  }
+}

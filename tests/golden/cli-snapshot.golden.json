@@ -1,0 +1,22 @@
+{
+  "suite": "cli-snapshot",
+  "recorded_with": "playwright-cli",
+  "recorded_at": "2026-03-13T05:23:59.016Z",
+  "tests": {
+    "should return snapshot with refs": {
+      "status": "pass",
+      "data": {
+        "hasNodes": true,
+        "firstRole": "generic",
+        "refCount": 11
+      }
+    },
+    "should snapshot interactive page": {
+      "status": "pass",
+      "data": {
+        "hasTextbox": true,
+        "hasButton": true
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "pwright-comparison-tests",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Golden test framework: Playwright vs pwright comparison",
+  "scripts": {
+    "golden:record": "tsx src/record-golden.ts",
+    "golden:record:cli": "tsx src/record-golden-cli.ts",
+    "test": "tsx src/run-golden.ts",
+    "test:cli": "tsx src/run-golden-cli.ts",
+    "test:unit": "tsx unit/cli-harness.test.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.50.0",
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

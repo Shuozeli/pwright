@@ -1,0 +1,31 @@
+{
+  "suite": "cli-eval",
+  "recorded_with": "playwright-cli",
+  "recorded_at": "2026-03-13T05:24:08.173Z",
+  "tests": {
+    "should evaluate arithmetic": {
+      "status": "pass",
+      "data": {
+        "value": "6"
+      }
+    },
+    "should evaluate string": {
+      "status": "pass",
+      "data": {
+        "value": "\"Content Page\""
+      }
+    },
+    "should evaluate null": {
+      "status": "pass",
+      "data": {
+        "value": "null"
+      }
+    },
+    "should evaluate object": {
+      "status": "pass",
+      "data": {
+        "value": "\"{\\\"a\\\":1,\\\"b\\\":2}\""
+      }
+    }
+  }
+}

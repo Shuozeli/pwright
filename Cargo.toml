@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pwright-cdp",
+    "crates/pwright-js",
+    "crates/pwright-bridge",
+    "crates/pwright-server",
+    "crates/pwright-cli",
+    "examples/todomvc",
+    "examples/svgomg",
+    "examples/mock-battery",
+    "examples/mock-filesystem",
+    "examples/github-api",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/Shuozeli/pwright"
+homepage = "https://github.com/Shuozeli/pwright"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tonic = "0.13"
+tonic-build = "0.13"
+prost = "0.13"
+clap = { version = "4", features = ["derive", "env"] }
+dashmap = "6"
+futures-util = "0.3"
+anyhow = "1"
+async-trait = "0.1"
+thiserror = "2"
+url = "2"
+base64 = "0.22"
+rand = "0.9"
+
+# Internal crate dependencies
+pwright-cdp = { path = "crates/pwright-cdp" }
+pwright-js = { path = "crates/pwright-js" }
+pwright-bridge = { path = "crates/pwright-bridge" }

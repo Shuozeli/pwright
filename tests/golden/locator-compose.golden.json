@@ -1,0 +1,19 @@
+{
+  "suite": "locator-compose",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T07:26:17.352Z",
+  "tests": {
+    "should find with OR composition": {
+      "status": "pass",
+      "data": {
+        "count": 2
+      }
+    },
+    "should find with AND composition": {
+      "status": "pass",
+      "data": {
+        "text": "Save"
+      }
+    }
+  }
+}

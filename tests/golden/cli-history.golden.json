@@ -1,0 +1,25 @@
+{
+  "suite": "cli-history",
+  "recorded_with": "playwright-cli",
+  "recorded_at": "2026-03-13T05:24:50.674Z",
+  "tests": {
+    "should go back after navigation": {
+      "status": "pass",
+      "data": {
+        "title": "\"Content Page\""
+      }
+    },
+    "should go forward after going back": {
+      "status": "pass",
+      "data": {
+        "title": "\"Input Page\""
+      }
+    },
+    "should survive go-back at start of history": {
+      "status": "pass",
+      "data": {
+        "ok": true
+      }
+    }
+  }
+}

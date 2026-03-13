@@ -1,0 +1,333 @@
+syntax = "proto3";
+package pwright.v1;
+
+// BrowserService provides Chrome browser control via CDP.
+service BrowserService {
+  // Browser lifecycle
+  rpc ConnectBrowser(ConnectBrowserRequest) returns (ConnectBrowserResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Tab management
+  rpc CreateTab(CreateTabRequest) returns (CreateTabResponse);
+  rpc CloseTab(CloseTabRequest) returns (CloseTabResponse);
+  rpc ListTabs(ListTabsRequest) returns (ListTabsResponse);
+  rpc BringToFront(BringToFrontRequest) returns (BringToFrontResponse);
+
+  // Navigation
+  rpc Navigate(NavigateRequest) returns (NavigateResponse);
+  rpc Reload(ReloadRequest) returns (ReloadResponse);
+  rpc GoBack(GoBackRequest) returns (GoBackResponse);
+  rpc GoForward(GoForwardRequest) returns (GoForwardResponse);
+
+  // Content extraction
+  rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
+  rpc TakeScreenshot(TakeScreenshotRequest) returns (TakeScreenshotResponse);
+  rpc GetText(GetTextRequest) returns (GetTextResponse);
+  rpc GetPDF(GetPDFRequest) returns (GetPDFResponse);
+
+  // Actions
+  rpc ExecuteAction(ExecuteActionRequest) returns (ExecuteActionResponse);
+  rpc SetInputFiles(SetInputFilesRequest) returns (SetInputFilesResponse);
+  rpc TouchTap(TouchTapRequest) returns (TouchTapResponse);
+
+  // JS evaluation
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+
+  // Cookies
+  rpc GetCookies(GetCookiesRequest) returns (GetCookiesResponse);
+  rpc SetCookies(SetCookiesRequest) returns (SetCookiesResponse);
+
+  // Downloads
+  rpc ExpectDownload(ExpectDownloadRequest) returns (ExpectDownloadResponse);
+}
+
+// --- Browser lifecycle ---
+
+message ConnectBrowserRequest {
+  string cdp_url = 1;
+}
+
+message ConnectBrowserResponse {
+  bool connected = 1;
+  string message = 2;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  bool browser_connected = 2;
+  int32 open_tabs = 3;
+}
+
+// --- Tab management ---
+
+message CreateTabRequest {
+  string url = 1;
+}
+
+message CreateTabResponse {
+  string tab_id = 1;
+  string url = 2;
+  string title = 3;
+}
+
+message CloseTabRequest {
+  string tab_id = 1;
+}
+
+message CloseTabResponse {
+  bool closed = 1;
+}
+
+message ListTabsRequest {}
+
+message TabInfo {
+  string target_id = 1;
+  string type = 2;
+  string title = 3;
+  string url = 4;
+}
+
+message ListTabsResponse {
+  repeated TabInfo tabs = 1;
+}
+
+message BringToFrontRequest {
+  string tab_id = 1;
+}
+
+message BringToFrontResponse {
+  bool success = 1;
+}
+
+// --- Navigation ---
+
+enum WaitStrategy {
+  WAIT_NONE = 0;
+  WAIT_DOM = 1;
+  WAIT_NETWORK_IDLE = 2;
+  WAIT_SELECTOR = 3;
+}
+
+message NavigateRequest {
+  string tab_id = 1;
+  string url = 2;
+  bool new_tab = 3;
+  double timeout_ms = 4;
+  WaitStrategy wait_for = 5;
+  string wait_selector = 6;
+  bool block_images = 7;
+  bool block_media = 8;
+}
+
+message NavigateResponse {
+  string tab_id = 1;
+  string url = 2;
+  string title = 3;
+}
+
+message ReloadRequest {
+  string tab_id = 1;
+}
+
+message ReloadResponse {
+  bool success = 1;
+}
+
+message GoBackRequest {
+  string tab_id = 1;
+}
+
+message GoBackResponse {
+  bool success = 1;
+}
+
+message GoForwardRequest {
+  string tab_id = 1;
+}
+
+message GoForwardResponse {
+  bool success = 1;
+}
+
+// --- Snapshot ---
+
+enum SnapshotFilter {
+  FILTER_ALL = 0;
+  FILTER_INTERACTIVE = 1;
+}
+
+message GetSnapshotRequest {
+  string tab_id = 1;
+  SnapshotFilter filter = 2;
+  int32 max_depth = 3;
+}
+
+message A11yNode {
+  string ref = 1;
+  string role = 2;
+  string name = 3;
+  int32 depth = 4;
+  string value = 5;
+  bool disabled = 6;
+  bool focused = 7;
+  int64 node_id = 8;
+}
+
+message GetSnapshotResponse {
+  string tab_id = 1;
+  repeated A11yNode nodes = 2;
+}
+
+// --- Screenshot ---
+
+message TakeScreenshotRequest {
+  string tab_id = 1;
+  string format = 2;        // "png", "jpeg", "webp"
+  int32 quality = 3;         // 0-100 (for jpeg/webp)
+  bool full_page = 4;
+}
+
+message TakeScreenshotResponse {
+  bytes data = 1;            // raw image bytes
+  string format = 2;
+}
+
+// --- Text ---
+
+message GetTextRequest {
+  string tab_id = 1;
+}
+
+message GetTextResponse {
+  string tab_id = 1;
+  string text = 2;
+}
+
+// --- PDF ---
+
+message GetPDFRequest {
+  string tab_id = 1;
+}
+
+message GetPDFResponse {
+  bytes data = 1;
+}
+
+// --- Actions ---
+
+enum ActionKind {
+  ACTION_UNSPECIFIED = 0;
+  CLICK = 1;
+  TYPE = 2;
+  FILL = 3;
+  PRESS = 4;
+  FOCUS = 5;
+  HOVER = 6;
+  SELECT = 7;
+  SCROLL = 8;
+  DRAG = 9;
+  CHECK = 10;
+  UNCHECK = 11;
+  DBLCLICK = 12;
+}
+
+message ExecuteActionRequest {
+  string tab_id = 1;
+  ActionKind kind = 2;
+  string ref = 3;            // element ref from snapshot (e.g., "e5")
+  string selector = 4;       // CSS selector alternative
+  string text = 5;           // for TYPE/FILL
+  string key = 6;            // for PRESS
+  string value = 7;          // for SELECT
+  int32 scroll_x = 8;
+  int32 scroll_y = 9;
+  int32 drag_x = 10;
+  int32 drag_y = 11;
+  bool wait_nav = 12;
+}
+
+message ExecuteActionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// --- Evaluate ---
+
+message EvaluateRequest {
+  string tab_id = 1;
+  string expression = 2;
+}
+
+message EvaluateResponse {
+  string result = 1;         // JSON-encoded result
+}
+
+// --- Cookies ---
+
+message CookieEntry {
+  string name = 1;
+  string value = 2;
+  string domain = 3;
+  string path = 4;
+  double expires = 5;
+  bool http_only = 6;
+  bool secure = 7;
+  string same_site = 8;
+}
+
+message GetCookiesRequest {
+  string tab_id = 1;
+}
+
+message GetCookiesResponse {
+  repeated CookieEntry cookies = 1;
+}
+
+message SetCookiesRequest {
+  string tab_id = 1;
+  repeated CookieEntry cookies = 2;
+}
+
+message SetCookiesResponse {
+  bool success = 1;
+}
+
+// --- Downloads ---
+
+message ExpectDownloadRequest {
+  string tab_id = 1;
+  ExecuteActionRequest action = 2; // Action to trigger the download
+}
+
+message ExpectDownloadResponse {
+  string file_path = 1;      // Absolute path to the downloaded file on the server
+  bool success = 2;
+  string message = 3;
+}
+
+// --- File Upload ---
+
+message SetInputFilesRequest {
+  string tab_id = 1;
+  string ref = 2;             // element ref from snapshot
+  string selector = 3;        // CSS selector alternative
+  repeated string files = 4;  // absolute file paths
+}
+
+message SetInputFilesResponse {
+  bool success = 1;
+}
+
+// --- Touch ---
+
+message TouchTapRequest {
+  string tab_id = 1;
+  double x = 2;
+  double y = 3;
+}
+
+message TouchTapResponse {
+  bool success = 1;
+}

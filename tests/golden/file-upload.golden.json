@@ -1,0 +1,13 @@
+{
+  "suite": "file-upload",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T07:15:56.372Z",
+  "tests": {
+    "should set file on input": {
+      "status": "pass",
+      "data": {
+        "hasFiles": true
+      }
+    }
+  }
+}

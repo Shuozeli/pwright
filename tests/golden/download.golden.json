@@ -1,0 +1,14 @@
+{
+  "suite": "download",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T06:45:48.159Z",
+  "tests": {
+    "should trigger download and verify": {
+      "status": "pass",
+      "data": {
+        "download_triggered": true,
+        "downloaded_file": "download_path_mocked_for_golden_tests.txt"
+      }
+    }
+  }
+}

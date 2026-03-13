@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head><title>Interactive Page</title></head>
+<body>
+  <button id="counter" onclick="this.dataset.count = (parseInt(this.dataset.count || '0') + 1); this.textContent = 'Clicked ' + this.dataset.count + ' times'">Click me</button>
+  <button id="dblclick" ondblclick="this.textContent = 'Double clicked!'">Double click me</button>
+  <div id="hover" onmouseenter="this.textContent = 'Hovered!'" onmouseleave="this.textContent = 'Hover me'">Hover me</div>
+  <input id="focus-input" onfocus="this.dataset.focused = 'true'" onblur="this.dataset.focused = 'false'" />
+  <div id="keyboard-output"></div>
+  <script>
+    document.addEventListener('keydown', (e) => {
+      const el = document.getElementById('keyboard-output');
+      el.textContent = 'key:' + e.key + ' code:' + e.code;
+    });
+  </script>
+</body>
+</html>

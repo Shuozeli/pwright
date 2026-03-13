@@ -1,0 +1,9 @@
+[package]
+name = "pwright-js"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Centralized JavaScript snippets for pwright CDP bridge"
+
+[dependencies]
+serde_json = { workspace = true }

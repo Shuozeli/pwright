@@ -1,0 +1,23 @@
+[package]
+name = "pwright-server"
+description = "gRPC server exposing Chrome browser control via CDP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pwright-cdp = { workspace = true }
+pwright-bridge = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true }
+
+[build-dependencies]
+tonic-build = { workspace = true }

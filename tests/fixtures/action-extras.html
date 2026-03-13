@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><title>Action Extras Test</title></head>
+<body>
+  <h1>Action Extras</h1>
+
+  <!-- Check/Uncheck -->
+  <label>
+    <input type="checkbox" id="agree" /> I agree
+  </label>
+
+  <!-- Double-click -->
+  <div id="dblclick-target" style="padding: 20px; background: #eee;">
+    Double-click me
+  </div>
+  <div id="dblclick-result">Not clicked</div>
+
+  <script>
+    document.getElementById('dblclick-target').addEventListener('dblclick', () => {
+      document.getElementById('dblclick-result').textContent = 'Double-clicked!';
+    });
+  </script>
+</body>
+</html>

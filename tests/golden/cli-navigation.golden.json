@@ -1,0 +1,26 @@
+{
+  "suite": "cli-navigation",
+  "recorded_with": "playwright-cli",
+  "recorded_at": "2026-03-13T05:23:55.791Z",
+  "tests": {
+    "should open and navigate": {
+      "status": "pass",
+      "data": {
+        "openOk": true,
+        "title": "\"Content Page\""
+      }
+    },
+    "should goto new URL": {
+      "status": "pass",
+      "data": {
+        "title": "\"Content Page\""
+      }
+    },
+    "should reload page": {
+      "status": "pass",
+      "data": {
+        "title": "\"Content Page\""
+      }
+    }
+  }
+}

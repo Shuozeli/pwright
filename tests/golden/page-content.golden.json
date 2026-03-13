@@ -1,0 +1,33 @@
+{
+  "suite": "page-content",
+  "recorded_with": "playwright@1.58.2",
+  "recorded_at": "2026-03-13T06:45:23.127Z",
+  "tests": {
+    "should get page title": {
+      "status": "pass",
+      "data": {
+        "title": "Content Page"
+      }
+    },
+    "should get page content containing elements": {
+      "status": "pass",
+      "data": {
+        "hasHeading": true,
+        "hasList": true,
+        "hasHidden": true
+      }
+    },
+    "should get text content of heading": {
+      "status": "pass",
+      "data": {
+        "text": "Hello pwright"
+      }
+    },
+    "should get text content of nested element": {
+      "status": "pass",
+      "data": {
+        "text": "Bold and italic"
+      }
+    }
+  }
+}

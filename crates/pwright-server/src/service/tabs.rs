@@ -1,0 +1,84 @@
+//! Tab management handlers — CreateTab, CloseTab, ListTabs.
+
+use tonic::{Request, Response, Status};
+
+use super::BrowserServiceImpl;
+use crate::proto;
+
+pub async fn create_tab(
+    svc: &BrowserServiceImpl,
+    request: Request<proto::CreateTabRequest>,
+) -> Result<Response<proto::CreateTabResponse>, Status> {
+    let browser = svc.get_browser().await?;
+    let req = request.into_inner();
+
+    let tab = browser
+        .create_tab(&req.url)
+        .await
+        .map_err(|e| Status::internal(format!("create tab: {}", e)))?;
+
+    Ok(Response::new(proto::CreateTabResponse {
+        tab_id: tab.tab_id,
+        url: req.url,
+        title: String::new(),
+    }))
+}
+
+pub async fn close_tab(
+    svc: &BrowserServiceImpl,
+    request: Request<proto::CloseTabRequest>,
+) -> Result<Response<proto::CloseTabResponse>, Status> {
+    let browser = svc.get_browser().await?;
+    let req = request.into_inner();
+
+    browser
+        .close_tab(&req.tab_id)
+        .await
+        .map_err(|e| Status::internal(format!("close tab: {}", e)))?;
+
+    Ok(Response::new(proto::CloseTabResponse { closed: true }))
+}
+
+pub async fn list_tabs(
+    svc: &BrowserServiceImpl,
+    _request: Request<proto::ListTabsRequest>,
+) -> Result<Response<proto::ListTabsResponse>, Status> {
+    let browser = svc.get_browser().await?;
+
+    let targets = browser
+        .list_tabs()
+        .await
+        .map_err(|e| Status::internal(format!("list tabs: {}", e)))?;
+
+    let tabs = targets
+        .into_iter()
+        .map(|t| proto::TabInfo {
+            target_id: t.target_id,
+            r#type: t.target_type,
+            title: t.title,
+            url: t.url,
+        })
+        .collect();
+
+    Ok(Response::new(proto::ListTabsResponse { tabs }))
+}
+
+pub async fn bring_to_front(
+    svc: &BrowserServiceImpl,
+    request: Request<proto::BringToFrontRequest>,
+) -> Result<Response<proto::BringToFrontResponse>, Status> {
+    let browser = svc.get_browser().await?;
+    let req = request.into_inner();
+
+    let tab = browser
+        .resolve_tab(&req.tab_id)
+        .await
+        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+
+    tab.session
+        .page_bring_to_front()
+        .await
+        .map_err(|e| Status::internal(format!("bring to front: {}", e)))?;
+
+    Ok(Response::new(proto::BringToFrontResponse { success: true }))
+}
