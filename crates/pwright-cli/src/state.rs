@@ -45,52 +45,33 @@ impl CliState {
         if !dir.exists() {
             std::fs::create_dir_all(&dir)?;
         }
+        let path = Self::state_path();
         let data = serde_json::to_string_pretty(self)?;
-        std::fs::write(Self::state_path(), data).context("failed to write state file")?;
+        std::fs::write(&path, data).context("failed to write state file")?;
+
+        // Restrict permissions: state contains WS URL granting browser control
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
+
         Ok(())
     }
 
-    /// Discover WS URL from Chrome HTTP endpoint using TCP.
+    /// Discover WS URL from Chrome HTTP endpoint.
     pub async fn fetch_ws_url(cdp_http: &str) -> Result<String> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        use tokio::net::TcpStream;
-
-        // Parse host:port from the URL
-        let stripped = cdp_http
-            .trim_start_matches("http://")
-            .trim_start_matches("https://");
-        let (host, port) = if let Some(pos) = stripped.rfind(':') {
-            (
-                &stripped[..pos],
-                stripped[pos + 1..].parse::<u16>().unwrap_or(9222),
-            )
-        } else {
-            (stripped, 9222u16)
-        };
-        let addr = format!("{}:{}", host, port);
-
-        let mut stream = TcpStream::connect(&addr)
+        let version_url = format!("{}/json/version", cdp_http.trim_end_matches('/'));
+        let resp: serde_json::Value = reqwest::get(&version_url)
             .await
-            .context("cannot connect to Chrome")?;
-        let request = format!("GET /json/version HTTP/1.1\r\nHost: {}\r\n\r\n", addr);
-        stream.write_all(request.as_bytes()).await?;
-
-        let mut buf = vec![0u8; 8192];
-        let n = stream.read(&mut buf).await?;
-        let body = String::from_utf8_lossy(&buf[..n]);
-
-        // Find the JSON body after the headers
-        if let Some(json_start) = body.find('{') {
-            let json_str = &body[json_start..];
-            let v: serde_json::Value =
-                serde_json::from_str(json_str).context("invalid JSON from Chrome")?;
-            let ws_url = v["webSocketDebuggerUrl"]
-                .as_str()
-                .context("no webSocketDebuggerUrl in response")?;
-            Ok(ws_url.to_string())
-        } else {
-            anyhow::bail!("no JSON body in Chrome response")
-        }
+            .context("cannot connect to Chrome")?
+            .json()
+            .await
+            .context("invalid JSON from Chrome")?;
+        resp["webSocketDebuggerUrl"]
+            .as_str()
+            .map(|s| s.to_string())
+            .context("no webSocketDebuggerUrl in response")
     }
 }
 

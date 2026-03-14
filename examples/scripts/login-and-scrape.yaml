@@ -1,0 +1,63 @@
+# login-and-scrape.yaml — Log in to a site and extract data.
+#
+# Usage:
+#   pwright run examples/scripts/login-and-scrape.yaml \
+#     --param login_url=https://example.com/login \
+#     --param target_url=https://example.com/dashboard \
+#     --param-file secrets.yaml
+#
+# secrets.yaml:
+#   email: "user@example.com"
+#   password: "secret123"
+
+name: "Login and scrape"
+version: 1
+
+params:
+  login_url:
+    type: string
+    required: true
+  target_url:
+    type: string
+    required: true
+  email:
+    type: string
+    required: true
+  password:
+    type: string
+    required: true
+
+config:
+  default_timeout_ms: 10000
+
+steps:
+  # Navigate to login page
+  - goto: "{{ login_url }}"
+    wait_for: "#email"
+
+  # Fill credentials
+  - fill:
+      selector: "#email"
+      value: "{{ email }}"
+
+  - fill:
+      selector: "#password"
+      value: "{{ password }}"
+
+  # Submit
+  - click: "#submit"
+    wait_for: ".dashboard"
+
+  # Navigate to target page
+  - goto: "{{ target_url }}"
+    wait_for: ".data-table"
+
+  # Extract table data
+  - extract:
+      selector: "h1"
+      field: text_content
+      save_as: page_title
+
+  - output:
+      title: "{{ page_title }}"
+      url: "{{ target_url }}"

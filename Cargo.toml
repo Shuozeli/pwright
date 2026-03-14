@@ -6,6 +6,9 @@ members = [
     "crates/pwright-bridge",
     "crates/pwright-server",
     "crates/pwright-cli",
+    "crates/pwright-fake",
+    "crates/pwright-script",
+    "tests/integration",
     "examples/todomvc",
     "examples/svgomg",
     "examples/mock-battery",
@@ -30,6 +33,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tonic = "0.13"
 tonic-build = "0.13"
 prost = "0.13"
+prost-build = "0.13"
 clap = { version = "4", features = ["derive", "env"] }
 dashmap = "6"
 futures-util = "0.3"
@@ -39,8 +43,13 @@ thiserror = "2"
 url = "2"
 base64 = "0.22"
 rand = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio-util = "0.7"
+serde_yaml = "0.9"
 
 # Internal crate dependencies
 pwright-cdp = { path = "crates/pwright-cdp" }
 pwright-js = { path = "crates/pwright-js" }
 pwright-bridge = { path = "crates/pwright-bridge" }
+pwright-fake = { path = "crates/pwright-fake" }
+pwright-script = { path = "crates/pwright-script" }

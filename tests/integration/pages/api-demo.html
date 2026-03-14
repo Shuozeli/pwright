@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head><title>API Demo</title></head>
+<body>
+  <div id="status">Loading...</div>
+  <div id="results"></div>
+  <script>
+    fetch('/api/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: 'pwright'})
+    })
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('status').textContent = 'Loaded';
+      document.getElementById('results').textContent = JSON.stringify(data);
+    })
+    .catch(err => {
+      document.getElementById('status').textContent = 'Error: ' + err.message;
+    });
+  </script>
+</body>
+</html>

@@ -233,12 +233,47 @@ pub async fn press_key(session: &dyn CdpClient, key: &str) -> CdpResult<()> {
 }
 
 /// Select a value in a `<select>` element.
+///
+/// Uses `Runtime.callFunctionOn` to properly set `selectedIndex` and
+/// dispatch input/change events, instead of just setting `.value`.
 pub async fn select_by_node_id(
     session: &dyn CdpClient,
     node_id: i64,
     value: &str,
 ) -> CdpResult<()> {
-    fill_by_node_id(session, node_id, value).await
+    session.dom_focus(node_id).await?;
+
+    let resolved = session.dom_resolve_node(node_id).await?;
+    let object_id = resolved
+        .get("object")
+        .and_then(|o| o.get("objectId"))
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| {
+            pwright_cdp::connection::CdpError::Other(
+                "could not resolve node for select".to_string(),
+            )
+        })?;
+
+    let js = r#"function(v) {
+        for (let i = 0; i < this.options.length; i++) {
+            if (this.options[i].value === v) {
+                this.selectedIndex = i;
+                this.dispatchEvent(new Event('input', {bubbles: true}));
+                this.dispatchEvent(new Event('change', {bubbles: true}));
+                return true;
+            }
+        }
+        this.value = v;
+        this.dispatchEvent(new Event('input', {bubbles: true}));
+        this.dispatchEvent(new Event('change', {bubbles: true}));
+        return false;
+    }"#;
+
+    session
+        .runtime_call_function_on(object_id, js, vec![serde_json::json!({"value": value})])
+        .await?;
+
+    Ok(())
 }
 
 #[cfg(test)]

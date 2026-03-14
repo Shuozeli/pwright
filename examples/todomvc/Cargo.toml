@@ -6,6 +6,7 @@ publish = false
 
 [dev-dependencies]
 pwright-bridge = { path = "../../crates/pwright-bridge" }
+pwright-fake = { path = "../../crates/pwright-fake" }
 pwright-js = { path = "../../crates/pwright-js" }
 tokio = { workspace = true }
 serde_json = { workspace = true }

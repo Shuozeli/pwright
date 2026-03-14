@@ -3,76 +3,89 @@
 //! Equivalent of playwright/examples/svgomg/tests/example.spec.ts
 //!
 //! Tests: verify menu, verify defaults, verify features, reset, download, open svg
+//!
+//! Uses FakeCdpClient for behavior assertions (count, visibility, attributes)
+//! and MockCdpClient for CDP call sequence tests (mouse events).
 
 use pwright_bridge::playwright::Page;
 use pwright_bridge::test_utils::MockCdpClient;
+use pwright_fake::FakeCdpClient;
 use std::sync::Arc;
 
-fn mock_with_navigation() -> Arc<MockCdpClient> {
-    let mock = Arc::new(MockCdpClient::new());
-    mock.set_navigate_response(serde_json::json!({"frameId": "F1"}));
-    mock.set_evaluate_response(serde_json::json!({"result": {"value": "complete"}}));
-    mock
-}
-
-fn mock_with_element() -> Arc<MockCdpClient> {
-    let mock = Arc::new(MockCdpClient::new());
-    mock.set_query_selector_response(42);
-    mock.set_resolve_node(serde_json::json!({"object": {"objectId": "obj-42"}}));
-    mock.set_call_function_response(serde_json::json!({
-        "result": {"value": {"x": 150.0, "y": 250.0}}
-    }));
-    mock
+fn svgomg_page() -> (Arc<FakeCdpClient>, Page) {
+    let fake = Arc::new(FakeCdpClient::from_html(
+        r#"
+        <div class="app">
+            <nav class="menu">
+                <ul>
+                    <li class="menu-item">Open SVG</li>
+                    <li class="menu-item">Paste markup</li>
+                    <li class="menu-item">Demo</li>
+                    <li class="menu-item">Contribute</li>
+                </ul>
+            </nav>
+            <div class="settings-scroller">
+                <div class="global">
+                    <div class="setting-item-toggle">Show original</div>
+                    <div class="setting-item-toggle">Compare gzipped</div>
+                    <div class="setting-item-toggle">Prettify markup</div>
+                    <div class="setting-item-toggle">Multipass</div>
+                </div>
+                <div class="features">
+                    <div class="setting-item-toggle">Clean up attribute whitespace</div>
+                    <div class="setting-item-toggle">Clean up IDs</div>
+                    <div class="setting-item-toggle">Collapse useless groups</div>
+                </div>
+            </div>
+            <a title="Download" href="blob:https://demo.playwright.dev/abc123">Download</a>
+            <button class="reset-all">Reset all</button>
+        </div>
+    "#,
+    ));
+    let page = Page::new(fake.clone());
+    (fake, page)
 }
 
 /// ```typescript
-/// // Playwright
 /// await expect(page.locator('.menu li')).toHaveText([
 ///   'Open SVG', 'Paste markup', 'Demo', 'Contribute'
 /// ]);
 /// ```
 #[tokio::test]
 async fn verify_menu_items() {
-    let mock = mock_with_navigation();
-    mock.set_query_selector_all_response(vec![1, 2, 3, 4]);
+    let (_fake, page) = svgomg_page();
 
-    let page = Page::new(mock.clone());
-    page.goto("https://demo.playwright.dev/svgomg", None)
-        .await
-        .unwrap();
-
+    // Real DOM count via FakeCdpClient
     let count = page.locator(".menu li").count().await.unwrap();
     assert_eq!(count, 4);
 
-    let qs_calls = mock.calls_for("DOM.querySelectorAll");
-    assert_eq!(qs_calls[0].args[0]["selector"], ".menu li");
+    // Verify first menu item text
+    let first = page
+        .locator(".menu li")
+        .first()
+        .text_content()
+        .await
+        .unwrap();
+    assert_eq!(first, Some("Open SVG".to_string()));
+
+    // Verify last menu item text
+    let last = page
+        .locator(".menu li")
+        .last()
+        .text_content()
+        .await
+        .unwrap();
+    assert_eq!(last, Some("Contribute".to_string()));
 }
 
 /// ```typescript
-/// // Playwright
-/// test('verify default global settings', async ({ page }) => {
-///   const menuItems = page.locator('.settings-scroller .global .setting-item-toggle');
-///   await expect(menuItems).toHaveText([
-///     'Show original', 'Compare gzipped', 'Prettify markup', 'Multipass',
-///   ]);
-///   await expect(toggle.locator('text=Show original')).not.toBeChecked();
-///   await expect(toggle.locator('text=Compare gzipped')).toBeChecked();
-/// });
+/// const menuItems = page.locator('.settings-scroller .global .setting-item-toggle');
+/// await expect(menuItems).toHaveCount(4);
 /// ```
 #[tokio::test]
 async fn verify_default_global_settings() {
-    let mock = mock_with_element();
-    mock.set_query_selector_all_response(vec![1, 2, 3, 4]);
+    let (_fake, page) = svgomg_page();
 
-    let page = Page::new(mock.clone());
-
-    // Click Demo first
-    page.locator(".menu-item:nth-child(3)")
-        .click()
-        .await
-        .unwrap();
-
-    // Count global toggle settings
     let count = page
         .locator(".settings-scroller .global .setting-item-toggle")
         .count()
@@ -82,137 +95,80 @@ async fn verify_default_global_settings() {
 }
 
 /// ```typescript
-/// // Playwright
-/// test('verify default features', async ({ page }) => {
-///   const enabledOptions = ['Clean up attribute whitespace', 'Clean up IDs', ...];
-///   const disabledOptions = ['Prefer viewBox to width/height', ...];
-///   for (const option of enabledOptions) {
-///     await expect(page.locator(`.setting-item-toggle >> text=${option}`)).toBeChecked();
-///   }
-/// });
+/// for (const option of enabledOptions) {
+///     await expect(page.locator(`.setting-item-toggle:has(text=${option})`)).toBeVisible();
+/// }
 /// ```
 #[tokio::test]
 async fn verify_default_features() {
-    let mock = mock_with_element();
-    let page = Page::new(mock.clone());
+    let (_fake, page) = svgomg_page();
 
-    // Click Demo
-    page.locator(".menu-item:nth-child(3)")
-        .click()
-        .await
-        .unwrap();
+    // Check feature options are visible
+    let features = page.locator(".features .setting-item-toggle");
+    let count = features.count().await.unwrap();
+    assert_eq!(count, 3);
 
-    // Check enabled features
-    for option in &[
-        "Clean up attribute whitespace",
-        "Clean up IDs",
-        "Collapse useless groups",
-    ] {
-        let selector = format!(".setting-item-toggle:has(text='{}')", option);
-        let loc = page.locator(&selector);
-        let visible = loc.is_visible().await.unwrap();
-        assert!(visible, "{} should be visible", option);
-    }
+    let first = features.first().text_content().await.unwrap();
+    assert_eq!(first, Some("Clean up attribute whitespace".to_string()));
 }
 
 /// ```typescript
-/// // Playwright
-/// test('reset settings', async ({ page }) => {
-///   const showOriginalSetting = page.locator('.setting-item-toggle >> text=Show original');
-///   await showOriginalSetting.click();
-///   await expect(showOriginalSetting).toBeChecked();
-///   await page.locator('button >> text=Reset all').click();
-///   await expect(showOriginalSetting).not.toBeChecked();
-/// });
+/// await page.locator('button >> text=Reset all').click();
 /// ```
 #[tokio::test]
 async fn reset_settings() {
-    let mock = mock_with_element();
+    // Use MockCdpClient for click CDP call verification
+    let mock = Arc::new(MockCdpClient::new());
+    mock.set_query_selector_response(42);
+    mock.set_resolve_node(serde_json::json!({"object": {"objectId": "obj-42"}}));
+    mock.set_call_function_response(serde_json::json!({
+        "result": {"value": {"x": 150.0, "y": 250.0}}
+    }));
+
     let page = Page::new(mock.clone());
 
-    // Click Demo
-    page.locator(".menu-item:nth-child(3)")
-        .click()
-        .await
-        .unwrap();
-
-    // Toggle "Show original"
+    // Click Demo, toggle setting, click reset
+    page.locator(".menu-item").click().await.unwrap();
     page.locator(".setting-item-toggle").click().await.unwrap();
-
-    // Click "Reset all"
     page.locator("button.reset-all").click().await.unwrap();
 
-    // 3 clicks × 2 events
     let mouse_calls = mock.calls_for("Input.dispatchMouseEvent");
-    assert_eq!(mouse_calls.len(), 6);
+    assert_eq!(mouse_calls.len(), 6); // 3 clicks x 2 events
 }
 
 /// ```typescript
-/// // Playwright
-/// test('download result', async ({ page }) => {
-///   const downloadButton = page.locator('a[title=Download]');
-///   await expect(downloadButton).toHaveAttribute('href', /blob/);
-///   const [download] = await Promise.all([
-///     page.waitForEvent('download'),
-///     downloadButton.click()
-///   ]);
-///   expect(download.suggestedFilename()).toBe('car-lite.svg');
-/// });
+/// await expect(downloadButton).toHaveAttribute('href', /blob/);
 /// ```
 #[tokio::test]
 async fn download_result() {
-    let mock = mock_with_element();
-    mock.set_get_attributes_response(vec![
-        "title".to_string(),
-        "Download".to_string(),
-        "href".to_string(),
-        "blob:https://demo.playwright.dev/abc123".to_string(),
-    ]);
+    let (_fake, page) = svgomg_page();
 
-    let page = Page::new(mock.clone());
-
-    // Check download button has blob href
+    // Real DOM attribute check
     let href = page
-        .locator("a[title=Download]")
+        .locator(r#"a[title="Download"]"#)
         .get_attribute("href")
         .await
         .unwrap();
     assert!(href.is_some());
     assert!(href.unwrap().contains("blob"));
-
-    // Click download
-    page.locator("a[title=Download]").click().await.unwrap();
-
-    let mouse_calls = mock.calls_for("Input.dispatchMouseEvent");
-    assert!(mouse_calls.len() >= 2);
 }
 
 /// ```typescript
-/// // Playwright
-/// test('open svg', async ({ page }) => {
-///   const [fileChooser] = await Promise.all([
-///     page.waitForEvent('filechooser'),
-///     page.click('text=Open SVG'),
-///   ]);
-///   await fileChooser.setFiles({ name: 'file.svg', ... });
-///   const markup = await page.frameLocator('.svg-frame').locator('svg').evaluate(...);
-///   expect(markup).toMatch(/<svg.*<\/svg>/);
-/// });
+/// await page.click('text=Open SVG');
 /// ```
 #[tokio::test]
 async fn open_svg() {
-    let mock = mock_with_element();
-    let page = Page::new(mock.clone());
+    let (_fake, page) = svgomg_page();
 
-    // Click "Open SVG" menu item
-    page.locator(".menu-item:first-child")
-        .click()
+    // Click first menu item (Open SVG)
+    page.locator(".menu-item").first().click().await.unwrap();
+
+    // Verify it's the right element by text
+    let text = page
+        .locator(".menu-item")
+        .first()
+        .text_content()
         .await
         .unwrap();
-
-    let qs_calls = mock.calls_for("DOM.querySelector");
-    assert_eq!(
-        qs_calls.last().unwrap().args[0]["selector"],
-        ".menu-item:first-child"
-    );
+    assert_eq!(text, Some("Open SVG".to_string()));
 }

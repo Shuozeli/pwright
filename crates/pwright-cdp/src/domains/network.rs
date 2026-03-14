@@ -51,6 +51,28 @@ impl CdpSession {
             .await?;
         Ok(())
     }
+
+    /// Get the response body for a given request ID.
+    ///
+    /// Maps to CDP [`Network.getResponseBody`](https://chromedevtools.github.io/devtools-protocol/tot/Network/#method-getResponseBody).
+    /// The `request_id` comes from `NetworkResponse.request_id` (captured via `on_response()`).
+    pub async fn network_get_response_body(&self, request_id: &str) -> Result<ResponseBody> {
+        let result = self
+            .send(
+                "Network.getResponseBody",
+                json!({ "requestId": request_id }),
+            )
+            .await?;
+        serde_json::from_value(result).map_err(crate::connection::CdpError::Json)
+    }
+}
+
+/// Response body returned by `Network.getResponseBody`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResponseBody {
+    pub body: String,
+    pub base64_encoded: bool,
 }
 
 #[cfg(test)]
@@ -130,5 +152,52 @@ mod tests {
         assert!(json.get("httpOnly").is_some());
         assert!(json.get("sameSite").is_some());
         assert!(json.get("http_only").is_none());
+    }
+
+    #[test]
+    fn response_body_deserializes_camel_case() {
+        let json = serde_json::json!({
+            "body": "some response text",
+            "base64Encoded": false
+        });
+        let rb: ResponseBody = serde_json::from_value(json).unwrap();
+        assert_eq!(rb.body, "some response text");
+        assert!(!rb.base64_encoded);
+    }
+
+    #[test]
+    fn response_body_deserializes_base64() {
+        let json = serde_json::json!({
+            "body": "SGVsbG8gV29ybGQ=",
+            "base64Encoded": true
+        });
+        let rb: ResponseBody = serde_json::from_value(json).unwrap();
+        assert_eq!(rb.body, "SGVsbG8gV29ybGQ=");
+        assert!(rb.base64_encoded);
+    }
+
+    #[test]
+    fn response_body_serializes_to_camel_case() {
+        let rb = ResponseBody {
+            body: "test".to_string(),
+            base64_encoded: true,
+        };
+        let json = serde_json::to_value(&rb).unwrap();
+        assert!(json.get("base64Encoded").is_some());
+        assert!(json.get("base64_encoded").is_none());
+        assert_eq!(json["body"], "test");
+        assert_eq!(json["base64Encoded"], true);
+    }
+
+    #[test]
+    fn response_body_roundtrips() {
+        let rb = ResponseBody {
+            body: r#"{"key": "value"}"#.to_string(),
+            base64_encoded: false,
+        };
+        let json = serde_json::to_value(&rb).unwrap();
+        let restored: ResponseBody = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.body, rb.body);
+        assert_eq!(restored.base64_encoded, rb.base64_encoded);
     }
 }

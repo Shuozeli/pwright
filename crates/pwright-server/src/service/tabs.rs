@@ -70,10 +70,7 @@ pub async fn bring_to_front(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     tab.session
         .page_bring_to_front()

@@ -12,21 +12,31 @@ pub async fn navigate(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
+    // For new tabs, no lock needed (no contention). For existing tabs, acquire lock.
+    let (_permit, _lock);
     let tab = if req.new_tab || req.tab_id.is_empty() {
         let url = if req.url.is_empty() {
             "about:blank"
         } else {
             &req.url
         };
-        browser
+        let t = browser
             .create_tab(url)
             .await
-            .map_err(|e| Status::internal(format!("create tab: {}", e)))?
-    } else {
-        browser
-            .resolve_tab(&req.tab_id)
+            .map_err(|e| Status::internal(format!("create tab: {}", e)))?;
+        _permit = browser
+            .tab_semaphore()
+            .clone()
+            .acquire_owned()
             .await
-            .map_err(|e| Status::not_found(format!("tab: {}", e)))?
+            .map_err(|_| Status::resource_exhausted("semaphore closed"))?;
+        _lock = browser.tab_lock(&t.tab_id).lock_owned().await;
+        t
+    } else {
+        let (t, p, l) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
+        _permit = p;
+        _lock = l;
+        t
     };
 
     let wait_for = match req.wait_for() {
@@ -69,10 +79,7 @@ pub async fn reload(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     tab.session
         .page_reload()
@@ -96,10 +103,7 @@ pub async fn go_back(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "history.back()")
         .await
@@ -115,10 +119,7 @@ pub async fn go_forward(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "history.forward()")
         .await

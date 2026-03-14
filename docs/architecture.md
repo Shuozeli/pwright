@@ -45,6 +45,7 @@ Translates user-intent into CDP command sequences.
 - **`content.rs`** — Screenshot (PNG/JPEG/WebP), PDF, text extraction.
 - **`evaluate.rs`** — JavaScript evaluation.
 - **`cookies.rs`** — Cookie get/set.
+- **`clock.rs`** — `Clock` trait for dependency-injected time operations. `TokioClock` (real) for production, `FakeClock` (deterministic) for tests.
 - **`keys.rs`** — Named key definitions (Enter, Tab, Escape, Arrow keys, F1-F12).
 - **`playwright/`** — Playwright-compatible high-level API:
   - **`page.rs`** — `Page` struct: `goto()`, `locator()`, `get_by_text/label/role()`, `keyboard()`, `mouse()`, `touchscreen()`, etc.
@@ -52,7 +53,28 @@ Translates user-intent into CDP command sequences.
   - **`keyboard.rs`** — `Keyboard` struct: `press()`, `type_text()`, `down()`, `up()`, `insert_text()`.
   - **`mouse.rs`** — `Mouse` struct: `click()`, `dblclick()`, `move_to()`, `wheel()`, `down()`, `up()`.
   - **`touchscreen.rs`** — `Touchscreen` struct: `tap(x, y)` via `Input.dispatchTouchEvent`.
-  - **`selectors.rs`** — Selector resolution engine supporting CSS and JS-based selectors (`__pw_text=`, `__pw_label=`, `__pw_role=`, `__pw_filter_text=`).
+  - **`selectors.rs`** — Selector resolution engine supporting CSS and JS-based selectors (`__pw_text=`, `__pw_label=`, `__pw_role=`, `__pw_filter_text=`, `__pw_nth=`).
+  - **`network.rs`** — Network event types (`NetworkRequest`, `NetworkResponse`) and CDP event parsing helpers for `Page::on_request()`/`on_response()`.
+
+### `pwright-script` — Declarative Script Runner
+
+Parses and executes YAML automation scripts against `pwright-bridge`.
+
+- **`proto/script.proto`** — Protobuf schema (source of truth) for Script, Step types, and output format.
+- **`parser.rs`** — YAML parser: converts YAML into internal Script model with template resolution.
+- **`validator.rs`** — Validates params, template refs, JS registry refs, and step-specific rules.
+- **`executor.rs`** — Executes steps sequentially against a `Page`, manages variables and output collection.
+- **`output.rs`** — JSONL streaming output (`JsonlSink`) and in-memory output (`VecSink`) for testing.
+- **`model.rs`** — Internal types: `Script`, `Step`, `StepKind`, `ParamDef`, `JsFunction`.
+
+### `pwright-fake` — In-Memory Browser Fake
+
+Test-only crate providing `FakeCdpClient` with an in-memory DOM tree.
+
+- **`dom.rs`** — DOM node tree with text_content, attributes, find, serialize.
+- **`selector.rs`** — CSS selector matching (tag, class, id, attribute, descendant, compound).
+- **`builder.rs`** — HTML parser that builds DomNode trees from strings.
+- **`client.rs`** — `FakeCdpClient` implementing `CdpClient` with real DOM operations.
 
 ### `pwright-server` — gRPC Server
 
@@ -72,4 +94,4 @@ Translates user-intent into CDP command sequences.
 2. **gRPC-native** — Protobuf over HTTP/2. No REST API.
 3. **Attach-first** — Connects to an already-running Chrome. Launch mode can be added later.
 4. **Minimal memory** — No GC, no embedded JS runtime. Target: <15MB resident.
-5. **JS-only-when-necessary** — Pure CDP domains preferred (`DOM.getAttributes`, `DOM.getBoxModel`, AX tree). JS evaluation is used only for `innerText`, `value`, `scrollBy`, text/label/role locator resolution.
+5. **JS-only-when-necessary** — Pure CDP domains preferred (`DOM.getAttributes`, `DOM.getBoxModel`). JS evaluation via `Runtime.callFunctionOn` is used for `innerText`, `value`, `scrollBy`, `is_checked`/`is_disabled` (DOM properties), text/label/role locator resolution, and per-element `evaluate()`.

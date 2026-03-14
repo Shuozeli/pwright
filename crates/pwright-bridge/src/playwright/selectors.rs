@@ -9,7 +9,7 @@
 //!   - `__pw_role=<role>|<name>` — find element by ARIA role with accessible name
 
 use pwright_cdp::CdpClient;
-use pwright_cdp::connection::Result as CdpResult;
+use pwright_cdp::connection::{CdpError, Result as CdpResult};
 
 /// Resolved element — a nodeId from the DOM domain.
 #[derive(Debug, Clone, Copy)]
@@ -21,6 +21,40 @@ pub struct ResolvedElement {
 ///
 /// Supports CSS selectors and special `__pw_*` prefixes.
 pub async fn resolve_selector(
+    session: &dyn CdpClient,
+    selector: &str,
+) -> CdpResult<Option<ResolvedElement>> {
+    // __pw_nth=<base_selector>|<index>: resolve all CSS matches, then pick by index
+    if let Some(rest) = selector.strip_prefix("__pw_nth=")
+        && let Some(idx) = rest.rfind('|')
+    {
+        let base_selector = &rest[..idx];
+        let index_str = &rest[idx + 1..];
+        let index: i64 = index_str
+            .parse()
+            .map_err(|_| CdpError::Other(format!("invalid nth index: {index_str}")))?;
+        // Use resolve_css_selector_all to avoid recursion
+        let elements = resolve_css_selector_all(session, base_selector).await?;
+        if elements.is_empty() {
+            return Ok(None);
+        }
+        let resolved_index = if index < 0 {
+            let positive = elements.len() as i64 + index;
+            if positive < 0 {
+                return Ok(None);
+            }
+            positive as usize
+        } else {
+            index as usize
+        };
+        return Ok(elements.get(resolved_index).copied());
+    }
+
+    resolve_pw_selector(session, selector).await
+}
+
+/// Resolve __pw_* prefixed selectors or plain CSS selectors (no __pw_nth).
+async fn resolve_pw_selector(
     session: &dyn CdpClient,
     selector: &str,
 ) -> CdpResult<Option<ResolvedElement>> {
@@ -36,13 +70,12 @@ pub async fn resolve_selector(
     if let Some(rest) = selector.strip_prefix("__pw_role=") {
         return resolve_by_js(session, &js_find_by_role(rest)).await;
     }
-    if let Some(rest) = selector.strip_prefix("__pw_filter_text=") {
-        // Format: base_selector|text
-        if let Some(idx) = rest.rfind('|') {
-            let base_selector = &rest[..idx];
-            let text = &rest[idx + 1..];
-            return resolve_by_js(session, &js_filter_by_text(base_selector, text)).await;
-        }
+    if let Some(rest) = selector.strip_prefix("__pw_filter_text=")
+        && let Some(idx) = rest.rfind('|')
+    {
+        let base_selector = &rest[..idx];
+        let text = &rest[idx + 1..];
+        return resolve_by_js(session, &js_filter_by_text(base_selector, text)).await;
     }
 
     // Default: CSS selector
@@ -66,14 +99,30 @@ pub async fn resolve_selector_all(
     session: &dyn CdpClient,
     selector: &str,
 ) -> CdpResult<Vec<ResolvedElement>> {
-    // For __pw_* selectors, we only support single resolution for now
-    if selector.starts_with("__pw_") {
+    // For __pw_nth, resolve to the specific single element
+    if selector.starts_with("__pw_nth=") {
         if let Some(elem) = resolve_selector(session, selector).await? {
             return Ok(vec![elem]);
         }
         return Ok(vec![]);
     }
 
+    // For other __pw_* selectors, use JS-based resolution (single element only)
+    if selector.starts_with("__pw_") {
+        if let Some(elem) = resolve_pw_selector(session, selector).await? {
+            return Ok(vec![elem]);
+        }
+        return Ok(vec![]);
+    }
+
+    resolve_css_selector_all(session, selector).await
+}
+
+/// Resolve a CSS selector to all matching nodes (no __pw_* handling).
+async fn resolve_css_selector_all(
+    session: &dyn CdpClient,
+    selector: &str,
+) -> CdpResult<Vec<ResolvedElement>> {
     let doc = session.dom_get_document().await?;
     let root_id = doc
         .get("root")
@@ -102,12 +151,13 @@ pub async fn resolve_object_id(session: &dyn CdpClient, node_id: i64) -> CdpResu
 // ── JS-based resolution helpers ──
 
 /// Resolve an element using a JS expression that returns the element or null.
-/// Uses Runtime.evaluate to find the element, then DOM.describeNode to get its backendNodeId.
+/// Uses Runtime.evaluate to find the element, then DOM.requestNode to get its nodeId.
 async fn resolve_by_js(
     session: &dyn CdpClient,
     js_expr: &str,
 ) -> CdpResult<Option<ResolvedElement>> {
-    let result = session.runtime_evaluate(js_expr).await?;
+    // Must use returnByValue=false to get objectId for DOM elements
+    let result = session.runtime_evaluate_as_object(js_expr).await?;
 
     // Check if the result is a DOM element (has objectId)
     let object_id = result
@@ -120,62 +170,12 @@ async fn resolve_by_js(
         None => return Ok(None), // JS returned null/undefined or a primitive
     };
 
-    // Use DOM.describeNode to get the backendNodeId from the remote object
-    // We can use the objectId to get node info via requesting the node
-    let _node_result = session
-        .runtime_call_function_on(&object_id, "function() { return this; }", vec![])
-        .await?;
+    // DOM.getDocument must be called first to enable the DOM domain,
+    // otherwise DOM.requestNode fails with "No node with given id".
+    session.dom_get_document().await?;
 
-    // The result should have the node info. We need to get the backendNodeId.
-    // Actually, let's use a different approach: evaluate JS that returns
-    // a backendNodeId-like value we can use with DOM operations.
-
-    // Use DOM.requestNode to convert objectId -> nodeId
-    // But that's not in our trait. Let's use a workaround:
-    // Call DOM.getDocument first, then use querySelectorAll and match.
-
-    // Simpler: use Runtime.callFunctionOn to get an attribute we can use to locate via CSS.
-    // Actually, let's just use a unique data attribute approach:
-    let unique_id = format!(
-        "__pw_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-
-    // Tag the element with a unique attribute
-    session
-        .runtime_call_function_on(
-            &object_id,
-            &format!(
-                "function() {{ this.setAttribute('data-pw-id', '{}'); }}",
-                unique_id
-            ),
-            vec![],
-        )
-        .await?;
-
-    // Now find it via CSS
-    let doc = session.dom_get_document().await?;
-    let root_id = doc
-        .get("root")
-        .and_then(|r| r.get("nodeId"))
-        .and_then(|n| n.as_i64())
-        .unwrap_or(1);
-
-    let css = format!(r#"[data-pw-id="{}"]"#, unique_id);
-    let node_id = session.dom_query_selector(root_id, &css).await?;
-
-    // Clean up the temporary attribute
-    let _ = session
-        .runtime_call_function_on(
-            &object_id,
-            "function() { this.removeAttribute('data-pw-id'); }",
-            vec![],
-        )
-        .await;
-
+    // Use DOM.requestNode to convert the JS objectId → DOM nodeId
+    let node_id = session.dom_request_node(&object_id).await?;
     if node_id == 0 {
         Ok(None)
     } else {
@@ -183,56 +183,63 @@ async fn resolve_by_js(
     }
 }
 
+/// Escape a value for safe use in CSS attribute selectors (`[attr="value"]`).
+/// Prevents breakout via `"`, `]`, or `\`.
+pub fn css_escape_attr(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Escape a string for safe embedding in JS. Uses serde_json which handles
+/// newlines, backticks, null bytes, unicode separators, and all special chars.
+/// Returns the string WITH surrounding quotes (e.g. `"hello \"world\""`)
+fn js_escape(s: &str) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
+}
+
 /// Generate JS to find an element by text content.
 fn js_find_by_text(text: &str, exact: bool) -> String {
-    let escaped = text.replace('\\', "\\\\").replace('\'', "\\'");
+    let escaped = js_escape(text);
     if exact {
         format!(
-            "(() => {{ const els = [...document.querySelectorAll('*')]; return els.find(el => el.childNodes.length > 0 && [...el.childNodes].some(n => n.nodeType === 3) && el.textContent.trim() === '{}') || null; }})()",
-            escaped
+            "(() => {{ const t = {escaped}; const els = [...document.querySelectorAll('*')]; return els.find(el => el.childNodes.length > 0 && [...el.childNodes].some(n => n.nodeType === 3) && el.textContent.trim() === t) || null; }})()"
         )
     } else {
         format!(
-            "(() => {{ const els = [...document.querySelectorAll('*')]; return els.find(el => el.childNodes.length > 0 && [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.includes('{}')) ) || null; }})()",
-            escaped
+            "(() => {{ const t = {escaped}; const els = [...document.querySelectorAll('*')]; return els.find(el => el.childNodes.length > 0 && [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.includes(t)) ) || null; }})()"
         )
     }
 }
 
 /// Generate JS to filter elements by CSS selector and text content.
 fn js_filter_by_text(base_selector: &str, text: &str) -> String {
-    let escaped_text = text.replace('\\', "\\\\").replace('\'', "\\'");
-    let escaped_selector = base_selector.replace('\\', "\\\\").replace('\'', "\\'");
+    let escaped_text = js_escape(text);
+    let escaped_selector = js_escape(base_selector);
     format!(
-        "(() => {{ const els = [...document.querySelectorAll('{}')]; return els.find(el => el.textContent.includes('{}')) || null; }})()",
-        escaped_selector, escaped_text
+        "(() => {{ const sel = {escaped_selector}; const t = {escaped_text}; const els = [...document.querySelectorAll(sel)]; return els.find(el => el.textContent.includes(t)) || null; }})()"
     )
 }
 
 /// Generate JS to find an element by label text.
 fn js_find_by_label(text: &str) -> String {
-    let escaped = text.replace('\\', "\\\\").replace('\'', "\\'");
+    let escaped = js_escape(text);
     format!(
         r#"(() => {{
-  // 1. label[for] pointing to an input
+  const t = {escaped};
   const labels = [...document.querySelectorAll('label')];
   for (const label of labels) {{
-    if (label.textContent.trim().includes('{}')) {{
+    if (label.textContent.trim().includes(t)) {{
       if (label.htmlFor) {{
         const target = document.getElementById(label.htmlFor);
         if (target) return target;
       }}
-      // 2. Wrapping label
       const input = label.querySelector('input, textarea, select');
       if (input) return input;
     }}
   }}
-  // 3. aria-label
-  const ariaEl = document.querySelector('[aria-label="{}"]');
+  const ariaEl = document.querySelector('[aria-label=' + JSON.stringify(t) + ']');
   if (ariaEl) return ariaEl;
   return null;
-}})()"#,
-        escaped, escaped
+}})()"#
     )
 }
 
@@ -245,7 +252,7 @@ fn js_find_by_role(spec: &str) -> String {
         (spec, None)
     };
 
-    let escaped_role = role.replace('\\', "\\\\").replace('\'', "\\'");
+    let css_escaped_role = css_escape_attr(role);
 
     // Map implicit roles to element selectors
     let implicit_selectors = match role {
@@ -274,22 +281,22 @@ fn js_find_by_role(spec: &str) -> String {
     };
 
     let name_filter = if let Some(n) = name {
-        let escaped_name = n.replace('\\', "\\\\").replace('\'', "\\'");
+        let escaped_name = js_escape(n);
         format!(
             r#"
   function matchesName(el) {{
+    const n = {escaped_name};
     const ariaLabel = el.getAttribute('aria-label');
-    if (ariaLabel && ariaLabel.includes('{}')) return true;
+    if (ariaLabel && ariaLabel.includes(n)) return true;
     const labelledBy = el.getAttribute('aria-labelledby');
     if (labelledBy) {{
       const labelEl = document.getElementById(labelledBy);
-      if (labelEl && labelEl.textContent.includes('{}')) return true;
+      if (labelEl && labelEl.textContent.includes(n)) return true;
     }}
-    if (el.textContent.trim().includes('{}')) return true;
-    if (el.title && el.title.includes('{}')) return true;
+    if (el.textContent.trim().includes(n)) return true;
+    if (el.title && el.title.includes(n)) return true;
     return false;
-  }}"#,
-            escaped_name, escaped_name, escaped_name, escaped_name
+  }}"#
         )
     } else {
         "function matchesName() { return true; }".to_string()
@@ -299,7 +306,7 @@ fn js_find_by_role(spec: &str) -> String {
         r#"(() => {{
   {name_filter}
   // 1. Explicit [role="..."]
-  const explicit = [...document.querySelectorAll('[role="{escaped_role}"]')];
+  const explicit = [...document.querySelectorAll('[role="{css_escaped_role}"]')];
   for (const el of explicit) {{
     if (matchesName(el)) return el;
   }}

@@ -3,14 +3,18 @@
 //! Wraps a CDP session with a high-level API matching Playwright's Page class.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::Result as CdpResult;
 use serde_json::Value;
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 use super::keyboard::Keyboard;
 use super::locator::Locator;
 use super::mouse::Mouse;
+use super::network::{self, NetworkRequest, NetworkResponse};
 use super::touchscreen::Touchscreen;
 
 /// Options for `page.goto()`.
@@ -43,7 +47,22 @@ pub struct ScreenshotOptions {
 /// ```
 pub struct Page {
     session: Arc<dyn CdpClient>,
-    closed: bool,
+    target_id: Option<String>,
+    closed: AtomicBool,
+    /// Track spawned network listener tasks so they can be aborted on close/drop.
+    listener_handles: Mutex<Vec<JoinHandle<()>>>,
+}
+
+impl Drop for Page {
+    fn drop(&mut self) {
+        // Abort any spawned listener tasks to prevent leaks.
+        // try_lock avoids panic if Mutex is poisoned during unwinding.
+        if let Ok(handles) = self.listener_handles.try_lock() {
+            for handle in handles.iter() {
+                handle.abort();
+            }
+        }
+    }
 }
 
 impl Page {
@@ -51,14 +70,53 @@ impl Page {
     pub fn new(session: Arc<dyn CdpClient>) -> Self {
         Self {
             session,
-            closed: false,
+            target_id: None,
+            closed: AtomicBool::new(false),
+            listener_handles: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Create a Page wrapping a CDP session with a known target ID.
+    /// Used by `Browser::with_page` so `close()` can close the tab.
+    pub fn with_tab(session: Arc<dyn CdpClient>, target_id: String) -> Self {
+        Self {
+            session,
+            target_id: Some(target_id),
+            closed: AtomicBool::new(false),
+            listener_handles: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Close the page (tab). If created with `with_tab`, closes the underlying target.
+    /// Also aborts any spawned network listener tasks. Thread-safe.
+    pub async fn close(&self) -> CdpResult<()> {
+        if self.closed.swap(true, Ordering::SeqCst) {
+            return Ok(()); // already closed
+        }
+        for handle in self.listener_handles.lock().await.drain(..) {
+            handle.abort();
+        }
+        if let Some(ref target_id) = self.target_id {
+            self.session.target_close(target_id).await?;
+        }
+        Ok(())
+    }
+
+    /// Return an error if the page has been closed.
+    fn ensure_open(&self) -> CdpResult<()> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(pwright_cdp::connection::CdpError::Other(
+                "Page is closed".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     // ── Navigation ──
 
     /// Navigate to a URL.
     pub async fn goto(&self, url: &str, options: Option<GotoOptions>) -> CdpResult<()> {
+        self.ensure_open()?;
         let opts = options.unwrap_or_default();
         let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
 
@@ -75,17 +133,20 @@ impl Page {
             block_media: false,
         };
 
-        crate::navigate::navigate(&*self.session, "", url, &nav_opts).await?;
+        let tab_id = self.target_id.as_deref().unwrap_or_default();
+        crate::navigate::navigate(&*self.session, tab_id, url, &nav_opts).await?;
         Ok(())
     }
 
     /// Reload the current page.
     pub async fn reload(&self) -> CdpResult<()> {
+        self.ensure_open()?;
         self.session.page_reload().await
     }
 
     /// Navigate back in history.
     pub async fn go_back(&self) -> CdpResult<()> {
+        self.ensure_open()?;
         let history = self.session.page_get_navigation_history().await?;
         let current_index = history
             .get("currentIndex")
@@ -110,6 +171,7 @@ impl Page {
 
     /// Navigate forward in history.
     pub async fn go_forward(&self) -> CdpResult<()> {
+        self.ensure_open()?;
         let history = self.session.page_get_navigation_history().await?;
         let current_index = history
             .get("currentIndex")
@@ -136,6 +198,7 @@ impl Page {
 
     /// Get the current page URL.
     pub async fn url(&self) -> CdpResult<String> {
+        self.ensure_open()?;
         let result = self
             .session
             .runtime_evaluate(pwright_js::page::GET_LOCATION_HREF)
@@ -150,6 +213,7 @@ impl Page {
 
     /// Get the page title.
     pub async fn title(&self) -> CdpResult<String> {
+        self.ensure_open()?;
         let result = self
             .session
             .runtime_evaluate(pwright_js::page::GET_TITLE)
@@ -164,6 +228,7 @@ impl Page {
 
     /// Get the full page HTML.
     pub async fn content(&self) -> CdpResult<String> {
+        self.ensure_open()?;
         let result = self
             .session
             .runtime_evaluate(pwright_js::page::GET_DOCUMENT_HTML)
@@ -178,11 +243,12 @@ impl Page {
 
     /// Check if the page has been closed.
     pub fn is_closed(&self) -> bool {
-        self.closed
+        self.closed.load(Ordering::SeqCst)
     }
 
     /// Bring the page to front (activate tab).
     pub async fn bring_to_front(&self) -> CdpResult<()> {
+        self.ensure_open()?;
         self.session.page_bring_to_front().await
     }
 
@@ -190,13 +256,23 @@ impl Page {
 
     /// Evaluate a JavaScript expression and return the result.
     pub async fn evaluate(&self, expression: &str) -> CdpResult<Value> {
+        self.ensure_open()?;
         crate::evaluate::evaluate(&*self.session, expression).await
+    }
+
+    /// Evaluate a JS expression, awaiting any returned Promise.
+    ///
+    /// Use this for async JS like `fetch(...).then(r => r.text())`.
+    pub async fn evaluate_async(&self, expression: &str) -> CdpResult<Value> {
+        self.ensure_open()?;
+        crate::evaluate::evaluate_async(&*self.session, expression).await
     }
 
     // ── Screenshots & PDF ──
 
     /// Take a screenshot. Returns base64-encoded image data.
     pub async fn screenshot(&self, options: Option<ScreenshotOptions>) -> CdpResult<String> {
+        self.ensure_open()?;
         let opts = options.unwrap_or_default();
         let format = match opts.format.as_deref() {
             Some("jpeg") => crate::content::ScreenshotFormat::Jpeg(opts.quality.unwrap_or(80)),
@@ -208,11 +284,13 @@ impl Page {
 
     /// Generate a PDF. Returns base64-encoded PDF data.
     pub async fn pdf(&self) -> CdpResult<String> {
+        self.ensure_open()?;
         crate::content::get_pdf(&*self.session).await
     }
 
-    /// Get visible text content.
-    pub async fn text_content(&self) -> CdpResult<String> {
+    /// Get the full page's visible text (`document.body.innerText`).
+    pub async fn body_text(&self) -> CdpResult<String> {
+        self.ensure_open()?;
         crate::content::get_text(&*self.session).await
     }
 
@@ -223,6 +301,143 @@ impl Page {
         Locator::new(self.session.clone(), selector)
     }
 
+    // ── Selector-based convenience methods (Playwright Page API) ──
+
+    /// Get the text content of an element matched by selector.
+    pub async fn text_content(&self, selector: &str) -> CdpResult<Option<String>> {
+        self.locator(selector).text_content().await
+    }
+
+    /// Click an element matched by selector.
+    pub async fn click(&self, selector: &str) -> CdpResult<()> {
+        self.locator(selector).click().await
+    }
+
+    /// Fill an input element matched by selector.
+    pub async fn fill(&self, selector: &str, value: &str) -> CdpResult<()> {
+        self.locator(selector).fill(value).await
+    }
+
+    /// Type text into an element matched by selector.
+    pub async fn type_text(&self, selector: &str, text: &str) -> CdpResult<()> {
+        self.locator(selector).type_text(text).await
+    }
+
+    /// Press a key on an element matched by selector.
+    pub async fn press(&self, selector: &str, key: &str) -> CdpResult<()> {
+        self.locator(selector).press(key).await
+    }
+
+    /// Hover over an element matched by selector.
+    pub async fn hover(&self, selector: &str) -> CdpResult<()> {
+        self.locator(selector).hover().await
+    }
+
+    /// Focus an element matched by selector.
+    pub async fn focus(&self, selector: &str) -> CdpResult<()> {
+        self.locator(selector).focus().await
+    }
+
+    /// Check if an element matched by selector is visible.
+    pub async fn is_visible(&self, selector: &str) -> CdpResult<bool> {
+        self.locator(selector).is_visible().await
+    }
+
+    /// Get an attribute value of an element matched by selector.
+    pub async fn get_attribute(&self, selector: &str, name: &str) -> CdpResult<Option<String>> {
+        self.locator(selector).get_attribute(name).await
+    }
+
+    /// Get the inner HTML of an element matched by selector.
+    pub async fn inner_html(&self, selector: &str) -> CdpResult<String> {
+        self.locator(selector).inner_html().await
+    }
+
+    /// Get the inner text of an element matched by selector.
+    pub async fn inner_text(&self, selector: &str) -> CdpResult<String> {
+        self.locator(selector).inner_text().await
+    }
+
+    /// Check if an element matched by selector is hidden.
+    pub async fn is_hidden(&self, selector: &str) -> CdpResult<bool> {
+        self.locator(selector).is_hidden().await
+    }
+
+    /// Check if an element matched by selector is checked.
+    pub async fn is_checked(&self, selector: &str) -> CdpResult<bool> {
+        self.locator(selector).is_checked().await
+    }
+
+    /// Check if an element matched by selector is disabled.
+    pub async fn is_disabled(&self, selector: &str) -> CdpResult<bool> {
+        self.locator(selector).is_disabled().await
+    }
+
+    /// Check if an element matched by selector is enabled.
+    pub async fn is_enabled(&self, selector: &str) -> CdpResult<bool> {
+        self.locator(selector).is_enabled().await
+    }
+
+    /// Get the input value of an element matched by selector.
+    pub async fn input_value(&self, selector: &str) -> CdpResult<String> {
+        self.locator(selector).input_value().await
+    }
+
+    /// Check a checkbox matched by selector.
+    pub async fn check(&self, selector: &str) -> CdpResult<()> {
+        self.locator(selector).check().await
+    }
+
+    /// Uncheck a checkbox matched by selector.
+    pub async fn uncheck(&self, selector: &str) -> CdpResult<()> {
+        self.locator(selector).uncheck().await
+    }
+
+    /// Select an option by value on a `<select>` element matched by selector.
+    pub async fn select_option(&self, selector: &str, value: &str) -> CdpResult<()> {
+        self.locator(selector).select_option(value).await
+    }
+
+    /// Double-click an element matched by selector.
+    pub async fn dblclick(&self, selector: &str) -> CdpResult<()> {
+        let node = crate::playwright::selectors::resolve_selector(&*self.session, selector)
+            .await?
+            .ok_or_else(|| pwright_cdp::connection::CdpError::ElementNotFound {
+                selector: selector.to_string(),
+            })?;
+        crate::actions::dblclick_by_node_id(&*self.session, node.node_id).await
+    }
+
+    /// Dispatch a custom event on an element matched by selector.
+    pub async fn dispatch_event(&self, selector: &str, event_type: &str) -> CdpResult<()> {
+        self.locator(selector).dispatch_event(event_type).await
+    }
+
+    /// Tap an element matched by selector (touchscreen).
+    pub async fn tap(&self, selector: &str) -> CdpResult<()> {
+        let loc = self.locator(selector);
+        let bbox = loc.bounding_box().await?.ok_or_else(|| {
+            pwright_cdp::connection::CdpError::ElementNotFound {
+                selector: selector.to_string(),
+            }
+        })?;
+        let x = bbox.x + bbox.width / 2.0;
+        let y = bbox.y + bbox.height / 2.0;
+        self.session
+            .input_dispatch_touch_event("touchStart", x, y)
+            .await?;
+        self.session
+            .input_dispatch_touch_event("touchEnd", x, y)
+            .await
+    }
+
+    /// Wait for a selector to appear in the DOM.
+    pub async fn wait_for_selector(&self, selector: &str, timeout_ms: u64) -> CdpResult<()> {
+        self.locator(selector)
+            .wait_for(timeout_ms, super::locator::WaitState::Attached)
+            .await
+    }
+
     /// Set files on a file input element matched by CSS selector.
     pub async fn set_input_files(&self, selector: &str, files: &[String]) -> CdpResult<()> {
         self.locator(selector).set_input_files(files).await
@@ -230,28 +445,32 @@ impl Page {
 
     /// Find element by test ID attribute (`[data-testid="..."]`).
     pub fn get_by_test_id(&self, test_id: &str) -> Locator {
+        let escaped = super::selectors::css_escape_attr(test_id);
         Locator::new(
             self.session.clone(),
-            format!(r#"[data-testid="{}"]"#, test_id),
+            format!(r#"[data-testid="{escaped}"]"#),
         )
     }
 
     /// Find element by placeholder attribute.
     pub fn get_by_placeholder(&self, placeholder: &str) -> Locator {
+        let escaped = super::selectors::css_escape_attr(placeholder);
         Locator::new(
             self.session.clone(),
-            format!(r#"[placeholder="{}"]"#, placeholder),
+            format!(r#"[placeholder="{escaped}"]"#),
         )
     }
 
     /// Find element by alt text attribute.
     pub fn get_by_alt_text(&self, alt: &str) -> Locator {
-        Locator::new(self.session.clone(), format!(r#"[alt="{}"]"#, alt))
+        let escaped = super::selectors::css_escape_attr(alt);
+        Locator::new(self.session.clone(), format!(r#"[alt="{escaped}"]"#))
     }
 
     /// Find element by title attribute.
     pub fn get_by_title(&self, title: &str) -> Locator {
-        Locator::new(self.session.clone(), format!(r#"[title="{}"]"#, title))
+        let escaped = super::selectors::css_escape_attr(title);
+        Locator::new(self.session.clone(), format!(r#"[title="{escaped}"]"#))
     }
 
     /// Find element by text content (substring match).
@@ -293,6 +512,208 @@ impl Page {
         Touchscreen::new(self.session.clone())
     }
 
+    /// Subscribe to network responses. Enables the Network domain and returns
+    /// a channel that receives `NetworkResponse` for each `Network.responseReceived` event.
+    ///
+    /// The listener task is tracked and will be aborted when `close()` is called.
+    pub async fn on_response(&self) -> CdpResult<tokio::sync::mpsc::Receiver<NetworkResponse>> {
+        self.ensure_open()?;
+        // Subscribe BEFORE enabling so no events are missed
+        let mut event_rx = self.session.subscribe_events();
+        self.session.network_enable().await?;
+        let (tx, rx) = tokio::sync::mpsc::channel(256);
+
+        let handle = tokio::spawn(async move {
+            loop {
+                match event_rx.recv().await {
+                    Ok(event) => {
+                        if event.method == "Network.responseReceived"
+                            && let Some(resp) = network::parse_network_response(&event.params)
+                            && tx.send(resp).await.is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+        self.listener_handles.lock().await.push(handle);
+
+        Ok(rx)
+    }
+
+    /// Subscribe to network requests. Enables the Network domain and returns
+    /// a channel that receives `NetworkRequest` for each `Network.requestWillBeSent` event.
+    ///
+    /// The listener task is tracked and will be aborted when `close()` is called.
+    pub async fn on_request(&self) -> CdpResult<tokio::sync::mpsc::Receiver<NetworkRequest>> {
+        self.ensure_open()?;
+        // Subscribe BEFORE enabling so no events are missed
+        let mut event_rx = self.session.subscribe_events();
+        self.session.network_enable().await?;
+        let (tx, rx) = tokio::sync::mpsc::channel(256);
+
+        let handle = tokio::spawn(async move {
+            loop {
+                match event_rx.recv().await {
+                    Ok(event) => {
+                        if event.method == "Network.requestWillBeSent"
+                            && let Some(req) = network::parse_network_request(&event.params)
+                            && tx.send(req).await.is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+        self.listener_handles.lock().await.push(handle);
+
+        Ok(rx)
+    }
+
+    /// Get the response body for a captured network response.
+    ///
+    /// Use with `on_response()` -- the `request_id` comes from `NetworkResponse`.
+    ///
+    /// ```rust,ignore
+    /// let mut rx = page.on_response().await?;
+    /// page.goto(url, None).await?;
+    /// while let Some(resp) = rx.recv().await {
+    ///     if resp.url.contains("/api/data") {
+    ///         let body = page.response_body(&resp.request_id).await?;
+    ///         println!("{}", body.body);
+    ///     }
+    /// }
+    /// ```
+    pub async fn response_body(
+        &self,
+        request_id: &str,
+    ) -> CdpResult<pwright_cdp::domains::network::ResponseBody> {
+        self.ensure_open()?;
+        self.session.network_get_response_body(request_id).await
+    }
+
+    /// Wait for a network response matching a predicate.
+    ///
+    /// Enables the Network domain, listens for responses, and returns the first
+    /// one where `predicate` returns true. Times out with `CdpError::Timeout`.
+    ///
+    /// ```rust,ignore
+    /// page.goto(url, None).await?;
+    /// let resp = page.wait_for_response(
+    ///     |r| r.url.contains("/api/search"),
+    ///     30_000,
+    /// ).await?;
+    /// let body = page.response_body(&resp.request_id).await?;
+    /// ```
+    pub async fn wait_for_response<F>(
+        &self,
+        predicate: F,
+        timeout_ms: u64,
+    ) -> CdpResult<NetworkResponse>
+    where
+        F: Fn(&NetworkResponse) -> bool,
+    {
+        self.ensure_open()?;
+        let mut rx = self.on_response().await?;
+        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async move {
+            while let Some(resp) = rx.recv().await {
+                if predicate(&resp) {
+                    return Ok(resp);
+                }
+            }
+            Err(pwright_cdp::connection::CdpError::Other(
+                "channel closed before matching response".to_string(),
+            ))
+        })
+        .await
+        .map_err(|_| {
+            pwright_cdp::connection::CdpError::Other(format!(
+                "timeout waiting for response ({timeout_ms}ms)"
+            ))
+        })?
+    }
+
+    /// Wait for a network request matching a predicate.
+    ///
+    /// Enables the Network domain, listens for requests, and returns the first
+    /// one where `predicate` returns true. Times out with `CdpError::Timeout`.
+    pub async fn wait_for_request<F>(
+        &self,
+        predicate: F,
+        timeout_ms: u64,
+    ) -> CdpResult<NetworkRequest>
+    where
+        F: Fn(&NetworkRequest) -> bool,
+    {
+        self.ensure_open()?;
+        let mut rx = self.on_request().await?;
+        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async move {
+            while let Some(req) = rx.recv().await {
+                if predicate(&req) {
+                    return Ok(req);
+                }
+            }
+            Err(pwright_cdp::connection::CdpError::Other(
+                "channel closed before matching request".to_string(),
+            ))
+        })
+        .await
+        .map_err(|_| {
+            pwright_cdp::connection::CdpError::Other(format!(
+                "timeout waiting for request ({timeout_ms}ms)"
+            ))
+        })?
+    }
+
+    /// Evaluate a JavaScript function with a serialized argument.
+    ///
+    /// Unlike `evaluate()` which requires string interpolation, this passes
+    /// the argument via CDP serialization -- no escaping needed, no injection risk.
+    ///
+    /// ```rust,ignore
+    /// let result = page.evaluate_with_arg(
+    ///     "function(url) { return fetch(url).then(r => r.text()); }",
+    ///     &serde_json::json!("https://example.com/api"),
+    /// ).await?;
+    /// ```
+    pub async fn evaluate_with_arg(&self, function_body: &str, arg: &Value) -> CdpResult<Value> {
+        self.ensure_open()?;
+        // Get a DOM node objectId to anchor callFunctionOn.
+        // We use DOM.getDocument + DOM.resolveNode which returns an objectId
+        // without trying to serialize the entire global scope.
+        let doc = self.session.dom_get_document().await?;
+        let root_id = doc
+            .get("root")
+            .and_then(|r| r.get("nodeId"))
+            .and_then(|n| n.as_i64())
+            .unwrap_or(1);
+        let resolved = self.session.dom_resolve_node(root_id).await?;
+        let object_id = resolved
+            .get("object")
+            .and_then(|o| o.get("objectId"))
+            .and_then(|id| id.as_str())
+            .ok_or_else(|| {
+                pwright_cdp::connection::CdpError::Other(
+                    "could not resolve document objectId".to_string(),
+                )
+            })?;
+        let result = self
+            .session
+            .runtime_call_function_on(
+                object_id,
+                function_body,
+                vec![serde_json::json!({"value": arg})],
+            )
+            .await?;
+        Ok(result.get("result").cloned().unwrap_or(Value::Null))
+    }
+
     /// Wait for a specified duration.
     pub async fn wait_for_timeout(&self, ms: u64) -> CdpResult<()> {
         tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
@@ -308,6 +729,8 @@ impl Page {
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = CdpResult<()>>,
     {
+        self.ensure_open()?;
+
         // 1. Subscribe to events before allowing downloads to avoid race conditions.
         let mut rx = self.session.subscribe_events();
 
@@ -458,5 +881,309 @@ mod tests {
         let page = Page::new(mock);
         let loc = page.get_by_placeholder("Enter email");
         assert_eq!(loc.selector(), r#"[placeholder="Enter email"]"#);
+    }
+
+    #[tokio::test]
+    async fn test_page_close_with_target_id() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::with_tab(mock.clone(), "target-123".to_string());
+        page.close().await.unwrap();
+
+        let methods = mock.method_names();
+        assert!(methods.contains(&"Target.closeTarget".to_string()));
+        assert!(page.is_closed());
+    }
+
+    #[tokio::test]
+    async fn test_page_close_without_target_id_is_noop() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+        page.close().await.unwrap();
+
+        // Should not call Target.closeTarget
+        assert!(mock.method_names().is_empty());
+        assert!(page.is_closed());
+    }
+
+    #[tokio::test]
+    async fn test_page_close_idempotent() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::with_tab(mock.clone(), "target-123".to_string());
+        page.close().await.unwrap();
+        page.close().await.unwrap();
+
+        // Should only call close once
+        let close_calls = mock.calls_for("Target.closeTarget");
+        assert_eq!(close_calls.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_page_on_response() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+        let mut rx = page.on_response().await.unwrap();
+
+        // Verify Network.enable was called
+        assert!(mock.method_names().contains(&"Network.enable".to_string()));
+
+        // Inject a response event
+        mock.send_event(pwright_cdp::CdpEvent {
+            method: "Network.responseReceived".to_string(),
+            params: serde_json::json!({
+                "requestId": "req-1",
+                "response": {
+                    "url": "https://example.com/api",
+                    "status": 200,
+                    "statusText": "OK",
+                    "headers": {},
+                    "mimeType": "text/html"
+                }
+            }),
+            session_id: None,
+        });
+
+        let resp = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(resp.request_id, "req-1");
+        assert_eq!(resp.url, "https://example.com/api");
+        assert_eq!(resp.status, 200);
+    }
+
+    #[tokio::test]
+    async fn test_page_on_request() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+        let mut rx = page.on_request().await.unwrap();
+
+        mock.send_event(pwright_cdp::CdpEvent {
+            method: "Network.requestWillBeSent".to_string(),
+            params: serde_json::json!({
+                "requestId": "req-3",
+                "request": {
+                    "url": "https://example.com/submit",
+                    "method": "POST",
+                    "headers": {}
+                },
+                "type": "Fetch"
+            }),
+            session_id: None,
+        });
+
+        let req = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(req.request_id, "req-3");
+        assert_eq!(req.method, "POST");
+        assert_eq!(req.resource_type, "Fetch");
+    }
+
+    #[tokio::test]
+    async fn test_closed_page_rejects_operations() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+        page.close().await.unwrap();
+
+        assert!(page.goto("https://example.com", None).await.is_err());
+        assert!(page.reload().await.is_err());
+        assert!(page.url().await.is_err());
+        assert!(page.evaluate("1+1").await.is_err());
+        assert!(page.screenshot(None).await.is_err());
+
+        // No CDP calls should have been made
+        assert!(mock.method_names().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_response_body() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+
+        let body = page.response_body("req-42").await.unwrap();
+
+        let calls = mock.calls_for("Network.getResponseBody");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].args[0]["requestId"], "req-42");
+        // MockCdpClient returns empty body by default
+        assert_eq!(body.body, "");
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_response_matches() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+
+        // Inject a matching response event after a short delay
+        let mock2 = mock.clone();
+        tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            mock2.send_event(pwright_cdp::CdpEvent {
+                method: "Network.responseReceived".to_string(),
+                params: serde_json::json!({
+                    "requestId": "req-api",
+                    "response": {
+                        "url": "https://example.com/api/search",
+                        "status": 200,
+                        "statusText": "OK",
+                        "headers": {},
+                        "mimeType": "application/json"
+                    }
+                }),
+                session_id: None,
+            });
+        });
+
+        let resp = page
+            .wait_for_response(|r| r.url.contains("/api/search"), 5000)
+            .await
+            .unwrap();
+
+        assert_eq!(resp.request_id, "req-api");
+        assert_eq!(resp.status, 200);
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_response_skips_non_matching() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+
+        let mock2 = mock.clone();
+        tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            // First: non-matching
+            mock2.send_event(pwright_cdp::CdpEvent {
+                method: "Network.responseReceived".to_string(),
+                params: serde_json::json!({
+                    "requestId": "req-css",
+                    "response": {
+                        "url": "https://example.com/style.css",
+                        "status": 200,
+                        "statusText": "OK",
+                        "headers": {},
+                        "mimeType": "text/css"
+                    }
+                }),
+                session_id: None,
+            });
+            // Second: matching
+            mock2.send_event(pwright_cdp::CdpEvent {
+                method: "Network.responseReceived".to_string(),
+                params: serde_json::json!({
+                    "requestId": "req-api",
+                    "response": {
+                        "url": "https://example.com/api/data",
+                        "status": 200,
+                        "statusText": "OK",
+                        "headers": {},
+                        "mimeType": "application/json"
+                    }
+                }),
+                session_id: None,
+            });
+        });
+
+        let resp = page
+            .wait_for_response(|r| r.url.contains("/api/"), 5000)
+            .await
+            .unwrap();
+
+        // Should have skipped the CSS response
+        assert_eq!(resp.request_id, "req-api");
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_response_timeout() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+
+        // No events injected, should timeout
+        let result = page
+            .wait_for_response(|r| r.url.contains("/never"), 100)
+            .await;
+
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("timeout"), "Error: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_request_matches() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+
+        let mock2 = mock.clone();
+        tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            mock2.send_event(pwright_cdp::CdpEvent {
+                method: "Network.requestWillBeSent".to_string(),
+                params: serde_json::json!({
+                    "requestId": "req-post",
+                    "request": {
+                        "url": "https://example.com/api/submit",
+                        "method": "POST",
+                        "headers": {}
+                    },
+                    "type": "XHR"
+                }),
+                session_id: None,
+            });
+        });
+
+        let req = page
+            .wait_for_request(|r| r.method == "POST", 5000)
+            .await
+            .unwrap();
+
+        assert_eq!(req.request_id, "req-post");
+        assert_eq!(req.url, "https://example.com/api/submit");
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_with_arg() {
+        let mock = Arc::new(MockCdpClient::new());
+        // callFunctionOn returns the result
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"type": "string", "value": "hello world"}
+        }));
+
+        let page = Page::new(mock.clone());
+        let result = page
+            .evaluate_with_arg(
+                "function(name) { return 'hello ' + name; }",
+                &serde_json::json!("world"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result["value"], "hello world");
+
+        // Verify callFunctionOn was called with an objectId from DOM.resolveNode
+        let cf_calls = mock.calls_for("Runtime.callFunctionOn");
+        assert_eq!(cf_calls.len(), 1);
+        // The objectId comes from mock's dom_resolve_node default ("mock-obj-1")
+        assert_eq!(cf_calls[0].args[0]["objectId"], "mock-obj-1");
+        assert_eq!(
+            cf_calls[0].args[0]["functionDeclaration"],
+            "function(name) { return 'hello ' + name; }"
+        );
+        // Arg should be serialized
+        let args = cf_calls[0].args[0]["arguments"].as_array().unwrap();
+        assert_eq!(args[0]["value"], "world");
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_with_arg_closed_page() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+        page.close().await.unwrap();
+
+        let result = page
+            .evaluate_with_arg("function(x) { return x; }", &serde_json::json!(1))
+            .await;
+        assert!(result.is_err());
     }
 }

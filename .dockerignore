@@ -1,0 +1,6 @@
+target/
+.git/
+.pwright/
+node_modules/
+*.md
+!tests/integration/README.md

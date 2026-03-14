@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head><title>Login</title></head>
+<body>
+  <form id="login-form">
+    <input id="email" type="email" placeholder="Email" required />
+    <input id="password" type="password" placeholder="Password" required />
+    <button id="submit" type="submit" disabled>Sign In</button>
+  </form>
+  <div id="result" style="display:none"></div>
+  <script>
+    const email = document.getElementById('email');
+    const password = document.getElementById('password');
+    const submit = document.getElementById('submit');
+    const result = document.getElementById('result');
+
+    function checkForm() {
+      submit.disabled = !(email.value && password.value);
+    }
+    email.addEventListener('input', checkForm);
+    password.addEventListener('input', checkForm);
+
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      result.style.display = 'block';
+      result.textContent = 'Welcome, ' + email.value;
+    });
+  </script>
+</body>
+</html>

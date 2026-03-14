@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::Result as CdpResult;
 use pwright_cdp::domains::accessibility::RawAXNode;
-use pwright_cdp::domains::network::Cookie;
+use pwright_cdp::domains::network::{Cookie, ResponseBody};
 use pwright_cdp::domains::target::TargetInfo;
 use serde_json::Value;
 
@@ -24,7 +24,10 @@ pub struct CdpCall {
 /// Records all calls and returns configurable responses.
 pub struct MockCdpClient {
     calls: Mutex<Vec<CdpCall>>,
+    event_tx: tokio::sync::broadcast::Sender<pwright_cdp::CdpEvent>,
     box_model_response: Mutex<Option<Value>>,
+    box_model_error: Mutex<bool>,
+    strict: bool,
     resolve_node_response: Mutex<Option<Value>>,
     runtime_evaluate_response: Mutex<Option<Value>>,
     call_function_response: Mutex<Option<Value>>,
@@ -50,9 +53,13 @@ impl Default for MockCdpClient {
 
 impl MockCdpClient {
     pub fn new() -> Self {
+        let (event_tx, _) = tokio::sync::broadcast::channel(1024);
         Self {
             calls: Mutex::new(Vec::new()),
+            event_tx,
             box_model_response: Mutex::new(None),
+            box_model_error: Mutex::new(false),
+            strict: false,
             resolve_node_response: Mutex::new(None),
             runtime_evaluate_response: Mutex::new(None),
             call_function_response: Mutex::new(None),
@@ -77,6 +84,17 @@ impl MockCdpClient {
             method: method.to_string(),
             args,
         });
+    }
+
+    /// Check strict mode and return error if response is not configured.
+    fn check_strict(&self, method: &str) -> CdpResult<()> {
+        if self.strict {
+            Err(pwright_cdp::connection::CdpError::Other(format!(
+                "unexpected call: {method}"
+            )))
+        } else {
+            Ok(())
+        }
     }
 
     /// Get all recorded calls.
@@ -174,13 +192,28 @@ impl MockCdpClient {
     pub fn set_navigation_history_response(&self, response: Value) {
         *self.navigation_history_response.lock().unwrap() = Some(response);
     }
+
+    /// Make DOM.getBoxModel return an error (element not visible).
+    pub fn set_box_model_error(&self, should_error: bool) {
+        *self.box_model_error.lock().unwrap() = should_error;
+    }
+
+    /// Enable strict mode: unconfigured calls return an error instead of a default.
+    pub fn strict(mut self) -> Self {
+        self.strict = true;
+        self
+    }
+
+    /// Inject a CDP event into the event stream for testing.
+    pub fn send_event(&self, event: pwright_cdp::CdpEvent) {
+        let _ = self.event_tx.send(event);
+    }
 }
 
 #[async_trait]
 impl CdpClient for MockCdpClient {
     fn subscribe_events(&self) -> tokio::sync::broadcast::Receiver<pwright_cdp::CdpEvent> {
-        let (tx, _) = tokio::sync::broadcast::channel(1);
-        tx.subscribe()
+        self.event_tx.subscribe()
     }
 
     async fn browser_set_download_behavior(
@@ -296,27 +329,29 @@ impl CdpClient for MockCdpClient {
         Ok(())
     }
 
-    async fn dom_focus(&self, backend_node_id: i64) -> CdpResult<()> {
-        self.record(
-            "DOM.focus",
-            vec![serde_json::json!({"backendNodeId": backend_node_id})],
-        );
+    async fn dom_focus(&self, node_id: i64) -> CdpResult<()> {
+        self.record("DOM.focus", vec![serde_json::json!({"nodeId": node_id})]);
         Ok(())
     }
 
-    async fn dom_scroll_into_view(&self, backend_node_id: i64) -> CdpResult<()> {
+    async fn dom_scroll_into_view(&self, node_id: i64) -> CdpResult<()> {
         self.record(
             "DOM.scrollIntoViewIfNeeded",
-            vec![serde_json::json!({"backendNodeId": backend_node_id})],
+            vec![serde_json::json!({"nodeId": node_id})],
         );
         Ok(())
     }
 
-    async fn dom_get_box_model(&self, backend_node_id: i64) -> CdpResult<Value> {
+    async fn dom_get_box_model(&self, node_id: i64) -> CdpResult<Value> {
         self.record(
             "DOM.getBoxModel",
-            vec![serde_json::json!({"backendNodeId": backend_node_id})],
+            vec![serde_json::json!({"nodeId": node_id})],
         );
+        if *self.box_model_error.lock().unwrap() {
+            return Err(pwright_cdp::connection::CdpError::Other(
+                "Could not compute box model".to_string(),
+            ));
+        }
         Ok(self
             .box_model_response
             .lock()
@@ -331,10 +366,10 @@ impl CdpClient for MockCdpClient {
             }))
     }
 
-    async fn dom_resolve_node(&self, backend_node_id: i64) -> CdpResult<Value> {
+    async fn dom_resolve_node(&self, node_id: i64) -> CdpResult<Value> {
         self.record(
             "DOM.resolveNode",
-            vec![serde_json::json!({"backendNodeId": backend_node_id})],
+            vec![serde_json::json!({"nodeId": node_id})],
         );
         Ok(self
             .resolve_node_response
@@ -363,7 +398,13 @@ impl CdpClient for MockCdpClient {
             "DOM.querySelector",
             vec![serde_json::json!({"nodeId": node_id, "selector": selector})],
         );
-        Ok(self.query_selector_response.lock().unwrap().unwrap_or(0))
+        match *self.query_selector_response.lock().unwrap() {
+            Some(v) => Ok(v),
+            None => {
+                self.check_strict("DOM.querySelector")?;
+                Ok(0)
+            }
+        }
     }
 
     async fn dom_query_selector_all(&self, node_id: i64, selector: &str) -> CdpResult<Vec<i64>> {
@@ -426,6 +467,15 @@ impl CdpClient for MockCdpClient {
         Ok(())
     }
 
+    async fn dom_request_node(&self, object_id: &str) -> CdpResult<i64> {
+        self.record(
+            "DOM.requestNode",
+            vec![serde_json::json!({"objectId": object_id})],
+        );
+        // Return the query_selector_response if set, otherwise default to 42
+        Ok(self.query_selector_response.lock().unwrap().unwrap_or(42))
+    }
+
     async fn input_dispatch_mouse_event(
         &self,
         event_type: &str,
@@ -486,12 +536,27 @@ impl CdpClient for MockCdpClient {
             "Runtime.evaluate",
             vec![Value::String(expression.to_string())],
         );
-        Ok(self
-            .runtime_evaluate_response
-            .lock()
-            .unwrap()
-            .clone()
-            .unwrap_or_else(|| serde_json::json!({"result": {"value": ""}})))
+        match self.runtime_evaluate_response.lock().unwrap().clone() {
+            Some(v) => Ok(v),
+            None => {
+                self.check_strict("Runtime.evaluate")?;
+                Ok(serde_json::json!({"result": {"value": ""}}))
+            }
+        }
+    }
+
+    async fn runtime_evaluate_as_object(&self, expression: &str) -> CdpResult<Value> {
+        self.record(
+            "Runtime.evaluate(object)",
+            vec![Value::String(expression.to_string())],
+        );
+        match self.runtime_evaluate_response.lock().unwrap().clone() {
+            Some(v) => Ok(v),
+            None => {
+                self.check_strict("Runtime.evaluate(object)")?;
+                Ok(serde_json::json!({"result": {"value": ""}}))
+            }
+        }
     }
 
     async fn runtime_call_function_on(
@@ -508,12 +573,27 @@ impl CdpClient for MockCdpClient {
                 "arguments": arguments,
             })],
         );
-        Ok(self
-            .call_function_response
-            .lock()
-            .unwrap()
-            .clone()
-            .unwrap_or_else(|| serde_json::json!({"result": {"value": null}})))
+        match self.call_function_response.lock().unwrap().clone() {
+            Some(v) => Ok(v),
+            None => {
+                self.check_strict("Runtime.callFunctionOn")?;
+                Ok(serde_json::json!({"result": {"value": null}}))
+            }
+        }
+    }
+
+    async fn runtime_evaluate_async(&self, expression: &str) -> CdpResult<Value> {
+        self.record(
+            "Runtime.evaluate(async)",
+            vec![Value::String(expression.to_string())],
+        );
+        match self.runtime_evaluate_response.lock().unwrap().clone() {
+            Some(v) => Ok(v),
+            None => {
+                self.check_strict("Runtime.evaluate(async)")?;
+                Ok(serde_json::json!({"result": {"value": ""}}))
+            }
+        }
     }
 
     async fn runtime_enable(&self) -> CdpResult<()> {
@@ -559,6 +639,17 @@ impl CdpClient for MockCdpClient {
     async fn network_set_cookies(&self, cookies: Vec<Value>) -> CdpResult<()> {
         self.record("Network.setCookies", vec![serde_json::json!(cookies)]);
         Ok(())
+    }
+
+    async fn network_get_response_body(&self, request_id: &str) -> CdpResult<ResponseBody> {
+        self.record(
+            "Network.getResponseBody",
+            vec![serde_json::json!({"requestId": request_id})],
+        );
+        Ok(ResponseBody {
+            body: String::new(),
+            base64_encoded: false,
+        })
     }
 
     async fn fetch_enable(&self) -> CdpResult<()> {

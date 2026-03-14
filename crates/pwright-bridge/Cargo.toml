@@ -19,6 +19,8 @@ url = { workspace = true }
 base64 = { workspace = true }
 rand = { workspace = true }
 async-trait = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+pwright-fake = { workspace = true }

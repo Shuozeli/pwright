@@ -1,0 +1,24 @@
+[package]
+name = "pwright-script"
+description = "Declarative YAML script runner for pwright browser automation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pwright-bridge = { workspace = true }
+pwright-cdp = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+prost = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[build-dependencies]
+prost-build = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+pwright-fake = { workspace = true }

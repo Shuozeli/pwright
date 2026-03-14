@@ -33,7 +33,12 @@ impl Keyboard {
     pub async fn down(&self, key: &str) -> CdpResult<()> {
         if let Some(def) = get_key_def(key) {
             self.session
-                .input_dispatch_key_event("rawKeyDown", key, &def.code, Some(def.virtual_key))
+                .input_dispatch_key_event(
+                    "rawKeyDown",
+                    key,
+                    def.code.as_ref(),
+                    Some(def.virtual_key),
+                )
                 .await
         } else {
             // Unknown key — send as raw key name
@@ -47,7 +52,7 @@ impl Keyboard {
     pub async fn up(&self, key: &str) -> CdpResult<()> {
         if let Some(def) = get_key_def(key) {
             self.session
-                .input_dispatch_key_event("keyUp", key, &def.code, Some(def.virtual_key))
+                .input_dispatch_key_event("keyUp", key, def.code.as_ref(), Some(def.virtual_key))
                 .await
         } else {
             self.session

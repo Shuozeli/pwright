@@ -31,6 +31,9 @@ pub struct BrowserServiceImpl {
     pub(crate) max_parallel_tabs: usize,
     pub(crate) nav_timeout_ms: u64,
     pub(crate) eval_disabled: bool,
+    /// Optional directory to restrict file uploads to. If set, `set_input_files`
+    /// rejects paths outside this directory.
+    pub(crate) upload_dir: Option<std::path::PathBuf>,
 }
 
 impl BrowserServiceImpl {
@@ -46,7 +49,15 @@ impl BrowserServiceImpl {
             max_parallel_tabs,
             nav_timeout_ms,
             eval_disabled,
+            upload_dir: None,
         }
+    }
+
+    /// Set the allowed upload directory for `set_input_files`.
+    #[allow(dead_code)]
+    pub fn with_upload_dir(mut self, dir: std::path::PathBuf) -> Self {
+        self.upload_dir = Some(dir);
+        self
     }
 
     pub(crate) async fn get_browser(&self) -> Result<Arc<Browser>, Status> {
@@ -72,6 +83,37 @@ impl BrowserServiceImpl {
         *guard = Some(browser.clone());
 
         Ok(browser)
+    }
+
+    /// Resolve a tab and acquire the per-tab lock + semaphore permit.
+    /// Returns (tab, semaphore_permit, tab_lock_guard) ensuring exclusive access.
+    pub(crate) async fn resolve_tab_locked(
+        &self,
+        browser: &Arc<Browser>,
+        tab_id: &str,
+    ) -> Result<
+        (
+            pwright_bridge::Tab,
+            tokio::sync::OwnedSemaphorePermit,
+            tokio::sync::OwnedMutexGuard<()>,
+        ),
+        Status,
+    > {
+        let tab = browser
+            .resolve_tab(tab_id)
+            .await
+            .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+
+        let permit = browser
+            .tab_semaphore()
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Status::resource_exhausted("tab semaphore closed"))?;
+
+        let lock = browser.tab_lock(&tab.tab_id).lock_owned().await;
+
+        Ok((tab, permit, lock))
     }
 
     pub(crate) async fn resolve_ref_or_node(

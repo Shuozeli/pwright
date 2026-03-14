@@ -20,7 +20,7 @@ page.goto("https://example.com", None).await?;
 let title = page.title().await?;
 let url = page.url().await?;
 let html = page.content().await?;
-let text = page.text_content("h1").await?;
+let text = page.locator("h1").text_content().await?;
 println!("Title: {title}, URL: {url}");
 ```
 
@@ -50,7 +50,7 @@ pwright supports multiple locator strategies, mirroring Playwright's API:
 
 ```rust
 let locator = page.locator("button.submit");
-locator.click(None).await?;
+locator.click().await?;
 ```
 
 ### By Text (substring or exact)
@@ -58,13 +58,13 @@ locator.click(None).await?;
 ```rust
 // Substring match
 let el = page.get_by_text("Sign up", false);
-el.click(None).await?;
+el.click().await?;
 
 // Exact match
 let el = page.get_by_text("Sign up", true);
 ```
 
-> **Design decision**: `get_by_text` uses JS-based resolution via `Runtime.evaluate` since CSS cannot match by text content. The element is found in JS, tagged with a temporary `data-pw-id` attribute, resolved to a `nodeId` via CSS, then cleaned up.
+> **Design decision**: `get_by_text` uses JS-based resolution via `Runtime.evaluate` since CSS cannot match by text content. The element is found in JS, then resolved to a `nodeId` via `DOM.requestNode`.
 
 ### By Label
 
@@ -80,7 +80,7 @@ Looks up `<label for="...">`, wrapping `<label>`, and `aria-label` attributes.
 ```rust
 // Find button named "Submit"
 let btn = page.get_by_role("button", Some("Submit"));
-btn.click(None).await?;
+btn.click().await?;
 
 // Find any heading
 let h = page.get_by_role("heading", None);
@@ -92,10 +92,10 @@ Supports 18 implicit role mappings (e.g., `<button>` â†’ `button`, `<a href>` â†
 ### By Test ID / Placeholder / Alt Text / Title
 
 ```rust
-page.get_by_test_id("login-btn").click(None).await?;
+page.get_by_test_id("login-btn").click().await?;
 page.get_by_placeholder("Search...").fill("query").await?;
-page.get_by_alt_text("Logo").click(None).await?;
-page.get_by_title("Close dialog").click(None).await?;
+page.get_by_alt_text("Logo").click().await?;
+page.get_by_title("Close dialog").click().await?;
 ```
 
 These all use CSS attribute selectors: `[data-testid="..."]`, `[placeholder="..."]`, `[alt="..."]`, `[title="..."]`.
@@ -109,7 +109,7 @@ These all use CSS attribute selectors: `[data-testid="..."]`, `[placeholder="...
 ```rust
 let items = page.locator(".item");
 let banana = items.filter_by_text("Banana");
-banana.click(None).await?;
+banana.click().await?;
 ```
 
 ### Combine with AND / OR
@@ -192,10 +192,8 @@ Uses `DOM.setFileInputFiles` CDP command under the hood.
 ### Rust
 
 ```rust
-use pwright_bridge::content;
-
-let path = content::expect_download(&session, || async {
-    page.locator("a.download-link").click(None).await
+let path = page.expect_download(|| async {
+    page.locator("a.download-link").click().await
 }).await?;
 println!("Downloaded to: {}", path);
 ```
@@ -218,7 +216,7 @@ use pwright_bridge::playwright::ScreenshotOptions;
 // Full page PNG
 let data = page.screenshot(Some(ScreenshotOptions {
     format: Some("png".into()),
-    full_page: Some(true),
+    full_page: true,
     ..Default::default()
 })).await?;
 
@@ -313,11 +311,10 @@ For `get_by_text`, `get_by_label`, and `get_by_role`, pwright cannot use CSS sel
 
 1. A special prefix (e.g., `__pw_text=`, `__pw_label=`, `__pw_role=`) is embedded in the selector string
 2. `selectors.rs` detects the prefix and delegates to `Runtime.evaluate`
-3. The JS code finds the matching element and tags it with a temporary `data-pw-id` attribute
-4. The tagged element is resolved to a `nodeId` via `DOM.querySelector`
-5. The temporary attribute is removed
+3. The JS code finds the matching element and returns its `objectId`
+4. `DOM.requestNode` converts the `objectId` to a `nodeId` for CDP operations
 
-This keeps the `Locator` type simple (just a selector string + session reference) while supporting rich matching beyond CSS.
+This keeps the `Locator` type simple (just a selector string + session + clock reference) while supporting rich matching beyond CSS.
 
 ### Selector Composition Strategy
 
@@ -332,3 +329,144 @@ Touchscreen uses `Input.dispatchTouchEvent` rather than synthesizing via mouse e
 ### File Upload
 
 Uses `DOM.setFileInputFiles` CDP command, which is the only way to set files on `<input type="file">` elements via CDP (direct JS assignment to `FileList` is not possible).
+
+---
+
+## 11. Script Runner
+
+pwright supports declarative YAML scripts that define multi-step browser
+automation workflows. Scripts take parameters, execute steps sequentially,
+and produce structured JSONL output.
+
+### Basic Script
+
+```yaml
+# hello.yaml
+name: "Extract page title"
+params:
+  url:
+    type: string
+    required: true
+
+steps:
+  - goto: "{{ url }}"
+  - extract:
+      selector: "h1"
+      field: text_content
+      save_as: heading
+  - output:
+      heading: "{{ heading }}"
+```
+
+```bash
+pwright run hello.yaml --param url=https://example.com
+```
+
+Output:
+```jsonl
+{"step_index":0,"step_type":"goto","status":"ok","duration_ms":1200,"details":{"url":"https://example.com"}}
+{"step_index":1,"step_type":"extract","status":"ok","duration_ms":5,"details":{"value":"Example Domain"}}
+{"step_index":2,"step_type":"output","status":"ok","duration_ms":0,"details":{"heading":"Example Domain"}}
+{"summary":true,"name":"Extract page title","status":"ok","total_steps":3,"succeeded":3}
+```
+
+### JS Script Registry
+
+Complex JavaScript is defined centrally in a `scripts` section, not inline:
+
+```yaml
+name: "Link extractor"
+scripts:
+  extract_links: |
+    [...document.querySelectorAll('a[href]')]
+      .map(a => ({ text: a.textContent.trim(), href: a.href }))
+      .filter(l => l.href.startsWith('http'))
+
+steps:
+  - goto: "{{ url }}"
+  - eval:
+      ref: extract_links
+      save_as: links
+  - output:
+      links: "{{ links }}"
+```
+
+Scripts can accept arguments:
+
+```yaml
+scripts:
+  click_nth: |
+    function(index) {
+      document.querySelectorAll('.item')[index].click();
+    }
+
+steps:
+  - eval: { ref: click_nth, args: ["3"] }
+```
+
+### Parameters and Secrets
+
+```bash
+# Inline params
+pwright run script.yaml --param url=https://example.com --param max=10
+
+# From file (for credentials)
+pwright run script.yaml --param-file secrets.yaml
+```
+
+```yaml
+# secrets.yaml
+email: "user@example.com"
+password: "secret123"
+```
+
+### Error Handling
+
+Each step can specify what happens on failure:
+
+```yaml
+steps:
+  - click: ".optional-button"
+    on_error: continue          # skip if not found
+
+  - extract:
+      selector: "#required"
+      field: text_content
+      save_as: data
+    on_error: fail              # stop script (default)
+```
+
+### Validation
+
+```bash
+# Check script without executing
+pwright run script.yaml --param url=https://example.com --validate
+```
+
+Validates: required params supplied, template references resolve,
+JS registry refs exist, selectors non-empty.
+
+### Extract Fields
+
+The `extract` step supports these field types:
+
+| Field | Description |
+|-------|-------------|
+| `text_content` | Element's textContent |
+| `inner_text` | Element's innerText (layout-aware) |
+| `inner_html` | Element's innerHTML |
+| `input_value` | Input/textarea value |
+| `is_visible` | "true"/"false" |
+| `is_checked` | "true"/"false" |
+| `is_disabled` | "true"/"false" |
+| `attribute:<name>` | Named attribute (e.g. `attribute:href`) |
+
+### Sample Scripts
+
+See [examples/scripts/](../examples/scripts/) for complete working examples:
+
+- **hello.yaml** -- minimal navigate + extract
+- **extract-links.yaml** -- JS registry with args
+- **login-and-scrape.yaml** -- multi-step with credentials
+- **form-fill.yaml** -- fill and submit
+- **screenshot-audit.yaml** -- page structure audit

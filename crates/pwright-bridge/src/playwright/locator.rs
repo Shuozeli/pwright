@@ -8,9 +8,25 @@ use std::sync::Arc;
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::CdpError;
 use pwright_cdp::connection::Result as CdpResult;
-use serde_json::json;
+use serde_json::{Value, json};
+
+use crate::clock::{Clock, TokioClock};
 
 use super::selectors;
+
+/// State to wait for in `Locator::wait_for`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WaitState {
+    /// Wait for element to be attached to the DOM.
+    Attached,
+    /// Wait for element to be visible (has layout / box model). This is the default.
+    #[default]
+    Visible,
+    /// Wait for element to be hidden (no layout) or detached.
+    Hidden,
+    /// Wait for element to be detached from the DOM.
+    Detached,
+}
 
 /// A Playwright-compatible Locator. Lazily resolves on each action call.
 ///
@@ -22,6 +38,7 @@ use super::selectors;
 pub struct Locator {
     session: Arc<dyn CdpClient>,
     selector: String,
+    clock: Arc<dyn Clock>,
 }
 
 impl Locator {
@@ -29,6 +46,19 @@ impl Locator {
         Self {
             session,
             selector: selector.into(),
+            clock: Arc::new(TokioClock::new()),
+        }
+    }
+
+    pub(crate) fn with_clock(
+        session: Arc<dyn CdpClient>,
+        selector: impl Into<String>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
+        Self {
+            session,
+            selector: selector.into(),
+            clock,
         }
     }
 
@@ -120,6 +150,23 @@ impl Locator {
         self.session
             .dom_set_file_input_files(node.node_id, files)
             .await
+    }
+
+    /// Evaluate a JavaScript function on the element.
+    ///
+    /// The function receives the element as `this`. Returns the raw CDP result value.
+    ///
+    /// ```rust,ignore
+    /// let result = locator.evaluate("function() { return this.offsetHeight; }").await?;
+    /// ```
+    pub async fn evaluate(&self, function_body: &str) -> CdpResult<Value> {
+        let node = self.resolve_one().await?;
+        let obj_id = self.resolve_object_id(node.node_id).await?;
+        let result = self
+            .session
+            .runtime_call_function_on(&obj_id, function_body, vec![])
+            .await?;
+        Ok(result.get("result").cloned().unwrap_or(Value::Null))
     }
 
     /// Dispatch a custom event on the element.
@@ -229,34 +276,42 @@ impl Locator {
         Ok(!self.is_disabled().await?)
     }
 
-    /// Check if element is disabled. AX tree — no JS.
+    /// Check if element is disabled. Uses JS DOM property for accuracy.
     pub async fn is_disabled(&self) -> CdpResult<bool> {
         let node = self.resolve_one().await?;
-        let attrs = self.session.dom_get_attributes(node.node_id).await?;
-        let mut iter = attrs.iter();
-        while let Some(key) = iter.next() {
-            if let Some(_val) = iter.next()
-                && key == "disabled"
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        let obj_id = self.resolve_object_id(node.node_id).await?;
+        let result = self
+            .session
+            .runtime_call_function_on(
+                &obj_id,
+                "function() { return this.disabled === true; }",
+                vec![],
+            )
+            .await?;
+        Ok(result
+            .get("result")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false))
     }
 
-    /// Check if a checkbox/radio is checked. Attribute check — no JS.
+    /// Check if a checkbox/radio is checked. Uses JS DOM property for accuracy.
     pub async fn is_checked(&self) -> CdpResult<bool> {
         let node = self.resolve_one().await?;
-        let attrs = self.session.dom_get_attributes(node.node_id).await?;
-        let mut iter = attrs.iter();
-        while let Some(key) = iter.next() {
-            if let Some(_val) = iter.next()
-                && key == "checked"
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        let obj_id = self.resolve_object_id(node.node_id).await?;
+        let result = self
+            .session
+            .runtime_call_function_on(
+                &obj_id,
+                "function() { return this.checked === true; }",
+                vec![],
+            )
+            .await?;
+        Ok(result
+            .get("result")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false))
     }
 
     /// Get the bounding box of the element. Pure CDP.
@@ -293,81 +348,96 @@ impl Locator {
         Ok(elements.len())
     }
 
-    /// Wait for the selector to match at least one element.
-    pub async fn wait_for(&self, timeout_ms: u64) -> CdpResult<()> {
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
+    /// Wait for the selector to reach the desired state.
+    pub async fn wait_for(&self, timeout_ms: u64, state: WaitState) -> CdpResult<()> {
+        let poll_interval = std::time::Duration::from_millis(200);
+        let deadline = self
+            .clock
+            .deadline_from_now(std::time::Duration::from_millis(timeout_ms));
 
         loop {
-            interval.tick().await;
-            if tokio::time::Instant::now() > deadline {
-                return Err(CdpError::Timeout);
+            self.clock.sleep(poll_interval).await;
+
+            let resolved = selectors::resolve_selector(&*self.session, &self.selector).await?;
+
+            match state {
+                WaitState::Attached => {
+                    if resolved.is_some() {
+                        return Ok(());
+                    }
+                }
+                WaitState::Visible => {
+                    if let Some(elem) = resolved
+                        && self.session.dom_get_box_model(elem.node_id).await.is_ok()
+                    {
+                        return Ok(());
+                    }
+                }
+                WaitState::Hidden => match resolved {
+                    None => return Ok(()),
+                    Some(elem) => {
+                        if self.session.dom_get_box_model(elem.node_id).await.is_err() {
+                            return Ok(());
+                        }
+                    }
+                },
+                WaitState::Detached => {
+                    if resolved.is_none() {
+                        return Ok(());
+                    }
+                }
             }
-            if selectors::resolve_selector(&*self.session, &self.selector)
-                .await?
-                .is_some()
-            {
-                return Ok(());
+
+            if self.clock.is_past(deadline) {
+                return Err(CdpError::Timeout);
             }
         }
     }
 
     // ── Composition ──
 
+    /// Create a derived locator inheriting this locator's clock.
+    fn derive(&self, selector: impl Into<String>) -> Locator {
+        Locator::with_clock(self.session.clone(), selector, self.clock.clone())
+    }
+
     /// Return a Locator matching the first element.
     pub fn first(&self) -> Locator {
-        // CSS :first-of-type or we can use nth(0) internally
-        Locator::new(
-            self.session.clone(),
-            format!("{}:first-of-type", self.selector),
-        )
+        self.derive(format!("__pw_nth={}|0", self.selector))
     }
 
     /// Return a Locator matching the last element.
     pub fn last(&self) -> Locator {
-        Locator::new(
-            self.session.clone(),
-            format!("{}:last-of-type", self.selector),
-        )
+        self.derive(format!("__pw_nth={}|-1", self.selector))
+    }
+
+    /// Return a Locator matching the nth element (0-based).
+    pub fn nth(&self, index: i64) -> Locator {
+        self.derive(format!("__pw_nth={}|{}", self.selector, index))
     }
 
     /// Return a Locator scoped to a sub-selector.
     pub fn locator(&self, sub_selector: &str) -> Locator {
-        Locator::new(
-            self.session.clone(),
-            format!("{} {}", self.selector, sub_selector),
-        )
+        self.derive(format!("{} {}", self.selector, sub_selector))
     }
 
     /// Filter matched elements by text content.
     ///
     /// Returns a new Locator that uses JS-based text filtering.
     pub fn filter_by_text(&self, text: &str) -> Locator {
-        // Use a special selector: __pw_filter_text=<base_selector>|<text>
-        Locator::new(
-            self.session.clone(),
-            format!("__pw_filter_text={}|{}", self.selector, text),
-        )
+        self.derive(format!("__pw_filter_text={}|{}", self.selector, text))
     }
 
     /// Combine with another locator using AND (intersection).
     /// The resulting locator matches elements that satisfy both selectors.
     pub fn and(&self, other: &Locator) -> Locator {
-        // For CSS selectors, combining them as "selectorA selectorB" is scope,
-        // but for AND on the same element, use :is()
-        Locator::new(
-            self.session.clone(),
-            format!("{}:is({})", self.selector, other.selector),
-        )
+        self.derive(format!("{}:is({})", self.selector, other.selector))
     }
 
     /// Combine with another locator using OR (union).
     /// The resulting locator matches elements that satisfy either selector.
     pub fn or(&self, other: &Locator) -> Locator {
-        Locator::new(
-            self.session.clone(),
-            format!("{}, {}", self.selector, other.selector),
-        )
+        self.derive(format!("{}, {}", self.selector, other.selector))
     }
 
     // ── Internal ──
@@ -375,8 +445,8 @@ impl Locator {
     async fn resolve_one(&self) -> CdpResult<selectors::ResolvedElement> {
         selectors::resolve_selector(&*self.session, &self.selector)
             .await?
-            .ok_or_else(|| {
-                CdpError::Other(format!("No element found for selector: {}", self.selector))
+            .ok_or_else(|| CdpError::ElementNotFound {
+                selector: self.selector.clone(),
             })
     }
 
@@ -397,10 +467,28 @@ pub struct BoundingBox {
 }
 
 /// Strip the outer HTML tag to get innerHTML.
+///
+/// Quote-aware: handles `>` inside attribute values like `data-expr="a>b"`.
 fn strip_outer_tag(html: &str) -> String {
-    // Find the end of the opening tag
-    if let Some(open_end) = html.find('>') {
-        // Find the start of the closing tag
+    // Find the end of the opening tag, respecting quotes
+    let mut in_quote: Option<char> = None;
+    let mut open_end = None;
+    for (i, ch) in html.char_indices() {
+        match in_quote {
+            Some(q) if ch == q => in_quote = None,
+            Some(_) => {}
+            None => match ch {
+                '"' | '\'' => in_quote = Some(ch),
+                '>' => {
+                    open_end = Some(i);
+                    break;
+                }
+                _ => {}
+            },
+        }
+    }
+    if let Some(open_end) = open_end {
+        // Find the start of the closing tag (last '<')
         if let Some(close_start) = html.rfind('<')
             && close_start > open_end
         {
@@ -492,7 +580,164 @@ mod tests {
         assert_eq!(child.selector(), "ul li");
 
         let first = loc.first();
-        assert_eq!(first.selector(), "ul:first-of-type");
+        assert_eq!(first.selector(), "__pw_nth=ul|0");
+
+        let last = loc.last();
+        assert_eq!(last.selector(), "__pw_nth=ul|-1");
+
+        let nth = loc.nth(2);
+        assert_eq!(nth.selector(), "__pw_nth=ul|2");
+    }
+
+    #[tokio::test]
+    async fn test_first_resolves_to_first_element() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_all_response(vec![10, 20, 30]);
+
+        let loc = Locator::new(mock.clone(), "li");
+        let first = loc.first();
+        let count_result = first.count().await.unwrap();
+        // first() should resolve to exactly 1 element
+        assert_eq!(count_result, 1);
+    }
+
+    #[tokio::test]
+    async fn test_last_resolves_to_last_element() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_all_response(vec![10, 20, 30]);
+        mock.set_resolve_node(serde_json::json!({"object": {"objectId": "obj-1"}}));
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": "third"}
+        }));
+
+        let loc = Locator::new(mock.clone(), "li");
+        // last() should pick node_id 30 (index -1)
+        let last = loc.last();
+        let text = last.text_content().await.unwrap();
+        assert_eq!(text, Some("third".to_string()));
+
+        // Verify it resolved node 30
+        let resolve_calls = mock.calls_for("DOM.resolveNode");
+        let resolved_id = resolve_calls.last().unwrap().args[0]["nodeId"]
+            .as_i64()
+            .unwrap();
+        assert_eq!(resolved_id, 30);
+    }
+
+    #[tokio::test]
+    async fn test_first_empty_returns_element_not_found() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_all_response(vec![]);
+
+        let loc = Locator::new(mock.clone(), "li");
+        let result = loc.first().click().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_is_checked_uses_js_property() {
+        let mock = mock_with_element();
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": true}
+        }));
+
+        let loc = Locator::new(mock.clone(), "input[type=checkbox]");
+        let checked = loc.is_checked().await.unwrap();
+        assert!(checked);
+
+        // Verify Runtime.callFunctionOn IS called (not DOM.getAttributes)
+        let methods = mock.method_names();
+        assert!(methods.contains(&"Runtime.callFunctionOn".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_is_disabled_uses_js_property() {
+        let mock = mock_with_element();
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": true}
+        }));
+
+        let loc = Locator::new(mock.clone(), "button");
+        let disabled = loc.is_disabled().await.unwrap();
+        assert!(disabled);
+
+        let methods = mock.method_names();
+        assert!(methods.contains(&"Runtime.callFunctionOn".to_string()));
+        // Should NOT use DOM.getAttributes
+        assert!(!methods.contains(&"DOM.getAttributes".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_visible_succeeds_with_box_model() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_response(42);
+        // box_model succeeds by default = visible
+
+        let loc = Locator::new(mock.clone(), "div");
+        loc.wait_for(1000, WaitState::Visible).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_visible_times_out_without_box_model() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_response(42);
+        mock.set_box_model_error(true);
+
+        let loc = Locator::new(mock.clone(), "div");
+        let result = loc.wait_for(300, WaitState::Visible).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_attached_succeeds_when_found() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_response(42);
+
+        let loc = Locator::new(mock.clone(), "div");
+        loc.wait_for(1000, WaitState::Attached).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_detached_succeeds_when_not_found() {
+        let mock = Arc::new(MockCdpClient::new());
+        // query_selector returns 0 = not found
+
+        let loc = Locator::new(mock.clone(), "div");
+        loc.wait_for(1000, WaitState::Detached).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_locator_evaluate() {
+        let mock = mock_with_element();
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": 42}
+        }));
+
+        let loc = Locator::new(mock.clone(), "div");
+        let result = loc
+            .evaluate("function() { return this.offsetHeight; }")
+            .await
+            .unwrap();
+        assert_eq!(result.get("value").and_then(|v| v.as_i64()), Some(42));
+
+        // Verify correct objectId and function body passed
+        let cf_calls = mock.calls_for("Runtime.callFunctionOn");
+        let last = cf_calls.last().unwrap();
+        assert_eq!(
+            last.args[0]["functionDeclaration"].as_str().unwrap(),
+            "function() { return this.offsetHeight; }"
+        );
+        assert_eq!(last.args[0]["objectId"].as_str().unwrap(), "mock-obj-1");
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_hidden_succeeds_when_no_box_model() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_response(42);
+        mock.set_box_model_error(true);
+
+        let loc = Locator::new(mock.clone(), "div");
+        loc.wait_for(1000, WaitState::Hidden).await.unwrap();
     }
 
     #[test]
@@ -500,6 +745,35 @@ mod tests {
         assert_eq!(strip_outer_tag("<div>hello</div>"), "hello");
         assert_eq!(strip_outer_tag(r#"<div class="x">inner</div>"#), "inner");
         assert_eq!(strip_outer_tag("<span></span>"), "");
+    }
+
+    #[test]
+    fn test_strip_outer_tag_with_gt_in_attribute() {
+        // Double quotes
+        assert_eq!(
+            strip_outer_tag(r#"<div data-expr="a>b">content</div>"#),
+            "content"
+        );
+        // Single quotes
+        assert_eq!(
+            strip_outer_tag("<div data-expr='a>b'>content</div>"),
+            "content"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_element_not_found_error_variant() {
+        let mock = Arc::new(MockCdpClient::new());
+        let loc = Locator::new(mock.clone(), ".missing");
+        let result = loc.click().await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match &err {
+            CdpError::ElementNotFound { selector } => {
+                assert_eq!(selector, ".missing");
+            }
+            other => panic!("expected ElementNotFound, got: {other}"),
+        }
     }
 
     #[tokio::test]

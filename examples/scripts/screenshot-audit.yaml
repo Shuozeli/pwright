@@ -1,0 +1,37 @@
+# screenshot-audit.yaml — Visit multiple pages and take screenshots.
+#
+# Usage:
+#   pwright run examples/scripts/screenshot-audit.yaml \
+#     --param url=https://example.com
+
+name: "Screenshot audit"
+version: 1
+
+params:
+  url:
+    type: string
+    required: true
+
+steps:
+  - goto: "{{ url }}"
+
+  - extract:
+      selector: "title"
+      field: text_content
+      save_as: title
+
+  - extract:
+      selector: "h1"
+      field: is_visible
+      save_as: has_heading
+
+  - extract:
+      selector: "nav"
+      field: is_visible
+      save_as: has_nav
+
+  - output:
+      url: "{{ url }}"
+      title: "{{ title }}"
+      has_heading: "{{ has_heading }}"
+      has_nav: "{{ has_nav }}"

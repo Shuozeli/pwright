@@ -98,6 +98,16 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 | `pwright cookie-list` | List cookies |
 | `pwright cookie-set --name N --value V --domain D` | Set a cookie |
 
+### Scripts
+
+| Command | Description |
+|---------|-------------|
+| `pwright run <script.yaml>` | Execute a YAML automation script |
+| `pwright run <script.yaml> --validate` | Validate script without executing |
+| `pwright run <script.yaml> --param key=val` | Pass parameters |
+| `pwright run <script.yaml> --param-file secrets.yaml` | Load params from file |
+| `pwright run <script.yaml> --output results.jsonl` | Write output to file |
+
 ### Options
 
 | Flag | Env Var | Default | Description |
@@ -238,3 +248,48 @@ pwright reload
 pwright snapshot  # Now authenticated
 pwright close
 ```
+
+### Script Automation
+
+For multi-step workflows, use YAML scripts instead of chaining CLI commands:
+
+```yaml
+# scrape.yaml
+name: "Scrape prices"
+params:
+  url: { type: string, required: true }
+
+scripts:
+  get_prices: |
+    [...document.querySelectorAll('.price')]
+      .map(el => el.textContent.trim())
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: ".price"
+  - eval:
+      ref: get_prices
+      save_as: prices
+  - output:
+      prices: "{{ prices }}"
+```
+
+```bash
+pwright run scrape.yaml --param url=https://example.com/products
+```
+
+Output (JSONL):
+```jsonl
+{"step_index":0,"step_type":"goto","status":"ok","duration_ms":1200}
+{"step_index":1,"step_type":"eval","status":"ok","duration_ms":15}
+{"step_index":2,"step_type":"output","status":"ok","details":{"prices":"[...]"}}
+{"summary":true,"status":"ok","total_steps":3,"succeeded":3}
+```
+
+Scripts support:
+- **Parameters**: `--param key=val` or `--param-file secrets.yaml`
+- **JS registry**: Complex JS defined once in `scripts:`, referenced by `eval.ref`
+- **Error handling**: Per-step `on_error: fail | continue`
+- **Validation**: `--validate` checks params, template refs, JS refs without executing
+
+See [examples/scripts/](../examples/scripts/) for more examples.

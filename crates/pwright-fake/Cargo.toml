@@ -1,0 +1,15 @@
+[package]
+name = "pwright-fake"
+description = "In-memory browser fake for testing pwright consumers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pwright-cdp = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }

@@ -1,0 +1,15 @@
+[package]
+name = "pwright-integration-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+pwright-bridge = { path = "../../crates/pwright-bridge" }
+pwright-cdp = { path = "../../crates/pwright-cdp" }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+axum = "0.8"
+tower-http = { version = "0.6", features = ["fs"] }
+serde = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

@@ -1,0 +1,16 @@
+# Full Docker setup: Chrome + test runner in same network.
+# CI: docker compose up --build --abort-on-container-exit --exit-code-from test-runner
+services:
+  chrome:
+    image: chromedp/headless-shell:latest
+    shm_size: "2gb"
+
+  test-runner:
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+    depends_on:
+      - chrome
+    environment:
+      CHROME_HOST: chrome
+      CHROME_PORT: "9222"

@@ -71,7 +71,10 @@ pub async fn navigate(
         && !err.is_empty()
         && err != "net::ERR_HTTP_RESPONSE_CODE_FAILURE"
     {
-        return Err(CdpError::Other(format!("navigation error: {}", err)));
+        return Err(CdpError::NavigationFailed {
+            url: url.to_string(),
+            reason: err.to_string(),
+        });
     }
 
     // Wait for page to be ready
@@ -112,25 +115,21 @@ pub async fn poll_ready_state(session: &dyn CdpClient, timeout: Duration) -> Cdp
 
     loop {
         interval.tick().await;
-        if tokio::time::Instant::now() > deadline {
+
+        if let Ok(result) = session
+            .runtime_evaluate(pwright_js::page::GET_READY_STATE)
+            .await
+            && let Some(state) = result
+                .get("result")
+                .and_then(|r| r.get("value"))
+                .and_then(|v| v.as_str())
+            && (state == "interactive" || state == "complete")
+        {
             return Ok(());
         }
 
-        match session
-            .runtime_evaluate(pwright_js::page::GET_READY_STATE)
-            .await
-        {
-            Ok(result) => {
-                if let Some(state) = result
-                    .get("result")
-                    .and_then(|r| r.get("value"))
-                    .and_then(|v| v.as_str())
-                    && (state == "interactive" || state == "complete")
-                {
-                    return Ok(());
-                }
-            }
-            Err(_) => continue,
+        if tokio::time::Instant::now() > deadline {
+            return Err(CdpError::Timeout);
         }
     }
 }
@@ -144,9 +143,6 @@ async fn wait_network_idle(session: &dyn CdpClient, timeout: Duration) -> CdpRes
 
     loop {
         interval.tick().await;
-        if tokio::time::Instant::now() > deadline {
-            return Ok(());
-        }
 
         let ready = eval_string(session, pwright_js::page::GET_READY_STATE).await;
         let cur_url = eval_string(session, pwright_js::page::GET_LOCATION_HREF)
@@ -162,6 +158,10 @@ async fn wait_network_idle(session: &dyn CdpClient, timeout: Duration) -> CdpRes
             idle_checks = 0;
         }
         last_url = cur_url;
+
+        if tokio::time::Instant::now() > deadline {
+            return Err(CdpError::Timeout);
+        }
     }
 }
 
@@ -177,14 +177,15 @@ async fn wait_selector_visible(
 
     loop {
         interval.tick().await;
-        if tokio::time::Instant::now() > deadline {
-            return Err(CdpError::Timeout);
-        }
 
         if let Some(val) = eval_string(session, &js).await
             && val == "true"
         {
             return Ok(());
+        }
+
+        if tokio::time::Instant::now() > deadline {
+            return Err(CdpError::Timeout);
         }
     }
 }

@@ -1,0 +1,23 @@
+# hello.yaml — Minimal script: navigate and extract page title.
+#
+# Usage: pwright run examples/scripts/hello.yaml --param url=https://example.com
+
+name: "Hello pwright"
+version: 1
+
+params:
+  url:
+    type: string
+    required: true
+    description: "URL to visit"
+
+steps:
+  - goto: "{{ url }}"
+
+  - extract:
+      selector: "h1"
+      field: text_content
+      save_as: heading
+
+  - output:
+      heading: "{{ heading }}"

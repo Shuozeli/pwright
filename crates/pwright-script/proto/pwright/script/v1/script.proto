@@ -1,0 +1,113 @@
+syntax = "proto3";
+package pwright.script.v1;
+
+// ── Script Input ──
+
+message Script {
+  string name = 1;
+  string description = 2;
+  int32 version = 3;
+  map<string, ParamDef> params = 4;
+  repeated Step steps = 5;
+  ScriptConfig config = 6;
+  map<string, JsFunction> scripts = 7;
+}
+
+message ScriptConfig {
+  int32 default_timeout_ms = 1;
+  string default_on_error = 2;  // "fail", "continue", "retry"
+}
+
+message ParamDef {
+  string type = 1;        // "string", "integer", "boolean"
+  bool required = 2;
+  string default_value = 3;
+  string description = 4;
+}
+
+message JsFunction {
+  string body = 1;
+  string description = 2;
+  bool is_async = 3;
+}
+
+message Step {
+  oneof kind {
+    GotoStep goto = 1;
+    ClickStep click = 2;
+    FillStep fill = 3;
+    PressStep press = 4;
+    ExtractStep extract = 5;
+    EvalStep eval = 6;
+    OutputStep output = 7;
+  }
+  string on_error = 30;       // "fail", "continue", "retry"
+  int32 retry_times = 31;
+  int32 retry_delay_ms = 32;
+}
+
+message GotoStep {
+  string url = 1;
+  string wait_for = 2;
+  int32 timeout_ms = 3;
+}
+
+message ClickStep {
+  string selector = 1;
+  string wait_for = 2;
+}
+
+message FillStep {
+  string selector = 1;
+  string value = 2;
+}
+
+message PressStep {
+  string key = 1;
+}
+
+message ExtractStep {
+  string selector = 1;
+  string field = 2;       // text_content, inner_text, attribute:href, etc.
+  string save_as = 3;
+}
+
+message EvalStep {
+  string expression = 1;
+  string script_ref = 2;
+  string save_as = 3;
+  repeated string args = 4;
+}
+
+message OutputStep {
+  map<string, string> fields = 1;
+}
+
+// ── Script Output ──
+
+message StepResult {
+  string timestamp = 1;
+  int32 step_index = 2;
+  string step_type = 3;
+  string status = 4;          // "ok", "error", "skipped"
+  int32 duration_ms = 5;
+  map<string, string> details = 6;
+  string error = 7;
+}
+
+message ScriptResult {
+  string timestamp = 1;
+  string name = 2;
+  string status = 3;          // "ok", "error"
+  int32 total_steps = 4;
+  int32 succeeded = 5;
+  int32 failed = 6;
+  int32 skipped = 7;
+  int32 duration_ms = 8;
+  repeated OutputRow outputs = 9;
+  string error = 10;
+}
+
+message OutputRow {
+  map<string, string> fields = 1;
+}

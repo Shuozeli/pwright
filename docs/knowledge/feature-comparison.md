@@ -65,7 +65,7 @@
 | Screenshot (PNG/JPEG) | ✅ | ✅ | ✅ | `page.screenshot()` |
 | Full-page screenshot | ✅ | ✅ | ✅ | |
 | PDF export | ✅ | ✅ | ✅ | `page.pdf()` |
-| Text extraction | ✅ | ✅ | ✅ | `page.text_content()` |
+| Text extraction | ✅ | ✅ | ✅ | `page.body_text()` |
 | Page title | ✅ | ❌ | ✅ | `page.title()` |
 | Page content (HTML) | ✅ | ❌ | ✅ | `page.content()` |
 | Page URL | ✅ | ❌ | ✅ | `page.url()` |
@@ -82,6 +82,12 @@
 | Element count | ✅ | ❌ | ✅ | `locator.count()` |
 | File download | ✅ | ✅ | ✅ | `page.expect_download()` / CLI `download` |
 | File upload | ✅ | ✅ | ✅ | `locator.set_input_files()` / `DOM.setFileInputFiles` |
+| Network response capture | ✅ | ❌ | ✅ | `page.wait_for_response()` / `page.on_response()` |
+| Network request capture | ✅ | ❌ | ✅ | `page.wait_for_request()` / `page.on_request()` |
+| Response body access | ✅ | ❌ | ✅ | `page.response_body(request_id)` |
+| Evaluate with args | ✅ | ❌ | ✅ | `page.evaluate_with_arg()` (no JS injection) |
+| Async JS evaluate | ✅ | ❌ | ✅ | `page.evaluate_async()` (awaitPromise) |
+| Per-element evaluate | ✅ | ❌ | ✅ | `locator.evaluate()` |
 
 ---
 
@@ -95,7 +101,7 @@
 | By alt text | ✅ | ❌ | ✅ | `page.get_by_alt_text()` |
 | By title | ✅ | ❌ | ✅ | `page.get_by_title()` |
 | Scoped sub-locator | ✅ | ❌ | ✅ | `locator.locator()` |
-| First/Last | ✅ | ❌ | ✅ | `locator.first()` / `locator.last()` |
+| First/Last/Nth | ✅ | ❌ | ✅ | `locator.first()` / `locator.last()` / `locator.nth(n)` |
 | By role | ✅ | ❌ | ✅ | `page.get_by_role()` with implicit role mapping |
 | By text | ✅ | ❌ | ✅ | `page.get_by_text()` via JS text matching |
 | By label | ✅ | ❌ | ✅ | `page.get_by_label()` via label/aria lookup |
@@ -180,8 +186,9 @@
 |---------|:----------:|:--------:|:-------:|-------|
 | Web dashboard | ✅ | ✅ | ❌ | Playwright UI Mode / HTML Report |
 | OpenAPI spec | ❌ | ✅ | ❌ | |
-| Docker support | ✅ | ✅ | ❌ | |
-| Unit-testable (mocking)| ✅ | ❌ | ✅ | `MockCdpClient` for unit tests |
+| Docker support | ✅ | ✅ | ✅ | Docker integration tests + CI |
+| Unit-testable (mocking)| ✅ | ❌ | ✅ | `FakeCdpClient` + `MockCdpClient` |
+| Script runner | ❌ | ❌ | ✅ | Declarative YAML scripts (`pwright run`) |
 
 ---
 
@@ -223,7 +230,6 @@ These are features from PinchTab or Playwright that pwright will **not** impleme
 - **Stealth mode / IDPI / API auth / Ad blocking** — security/anti-detection layer
 - **Web dashboard / OpenAPI spec** — operational tooling
 - **Browser lifecycle management** — pwright attaches to existing Chrome by design
-- **Docker support** — pwright is a single binary; containerization is a deployment concern
 
 ---
 

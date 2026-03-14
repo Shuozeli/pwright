@@ -12,10 +12,7 @@ pub async fn execute_action(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let session: &dyn pwright_bridge::CdpClient = &*tab.session;
 
@@ -134,10 +131,7 @@ pub async fn set_input_files(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let session: &dyn pwright_bridge::CdpClient = &*tab.session;
 
@@ -162,6 +156,21 @@ pub async fn set_input_files(
         return Err(Status::invalid_argument("ref or selector required"));
     };
 
+    // Validate file paths to prevent directory traversal.
+    // If upload_dir is configured, restrict to that directory.
+    if let Some(ref allowed_dir) = svc.upload_dir {
+        for path_str in &req.files {
+            let path = std::path::Path::new(path_str);
+            let canonical = std::fs::canonicalize(path)
+                .map_err(|_| Status::invalid_argument(format!("file not found: {path_str}")))?;
+            if !canonical.starts_with(allowed_dir) {
+                return Err(Status::permission_denied(format!(
+                    "file path outside allowed directory: {path_str}"
+                )));
+            }
+        }
+    }
+
     session
         .dom_set_file_input_files(node_id, &req.files)
         .await
@@ -179,10 +188,7 @@ pub async fn touch_tap(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     tab.session
         .input_dispatch_touch_event("touchStart", req.x, req.y)
@@ -203,10 +209,7 @@ pub async fn expect_download(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let session: &dyn pwright_bridge::CdpClient = &*tab.session;
     let page = pwright_bridge::playwright::Page::new(tab.session.clone());

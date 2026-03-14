@@ -1,0 +1,38 @@
+# extract-links.yaml — Extract all links from a page using JS.
+#
+# Usage: pwright run examples/scripts/extract-links.yaml --param url=https://example.com
+
+name: "Extract links"
+version: 1
+
+params:
+  url:
+    type: string
+    required: true
+  selector:
+    type: string
+    default: "a[href]"
+    description: "CSS selector for link elements"
+
+scripts:
+  extract_hrefs: |
+    [...document.querySelectorAll(arguments[0])]
+      .map(a => ({ text: a.textContent.trim(), href: a.href }))
+      .filter(l => l.href.startsWith('http'))
+
+steps:
+  - goto: "{{ url }}"
+
+  - extract:
+      selector: "h1"
+      field: text_content
+      save_as: page_title
+
+  - eval:
+      ref: extract_hrefs
+      args: ["{{ selector }}"]
+      save_as: links
+
+  - output:
+      page: "{{ page_title }}"
+      links: "{{ links }}"

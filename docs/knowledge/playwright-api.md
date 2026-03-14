@@ -103,14 +103,15 @@ Playwright
 | `page.title()` | `page.title()` | ✅ Exists | `Runtime.evaluate` |
 | `page.content()` | `page.content()` | ✅ Exists | `Runtime.evaluate` |
 | `page.setContent(html)` | `page.set_content()` | ✅ Exists | `Page.setDocumentContent` |
-| `page.isClosed()` | `page.is_closed()` | Planned | Track state |
-| `page.close()` | `page.close()` | ✅ Exists | `Target.closeTarget` |
+| `page.isClosed()` | `page.is_closed()` | ✅ Exists | Track state |
+| `page.close()` | `page.close()` | ✅ Exists | `Target.closeTarget` (when created with `with_tab`) |
 
 ### Evaluation
 
 | Playwright API | pwright | Status | Implementation |
 |---------------|---------|--------|----------------|
 | `page.evaluate(fn, arg)` | `page.evaluate()` | ✅ Exists | `Runtime.evaluate` |
+| `page.evaluate(fn, arg)` (async) | `page.evaluate_async()` | ✅ Exists | `Runtime.evaluate` with `awaitPromise: true` |
 | `page.evaluateHandle(fn)` | `page.evaluate_handle()` | Planned | `Runtime.evaluate` `returnByValue:false` |
 | `page.addInitScript(s)` | `page.add_init_script()` | ✅ Exists | `Page.addScriptToEvaluateOnNewDocument` |
 | `page.addScriptTag(opts)` | `page.add_script_tag()` | Planned | JS eval inject `<script>` |
@@ -124,7 +125,7 @@ Playwright
 |---------------|---------|--------|------------|
 | `page.screenshot(opts)` | `page.screenshot()` | ✅ Exists | `Page.captureScreenshot` |
 | `page.pdf(opts)` | `page.pdf()` | ✅ Exists | `Page.printToPDF` |
-| `page.snapshotForAI()` | `page.snapshot()` | ✅ Exists | `Accessibility.getFullAXTree` |
+| `page.snapshotForAI()` | bridge `get_snapshot()` | Partial | Available via bridge function, not on Page struct |
 
 ### Input (selector-based)
 
@@ -162,13 +163,13 @@ Playwright
 
 | Playwright API | pwright | Status | Implementation |
 |---------------|---------|--------|----------------|
-| `page.textContent(sel)` | `page.text_content()` | ✅ Exists | `Runtime.callFunctionOn` |
-| `page.innerText(sel)` | `page.inner_text()` | ✅ Exists | `Runtime.callFunctionOn` |
-| `page.innerHTML(sel)` | `page.inner_html()` | ✅ Exists | `DOM.getOuterHTML` |
-| `page.getAttribute(sel, n)` | `page.get_attribute()` | ✅ Exists | `DOM.getAttributes` (no JS) |
+| `page.textContent(sel)` | `page.text_content(sel)` | ✅ Exists | Delegates to `Locator::text_content()` |
+| `page.innerText(sel)` | `page.inner_text(sel)` | ✅ Exists | Delegates to `Locator::inner_text()` |
+| `page.innerHTML(sel)` | `page.inner_html(sel)` | ✅ Exists | Delegates to `Locator::inner_html()` |
+| `page.getAttribute(sel, n)` | `page.get_attribute(sel, n)` | ✅ Exists | Delegates to `Locator::get_attribute()` |
 | `page.inputValue(sel)` | `page.input_value()` | ✅ Exists | `Runtime.callFunctionOn` |
-| `page.isChecked(sel)` | `page.is_checked()` | ✅ Exists | AX tree `checked` property (no JS) |
-| `page.isDisabled(sel)` | `page.is_disabled()` | ✅ Exists | AX tree `disabled` property (no JS) |
+| `page.isChecked(sel)` | `page.is_checked()` | ✅ Exists | JS DOM property via `Runtime.callFunctionOn` |
+| `page.isDisabled(sel)` | `page.is_disabled()` | ✅ Exists | JS DOM property via `Runtime.callFunctionOn` |
 | `page.isEditable(sel)` | `page.is_editable()` | Planned | AX tree property (no JS) |
 | `page.isEnabled(sel)` | `page.is_enabled()` | ✅ Exists | AX tree `disabled` inverse (no JS) |
 | `page.isHidden(sel)` | `page.is_hidden()` | ✅ Exists | `DOM.getBoxModel` fails → hidden (no JS) |
@@ -189,8 +190,8 @@ Playwright
 | `page.waitForTimeout(ms)` | `page.wait_for_timeout()` | ✅ Exists | `tokio::time::sleep` |
 | `page.waitForFunction(fn)` | `page.wait_for_function()` | Planned (Tier 3) | Poll `Runtime.evaluate` |
 | `page.waitForSelector(sel)` | `page.wait_for_selector()` | ✅ Exists | Poll `DOM.querySelector` |
-| `page.waitForRequest(url)` | `page.wait_for_request()` | Planned (Tier 2) | `Network.requestWillBeSent` |
-| `page.waitForResponse(url)` | `page.wait_for_response()` | Planned (Tier 2) | `Network.responseReceived` |
+| `page.waitForRequest(url)` | `page.on_request()` | ✅ Exists | `Network.requestWillBeSent` via mpsc channel |
+| `page.waitForResponse(url)` | `page.on_response()` | ✅ Exists | `Network.responseReceived` via mpsc channel |
 | `page.waitForEvent(ev)` | `page.wait_for_event()` | Planned (Tier 2) | Internal event emitter |
 
 ### Network Interception
@@ -202,6 +203,7 @@ Playwright
 | `page.routeFromHAR(har)` | — | ❌ Out of scope | |
 | `page.routeWebSocket(url)` | — | ❌ Out of scope | |
 | `page.setExtraHTTPHeaders(h)` | `page.set_extra_http_headers()` | Planned | `Network.setExtraHTTPHeaders` |
+| `response.body()` | `session.network_get_response_body()` | ✅ Exists | `Network.getResponseBody` |
 
 ### Misc
 
@@ -258,9 +260,9 @@ Playwright
 | `locator.isVisible()` | `locator.is_visible()` | ✅ Exists | `DOM.getBoxModel` (**no JS**) |
 | `locator.isHidden()` | `locator.is_hidden()` | ✅ Exists | `DOM.getBoxModel` fails (**no JS**) |
 | `locator.isEnabled()` | `locator.is_enabled()` | ✅ Exists | AX tree property (**no JS**) |
-| `locator.isDisabled()` | `locator.is_disabled()` | ✅ Exists | AX tree property (**no JS**) |
+| `locator.isDisabled()` | `locator.is_disabled()` | ✅ Exists | JS DOM property via `Runtime.callFunctionOn` |
 | `locator.isEditable()` | `locator.is_editable()` | Planned | AX tree property (**no JS**) |
-| `locator.isChecked()` | `locator.is_checked()` | ✅ Exists | AX tree property (**no JS**) |
+| `locator.isChecked()` | `locator.is_checked()` | ✅ Exists | JS DOM property via `Runtime.callFunctionOn` |
 | `locator.boundingBox()` | `locator.bounding_box()` | ✅ Exists | `DOM.getBoxModel` |
 | `locator.count()` | `locator.count()` | ✅ Exists | `querySelectorAll().length` |
 
@@ -268,9 +270,9 @@ Playwright
 
 | Playwright API | pwright | Status | Notes |
 |---------------|---------|--------|-------|
-| `locator.first()` | `locator.first()` | ✅ Exists | `:first-of-type` |
-| `locator.last()` | `locator.last()` | ✅ Exists | `:last-of-type` |
-| `locator.nth(n)` | `locator.nth(n)` | Planned | Index into results |
+| `locator.first()` | `locator.first()` | ✅ Exists | `querySelectorAll` + index 0 |
+| `locator.last()` | `locator.last()` | ✅ Exists | `querySelectorAll` + index -1 |
+| `locator.nth(n)` | `locator.nth(n)` | ✅ Exists | `querySelectorAll` + index n |
 | `locator.all()` | `locator.all()` | Planned | All matching |
 | `locator.filter(opts)` | `locator.filter_by_text()` | ✅ Exists | `hasText` via JS matching |
 | `locator.locator(sub)` | `locator.locator()` | ✅ Exists | Scoped sub-query |
@@ -282,10 +284,10 @@ Playwright
 
 | Playwright API | pwright | Status | Implementation |
 |---------------|---------|--------|----------------|
-| `locator.waitFor(opts)` | `locator.wait_for()` | Planned | Poll `querySelector` |
+| `locator.waitFor(opts)` | `locator.wait_for()` | ✅ Exists | Poll with `WaitState`: Attached, Visible, Hidden, Detached |
 | `locator.screenshot(opts)` | `locator.screenshot()` | Planned | Element clip screenshot |
-| `locator.ariaSnapshot()` | `locator.aria_snapshot()` | ✅ Exists | `Accessibility.getFullAXTree` |
-| `locator.evaluate(fn)` | `locator.evaluate()` | Planned | `Runtime.callFunctionOn` |
+| `locator.ariaSnapshot()` | — | Planned | Per-element accessibility snapshot |
+| `locator.evaluate(fn)` | `locator.evaluate()` | ✅ Exists | `Runtime.callFunctionOn` |
 | `locator.evaluateAll(fn)` | `locator.evaluate_all()` | Planned | `Runtime.callFunctionOn` |
 | `locator.allInnerTexts()` | `locator.all_inner_texts()` | Planned | Eval on all matches |
 | `locator.allTextContents()` | `locator.all_text_contents()` | Planned | Eval on all matches |
@@ -360,10 +362,14 @@ All JavaScript snippets are centralized in the `pwright-js` crate:
 
 Where possible, pwright avoids JS and uses pure CDP domains:
 - **DOM queries**: `DOM.getAttributes`, `DOM.getOuterHTML`, `DOM.getBoxModel`
-- **State checks**: Accessibility tree properties (`checked`, `disabled`, `hidden`)
+- **Visibility checks**: `DOM.getBoxModel` success/failure (`is_visible`, `is_hidden`)
 - **Input**: `Input.dispatchKeyEvent`, `Input.dispatchMouseEvent`
 
-JS evaluation is used only when there is no CDP alternative (e.g. `innerText`, `value` property, `scrollBy`).
+JS evaluation (`Runtime.callFunctionOn`) is used for:
+- `innerText`, `value` property, `scrollBy`
+- `is_checked()`, `is_disabled()` (JS DOM properties are more accurate than HTML attributes)
+- Text/label/role selector resolution
+- Per-element `locator.evaluate()`
 
 ---
 

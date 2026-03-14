@@ -6,39 +6,29 @@ use crate::connection::Result;
 use crate::session::CdpSession;
 
 impl CdpSession {
-    /// Focus an element by backendNodeId.
-    pub async fn dom_focus(&self, backend_node_id: i64) -> Result<()> {
-        self.send("DOM.focus", json!({ "backendNodeId": backend_node_id }))
+    /// Focus an element by nodeId.
+    pub async fn dom_focus(&self, node_id: i64) -> Result<()> {
+        self.send("DOM.focus", json!({ "nodeId": node_id })).await?;
+        Ok(())
+    }
+
+    /// Scroll an element into view by nodeId.
+    pub async fn dom_scroll_into_view(&self, node_id: i64) -> Result<()> {
+        self.send("DOM.scrollIntoViewIfNeeded", json!({ "nodeId": node_id }))
             .await?;
         Ok(())
     }
 
-    /// Scroll an element into view by backendNodeId.
-    pub async fn dom_scroll_into_view(&self, backend_node_id: i64) -> Result<()> {
-        self.send(
-            "DOM.scrollIntoViewIfNeeded",
-            json!({ "backendNodeId": backend_node_id }),
-        )
-        .await?;
-        Ok(())
+    /// Get the box model for an element by nodeId.
+    pub async fn dom_get_box_model(&self, node_id: i64) -> Result<Value> {
+        self.send("DOM.getBoxModel", json!({ "nodeId": node_id }))
+            .await
     }
 
-    /// Get the box model for an element. Returns the raw model object.
-    pub async fn dom_get_box_model(&self, backend_node_id: i64) -> Result<Value> {
-        self.send(
-            "DOM.getBoxModel",
-            json!({ "backendNodeId": backend_node_id }),
-        )
-        .await
-    }
-
-    /// Resolve a backend node to a JavaScript object.
-    pub async fn dom_resolve_node(&self, backend_node_id: i64) -> Result<Value> {
-        self.send(
-            "DOM.resolveNode",
-            json!({ "backendNodeId": backend_node_id }),
-        )
-        .await
+    /// Resolve a DOM node to a JavaScript remote object by nodeId.
+    pub async fn dom_resolve_node(&self, node_id: i64) -> Result<Value> {
+        self.send("DOM.resolveNode", json!({ "nodeId": node_id }))
+            .await
     }
 
     /// Enable the DOM domain.
@@ -102,7 +92,7 @@ impl CdpSession {
         Ok(result["outerHTML"].as_str().unwrap_or_default().to_string())
     }
 
-    /// Describe a node by backendNodeId, returning its nodeId.
+    /// Describe a node by backendNodeId, returning its details.
     pub async fn dom_describe_node(&self, backend_node_id: i64) -> Result<Value> {
         self.send(
             "DOM.describeNode",
@@ -115,9 +105,17 @@ impl CdpSession {
     pub async fn dom_set_file_input_files(&self, node_id: i64, files: &[String]) -> Result<()> {
         self.send(
             "DOM.setFileInputFiles",
-            json!({ "files": files, "backendNodeId": node_id }),
+            json!({ "files": files, "nodeId": node_id }),
         )
         .await?;
         Ok(())
+    }
+
+    /// Request a DOM nodeId for a JavaScript remote object.
+    pub async fn dom_request_node(&self, object_id: &str) -> Result<i64> {
+        let result = self
+            .send("DOM.requestNode", json!({ "objectId": object_id }))
+            .await?;
+        Ok(result["nodeId"].as_i64().unwrap_or(0))
     }
 }

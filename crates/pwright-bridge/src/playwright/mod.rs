@@ -13,12 +13,14 @@
 mod keyboard;
 mod locator;
 mod mouse;
+pub mod network;
 mod page;
 mod selectors;
 mod touchscreen;
 
 pub use keyboard::Keyboard;
-pub use locator::{BoundingBox, Locator};
+pub use locator::{BoundingBox, Locator, WaitState};
 pub use mouse::{ClickOptions, Mouse};
+pub use network::{NetworkRequest, NetworkResponse};
 pub use page::{GotoOptions, Page, ScreenshotOptions};
 pub use touchscreen::Touchscreen;

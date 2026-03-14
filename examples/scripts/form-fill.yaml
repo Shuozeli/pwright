@@ -1,0 +1,43 @@
+# form-fill.yaml — Fill a form and verify submission.
+#
+# Usage:
+#   pwright run examples/scripts/form-fill.yaml \
+#     --param url=https://example.com/contact \
+#     --param name="John Doe" \
+#     --param message="Hello from pwright"
+
+name: "Form fill"
+version: 1
+
+params:
+  url:
+    type: string
+    required: true
+  name:
+    type: string
+    required: true
+  message:
+    type: string
+    required: true
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "form"
+
+  - fill:
+      selector: "#name"
+      value: "{{ name }}"
+
+  - fill:
+      selector: "#message"
+      value: "{{ message }}"
+
+  - click: "button[type=submit]"
+
+  - extract:
+      selector: ".success-message"
+      field: text_content
+      save_as: result
+
+  - output:
+      result: "{{ result }}"

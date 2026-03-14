@@ -10,6 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   RUSTFLAGS: "-D warnings"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   check:
@@ -65,3 +66,24 @@ jobs:
       - run: cargo doc --workspace --no-deps
         env:
           RUSTDOCFLAGS: "-D warnings"
+
+  integration:
+    name: Integration Tests (Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run integration tests in Docker
+        working-directory: tests/integration
+        run: docker compose up --build --abort-on-container-exit --exit-code-from test-runner
+        timeout-minutes: 15
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: tests/integration
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        working-directory: tests/integration
+        run: docker compose down

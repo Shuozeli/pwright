@@ -13,16 +13,20 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 - [gRPC API Reference](grpc-api.md) — All RPCs with request/response schemas
 - [Codelabs](codelabs.md) — Usage examples with Rust, CLI, and gRPC
 
+## Script Runner
+
+- [Script Examples](../examples/scripts/) — Ready-to-use YAML automation scripts
+- [Codelabs: Script Runner](codelabs.md#11-script-runner) — Tutorial with examples
+- [Script Runner Design](knowledge/script-runner-design.md) — Full design with protobuf schema and phases
+
 ## Agent Integration
 
 - [Agent Skill](../skill/pwright/SKILL.md) — Skill definition for AI agent frameworks (comparable to playwright-cli and pinchtab skills)
 
-## Knowledge Base
+## Reference
 
-Internal reference docs for contributors and developers:
-
-- [CDP Protocol Notes](knowledge/cdp-protocol.md) — How pwright maps CDP domains to high-level operations
 - [Playwright API Mapping](knowledge/playwright-api.md) — Full Playwright API compatibility matrix
 - [API Parity](knowledge/api-parity.md) — gRPC vs CLI vs Playwright bridge coverage gaps
 - [Feature Comparison](knowledge/feature-comparison.md) — Playwright vs PinchTab vs pwright side-by-side
-- [Implementation Phases](knowledge/phases.md) — Phase 0–4 rollout plan with deliverables
+- [Testing Strategy](knowledge/testing-strategy.md) — FakeCdpClient + Docker integration tests
+- [Script Runner Design](knowledge/script-runner-design.md) — Declarative YAML script execution with structured output

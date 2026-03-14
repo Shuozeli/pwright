@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod browser;
+pub mod clock;
 pub mod content;
 pub mod cookies;
 pub mod evaluate;

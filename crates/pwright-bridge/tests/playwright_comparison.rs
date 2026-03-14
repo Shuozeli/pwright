@@ -326,12 +326,12 @@ mod tests {
         let mock = Arc::new(MockCdpClient::new());
         let page = Page::new(mock);
 
-        // pwright
+        // pwright — first()/last() use __pw_nth internally (resolved via querySelectorAll + index)
         let first = page.locator("li").first();
-        assert_eq!(first.selector(), "li:first-of-type");
+        assert_eq!(first.selector(), "__pw_nth=li|0");
 
         let last = page.locator("li").last();
-        assert_eq!(last.selector(), "li:last-of-type");
+        assert_eq!(last.selector(), "__pw_nth=li|-1");
 
         let child = page.locator("ul").locator("li");
         assert_eq!(child.selector(), "ul li");
@@ -586,5 +586,354 @@ mod tests {
             err_msg.contains(".nonexistent"),
             "Error should mention the selector"
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  wait_for with visibility
+    // ═══════════════════════════════════════════════════════════
+
+    /// ```typescript
+    /// // Playwright
+    /// await page.locator('#modal').waitFor({ state: 'visible' });
+    /// ```
+    #[tokio::test]
+    async fn compare_wait_for_visible() {
+        use pwright_bridge::playwright::WaitState;
+
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_response(42);
+        // box model succeeds by default → visible
+
+        let page = Page::new(mock.clone());
+        page.locator("#modal")
+            .wait_for(1000, WaitState::Visible)
+            .await
+            .unwrap();
+
+        // Should call DOM.getBoxModel to check visibility
+        let methods = mock.method_names();
+        assert!(methods.contains(&"DOM.getBoxModel".to_string()));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  is_checked / is_disabled via JS
+    // ═══════════════════════════════════════════════════════════
+
+    /// ```typescript
+    /// // Playwright
+    /// const checked = await page.locator('input').isChecked();
+    /// // Internally uses Runtime.callFunctionOn, not DOM.getAttributes
+    /// ```
+    #[tokio::test]
+    async fn compare_locator_is_checked_js() {
+        let mock = mock_with_element();
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": true}
+        }));
+
+        let page = Page::new(mock.clone());
+        let checked = page
+            .locator("input[type=checkbox]")
+            .is_checked()
+            .await
+            .unwrap();
+        assert!(checked);
+
+        // Must use Runtime.callFunctionOn (JS property), NOT DOM.getAttributes
+        let methods = mock.method_names();
+        assert!(methods.contains(&"Runtime.callFunctionOn".to_string()));
+        assert!(!methods.contains(&"DOM.getAttributes".to_string()));
+    }
+
+    /// ```typescript
+    /// // Playwright
+    /// const disabled = await page.locator('button').isDisabled();
+    /// ```
+    #[tokio::test]
+    async fn compare_locator_is_disabled_js() {
+        let mock = mock_with_element();
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": false}
+        }));
+
+        let page = Page::new(mock.clone());
+        let disabled = page.locator("button").is_disabled().await.unwrap();
+        assert!(!disabled);
+
+        let methods = mock.method_names();
+        assert!(methods.contains(&"Runtime.callFunctionOn".to_string()));
+        assert!(!methods.contains(&"DOM.getAttributes".to_string()));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  Locator.evaluate (per-element)
+    // ═══════════════════════════════════════════════════════════
+
+    /// ```typescript
+    /// // Playwright
+    /// const height = await page.locator('div').evaluate(el => el.offsetHeight);
+    /// ```
+    #[tokio::test]
+    async fn compare_locator_evaluate() {
+        let mock = mock_with_element();
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": 300}
+        }));
+
+        let page = Page::new(mock.clone());
+        let result = page
+            .locator("div")
+            .evaluate("function(el) { return el.offsetHeight; }")
+            .await
+            .unwrap();
+
+        assert_eq!(result.get("value").and_then(|v| v.as_i64()), Some(300));
+
+        // Should resolve element, then callFunctionOn
+        let methods = mock.method_names();
+        assert!(methods.contains(&"DOM.querySelector".to_string()));
+        assert!(methods.contains(&"DOM.resolveNode".to_string()));
+        assert!(methods.contains(&"Runtime.callFunctionOn".to_string()));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  first() / last() via nth resolution
+    // ═══════════════════════════════════════════════════════════
+
+    /// ```typescript
+    /// // Playwright
+    /// const first = page.locator('li').first();
+    /// const last = page.locator('li').last();
+    /// // Internally uses querySelectorAll + index, not CSS pseudo-classes
+    /// ```
+    #[tokio::test]
+    async fn compare_locator_first_last() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_query_selector_all_response(vec![10, 20, 30]);
+        mock.set_resolve_node(serde_json::json!({"object": {"objectId": "obj-1"}}));
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": "text"}
+        }));
+
+        let page = Page::new(mock.clone());
+
+        // first() should resolve to node 10
+        let first = page.locator("li").first();
+        first.text_content().await.unwrap();
+        let resolve_calls = mock.calls_for("DOM.resolveNode");
+        assert_eq!(
+            resolve_calls.last().unwrap().args[0]["nodeId"]
+                .as_i64()
+                .unwrap(),
+            10
+        );
+
+        // last() should resolve to node 30
+        let last = page.locator("li").last();
+        last.text_content().await.unwrap();
+        let resolve_calls = mock.calls_for("DOM.resolveNode");
+        assert_eq!(
+            resolve_calls.last().unwrap().args[0]["nodeId"]
+                .as_i64()
+                .unwrap(),
+            30
+        );
+
+        // Verify querySelectorAll is used (not querySelector with pseudo-class)
+        let methods = mock.method_names();
+        assert!(methods.contains(&"DOM.querySelectorAll".to_string()));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  Strict MockCdpClient
+    // ═══════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn compare_strict_mock_fails_on_unconfigured() {
+        let mock = Arc::new(MockCdpClient::new().strict());
+
+        let page = Page::new(mock.clone());
+        let result = page.locator("button").click().await;
+        assert!(result.is_err());
+
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("unexpected call"), "Error: {err_msg}");
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  wait_for_response / wait_for_request
+    // ═══════════════════════════════════════════════════════════
+
+    /// ```typescript
+    /// // Playwright
+    /// const resp = await page.waitForResponse(r => r.url().includes('/api'));
+    /// const body = await resp.json();
+    /// ```
+    #[tokio::test]
+    async fn compare_wait_for_response() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+
+        let mock2 = mock.clone();
+        tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            mock2.send_event(pwright_cdp::CdpEvent {
+                method: "Network.responseReceived".to_string(),
+                params: serde_json::json!({
+                    "requestId": "req-api",
+                    "response": {
+                        "url": "https://example.com/api/data",
+                        "status": 200,
+                        "statusText": "OK",
+                        "headers": {"content-type": "application/json"},
+                        "mimeType": "application/json"
+                    }
+                }),
+                session_id: None,
+            });
+        });
+
+        let resp = page
+            .wait_for_response(|r| r.url.contains("/api/"), 5000)
+            .await
+            .unwrap();
+
+        assert_eq!(resp.request_id, "req-api");
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.mime_type, "application/json");
+
+        // Verify Network.enable was called
+        assert!(mock.method_names().contains(&"Network.enable".to_string()));
+    }
+
+    /// ```typescript
+    /// // Playwright
+    /// const req = await page.waitForRequest(r => r.method() === 'POST');
+    /// ```
+    #[tokio::test]
+    async fn compare_wait_for_request() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+
+        let mock2 = mock.clone();
+        tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            mock2.send_event(pwright_cdp::CdpEvent {
+                method: "Network.requestWillBeSent".to_string(),
+                params: serde_json::json!({
+                    "requestId": "req-post",
+                    "request": {
+                        "url": "https://example.com/api/submit",
+                        "method": "POST",
+                        "headers": {"content-type": "application/json"},
+                        "postData": "{\"key\":\"val\"}"
+                    },
+                    "type": "XHR"
+                }),
+                session_id: None,
+            });
+        });
+
+        let req = page
+            .wait_for_request(|r| r.method == "POST", 5000)
+            .await
+            .unwrap();
+
+        assert_eq!(req.request_id, "req-post");
+        assert_eq!(req.method, "POST");
+        assert_eq!(req.post_data, Some("{\"key\":\"val\"}".to_string()));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  evaluate_with_arg
+    // ═══════════════════════════════════════════════════════════
+
+    /// ```typescript
+    /// // Playwright
+    /// const result = await page.evaluate(
+    ///     (name) => `hello ${name}`,
+    ///     'world'
+    /// );
+    /// ```
+    #[tokio::test]
+    async fn compare_evaluate_with_arg() {
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"type": "string", "value": "hello world"}
+        }));
+
+        let page = Page::new(mock.clone());
+        let result = page
+            .evaluate_with_arg(
+                "function(name) { return 'hello ' + name; }",
+                &serde_json::json!("world"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result["value"], "hello world");
+
+        // Should call: DOM.getDocument + DOM.resolveNode + Runtime.callFunctionOn
+        let methods = mock.method_names();
+        assert!(methods.contains(&"DOM.getDocument".to_string()));
+        assert!(methods.contains(&"DOM.resolveNode".to_string()));
+        assert!(methods.contains(&"Runtime.callFunctionOn".to_string()));
+
+        // Verify the argument was passed via CDP serialization (not string interpolation)
+        let cf_calls = mock.calls_for("Runtime.callFunctionOn");
+        let args = cf_calls[0].args[0]["arguments"].as_array().unwrap();
+        assert_eq!(args[0]["value"], "world");
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  response_body
+    // ═══════════════════════════════════════════════════════════
+
+    /// ```typescript
+    /// // Playwright
+    /// const body = await response.body();
+    /// const json = await response.json();
+    /// ```
+    #[tokio::test]
+    async fn compare_response_body() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock.clone());
+
+        let body = page.response_body("req-42").await.unwrap();
+
+        // Should call Network.getResponseBody with the request_id
+        let calls = mock.calls_for("Network.getResponseBody");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].args[0]["requestId"], "req-42");
+        assert!(!body.base64_encoded);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  Page selector convenience methods
+    // ═══════════════════════════════════════════════════════════
+
+    /// ```typescript
+    /// // Playwright (deprecated but supported)
+    /// await page.click('button');
+    /// await page.fill('#email', 'user@test.com');
+    /// const text = await page.textContent('h1');
+    /// ```
+    #[tokio::test]
+    async fn compare_page_selector_methods() {
+        let mock = mock_with_element();
+
+        let page = Page::new(mock.clone());
+
+        // click(selector)
+        page.click("button.submit").await.unwrap();
+        let qs = mock.calls_for("DOM.querySelector");
+        assert_eq!(qs.last().unwrap().args[0]["selector"], "button.submit");
+
+        // text_content(selector)
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": "Hello"}
+        }));
+        let text = page.text_content("h1").await.unwrap();
+        assert_eq!(text, Some("Hello".to_string()));
     }
 }

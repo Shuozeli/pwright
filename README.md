@@ -210,6 +210,32 @@ pwright screenshot                 # same session
 
 Add `.pwright/` to your `.gitignore`.
 
+## Script Runner
+
+pwright supports declarative YAML scripts for multi-step automation:
+
+```yaml
+# hello.yaml
+name: "Extract title"
+params:
+  url: { type: string, required: true }
+steps:
+  - goto: "{{ url }}"
+  - extract:
+      selector: "h1"
+      field: text_content
+      save_as: title
+  - output:
+      title: "{{ title }}"
+```
+
+```bash
+pwright run hello.yaml --param url=https://example.com
+```
+
+Scripts support parameters, JS registries, error handling, and produce
+structured JSONL output. See [examples/scripts/](examples/scripts/) for more.
+
 ## Agent Integration
 
 pwright is designed for AI agent workflows. The agent loop is:

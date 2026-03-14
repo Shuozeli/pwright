@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
@@ -16,7 +17,7 @@ use crate::events::CdpEvent;
 #[derive(Debug, thiserror::Error)]
 pub enum CdpError {
     #[error("WebSocket error: {0}")]
-    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
+    WebSocket(String),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("CDP error {code}: {message}")]
@@ -27,29 +28,56 @@ pub enum CdpError {
     ChannelDropped,
     #[error("Timeout waiting for response")]
     Timeout,
+    #[error("Element not found for selector: {selector}")]
+    ElementNotFound { selector: String },
+    #[error("Navigation failed for {url}: {reason}")]
+    NavigationFailed { url: String, reason: String },
     #[error("{0}")]
     Other(String),
+}
+
+impl From<tokio_tungstenite::tungstenite::Error> for CdpError {
+    fn from(e: tokio_tungstenite::tungstenite::Error) -> Self {
+        CdpError::WebSocket(e.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, CdpError>;
 
 type PendingMap = Arc<DashMap<u64, oneshot::Sender<std::result::Result<Value, CdpError>>>>;
 
-/// Raw CDP WebSocket connection — one per browser.
+/// Raw CDP WebSocket connection -- one per browser.
 ///
 /// Manages the WebSocket transport, message ID allocation,
 /// and dispatches responses/events to the appropriate receivers.
+///
+/// When dropped, aborts the reader/writer tasks and closes the WebSocket.
 pub struct CdpConnection {
     write_tx: tokio::sync::mpsc::Sender<Message>,
     next_id: AtomicU64,
     pending: PendingMap,
     event_tx: broadcast::Sender<CdpEvent>,
-    _reader_handle: tokio::task::JoinHandle<()>,
+    default_timeout: Duration,
+    shutdown: tokio_util::sync::CancellationToken,
 }
+
+impl Drop for CdpConnection {
+    fn drop(&mut self) {
+        self.shutdown.cancel();
+    }
+}
+
+/// Default command timeout (30 seconds).
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl CdpConnection {
     /// Connect to a Chrome DevTools Protocol endpoint via WebSocket.
     pub async fn connect(ws_url: &str) -> Result<Arc<Self>> {
+        Self::connect_with_timeout(ws_url, DEFAULT_TIMEOUT).await
+    }
+
+    /// Connect with a custom command timeout.
+    pub async fn connect_with_timeout(ws_url: &str, timeout: Duration) -> Result<Arc<Self>> {
         debug!(url = ws_url, "connecting to CDP WebSocket");
 
         let (ws_stream, _response) = connect_async(ws_url).await?;
@@ -58,24 +86,35 @@ impl CdpConnection {
         let (write_tx, write_rx) = tokio::sync::mpsc::channel::<Message>(256);
         let pending: PendingMap = Arc::new(DashMap::new());
         let (event_tx, _) = broadcast::channel::<CdpEvent>(1024);
+        let shutdown = tokio_util::sync::CancellationToken::new();
 
         // Writer task: forwards messages from the channel to the WebSocket
-        let writer_handle = tokio::spawn(Self::writer_loop(ws_write, write_rx));
+        let shutdown_w = shutdown.clone();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = shutdown_w.cancelled() => {}
+                _ = Self::writer_loop(ws_write, write_rx) => {}
+            }
+        });
 
         // Reader task: routes incoming messages to pending responses or event broadcast
         let pending_clone = pending.clone();
         let event_tx_clone = event_tx.clone();
-        let reader_handle = tokio::spawn(Self::reader_loop(ws_read, pending_clone, event_tx_clone));
-
-        // Drop the writer handle — it lives as long as write_tx senders exist
-        drop(writer_handle);
+        let shutdown_r = shutdown.clone();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = shutdown_r.cancelled() => {}
+                _ = Self::reader_loop(ws_read, pending_clone, event_tx_clone) => {}
+            }
+        });
 
         let conn = Arc::new(Self {
             write_tx,
             next_id: AtomicU64::new(1),
             pending,
             event_tx,
-            _reader_handle: reader_handle,
+            default_timeout: timeout,
+            shutdown,
         });
 
         debug!("CDP WebSocket connected");
@@ -117,7 +156,7 @@ impl CdpConnection {
             .await
             .map_err(|_| CdpError::Closed)?;
 
-        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+        match tokio::time::timeout(self.default_timeout, rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err(CdpError::ChannelDropped),
             Err(_) => {
@@ -132,7 +171,7 @@ impl CdpConnection {
         self.event_tx.subscribe()
     }
 
-    // Writer loop: drain channel → websocket
+    // Writer loop: drain channel -> websocket
     async fn writer_loop(
         mut ws_write: futures_util::stream::SplitSink<
             WebSocketStream<MaybeTlsStream<TcpStream>>,
@@ -146,10 +185,12 @@ impl CdpConnection {
                 break;
             }
         }
+        // Send close frame for clean shutdown
+        let _ = ws_write.send(Message::Close(None)).await;
         debug!("CDP writer loop ended");
     }
 
-    // Reader loop: websocket → route to pending or event_tx
+    // Reader loop: websocket -> route to pending or event_tx
     async fn reader_loop(
         mut ws_read: futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
         pending: PendingMap,
@@ -220,7 +261,7 @@ impl CdpConnection {
             }
         }
 
-        // Connection closed — fail all pending requests with a descriptive error
+        // Connection closed -- fail all pending requests
         let entries: Vec<_> = pending.iter().map(|e| *e.key()).collect();
         for id in entries {
             if let Some((_, tx)) = pending.remove(&id) {

@@ -168,6 +168,34 @@ pwright close
 
 ---
 
+## Script Quick Start
+
+For multi-step workflows, use YAML scripts:
+
+```bash
+# Create a script
+cat > hello.yaml << 'EOF'
+name: "Hello"
+params:
+  url: { type: string, required: true }
+steps:
+  - goto: "{{ url }}"
+  - extract:
+      selector: "h1"
+      field: text_content
+      save_as: title
+  - output:
+      title: "{{ title }}"
+EOF
+
+# Run it
+pwright run hello.yaml --param url=https://example.com
+```
+
+See [Script Examples](../examples/scripts/) for more.
+
+---
+
 ## First gRPC Call
 
 Using [grpcurl](https://github.com/fullstorydev/grpcurl):

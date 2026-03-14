@@ -18,10 +18,7 @@ pub async fn evaluate(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let result = pwright_bridge::evaluate::evaluate(&*tab.session, &req.expression)
         .await
@@ -39,10 +36,7 @@ pub async fn get_cookies(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let cookies = pwright_bridge::cookies::get_cookies(&*tab.session)
         .await
@@ -74,10 +68,7 @@ pub async fn set_cookies(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let cookie_values: Vec<serde_json::Value> = req
         .cookies

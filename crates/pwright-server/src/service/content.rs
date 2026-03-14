@@ -17,10 +17,7 @@ pub async fn get_snapshot(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let filter = match req.filter() {
         proto::SnapshotFilter::FilterAll => SnapshotFilter::All,
@@ -65,10 +62,7 @@ pub async fn take_screenshot(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let format = match req.format.as_str() {
         "jpeg" | "jpg" => pwright_bridge::content::ScreenshotFormat::Jpeg(req.quality),
@@ -97,10 +91,7 @@ pub async fn get_text(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let text = pwright_bridge::content::get_text(&*tab.session)
         .await
@@ -119,10 +110,7 @@ pub async fn get_pdf(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .resolve_tab(&req.tab_id)
-        .await
-        .map_err(|e| Status::not_found(format!("tab: {}", e)))?;
+    let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let b64_data = pwright_bridge::content::get_pdf(&*tab.session)
         .await
