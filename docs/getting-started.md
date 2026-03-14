@@ -189,7 +189,7 @@ steps:
 EOF
 
 # Run it
-pwright run hello.yaml --param url=https://example.com
+pwright script run hello.yaml --param url=https://example.com
 ```
 
 See [Script Examples](../examples/scripts/) for more.

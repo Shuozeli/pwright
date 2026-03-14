@@ -1,0 +1,42 @@
+# paginate.yaml — Click through pages and extract content from each.
+#
+# Usage: pwright script run examples/scripts/paginate.yaml --param url=https://news.ycombinator.com
+#
+# Demonstrates: click navigation on <a> tags, wait between pages, multi-page extraction
+
+name: "Paginated extraction"
+version: 1
+
+params:
+  url:
+    type: string
+    required: true
+
+scripts:
+  extract_count: |
+    (() => {
+      return document.querySelectorAll('.athing').length.toString();
+    })()
+  get_url: |
+    (() => { return window.location.href; })()
+
+steps:
+  # Page 1
+  - goto: "{{ url }}"
+    wait_for: ".athing"
+
+  - eval: { ref: extract_count, save_as: page1_count }
+  - eval: { ref: get_url, save_as: page1_url }
+
+  # Click "More" to go to page 2
+  - click: ".morelink"
+  - wait: 2000
+
+  - eval: { ref: extract_count, save_as: page2_count }
+  - eval: { ref: get_url, save_as: page2_url }
+
+  - output:
+      page1_url: "{{ page1_url }}"
+      page1_count: "{{ page1_count }}"
+      page2_url: "{{ page2_url }}"
+      page2_count: "{{ page2_count }}"

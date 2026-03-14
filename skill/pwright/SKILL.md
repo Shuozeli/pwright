@@ -1,6 +1,6 @@
 ---
 name: pwright
-description: Automates browser interactions via Chrome CDP for web testing, form filling, screenshots, and data extraction. Use when the user needs to navigate websites, interact with web pages, fill forms, take screenshots, test web applications, or extract information from web pages. Requires a running Chrome with --remote-debugging-port=9222.
+description: Automates browser interactions via Chrome CDP for web testing, form filling, screenshots, data extraction, and scripted automation. Use when the user needs to navigate websites, interact with web pages, fill forms, take screenshots, test web applications, extract information from web pages, or run multi-step browser workflows. Requires a running Chrome with --remote-debugging-port=9222.
 allowed-tools: Bash(pwright:*)
 ---
 
@@ -14,8 +14,6 @@ allowed-tools: Bash(pwright:*)
 google-chrome --headless=new --remote-debugging-port=9222 &
 # macOS
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --headless=new --remote-debugging-port=9222 &
-# Windows (PowerShell)
-# Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" "--headless=new","--remote-debugging-port=9222"
 
 # 2. Navigate to a page (auto-connects to Chrome)
 pwright open https://example.com
@@ -40,12 +38,12 @@ pwright close
 The agent loop for browser tasks:
 
 1. **Navigate** to a URL with `pwright open <url>` or `pwright goto <url>`
-2. **Snapshot** the accessibility tree (`pwright snapshot`) — get refs like `e0`, `e5`, `e12`
-3. **Act** on refs — `click e5`, `fill e3 "text"`, `press Enter`
+2. **Snapshot** the accessibility tree (`pwright snapshot`) -- get refs like `e0`, `e5`, `e12`
+3. **Act** on refs -- `click e5`, `fill e3 "text"`, `press Enter`
 4. **Snapshot** again to see results
 5. **Repeat** step 3-4 until done
 
-Refs are stable between snapshots — no need to re-snapshot before every action. Only snapshot after the page changes significantly (navigation, form submission, etc.).
+Refs are stable between snapshots -- no need to re-snapshot before every action. Only snapshot after the page changes significantly (navigation, form submission, etc.).
 
 ## Commands
 
@@ -63,6 +61,7 @@ pwright go-forward                 # Browser forward button
 
 ```bash
 pwright click e5                   # Click element
+pwright dblclick e5                # Double-click element
 pwright fill e3 "user@example.com" # Set input value
 pwright type "search text"         # Type character by character
 pwright press Enter                # Press keyboard key
@@ -70,6 +69,8 @@ pwright press Tab                  # Tab to next field
 pwright hover e4                   # Hover over element
 pwright select e9 "option-value"   # Select dropdown option
 pwright focus e2                   # Focus an element
+pwright check e6                   # Check checkbox
+pwright uncheck e6                 # Uncheck checkbox
 pwright drag e7 --dx 100 --dy 0   # Drag element by offset
 pwright upload e8 ./file.pdf       # Upload file to file input
 ```
@@ -85,9 +86,9 @@ pwright eval "document.querySelectorAll('a').length"
 ### Screenshots & Export
 
 ```bash
-pwright screenshot                 # Screenshot → screenshot.png
+pwright screenshot                 # Screenshot -> screenshot.png
 pwright screenshot --filename=page.png
-pwright pdf                        # PDF export → page.pdf
+pwright pdf                        # PDF export -> page.pdf
 pwright pdf --filename=report.pdf
 ```
 
@@ -114,6 +115,47 @@ pwright cookie-set --name session --value abc123 --domain example.com
 pwright download e5                # Click e5 and capture download
 pwright download e5 --dest ./file.pdf  # Save to specific path
 ```
+
+### Script Runner
+
+For multi-step automation, use YAML scripts instead of chaining commands:
+
+```bash
+# Run a script with parameters
+pwright script run scraper.yaml --param url=https://example.com
+
+# Validate without executing
+pwright script validate scraper.yaml --param url=https://example.com
+
+# Load params from file (for credentials)
+pwright script run scraper.yaml --param-file secrets.yaml
+```
+
+Script example:
+
+```yaml
+name: "Extract title"
+params:
+  url: { type: string, required: true }
+scripts:
+  get_links: |
+    JSON.stringify([...document.querySelectorAll('a')].map(a => a.href))
+steps:
+  - goto: "{{ url }}"
+    wait_for: "h1"
+  - extract:
+      selector: "h1"
+      field: text_content
+      save_as: title
+  - eval: { ref: get_links, save_as: links }
+  - wait: 2000
+  - output:
+      title: "{{ title }}"
+      links: "{{ links }}"
+```
+
+Scripts support: `goto`, `click`, `fill`, `press`, `extract`, `eval` (with JS registry),
+`output`, `wait` (sleep), and `on_error: continue` for graceful error handling.
 
 ### System
 
@@ -170,9 +212,19 @@ pwright --cdp http://192.168.1.100:9222 open https://example.com
 PWRIGHT_CDP=http://remote-host:9222 pwright open https://example.com
 ```
 
+### Docker Deployment
+
+For a one-command setup with Chrome + gRPC server:
+
+```bash
+cd deploy
+docker compose up --build -d
+# gRPC available at localhost:50051
+```
+
 ### State Persistence
 
-After `pwright open`, the CLI saves session state to `.pwright/state.json` in the current directory. This stores the WebSocket URL, active tab ID, and target ID — so subsequent commands don't need to reconnect.
+After `pwright open`, the CLI saves session state to `.pwright/state.json` in the current directory. This stores the WebSocket URL, active tab ID, and target ID -- so subsequent commands don't need to reconnect.
 
 Add `.pwright/` to your `.gitignore`.
 
@@ -197,7 +249,6 @@ curl -s http://localhost:9222/json/version | jq .webSocketDebuggerUrl
 ```bash
 pwright open https://example.com/login
 pwright snapshot
-
 pwright fill e1 "user@example.com"
 pwright fill e2 "password123"
 pwright click e3
@@ -224,4 +275,26 @@ pwright open https://example.com/data
 pwright eval "JSON.stringify([...document.querySelectorAll('tr')].map(r => r.textContent))"
 pwright screenshot --filename=data-page.png
 pwright close
+```
+
+## Example: Scripted Scraping
+
+```bash
+# Create a script
+cat > scrape.yaml << 'EOF'
+name: "Scrape prices"
+params:
+  url: { type: string, required: true }
+scripts:
+  get_prices: |
+    JSON.stringify([...document.querySelectorAll('.price')].map(e => e.textContent))
+steps:
+  - goto: "{{ url }}"
+    wait_for: ".price"
+  - eval: { ref: get_prices, save_as: prices }
+  - output: { prices: "{{ prices }}" }
+EOF
+
+# Run it
+pwright script run scrape.yaml --param url=https://example.com/products
 ```

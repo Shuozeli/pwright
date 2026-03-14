@@ -1,7 +1,7 @@
 # login-and-scrape.yaml — Log in to a site and extract data.
 #
 # Usage:
-#   pwright run examples/scripts/login-and-scrape.yaml \
+#   pwright script run examples/scripts/login-and-scrape.yaml \
 #     --param login_url=https://example.com/login \
 #     --param target_url=https://example.com/dashboard \
 #     --param-file secrets.yaml

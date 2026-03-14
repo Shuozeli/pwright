@@ -119,12 +119,14 @@ fn parse_scripts(val: &serde_yaml::Value) -> Result<HashMap<String, JsFunction>,
                 .as_str()
                 .ok_or_else(|| ScriptError::Parse(format!("script '{name}' body must be string")))?
                 .to_string();
+            // Auto-detect async: if body contains `await` keyword, use awaitPromise
+            let is_async = body.contains("await ");
             scripts.insert(
                 name.to_string(),
                 JsFunction {
                     body,
                     description: String::new(),
-                    is_async: false,
+                    is_async,
                 },
             );
         }

@@ -1,0 +1,36 @@
+# error-handling.yaml — Demonstrate error policies in scripts.
+#
+# Usage: pwright script run examples/scripts/error-handling.yaml --param url=https://example.com
+#
+# Demonstrates: on_error: continue, graceful handling of missing elements
+
+name: "Error handling demo"
+version: 1
+
+params:
+  url:
+    type: string
+    required: true
+
+steps:
+  - goto: "{{ url }}"
+
+  # This click will fail (element doesn't exist) but script continues
+  - click: ".nonexistent-button"
+    on_error: continue
+
+  # This extraction succeeds despite the previous failure
+  - extract:
+      selector: "h1"
+      field: text_content
+      save_as: title
+
+  # Another optional step
+  - extract:
+      selector: ".also-missing"
+      field: text_content
+      save_as: optional_text
+    on_error: continue
+
+  - output:
+      title: "{{ title }}"

@@ -1,7 +1,7 @@
 # form-fill.yaml — Fill a form and verify submission.
 #
 # Usage:
-#   pwright run examples/scripts/form-fill.yaml \
+#   pwright script run examples/scripts/form-fill.yaml \
 #     --param url=https://example.com/contact \
 #     --param name="John Doe" \
 #     --param message="Hello from pwright"

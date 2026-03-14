@@ -204,6 +204,50 @@ enum Command {
 
     /// Check Chrome connectivity
     Health,
+
+    /// Run or validate YAML automation scripts
+    Script {
+        #[command(subcommand)]
+        action: ScriptAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScriptAction {
+    /// Execute a YAML automation script
+    Run {
+        /// Path to YAML script file
+        script: std::path::PathBuf,
+
+        /// Parameters as key=value pairs (repeatable)
+        #[arg(long = "param", value_parser = parse_param)]
+        params: Vec<(String, String)>,
+
+        /// Load parameters from a YAML file
+        #[arg(long = "param-file")]
+        param_file: Option<std::path::PathBuf>,
+    },
+
+    /// Validate a YAML script without executing
+    Validate {
+        /// Path to YAML script file
+        script: std::path::PathBuf,
+
+        /// Parameters as key=value pairs (repeatable)
+        #[arg(long = "param", value_parser = parse_param)]
+        params: Vec<(String, String)>,
+
+        /// Load parameters from a YAML file
+        #[arg(long = "param-file")]
+        param_file: Option<std::path::PathBuf>,
+    },
+}
+
+fn parse_param(s: &str) -> Result<(String, String), String> {
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid param format '{s}', expected key=value"))?;
+    Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
 }
 
 #[tokio::main]
@@ -261,6 +305,7 @@ async fn main() {
         } => commands::cookie_set(&mut state, &name, &value, &domain, &path).await,
         Command::Pdf { filename } => commands::pdf(&mut state, filename.as_deref()).await,
         Command::Health => commands::health(&state).await,
+        Command::Script { action } => commands::script(&cdp, action).await,
     };
 
     if let Err(e) = result {

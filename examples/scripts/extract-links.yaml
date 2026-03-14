@@ -1,6 +1,6 @@
 # extract-links.yaml — Extract all links from a page using JS.
 #
-# Usage: pwright run examples/scripts/extract-links.yaml --param url=https://example.com
+# Usage: pwright script run examples/scripts/extract-links.yaml --param url=https://example.com
 
 name: "Extract links"
 version: 1

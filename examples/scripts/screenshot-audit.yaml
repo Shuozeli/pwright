@@ -1,7 +1,7 @@
 # screenshot-audit.yaml — Visit multiple pages and take screenshots.
 #
 # Usage:
-#   pwright run examples/scripts/screenshot-audit.yaml \
+#   pwright script run examples/scripts/screenshot-audit.yaml \
 #     --param url=https://example.com
 
 name: "Screenshot audit"

@@ -57,6 +57,7 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 | Command | Description |
 |---------|-------------|
 | `pwright click <ref>` | Click element |
+| `pwright dblclick <ref>` | Double-click element |
 | `pwright fill <ref> "value"` | Set input value |
 | `pwright type "text"` | Type character-by-character |
 | `pwright press <Key>` | Press keyboard key (Enter, Tab, Escape...) |
@@ -102,11 +103,10 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 
 | Command | Description |
 |---------|-------------|
-| `pwright run <script.yaml>` | Execute a YAML automation script |
-| `pwright run <script.yaml> --validate` | Validate script without executing |
-| `pwright run <script.yaml> --param key=val` | Pass parameters |
-| `pwright run <script.yaml> --param-file secrets.yaml` | Load params from file |
-| `pwright run <script.yaml> --output results.jsonl` | Write output to file |
+| `pwright script run <script.yaml>` | Execute a YAML automation script |
+| `pwright script run <script.yaml> --param key=val` | Pass parameters |
+| `pwright script run <script.yaml> --param-file secrets.yaml` | Load params from file |
+| `pwright script validate <script.yaml>` | Validate script without executing |
 
 ### Options
 
@@ -275,7 +275,7 @@ steps:
 ```
 
 ```bash
-pwright run scrape.yaml --param url=https://example.com/products
+pwright script run scrape.yaml --param url=https://example.com/products
 ```
 
 Output (JSONL):

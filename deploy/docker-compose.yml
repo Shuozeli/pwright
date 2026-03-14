@@ -1,0 +1,46 @@
+# pwright deployment: Chrome headless + gRPC server
+#
+# Usage:
+#   docker compose up --build -d
+#   # gRPC endpoint: localhost:50051
+#   # CLI scripts:   docker compose exec pwright pwright script run /scripts/hello.yaml --param url=https://example.com
+#
+# Mount your scripts:
+#   docker compose up --build -d
+#   docker compose exec pwright pwright script run /scripts/my-script.yaml
+#
+# Stop:
+#   docker compose down
+
+services:
+  chrome:
+    image: chromedp/headless-shell:latest
+    shm_size: "2gb"
+
+  pwright:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "50051:50051"
+    depends_on:
+      - chrome
+    environment:
+      CDP_HOST: chrome
+      CDP_PORT: "9222"
+    volumes:
+      - ./scripts:/scripts:ro
+    command: >
+      sh -c '
+        echo "Waiting for Chrome at $$CDP_HOST:$$CDP_PORT..." &&
+        for i in $$(seq 1 30); do
+          CDP_IP=$$(getent hosts $$CDP_HOST | awk "{print \$$1}") &&
+          if curl -sf http://$$CDP_IP:$$CDP_PORT/json/version > /dev/null 2>&1; then
+            WS_URL=$$(curl -sf http://$$CDP_IP:$$CDP_PORT/json/version | grep webSocketDebuggerUrl | sed "s/.*\"ws:/ws:/" | sed "s/\".*//" | sed "s/127.0.0.1:[0-9]*/$$CDP_IP:$$CDP_PORT/") &&
+            echo "Chrome ready. WS: $$WS_URL" &&
+            exec pwright-server --cdp-url "$$WS_URL" --bind-all;
+          fi;
+          sleep 1;
+        done;
+        echo "Chrome not available" && exit 1
+      '

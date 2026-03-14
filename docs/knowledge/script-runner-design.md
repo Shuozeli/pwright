@@ -19,7 +19,7 @@ pwright-script/          New crate: script parser, validator, executor
     output.rs            JSONL streaming output
 
 pwright-cli/
-  src/main.rs            `pwright run script.yaml --param key=val`
+  src/main.rs            `pwright script run script.yaml --param key=val`
 ```
 
 ### Crate Dependencies
@@ -37,25 +37,25 @@ pwright-cli
 
 ```bash
 # Basic execution
-pwright run crawl.yaml
+pwright script run crawl.yaml
 
 # With parameters
-pwright run crawl.yaml --param url=https://example.com --param max_pages=10
+pwright script run crawl.yaml --param url=https://example.com --param max_pages=10
 
 # Parameters from file (for credentials etc.)
-pwright run crawl.yaml --param-file secrets.yaml
+pwright script run crawl.yaml --param-file secrets.yaml
 
 # Streaming output to file
-pwright run crawl.yaml --output results.jsonl
+pwright script run crawl.yaml --output results.jsonl
 
 # Debug mode (verbose step-by-step with CDP details)
-pwright run crawl.yaml --debug
+pwright script run crawl.yaml --debug
 
 # Validate without executing
-pwright run crawl.yaml --validate
+pwright script validate crawl.yaml
 
 # Dry run (parse + validate + show plan)
-pwright run crawl.yaml --dry-run
+pwright script run crawl.yaml --dry-run
 ```
 
 ### Param File Format
@@ -727,11 +727,11 @@ The `pwright-script` crate includes a validator that checks:
    (bracket matching, no obvious syntax errors)
 
 ```bash
-pwright run script.yaml --validate
+pwright script validate script.yaml
 # OK: 12 steps, 3 params (url, max_pages, timeout)
 # WARNING: param 'timeout' has no default and is not required
 
-pwright run script.yaml --validate --param url=https://example.com
+pwright script validate script.yaml --param url=https://example.com
 # OK: all params resolved, 12 steps valid
 ```
 
@@ -739,7 +739,7 @@ pwright run script.yaml --validate --param url=https://example.com
 
 ### Phase 1: Crate scaffold + protobuf + parser + basic execution
 
-**Goal:** `pwright run script.yaml --param url=... ` works end-to-end
+**Goal:** `pwright script run script.yaml --param url=... ` works end-to-end
 for a flat script with basic steps.
 
 #### Deliverables
@@ -767,8 +767,8 @@ for a flat script with basic steps.
    - JSONL output per step (StepResult as JSON)
    - Final ScriptResult summary
 6. **CLI integration** (`pwright run` subcommand)
-   - `pwright run script.yaml --param key=val`
-   - `pwright run script.yaml --validate` (validate only)
+   - `pwright script run script.yaml --param key=val`
+   - `pwright script validate script.yaml` (validate only)
    - `--output file.jsonl` (write results to file)
 
 #### Steps supported in Phase 1
@@ -791,13 +791,13 @@ for a flat script with basic steps.
 - Unit: JS registry ref resolution
 - Integration (FakeCdpClient): execute a 5-step script, verify JSONL output
 - Integration (Docker): execute against real Chrome with test server
-- E2E: `pwright run examples/hello.yaml --param url=http://... --validate`
+- E2E: `pwright script validate examples/hello.yaml --param url=http://...`
 
 #### Acceptance criteria
 
-- [ ] `pwright run hello.yaml --param url=http://example.com` navigates,
+- [ ] `pwright script run hello.yaml --param url=http://example.com` navigates,
       extracts title, outputs JSONL
-- [ ] `pwright run hello.yaml --validate` exits 0 with valid script, exits 1 with
+- [ ] `pwright script validate hello.yaml` exits 0 with valid script, exits 1 with
       clear error for invalid
 - [ ] `--param-file` loads params from YAML file
 - [ ] JS scripts in `scripts:` section are referenced by `eval.ref`

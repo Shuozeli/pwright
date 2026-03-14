@@ -359,7 +359,7 @@ steps:
 ```
 
 ```bash
-pwright run hello.yaml --param url=https://example.com
+pwright script run hello.yaml --param url=https://example.com
 ```
 
 Output:
@@ -408,10 +408,10 @@ steps:
 
 ```bash
 # Inline params
-pwright run script.yaml --param url=https://example.com --param max=10
+pwright script run script.yaml --param url=https://example.com --param max=10
 
 # From file (for credentials)
-pwright run script.yaml --param-file secrets.yaml
+pwright script run script.yaml --param-file secrets.yaml
 ```
 
 ```yaml
@@ -440,7 +440,7 @@ steps:
 
 ```bash
 # Check script without executing
-pwright run script.yaml --param url=https://example.com --validate
+pwright script validate script.yaml --param url=https://example.com
 ```
 
 Validates: required params supplied, template references resolve,

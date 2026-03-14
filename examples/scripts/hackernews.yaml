@@ -1,0 +1,38 @@
+# hackernews.yaml — Extract top stories from Hacker News.
+#
+# Usage: pwright script run examples/scripts/hackernews.yaml
+#
+# Demonstrates: JS registry, eval with save_as, output
+
+name: "Hacker News Top Stories"
+version: 1
+
+scripts:
+  extract_stories: |
+    (() => {
+      const rows = document.querySelectorAll('.athing');
+      const results = [];
+      for (const row of rows) {
+        const titleEl = row.querySelector('.titleline > a');
+        const rank = row.querySelector('.rank');
+        if (titleEl) {
+          results.push({
+            rank: rank ? rank.textContent.trim() : '',
+            title: titleEl.textContent.trim().substring(0, 80),
+            url: titleEl.href
+          });
+        }
+      }
+      return JSON.stringify(results.slice(0, 5));
+    })()
+
+steps:
+  - goto: "https://news.ycombinator.com"
+    wait_for: ".athing"
+
+  - eval:
+      ref: extract_stories
+      save_as: stories
+
+  - output:
+      stories: "{{ stories }}"

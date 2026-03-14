@@ -21,3 +21,7 @@ Thumbs.db
 
 # Node (test harness)
 node_modules/
+# Private integration scripts
+examples/scripts-dragb-private/
+docs/dragb-integration-report.md
+docs/knowledge/dragb-use-cases.md

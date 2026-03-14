@@ -436,6 +436,14 @@ impl Page {
         self.locator(selector)
             .wait_for(timeout_ms, super::locator::WaitState::Attached)
             .await
+            .map_err(|e| match e {
+                pwright_cdp::connection::CdpError::Timeout => {
+                    pwright_cdp::connection::CdpError::Other(format!(
+                        "Timeout waiting for selector '{selector}' ({timeout_ms}ms)"
+                    ))
+                }
+                other => other,
+            })
     }
 
     /// Set files on a file input element matched by CSS selector.

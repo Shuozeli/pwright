@@ -1,6 +1,6 @@
 # Script Examples
 
-Sample YAML scripts for `pwright run`.
+Sample YAML scripts for `pwright script run`.
 
 ## Scripts
 
@@ -11,21 +11,24 @@ Sample YAML scripts for `pwright run`.
 | [login-and-scrape.yaml](login-and-scrape.yaml) | Log in then scrape | Multi-step, param-file for secrets |
 | [form-fill.yaml](form-fill.yaml) | Fill and submit a form | fill, click, verify result |
 | [screenshot-audit.yaml](screenshot-audit.yaml) | Audit page structure | extract visibility, multiple checks |
+| [hackernews.yaml](hackernews.yaml) | Extract HN top stories | JS eval, JSON serialization |
+| [paginate.yaml](paginate.yaml) | Click through multiple pages | click navigation, wait, multi-page |
+| [error-handling.yaml](error-handling.yaml) | Graceful error handling | on_error: continue |
 
 ## Running
 
 ```bash
 # Basic
-pwright run examples/scripts/hello.yaml --param url=https://example.com
+pwright script run examples/scripts/hello.yaml --param url=https://example.com
 
 # With secrets file
-pwright run examples/scripts/login-and-scrape.yaml \
+pwright script run examples/scripts/login-and-scrape.yaml \
   --param login_url=https://example.com/login \
   --param target_url=https://example.com/dashboard \
   --param-file secrets.yaml
 
 # Validate without executing
-pwright run examples/scripts/hello.yaml --param url=https://example.com --validate
+pwright script validate examples/scripts/hello.yaml --param url=https://example.com
 ```
 
 ## Output

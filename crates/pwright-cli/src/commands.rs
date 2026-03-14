@@ -632,3 +632,74 @@ pub async fn health(state: &CliState) -> Result<()> {
     }
     Ok(())
 }
+
+pub async fn script(cdp: &str, action: crate::ScriptAction) -> Result<()> {
+    use pwright_script::{executor, output::JsonlSink, parser, validator};
+    use std::collections::HashMap;
+
+    let (script_path, raw_params, param_file, validate_only) = match &action {
+        crate::ScriptAction::Run {
+            script,
+            params,
+            param_file,
+        } => (script, params, param_file, false),
+        crate::ScriptAction::Validate {
+            script,
+            params,
+            param_file,
+        } => (script, params, param_file, true),
+    };
+
+    // Parse script
+    let script =
+        parser::parse_yaml_file(script_path).map_err(|e| anyhow::anyhow!("parse error: {e}"))?;
+
+    // Merge params: param-file first, then --param flags (flags take precedence)
+    let mut params: HashMap<String, String> = HashMap::new();
+    if let Some(pf) = param_file {
+        let file_params =
+            parser::load_param_file(pf).map_err(|e| anyhow::anyhow!("param file error: {e}"))?;
+        params.extend(file_params);
+    }
+    for (k, v) in raw_params {
+        params.insert(k.clone(), v.clone());
+    }
+
+    // Validate
+    if let Err(errors) = validator::validate(&script, &params) {
+        for e in &errors {
+            crate::output::error(e);
+        }
+        anyhow::bail!("script validation failed ({} error(s))", errors.len());
+    }
+
+    if validate_only {
+        println!(
+            "OK: {} steps, {} params",
+            script.steps.len(),
+            script.params.len()
+        );
+        return Ok(());
+    }
+
+    // Execute
+    let browser = pwright_bridge::Browser::connect_http(cdp).await?;
+    browser
+        .with_page(|page| async move {
+            let mut stdout = std::io::stdout();
+            let mut sink = JsonlSink::new(&mut stdout);
+            let result = executor::execute(&script, &page, &params, &mut sink)
+                .await
+                .map_err(|e| pwright_cdp::connection::CdpError::Other(e.to_string()))?;
+            sink.write_summary(&script.name, &result);
+            if result.status != "ok" {
+                return Err(pwright_cdp::connection::CdpError::Other(
+                    result.error.unwrap_or_else(|| "script failed".into()),
+                ));
+            }
+            Ok(())
+        })
+        .await?;
+
+    Ok(())
+}

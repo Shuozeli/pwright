@@ -77,45 +77,49 @@ async fn get_element_center_js(
     Ok((x, y))
 }
 
-/// Click an element by backendNodeId.
+/// Click an element by nodeId.
+///
+/// Scrolls into view first, then gets viewport-relative coordinates via
+/// `getBoundingClientRect`, then dispatches mouse events. The coordinate
+/// retrieval MUST happen after scrolling because `Input.dispatchMouseEvent`
+/// expects viewport coordinates, not page-absolute coordinates.
 pub async fn click_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResult<()> {
-    let (x, y) = get_element_center(session, node_id).await?;
-
+    // 1. Scroll element into view FIRST
     session.dom_scroll_into_view(node_id).await?;
-    session.dom_focus(node_id).await?;
 
-    // mousePressed
+    // 2. Get viewport-relative coordinates AFTER scrolling
+    //    (getBoundingClientRect returns viewport coords, not page coords)
+    let (x, y) = get_element_center_js(session, node_id).await?;
+
+    // 3. Dispatch at viewport coordinates with buttons field
     session
-        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(1), None)
+        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(1), Some(1))
         .await?;
-    // mouseReleased
     session
-        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(1), None)
+        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(1), Some(0))
         .await?;
 
     Ok(())
 }
 
-/// Double-click an element by backendNodeId.
+/// Double-click an element by nodeId.
 pub async fn dblclick_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResult<()> {
-    let (x, y) = get_element_center(session, node_id).await?;
-
     session.dom_scroll_into_view(node_id).await?;
-    session.dom_focus(node_id).await?;
+    let (x, y) = get_element_center_js(session, node_id).await?;
 
     // First click
     session
-        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(1), None)
+        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(1), Some(1))
         .await?;
     session
-        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(1), None)
+        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(1), Some(0))
         .await?;
     // Second click (clickCount=2)
     session
-        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(2), None)
+        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(2), Some(1))
         .await?;
     session
-        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(2), None)
+        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(2), Some(0))
         .await?;
 
     Ok(())
@@ -284,38 +288,42 @@ mod tests {
     #[tokio::test]
     async fn test_click_calls_correct_cdp_sequence() {
         let mock = MockCdpClient::new();
+        // Set up callFunctionOn response for getBoundingClientRect center
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": {"x": 100.0, "y": 200.0}}
+        }));
+
         click_by_node_id(&mock, 42).await.unwrap();
 
         let methods = mock.method_names();
-        // Expected: getBoxModel → scrollIntoView → focus → mousePressed → mouseReleased
-        assert_eq!(methods[0], "DOM.getBoxModel");
-        assert_eq!(methods[1], "DOM.scrollIntoViewIfNeeded");
-        assert_eq!(methods[2], "DOM.focus");
+        // Expected: scrollIntoView → resolveNode → callFunctionOn(center) → mousePressed → mouseReleased
+        assert_eq!(methods[0], "DOM.scrollIntoViewIfNeeded");
+        assert_eq!(methods[1], "DOM.resolveNode");
+        assert_eq!(methods[2], "Runtime.callFunctionOn");
         assert_eq!(methods[3], "Input.dispatchMouseEvent");
         assert_eq!(methods[4], "Input.dispatchMouseEvent");
-        assert_eq!(methods.len(), 5);
 
-        // Verify mouse events are press then release
+        // Verify mouse events are press then release with buttons field
         let mouse_calls = mock.calls_for("Input.dispatchMouseEvent");
         assert_eq!(mouse_calls[0].args[0]["type"], "mousePressed");
+        assert_eq!(mouse_calls[0].args[0]["buttons"], 1);
         assert_eq!(mouse_calls[1].args[0]["type"], "mouseReleased");
+        assert_eq!(mouse_calls[1].args[0]["buttons"], 0);
     }
 
     #[tokio::test]
-    async fn test_click_computes_center_from_box_model() {
+    async fn test_click_uses_viewport_coords_from_js() {
         let mock = MockCdpClient::new();
-        // Box model with content quad: (10,20) (30,20) (30,40) (10,40) → center (20, 30)
-        mock.set_box_model(serde_json::json!({
-            "model": {
-                "content": [10.0, 20.0, 30.0, 20.0, 30.0, 40.0, 10.0, 40.0]
-            }
+        // getBoundingClientRect returns viewport-relative center
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": {"x": 50.0, "y": 75.0}}
         }));
 
         click_by_node_id(&mock, 1).await.unwrap();
 
         let mouse_calls = mock.calls_for("Input.dispatchMouseEvent");
-        assert_eq!(mouse_calls[0].args[0]["x"], 20.0);
-        assert_eq!(mouse_calls[0].args[0]["y"], 30.0);
+        assert_eq!(mouse_calls[0].args[0]["x"], 50.0);
+        assert_eq!(mouse_calls[0].args[0]["y"], 75.0);
     }
 
     #[tokio::test]

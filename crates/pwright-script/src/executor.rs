@@ -179,8 +179,14 @@ async fn execute_step(
                 details.insert("ref".into(), js_ref.clone());
 
                 if e.args.is_empty() {
-                    // Simple eval
-                    let result = page.evaluate(&func.body).await.map_err(ScriptError::Cdp)?;
+                    // Simple eval (use evaluate_async if script contains await)
+                    let result = if func.is_async {
+                        page.evaluate_async(&func.body)
+                            .await
+                            .map_err(ScriptError::Cdp)?
+                    } else {
+                        page.evaluate(&func.body).await.map_err(ScriptError::Cdp)?
+                    };
                     json_value_to_string(&result)
                 } else {
                     // Call with args

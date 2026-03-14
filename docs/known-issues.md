@@ -45,3 +45,9 @@ in `tab_locks`. Very slow growth, only matters for long-running servers.
 | `select_by_node_id` wrong for `<select>` | LOW | `Runtime.callFunctionOn` with `selectedIndex` |
 | `fetch_ws_url` TCP truncation | LOW | Replaced raw TCP with `reqwest` |
 | CLI state file world-readable | LOW | `0600` permissions on Unix |
+| Click doesn't trigger `<a>` navigation | CRITICAL | v3: scroll first, viewport coords via getBoundingClientRect, buttons field |
+| Eval can't await Promises | HIGH | Auto-detect `await` keyword, use `evaluate_async` |
+| Opaque wait_for timeout errors | MEDIUM | Include selector and timeout in error message |
+| Opaque JS eval errors | MEDIUM | Extract line number and column from `exceptionDetails` |
+| No `pwright script run` CLI command | HIGH | Added `Script` subcommand with `Run`/`Validate` |
+| No `wait`/sleep step in scripts | MEDIUM | Added `wait: <ms>` step type |

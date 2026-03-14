@@ -230,11 +230,15 @@ steps:
 ```
 
 ```bash
-pwright run hello.yaml --param url=https://example.com
+pwright script run hello.yaml --param url=https://example.com
+
+# Validate without executing
+pwright script validate hello.yaml --param url=https://example.com
 ```
 
-Scripts support parameters, JS registries, error handling, and produce
-structured JSONL output. See [examples/scripts/](examples/scripts/) for more.
+Scripts support parameters (`--param`, `--param-file`), a central JS registry,
+error handling (`on_error: continue`), and produce structured JSONL output.
+See [examples/scripts/](examples/scripts/) for more.
 
 ## Agent Integration
 
@@ -257,6 +261,18 @@ pwright-server --cdp-url http://localhost:9222
 ```
 
 See [gRPC API Reference](docs/grpc-api.md) for full request/response schemas.
+
+## Docker Deployment
+
+One-command setup with Chrome + gRPC server:
+
+```bash
+cd deploy
+docker compose up --build -d
+# gRPC available at localhost:50051
+```
+
+See [deploy/README.md](deploy/README.md) for details.
 
 ## Documentation
 

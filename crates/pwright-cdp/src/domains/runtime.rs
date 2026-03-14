@@ -55,11 +55,9 @@ impl CdpSession {
             )
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
-            let text = details
-                .get("text")
-                .and_then(|t| t.as_str())
-                .unwrap_or("JavaScript exception");
-            return Err(crate::connection::CdpError::Other(text.to_string()));
+            return Err(crate::connection::CdpError::Other(format_js_exception(
+                details,
+            )));
         }
         Ok(result)
     }
@@ -80,11 +78,9 @@ impl CdpSession {
             )
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
-            let text = details
-                .get("text")
-                .and_then(|t| t.as_str())
-                .unwrap_or("JavaScript exception");
-            return Err(crate::connection::CdpError::Other(text.to_string()));
+            return Err(crate::connection::CdpError::Other(format_js_exception(
+                details,
+            )));
         }
         Ok(result)
     }
@@ -110,11 +106,9 @@ impl CdpSession {
             )
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
-            let text = details
-                .get("text")
-                .and_then(|t| t.as_str())
-                .unwrap_or("JavaScript exception");
-            return Err(crate::connection::CdpError::Other(text.to_string()));
+            return Err(crate::connection::CdpError::Other(format_js_exception(
+                details,
+            )));
         }
         Ok(result)
     }
@@ -161,14 +155,31 @@ impl CdpSession {
             )
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
-            let text = details
-                .get("text")
-                .and_then(|t| t.as_str())
-                .unwrap_or("JavaScript exception");
-            return Err(crate::connection::CdpError::Other(text.to_string()));
+            return Err(crate::connection::CdpError::Other(format_js_exception(
+                details,
+            )));
         }
         Ok(result)
     }
+}
+
+/// Format a CDP exceptionDetails object into a human-readable error message.
+fn format_js_exception(details: &serde_json::Value) -> String {
+    let text = details
+        .get("text")
+        .and_then(|t| t.as_str())
+        .unwrap_or("JavaScript exception");
+    let line = details.get("lineNumber").and_then(|l| l.as_i64());
+    let col = details.get("columnNumber").and_then(|c| c.as_i64());
+
+    let mut msg = text.to_string();
+    if let Some(l) = line {
+        msg.push_str(&format!(" at line {l}"));
+    }
+    if let Some(c) = col {
+        msg.push_str(&format!(":{c}"));
+    }
+    msg
 }
 
 #[cfg(test)]
