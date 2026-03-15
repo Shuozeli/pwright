@@ -26,6 +26,7 @@ pwright-bridge       High-level browser operations
                      Page, Locator, Keyboard, Mouse, Touchscreen
                      Actions, navigation, snapshot, cookies, evaluate
                      Clock trait for DI in time-dependent code
+                     TabCloser trait + ChromeHttpClient for HTTP tab lifecycle
 
 pwright-server       gRPC server wrapping pwright-bridge
                      20 RPCs, protobuf schemas
@@ -54,9 +55,10 @@ already-running instance. Keeps binary at ~6MB.
 Binds `127.0.0.1` by default. Documented. `--bind-all` requires firewall.
 Auth is a future feature request, not a missing security fix.
 
-### 3. `with_page` skips tab map registration
-`Browser::with_page` creates ephemeral tabs that auto-close. No need to
-register in the `tabs` RwLock because the closure owns the Page exclusively.
+### 3. Tab lifecycle is caller-managed
+`Browser::new_tab` returns a `TabHandle` with explicit `close()`. Callers
+own the tab lifecycle. There is no auto-close convenience wrapper --
+callers must close tabs themselves to avoid leaks.
 
 ### 4. Ref cache staleness is expected
 CLI's snapshot-act workflow stores refs in `.pwright/state.json`. DOM changes
@@ -107,7 +109,7 @@ Use for: "is_checked returns true for checked checkbox"
 
 ### Tier 3: Docker integration (end-to-end)
 Real Chrome via `chromedp/headless-shell` with in-process test server.
-72 tests across 12 files. Concurrency tests with 5 parallel tabs.
+80 tests across 13 files. Concurrency tests with 5 parallel tabs.
 
 **Integration test gotchas:**
 - Chrome rejects non-IP `Host` headers (resolve hostname to IP)

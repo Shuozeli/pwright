@@ -13,7 +13,8 @@ use axum::routing::{get, post};
 use pwright_bridge::playwright::Page;
 use pwright_cdp::{CdpConnection, CdpSession};
 
-fn chrome_http_url() -> String {
+/// The Chrome HTTP debug endpoint URL, resolved for Docker/local.
+pub fn chrome_http_url() -> String {
     let host = std::env::var("CHROME_HOST").unwrap_or_else(|_| "localhost".into());
     let port = std::env::var("CHROME_PORT").unwrap_or_else(|_| "9222".into());
     // Chrome rejects Host headers that aren't localhost or an IP address.

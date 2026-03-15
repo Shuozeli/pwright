@@ -684,22 +684,24 @@ pub async fn script(cdp: &str, action: crate::ScriptAction) -> Result<()> {
 
     // Execute
     let browser = pwright_bridge::Browser::connect_http(cdp).await?;
-    browser
-        .with_page(|page| async move {
-            let mut stdout = std::io::stdout();
-            let mut sink = JsonlSink::new(&mut stdout);
-            let result = executor::execute(&script, &page, &params, &mut sink)
-                .await
-                .map_err(|e| pwright_cdp::connection::CdpError::Other(e.to_string()))?;
-            sink.write_summary(&script.name, &result);
-            if result.status != "ok" {
-                return Err(pwright_cdp::connection::CdpError::Other(
-                    result.error.unwrap_or_else(|| "script failed".into()),
-                ));
-            }
-            Ok(())
-        })
-        .await?;
+    let handle = browser.new_tab("about:blank").await?;
+    let page = handle.page();
+
+    let mut stdout = std::io::stdout();
+    let mut sink = JsonlSink::new(&mut stdout);
+    let result = executor::execute(&script, &page, &params, &mut sink)
+        .await
+        .map_err(|e| pwright_cdp::connection::CdpError::Other(e.to_string()))?;
+    sink.write_summary(&script.name, &result);
+
+    handle.close().await?;
+
+    if result.status != "ok" {
+        return Err(pwright_cdp::connection::CdpError::Other(
+            result.error.unwrap_or_else(|| "script failed".into()),
+        )
+        .into());
+    }
 
     Ok(())
 }

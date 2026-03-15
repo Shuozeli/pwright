@@ -120,6 +120,7 @@ tests/integration/
     network.rs                 wait_for_response, response_body
     recipes.rs                 YAML recipe execution
     script_execution.rs        Script runner end-to-end
+    chrome_http.rs             ChromeHttpClient + HTTP tab lifecycle
 ```
 
 ### Docker Compose
@@ -168,7 +169,7 @@ cd tests/integration && docker compose up --build --abort-on-container-exit --ex
 
 ### Phase 2: Docker Integration -- DONE
 1. Docker compose with Chrome (`chromedp/headless-shell`) + in-process test server
-2. 72 integration tests across 12 test files
+2. 80 integration tests across 13 test files
 3. Concurrency tests (6 Docker + 6 FakeCdpClient)
 4. CI: Dockerized test runner (`docker compose up --abort-on-container-exit`)
 5. Two compose files: `docker-compose.yml` (CI) + `docker-compose.local.yml` (dev)

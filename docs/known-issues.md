@@ -24,7 +24,7 @@ in `tab_locks`. Very slow growth, only matters for long-running servers.
 | Proposal | Why it's not an issue |
 |----------|----------------------|
 | gRPC needs authentication | Binds localhost by default. `--bind-all` requires user-managed firewall. Auth is a future feature. |
-| `with_page` should register in tab map | Ephemeral tabs with auto-close by design. |
+| Tab close needs auto-close wrapper | Callers manage lifecycle via `TabHandle::close()`. No auto-close. |
 | Ref cache staleness between CLI invocations | Inherent to stateless CLI. gRPC server uses tab locks. |
 | Download file race condition | Chrome's filename is unpredictable. Not practical to exploit. |
 | Snapshot depth should use BFS | O(n*d) with d<20 is fast enough. |
@@ -51,4 +51,4 @@ in `tab_locks`. Very slow growth, only matters for long-running servers.
 | Opaque JS eval errors | MEDIUM | Extract line number and column from `exceptionDetails` |
 | No `pwright script run` CLI command | HIGH | Added `Script` subcommand with `Run`/`Validate` |
 | No `wait`/sleep step in scripts | MEDIUM | Added `wait: <ms>` step type |
-| `with_page` silently ignores tab close errors | HIGH | Refactored to `TabHandle` + `Browser::new_tab` with explicit lifecycle; `with_page` propagates all errors via `CdpError::Compound` |
+| `with_page` silently ignores tab close errors | HIGH | Removed `with_page`; callers use `Browser::new_tab` / `TabHandle::close` for explicit lifecycle management |

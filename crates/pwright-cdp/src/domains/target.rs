@@ -9,11 +9,15 @@ use crate::session::CdpSession;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TargetInfo {
+    /// CDP returns `targetId`; Chrome HTTP endpoints return `id`.
+    #[serde(alias = "id")]
     pub target_id: String,
     #[serde(rename = "type")]
     pub target_type: String,
     pub title: String,
     pub url: String,
+    /// Present in CDP responses but absent from Chrome HTTP endpoints.
+    #[serde(default)]
     pub attached: bool,
 }
 

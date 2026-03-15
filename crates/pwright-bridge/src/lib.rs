@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod browser;
+pub mod chrome_http;
 pub mod clock;
 pub mod content;
 pub mod cookies;
@@ -12,7 +13,8 @@ pub mod tab;
 
 pub mod test_utils;
 
-pub use browser::{Browser, BrowserConfig};
+pub use browser::{Browser, BrowserConfig, CdpTabCloser, HttpTabCloser, TabCloser, TabHandle};
+pub use chrome_http::ChromeHttpClient;
 pub use snapshot::{A11yNode, RefCache};
 pub use tab::Tab;
 

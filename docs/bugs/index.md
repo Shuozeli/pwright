@@ -7,4 +7,5 @@ bug/improvement list, see [known-issues.md](../known-issues.md).
 
 | Report | Status | Severity | Summary |
 |--------|--------|----------|---------|
-| [tab-leak-bug-report](tab-leak-bug-report.md) | Partially Fixed | Critical | `with_page` leaks tabs when CDP WebSocket is dead. Error swallowing fixed; HTTP fallback not yet implemented. |
+| [targetinfo-http-parse-failure](targetinfo-http-parse-failure.md) | Fixed | High | `TargetInfo` struct uses CDP field names (`targetId`, required `attached`) but `ChromeHttpClient::list_targets()` parses Chrome HTTP `/json/list` which uses `id` and omits `attached`. Fixed: added `#[serde(alias = "id")]` and `#[serde(default)]`. Also fixed `create_target` to use PUT for Chrome 134+. |
+| [tab-leak-bug-report](tab-leak-bug-report.md) | Fixed | Critical | Tabs leaked when CDP WebSocket died under Chrome memory pressure. Removed `with_page`; added `TabCloser` trait with `HttpTabCloser` that uses Chrome HTTP endpoint for reliable close. |

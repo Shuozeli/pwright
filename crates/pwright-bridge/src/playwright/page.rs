@@ -77,7 +77,7 @@ impl Page {
     }
 
     /// Create a Page wrapping a CDP session with a known target ID.
-    /// Used by `Browser::with_page` so `close()` can close the tab.
+    /// Used by `TabHandle::page()` so `close()` can close the tab.
     pub fn with_tab(session: Arc<dyn CdpClient>, target_id: String) -> Self {
         Self {
             session,

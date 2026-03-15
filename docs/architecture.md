@@ -7,9 +7,13 @@ pwright is a thin Rust bridge between downstream services and Chrome. It connect
 ```
 ┌──────────────┐       gRPC        ┌──────────────┐      CDP/WS       ┌─────────┐
 │  Downstream  │ ◄───────────────► │   pwright    │ ◄───────────────► │  Chrome  │
-│  Service     │  (protobuf)       │  (5.9 MB)    │  (JSON-RPC/WS)   │          │
-└──────────────┘                   └──────────────┘                   └─────────┘
+│  Service     │  (protobuf)       │  (5.9 MB)    │  HTTP /json/*     │  :9222   │
+└──────────────┘                   └──────────────┘ ◄───────────────► └─────────┘
 ```
+
+CDP WebSocket handles DOM, Runtime, Input, and all page interactions.
+Chrome HTTP endpoints (`/json/close`, `/json/list`) handle tab lifecycle
+and are used as a reliable fallback when the WebSocket is under pressure.
 
 ## Crate Structure
 
@@ -37,7 +41,8 @@ Async WebSocket client for Chrome DevTools Protocol.
 
 Translates user-intent into CDP command sequences.
 
-- **`browser.rs`** — Central controller. Manages the CDP connection, tab map, ref caches, and concurrency (per-tab `Mutex` + cross-tab `Semaphore`). `TabHandle` provides explicit ephemeral tab lifecycle (`new_tab` / `close`); `with_page` wraps it for auto-close convenience.
+- **`browser.rs`** — Central controller. Manages the CDP connection, tab map, ref caches, and concurrency (per-tab `Mutex` + cross-tab `Semaphore`). `TabHandle` provides explicit ephemeral tab lifecycle (`new_tab` / `close`). `TabCloser` trait abstracts the close transport: `CdpTabCloser` (WebSocket) or `HttpTabCloser` (Chrome HTTP endpoint). `Browser::connect_http` auto-selects HTTP closer for reliability under Chrome memory pressure.
+- **`chrome_http.rs`** — HTTP client for Chrome's debug endpoints (`/json/list`, `/json/close`, `/json/new`, `/json/version`). More reliable than CDP WebSocket under memory pressure.
 - **`tab.rs`** — Tab lifecycle: create (via `Target.createTarget` + `attachToTarget`), close, list, resolve.
 - **`navigate.rs`** — Navigation with 4 wait strategies: None, DOM ready, NetworkIdle, Selector.
 - **`actions.rs`** — 9 browser actions: click, type, fill, press, focus, hover, select, scroll, drag. Each follows the CDP pattern learned from PinchTab (e.g., `scrollIntoView → getBoxModel → dispatchMouseEvent`).

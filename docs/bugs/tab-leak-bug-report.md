@@ -1,53 +1,52 @@
 <!-- agent-updated: 2026-03-15 -->
 # Bug Report: `with_page` Tab Leak Under CDP Connection Failure
 
-## Status: PARTIALLY FIXED
+## Status: FIXED (root cause eliminated)
 
-**What was fixed:** `with_page` no longer silently swallows close errors.
-It was refactored to use `TabHandle` + `Browser::new_tab` with explicit
-lifecycle control, and `with_page` propagates all errors via
-`CdpError::Compound`. Callers now see close failures and can implement
-fallback cleanup using `TabHandle::target_id()`.
+**What was fixed:**
 
-**What remains open:** When the CDP WebSocket is dead (Chrome under memory
-pressure, network hiccup), the `target_close` CDP command still cannot
-reach Chrome. The error is now surfaced to the caller, but the tab still
-leaks in Chrome. An HTTP-based fallback (`/json/close/{targetId}`) would
-fix this -- see proposed fixes below.
+1. `with_page` removed entirely. Callers manage tab lifecycle explicitly.
+2. `TabCloser` trait abstracts the close transport. `Browser::connect_http`
+   auto-selects `HttpTabCloser` which uses Chrome's HTTP debug endpoint
+   (`GET /json/close/{targetId}`) -- this works even when the CDP WebSocket
+   is dead under Chrome memory pressure.
+3. `ChromeHttpClient` provides HTTP-based `list_targets`, `close_target`,
+   `create_target`, and `version` for direct Chrome management.
 
 ## Original Symptom
 
-When using `Browser::with_page()` in a long-running server (llm-web-proxy),
-tabs accumulate in Chrome and are never closed. After ~60 minutes of serving
-requests, Chrome instances reach 1.4GB+ memory and get OOMKilled.
+When using `Browser::with_page()` in a long-running server, tabs accumulate
+in Chrome and are never closed. After ~60 minutes of serving requests,
+Chrome instances reach 1.4GB+ memory and get OOMKilled.
 
-Observed tab state after 61 minutes (16 ok requests served):
+Example tab state after sustained use:
 
 ```
-chrome-0: 3 tabs  [page] https://gemini.google.com/app
-chrome-1: 3 tabs  [page] https://gemini.google.com/app
-chrome-4: 2 tabs  [page] https://gemini.google.com/app
-chrome-6: 1 tab   [page] https://gemini.google.com/app
-chrome-7: 5 tabs  [page] https://gemini.google.com/app
-chrome-9: 1 tab   [page] https://gemini.google.com/app
+instance-0: 3 tabs leaked
+instance-1: 3 tabs leaked
+instance-2: 2 tabs leaked
+instance-3: 5 tabs leaked
 ```
 
-15 leaked tabs across 6 Chrome instances. None navigated to `about:blank`.
-None closed. Chrome instances that hit 1536MB limit were OOMKilled.
+Leaked tabs are never navigated to `about:blank` or closed.
 
 ## Root Cause
 
 The original `with_page` silently swallowed close errors with
 `let _ = self.browser_session.target_close(&target_id).await`.
 
-This has been refactored: `with_page` now delegates to `TabHandle::close()`
-which calls `self.browser_client.target_close()` via the `CdpClient` trait,
-and errors are propagated via `combine_results()` / `CdpError::Compound`.
+This was a two-part problem:
 
-However, when the WebSocket is dead, the CDP command still cannot reach Chrome,
-so the tab leaks regardless of error propagation. The caller now knows the
-close failed (via the error) and has access to `TabHandle::target_id()` for
-HTTP-based fallback cleanup.
+1. **Error swallowing:** `with_page` discarded the close error. Fixed by
+   removing `with_page` -- callers now use `TabHandle::close()` which
+   always returns errors.
+
+2. **WebSocket unreliable under pressure:** CDP `Target.closeTarget` goes
+   over the same WebSocket as DOM operations. Under Chrome memory pressure,
+   the WebSocket dies and close commands never reach Chrome. Fixed by
+   adding `HttpTabCloser` which uses Chrome's HTTP debug endpoint
+   (`GET /json/close/{targetId}`), a simpler code path that stays alive
+   when the WebSocket is dead.
 
 ## Why This Doesn't Affect Short-Lived Usage
 
@@ -63,7 +62,7 @@ tabs via `with_page` over minutes/hours, where some CDP connections degrade.
 
 1. Start `chromedp/headless-shell` with `--remote-debugging-port=9222`
 2. Connect via `Browser::connect_http("http://localhost:9222")`
-3. In a loop, call `browser.with_page(|page| { page.goto("https://gemini.google.com/", None).await; ... })`
+3. In a loop, call `browser.with_page(|page| { page.goto("https://example.com/", None).await; ... })`
 4. After ~10-20 iterations, query `http://localhost:9222/json/list`
 5. Observe tabs accumulating (should be 0 or 1, will be 5+)
 
@@ -121,30 +120,14 @@ let _ = self.browser_session.target_close(&target_id).await;
 
 ## Evidence
 
-### Memory growth timeline (per-Chrome, 10 instances)
-
-```
-12:25  1494 MB (peak from load test)
-12:30  1013 MB
-13:30  3800 MB (10 Chrome total)
-14:15  3805 MB
-14:40   881 MB (after OOM restarts)
-```
-
 ### Key files
 
 - `crates/pwright-bridge/src/browser.rs` -- `with_page`, `TabHandle`, `Browser::new_tab`, `combine_results`
 - `crates/pwright-bridge/src/tab.rs` -- `close_tab` (used by gRPC server, not `with_page`)
 - `crates/pwright-cdp/src/connection.rs` -- `CdpError::Compound`, Drop/shutdown (CancellationToken)
 
-### Consumer code (llm-web-proxy)
-
-- `libservers/experimentation/llm-web-proxy/src/service.rs` -- gRPC handler using `with_page`
-- `libservers/experimentation/llm-web-proxy/src/http.rs` -- HTTP handler using `with_page`
-- Both navigate to `about:blank` before returning, but this fails when CDP is dead
-
 ## Impact
 
 - **OOMKilled**: Chrome instances hit memory limit after 30-60 min of sustained use
 - **Auto-reconnect masks the problem**: pool reconnects to restarted Chrome, but leaked tabs repeat
-- **Workaround**: Increase Chrome memory limit (current: 1.5GB), but this just delays OOM
+- **Workaround**: Increase Chrome memory limit, but this just delays OOM
