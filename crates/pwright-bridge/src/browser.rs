@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
-use pwright_cdp::{CdpConnection, CdpSession};
+use pwright_cdp::{CdpClient, CdpConnection, CdpSession};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 use tracing::info;
 
@@ -210,9 +211,43 @@ impl Browser {
         Self::connect(config).await
     }
 
-    /// Create a new tab, run the closure with a `Page`, then close the tab.
+    /// Open a new browser tab and return a [`TabHandle`] for lifecycle management.
     ///
-    /// The tab is always closed, even if the closure returns an error.
+    /// The caller owns the tab and is responsible for calling [`TabHandle::close`].
+    /// The handle exposes [`TabHandle::target_id`] so callers can implement
+    /// fallback cleanup (e.g., HTTP `/json/close/{target_id}`) if the CDP
+    /// WebSocket is dead.
+    ///
+    /// ```rust,ignore
+    /// let handle = browser.new_tab("about:blank").await?;
+    /// let page = handle.page();
+    /// page.goto("https://example.com", None).await?;
+    /// let text = page.locator("h1").text_content().await?;
+    /// handle.close().await?;
+    /// ```
+    pub async fn new_tab(self: &Arc<Self>, url: &str) -> CdpResult<TabHandle> {
+        let nav_url = if url.is_empty() { "about:blank" } else { url };
+        let target_id = self.browser_session.target_create(nav_url).await?;
+        let session_id = self.browser_session.target_attach(&target_id).await?;
+        let session: Arc<dyn CdpClient> = Arc::new(CdpSession::new(
+            self.connection.clone(),
+            session_id,
+            target_id.clone(),
+        ));
+        let browser_client: Arc<dyn CdpClient> =
+            Arc::new(CdpSession::browser(self.connection.clone()));
+        Ok(TabHandle::new(browser_client, session, target_id))
+    }
+
+    /// Convenience: create a tab, run the closure, then close the tab.
+    ///
+    /// All errors propagate -- including tab close failures. If the closure
+    /// returns an error, the close error (if any) is logged but the closure
+    /// error is returned. If the closure succeeds but close fails, the close
+    /// error is returned.
+    ///
+    /// For full lifecycle control (e.g., HTTP fallback on close failure),
+    /// use [`Browser::new_tab`] instead.
     ///
     /// ```rust,ignore
     /// let result = browser.with_page(|page| async move {
@@ -225,27 +260,185 @@ impl Browser {
         F: FnOnce(Page) -> Fut,
         Fut: Future<Output = CdpResult<T>>,
     {
-        // Create a new tab
-        let target_id = self.browser_session.target_create("about:blank").await?;
-        let session_id = self.browser_session.target_attach(&target_id).await?;
-        let session = CdpSession::new(self.connection.clone(), session_id, target_id.clone());
-        let session = Arc::new(session);
-
-        let page = Page::with_tab(session.clone(), target_id.clone());
-
-        // Run the closure; always close the tab afterwards
+        let handle = self.new_tab("about:blank").await?;
+        let page = handle.page();
         let result = f(page).await;
+        let close_result = handle.close().await;
+        combine_results(result, close_result)
+    }
+}
 
-        // Close the tab (best effort — ignore errors)
-        let _ = self.browser_session.target_close(&target_id).await;
+/// Handle for an ephemeral browser tab with explicit lifecycle control.
+///
+/// Created by [`Browser::new_tab`]. The caller is responsible for closing
+/// the tab via [`TabHandle::close`]. If the CDP close fails,
+/// [`TabHandle::target_id`] is available for fallback cleanup
+/// (e.g., HTTP `GET /json/close/{target_id}`).
+pub struct TabHandle {
+    browser_client: Arc<dyn CdpClient>,
+    session: Arc<dyn CdpClient>,
+    target_id: String,
+    closed: AtomicBool,
+}
 
-        result
+impl TabHandle {
+    /// Create a new `TabHandle`.
+    ///
+    /// - `browser_client`: browser-level CDP client for `Target.closeTarget`
+    /// - `session`: tab-level CDP client for page operations
+    /// - `target_id`: Chrome CDP target ID
+    pub fn new(
+        browser_client: Arc<dyn CdpClient>,
+        session: Arc<dyn CdpClient>,
+        target_id: String,
+    ) -> Self {
+        Self {
+            browser_client,
+            session,
+            target_id,
+            closed: AtomicBool::new(false),
+        }
+    }
+
+    /// The Chrome CDP target ID for this tab.
+    ///
+    /// Useful for fallback cleanup via Chrome's HTTP debug API:
+    /// `GET http://{host}:{port}/json/close/{target_id}`
+    pub fn target_id(&self) -> &str {
+        &self.target_id
+    }
+
+    /// Create a [`Page`] for interacting with this tab.
+    pub fn page(&self) -> Page {
+        Page::with_tab(self.session.clone(), self.target_id.clone())
+    }
+
+    /// Close the tab via CDP. Returns the error if close fails.
+    ///
+    /// Idempotent: calling close on an already-closed handle returns `Ok(())`.
+    pub async fn close(&self) -> CdpResult<()> {
+        if self.closed.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
+        self.browser_client.target_close(&self.target_id).await
+    }
+}
+
+/// Combine user result and close result, propagating both via `CdpError::Compound` when both fail.
+fn combine_results<T>(result: CdpResult<T>, close_result: CdpResult<()>) -> CdpResult<T> {
+    match (result, close_result) {
+        (Ok(val), Ok(())) => Ok(val),
+        (Ok(_), Err(close_err)) => Err(close_err),
+        (Err(user_err), Ok(())) => Err(user_err),
+        (Err(user_err), Err(close_err)) => Err(CdpError::Compound {
+            source: Box::new(user_err),
+            system: Box::new(close_err),
+        }),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::MockCdpClient;
+
+    #[tokio::test]
+    async fn test_tab_handle_close_calls_target_close() {
+        let browser_client = Arc::new(MockCdpClient::new());
+        let session = Arc::new(MockCdpClient::new());
+        let handle = TabHandle::new(
+            browser_client.clone() as Arc<dyn CdpClient>,
+            session as Arc<dyn CdpClient>,
+            "target-abc".to_string(),
+        );
+
+        handle.close().await.unwrap();
+
+        let calls = browser_client.calls_for("Target.closeTarget");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].args[0], "target-abc");
+    }
+
+    #[tokio::test]
+    async fn test_tab_handle_close_idempotent() {
+        let browser_client = Arc::new(MockCdpClient::new());
+        let session = Arc::new(MockCdpClient::new());
+        let handle = TabHandle::new(
+            browser_client.clone() as Arc<dyn CdpClient>,
+            session as Arc<dyn CdpClient>,
+            "target-abc".to_string(),
+        );
+
+        handle.close().await.unwrap();
+        handle.close().await.unwrap();
+
+        let calls = browser_client.calls_for("Target.closeTarget");
+        assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn test_tab_handle_target_id() {
+        let browser_client = Arc::new(MockCdpClient::new());
+        let session = Arc::new(MockCdpClient::new());
+        let handle = TabHandle::new(
+            browser_client as Arc<dyn CdpClient>,
+            session as Arc<dyn CdpClient>,
+            "target-xyz".to_string(),
+        );
+
+        assert_eq!(handle.target_id(), "target-xyz");
+    }
+
+    #[test]
+    fn test_tab_handle_page_has_target_id() {
+        let browser_client = Arc::new(MockCdpClient::new());
+        let session = Arc::new(MockCdpClient::new());
+        let handle = TabHandle::new(
+            browser_client as Arc<dyn CdpClient>,
+            session as Arc<dyn CdpClient>,
+            "target-page".to_string(),
+        );
+
+        let page = handle.page();
+        assert_eq!(page.target_id(), Some("target-page"));
+    }
+
+    #[test]
+    fn test_combine_results_both_ok() {
+        let result: CdpResult<i32> = Ok(42);
+        let close_result: CdpResult<()> = Ok(());
+        assert_eq!(combine_results(result, close_result).unwrap(), 42);
+    }
+
+    #[test]
+    fn test_combine_results_user_err_only() {
+        let result: CdpResult<i32> = Err(CdpError::Timeout);
+        let close_result: CdpResult<()> = Ok(());
+        let err = combine_results(result, close_result).unwrap_err();
+        assert!(matches!(err, CdpError::Timeout));
+    }
+
+    #[test]
+    fn test_combine_results_close_err_only() {
+        let result: CdpResult<i32> = Ok(42);
+        let close_result: CdpResult<()> = Err(CdpError::Closed);
+        let err = combine_results(result, close_result).unwrap_err();
+        assert!(matches!(err, CdpError::Closed));
+    }
+
+    #[test]
+    fn test_combine_results_both_err_compound() {
+        let result: CdpResult<i32> = Err(CdpError::Timeout);
+        let close_result: CdpResult<()> = Err(CdpError::Closed);
+        let err = combine_results(result, close_result).unwrap_err();
+        match err {
+            CdpError::Compound { source, system } => {
+                assert!(matches!(*source, CdpError::Timeout));
+                assert!(matches!(*system, CdpError::Closed));
+            }
+            other => panic!("expected Compound, got: {other:?}"),
+        }
+    }
 
     #[test]
     fn test_rewrite_ws_url_basic() {

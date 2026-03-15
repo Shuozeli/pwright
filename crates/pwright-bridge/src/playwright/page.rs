@@ -87,6 +87,11 @@ impl Page {
         }
     }
 
+    /// The CDP target ID, if this page is backed by a tab.
+    pub fn target_id(&self) -> Option<&str> {
+        self.target_id.as_deref()
+    }
+
     /// Close the page (tab). If created with `with_tab`, closes the underlying target.
     /// Also aborts any spawned network listener tasks. Thread-safe.
     pub async fn close(&self) -> CdpResult<()> {
@@ -1181,6 +1186,20 @@ mod tests {
         // Arg should be serialized
         let args = cf_calls[0].args[0]["arguments"].as_array().unwrap();
         assert_eq!(args[0]["value"], "world");
+    }
+
+    #[test]
+    fn test_page_target_id_with_tab() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::with_tab(mock, "target-123".to_string());
+        assert_eq!(page.target_id(), Some("target-123"));
+    }
+
+    #[test]
+    fn test_page_target_id_without_tab() {
+        let mock = Arc::new(MockCdpClient::new());
+        let page = Page::new(mock);
+        assert_eq!(page.target_id(), None);
     }
 
     #[tokio::test]

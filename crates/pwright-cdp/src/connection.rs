@@ -32,6 +32,11 @@ pub enum CdpError {
     ElementNotFound { selector: String },
     #[error("Navigation failed for {url}: {reason}")]
     NavigationFailed { url: String, reason: String },
+    #[error("source error: {source}; system error: {system}")]
+    Compound {
+        source: Box<CdpError>,
+        system: Box<CdpError>,
+    },
     #[error("{0}")]
     Other(String),
 }
@@ -270,5 +275,36 @@ impl CdpConnection {
         }
 
         debug!("CDP reader loop ended");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compound_error_display() {
+        let err = CdpError::Compound {
+            source: Box::new(CdpError::Timeout),
+            system: Box::new(CdpError::Closed),
+        };
+        let msg = format!("{err}");
+        assert!(msg.contains("Timeout"), "missing source: {msg}");
+        assert!(msg.contains("Connection closed"), "missing system: {msg}");
+    }
+
+    #[test]
+    fn test_compound_error_pattern_match() {
+        let err = CdpError::Compound {
+            source: Box::new(CdpError::Timeout),
+            system: Box::new(CdpError::Closed),
+        };
+        match err {
+            CdpError::Compound { source, system } => {
+                assert!(matches!(*source, CdpError::Timeout));
+                assert!(matches!(*system, CdpError::Closed));
+            }
+            other => panic!("expected Compound, got: {other:?}"),
+        }
     }
 }
