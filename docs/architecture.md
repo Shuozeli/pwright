@@ -37,7 +37,7 @@ Async WebSocket client for Chrome DevTools Protocol.
 
 Translates user-intent into CDP command sequences.
 
-- **`browser.rs`** — Central controller. Manages the CDP connection, tab map, ref caches, and concurrency (per-tab `Mutex` + cross-tab `Semaphore`).
+- **`browser.rs`** — Central controller. Manages the CDP connection, tab map, ref caches, and concurrency (per-tab `Mutex` + cross-tab `Semaphore`). `TabHandle` provides explicit ephemeral tab lifecycle (`new_tab` / `close`); `with_page` wraps it for auto-close convenience.
 - **`tab.rs`** — Tab lifecycle: create (via `Target.createTarget` + `attachToTarget`), close, list, resolve.
 - **`navigate.rs`** — Navigation with 4 wait strategies: None, DOM ready, NetworkIdle, Selector.
 - **`actions.rs`** — 9 browser actions: click, type, fill, press, focus, hover, select, scroll, drag. Each follows the CDP pattern learned from PinchTab (e.g., `scrollIntoView → getBoxModel → dispatchMouseEvent`).

@@ -13,8 +13,9 @@ pages with real HTML, and `Locator`/`Page` methods interact with a real DOM tree
 ### Architecture
 
 ```
-crates/pwright-bridge/src/fake/
-  mod.rs           FakeCdpClient struct + CdpClient impl
+crates/pwright-fake/src/
+  lib.rs           Crate root, re-exports
+  client.rs        FakeCdpClient struct + CdpClient impl
   dom.rs           In-memory DOM tree (nodes, attributes, text)
   selector.rs      CSS selector matching against the DOM
   builder.rs       HTML parser for test setup
@@ -75,16 +76,16 @@ assert_eq!(page.text_content("h1").await?, Some("Welcome".into()));
 
 ### Coexistence with MockCdpClient
 
-`MockCdpClient` (renamed `StubCdpClient`) remains for call-sequence verification
-tests (e.g. "clicking calls mousePressed then mouseReleased"). `FakeCdpClient`
-is for behavior verification (e.g. "clicking a checkbox changes checked state").
+`MockCdpClient` remains for call-sequence verification tests (e.g. "clicking
+calls mousePressed then mouseReleased"). `FakeCdpClient` is for behavior
+verification (e.g. "clicking a checkbox changes checked state").
 
 | Test type | Use |
 |-----------|-----|
-| "Does click dispatch the right CDP calls?" | StubCdpClient |
+| "Does click dispatch the right CDP calls?" | MockCdpClient |
 | "Does is_checked() return true for a checked checkbox?" | FakeCdpClient |
 | "Does first() pick the first of 3 elements?" | FakeCdpClient |
-| "Does wait_for_response capture network events?" | StubCdpClient (event injection) |
+| "Does wait_for_response capture network events?" | MockCdpClient (event injection) |
 
 ---
 
@@ -96,20 +97,29 @@ provides test pages so no internet connection is needed.
 ### Architecture
 
 ```
-tests/
-  docker-compose.yml       Chrome headless + fake HTTP server
-  fixtures/
-    server/                Axum-based fake HTTP server
-      Cargo.toml
-      src/main.rs          Serves static + dynamic routes
-    pages/
-      login.html           Login form test page
-      todo.html            TodoMVC-like test page
-      api.html             SPA that makes API calls
-  integration/
-    navigation.rs          Real goto, reload, back/forward
-    locator.rs             Real selector resolution + actions
-    network.rs             Real wait_for_response + response_body
+tests/integration/
+  docker-compose.yml           Chrome headless (CI)
+  docker-compose.local.yml     Chrome headless (local dev)
+  Dockerfile                   Test runner container
+  Cargo.toml                   Integration test crate
+  src/lib.rs                   Shared helpers (connect, navigate)
+  pages/
+    login.html                 Login form test page
+    todo.html                  TodoMVC-like test page
+    api-demo.html              SPA that makes API calls
+  tests/
+    actions.rs                 Click, fill, type, press, hover, select, drag
+    click_navigation.rs        Click triggers <a> navigation
+    concurrency.rs             5 parallel tabs, session isolation
+    connection.rs              Connect, reconnect, health
+    locator.rs                 Selector resolution + element queries
+    locator_advanced.rs        getBy*, filter, composition, nth
+    login.rs                   Full login flow
+    navigation.rs              goto, reload, back/forward
+    navigation_advanced.rs     Wait strategies, block images/media
+    network.rs                 wait_for_response, response_body
+    recipes.rs                 YAML recipe execution
+    script_execution.rs        Script runner end-to-end
 ```
 
 ### Docker Compose
@@ -117,13 +127,12 @@ tests/
 ```yaml
 services:
   chrome:
-    image: chromium/chrome:latest
-    command: --headless --remote-debugging-port=9222 --no-sandbox
+    image: chromedp/headless-shell:latest
     ports: ["9222:9222"]
 
-  fake-server:
-    build: fixtures/server
-    ports: ["3000:3000"]
+  test-runner:
+    build: .
+    depends_on: [chrome]
 ```
 
 ### Test pages
@@ -137,14 +146,12 @@ services:
 ### Running
 
 ```bash
-# Start test infrastructure
-docker compose -f tests/docker-compose.yml up -d
+# Local: start Chrome, run tests from host
+docker compose -f tests/integration/docker-compose.local.yml up -d
+cargo test -p pwright-integration-tests -- --ignored --test-threads=1
 
-# Run integration tests
-cargo test --test integration -- --ignored
-
-# Tear down
-docker compose -f tests/docker-compose.yml down
+# CI: Dockerized test runner (matches CI)
+cd tests/integration && docker compose up --build --abort-on-container-exit --exit-code-from test-runner
 ```
 
 ---

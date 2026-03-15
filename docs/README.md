@@ -32,4 +32,5 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 - [Feature Comparison](knowledge/feature-comparison.md) — Playwright vs PinchTab vs pwright side-by-side
 - [Testing Strategy](knowledge/testing-strategy.md) — FakeCdpClient + Docker integration tests
 - [Known Issues](known-issues.md) — Bug tracker and fixed issues
+- [Bug Reports](bugs/index.md) — Detailed investigation reports for significant bugs
 - [TODO](todo.md) — Planned features and roadmap

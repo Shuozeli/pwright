@@ -342,10 +342,12 @@ pwright implements a subset of Playwright's selector engine:
 **Resolution flow:**
 ```
 locator("button.submit").click()
-  → DOM.querySelector("button.submit") → backendNodeId
-    → DOM.getContentQuads(backendNodeId) → (x, y)
-      → Input.dispatchMouseEvent("mousePressed", x, y)
-      → Input.dispatchMouseEvent("mouseReleased", x, y)
+  → DOM.getDocument → root nodeId
+    → DOM.querySelector(root, "button.submit") → nodeId
+      → DOM.scrollIntoViewIfNeeded(nodeId)
+      → DOM.getBoxModel(nodeId) → content quad → (x, y) center
+        → Input.dispatchMouseEvent("mousePressed", x, y)
+        → Input.dispatchMouseEvent("mouseReleased", x, y)
 ```
 
 ---
