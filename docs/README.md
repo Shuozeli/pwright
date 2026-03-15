@@ -13,6 +13,10 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 - [gRPC API Reference](grpc-api.md) — All RPCs with request/response schemas
 - [Codelabs](codelabs.md) — Usage examples with Rust, CLI, and gRPC
 
+## Concepts
+
+- [Pre-compiled Browser Skills for Agents](recipes-for-agents.md) -- Why recipes beat runtime exploration
+
 ## Script Runner & Recipes
 
 - [Script Examples](../examples/scripts/) — Ready-to-use YAML automation scripts
