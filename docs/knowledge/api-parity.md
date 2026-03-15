@@ -68,7 +68,7 @@ The `getBy*` locator APIs (`get_by_text`, `get_by_label`, `get_by_role`, `filter
 | Feature | Available in | Notes |
 |---------|-------------|-------|
 | `Browser::connect_http()` | Rust API | CDP URL discovery via `/json/version` |
-| `Browser::with_page()` | Rust API | Tab lifecycle management (auto-close) |
+| `Browser::new_tab()` / `TabHandle::close()` | Rust API | Explicit tab lifecycle management |
 | `Page::close()` | Rust API | Close tab via `Target.closeTarget` |
 | `Page::on_response()` | Rust API | Network response event channel |
 | `Page::on_request()` | Rust API | Network request event channel |

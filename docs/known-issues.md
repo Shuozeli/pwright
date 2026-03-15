@@ -51,4 +51,4 @@ in `tab_locks`. Very slow growth, only matters for long-running servers.
 | Opaque JS eval errors | MEDIUM | Extract line number and column from `exceptionDetails` |
 | No `pwright script run` CLI command | HIGH | Added `Script` subcommand with `Run`/`Validate` |
 | No `wait`/sleep step in scripts | MEDIUM | Added `wait: <ms>` step type |
-| `with_page` silently ignores tab close errors | HIGH | Refactored to `TabHandle` + `Browser::new_tab` with explicit lifecycle; `with_page` propagates all errors via `CdpError::Compound` |
+| `with_page` silently ignores tab close errors | HIGH | Removed `with_page`; callers use `Browser::new_tab` / `TabHandle::close` for explicit lifecycle management |

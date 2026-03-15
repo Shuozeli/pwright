@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -238,34 +237,6 @@ impl Browser {
             Arc::new(CdpSession::browser(self.connection.clone()));
         Ok(TabHandle::new(browser_client, session, target_id))
     }
-
-    /// Convenience: create a tab, run the closure, then close the tab.
-    ///
-    /// All errors propagate -- including tab close failures. If the closure
-    /// returns an error, the close error (if any) is logged but the closure
-    /// error is returned. If the closure succeeds but close fails, the close
-    /// error is returned.
-    ///
-    /// For full lifecycle control (e.g., HTTP fallback on close failure),
-    /// use [`Browser::new_tab`] instead.
-    ///
-    /// ```rust,ignore
-    /// let result = browser.with_page(|page| async move {
-    ///     page.goto("https://example.com", None).await?;
-    ///     page.locator("h1").text_content().await
-    /// }).await?;
-    /// ```
-    pub async fn with_page<F, Fut, T>(self: &Arc<Self>, f: F) -> CdpResult<T>
-    where
-        F: FnOnce(Page) -> Fut,
-        Fut: Future<Output = CdpResult<T>>,
-    {
-        let handle = self.new_tab("about:blank").await?;
-        let page = handle.page();
-        let result = f(page).await;
-        let close_result = handle.close().await;
-        combine_results(result, close_result)
-    }
 }
 
 /// Handle for an ephemeral browser tab with explicit lifecycle control.
@@ -321,19 +292,6 @@ impl TabHandle {
             return Ok(());
         }
         self.browser_client.target_close(&self.target_id).await
-    }
-}
-
-/// Combine user result and close result, propagating both via `CdpError::Compound` when both fail.
-fn combine_results<T>(result: CdpResult<T>, close_result: CdpResult<()>) -> CdpResult<T> {
-    match (result, close_result) {
-        (Ok(val), Ok(())) => Ok(val),
-        (Ok(_), Err(close_err)) => Err(close_err),
-        (Err(user_err), Ok(())) => Err(user_err),
-        (Err(user_err), Err(close_err)) => Err(CdpError::Compound {
-            source: Box::new(user_err),
-            system: Box::new(close_err),
-        }),
     }
 }
 
@@ -401,43 +359,6 @@ mod tests {
 
         let page = handle.page();
         assert_eq!(page.target_id(), Some("target-page"));
-    }
-
-    #[test]
-    fn test_combine_results_both_ok() {
-        let result: CdpResult<i32> = Ok(42);
-        let close_result: CdpResult<()> = Ok(());
-        assert_eq!(combine_results(result, close_result).unwrap(), 42);
-    }
-
-    #[test]
-    fn test_combine_results_user_err_only() {
-        let result: CdpResult<i32> = Err(CdpError::Timeout);
-        let close_result: CdpResult<()> = Ok(());
-        let err = combine_results(result, close_result).unwrap_err();
-        assert!(matches!(err, CdpError::Timeout));
-    }
-
-    #[test]
-    fn test_combine_results_close_err_only() {
-        let result: CdpResult<i32> = Ok(42);
-        let close_result: CdpResult<()> = Err(CdpError::Closed);
-        let err = combine_results(result, close_result).unwrap_err();
-        assert!(matches!(err, CdpError::Closed));
-    }
-
-    #[test]
-    fn test_combine_results_both_err_compound() {
-        let result: CdpResult<i32> = Err(CdpError::Timeout);
-        let close_result: CdpResult<()> = Err(CdpError::Closed);
-        let err = combine_results(result, close_result).unwrap_err();
-        match err {
-            CdpError::Compound { source, system } => {
-                assert!(matches!(*source, CdpError::Timeout));
-                assert!(matches!(*system, CdpError::Closed));
-            }
-            other => panic!("expected Compound, got: {other:?}"),
-        }
     }
 
     #[test]

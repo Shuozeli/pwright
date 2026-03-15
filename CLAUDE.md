@@ -18,7 +18,7 @@ and crate map. That file is the authoritative reference for agents.
 
 - Do NOT propose adding browser launch/install - pwright is attach-only by design
 - Do NOT propose adding gRPC authentication - documented design choice
-- Do NOT change `with_page` to register in tab map - ephemeral by design
+- `with_page` was removed - callers manage tab lifecycle via `Browser::new_tab` / `TabHandle::close`
 - Do NOT change `Page::close()` to `&mut self` - uses AtomicBool for Arc sharing
 - Do NOT revert CancellationToken to `drop(writer_handle)` in CdpConnection
 - Do NOT change `nodeId` back to `backendNodeId` in DOM methods

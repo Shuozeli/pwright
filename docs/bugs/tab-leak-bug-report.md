@@ -1,13 +1,12 @@
 <!-- agent-updated: 2026-03-15 -->
 # Bug Report: `with_page` Tab Leak Under CDP Connection Failure
 
-## Status: PARTIALLY FIXED
+## Status: FIXED (root cause eliminated)
 
-**What was fixed:** `with_page` no longer silently swallows close errors.
-It was refactored to use `TabHandle` + `Browser::new_tab` with explicit
-lifecycle control, and `with_page` propagates all errors via
-`CdpError::Compound`. Callers now see close failures and can implement
-fallback cleanup using `TabHandle::target_id()`.
+**What was fixed:** `with_page` has been removed entirely. Callers now
+use `Browser::new_tab` / `TabHandle::close` for explicit tab lifecycle
+management. Close errors are always visible to the caller, and
+`TabHandle::target_id()` is available for HTTP-based fallback cleanup.
 
 **What remains open:** When the CDP WebSocket is dead (Chrome under memory
 pressure, network hiccup), the `target_close` CDP command still cannot
