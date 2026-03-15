@@ -161,7 +161,7 @@ docker compose -f tests/docker-compose.yml down
 
 ### Phase 2: Docker Integration -- DONE
 1. Docker compose with Chrome (`chromedp/headless-shell`) + in-process test server
-2. 58 integration tests across 9 test files
+2. 72 integration tests across 12 test files
 3. Concurrency tests (6 Docker + 6 FakeCdpClient)
 4. CI: Dockerized test runner (`docker compose up --abort-on-container-exit`)
 5. Two compose files: `docker-compose.yml` (CI) + `docker-compose.local.yml` (dev)

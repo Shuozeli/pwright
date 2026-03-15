@@ -1,0 +1,72 @@
+# extract-article.yaml -- Extract main content from any article URL.
+#
+# Type: query (read-only, safe)
+# Auth: none (unless the article is paywalled)
+#
+# Usage:
+#   pwright script run examples/recipes/research/extract-article.yaml \
+#     --param url="https://example.com/blog/post"
+
+name: "Extract Article"
+version: 1
+type: query
+
+params:
+  url:
+    type: string
+    required: true
+    description: "Article URL to extract"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  extract_article: |
+    (() => {
+      // Try common article containers in priority order
+      const selectors = ['article', '[role="main"]', 'main', '.post-content', '.article-body', '.entry-content', '#content'];
+      let container = null;
+      for (const sel of selectors) {
+        container = document.querySelector(sel);
+        if (container) break;
+      }
+      if (!container) container = document.body;
+
+      // Extract title
+      const title = document.querySelector('h1')?.textContent?.trim()
+        || document.querySelector('title')?.textContent?.trim()
+        || '';
+
+      // Extract author
+      const author = document.querySelector('[rel="author"]')?.textContent?.trim()
+        || document.querySelector('.author')?.textContent?.trim()
+        || document.querySelector('[name="author"]')?.getAttribute('content')
+        || '';
+
+      // Extract date
+      const date = document.querySelector('time')?.getAttribute('datetime')
+        || document.querySelector('time')?.textContent?.trim()
+        || document.querySelector('[name="date"]')?.getAttribute('content')
+        || '';
+
+      // Extract body text (strip nav, ads, sidebar)
+      const clone = container.cloneNode(true);
+      clone.querySelectorAll('nav, .ad, .ads, .sidebar, .comments, footer, script, style, .social-share').forEach(el => el.remove());
+      const body = clone.innerText.trim().substring(0, 10000);
+
+      // Extract word count
+      const words = body.split(/\s+/).length;
+
+      return JSON.stringify({ title, author, date, body, word_count: words });
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "body"
+  - wait: 2000
+  - eval:
+      ref: extract_article
+      save_as: article
+  - output:
+      url: "{{ url }}"
+      article: "{{ article }}"

@@ -1,0 +1,52 @@
+# gmail-read.yaml -- Read unread emails from Gmail.
+#
+# Type: query (read-only, safe)
+# Auth: YES -- you must be logged into Gmail in the Chrome instance
+#
+# Usage:
+#   pwright script run examples/recipes/communication/gmail-read.yaml
+#   pwright script run examples/recipes/communication/gmail-read.yaml --param max_emails=5
+
+name: "Gmail Read"
+version: 1
+type: query
+
+params:
+  max_emails:
+    type: integer
+    default: "10"
+    description: "Maximum emails to extract"
+  label:
+    type: string
+    default: "inbox"
+    description: "Gmail label (inbox, sent, drafts, starred, etc.)"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  extract_emails: |
+    (() => {
+      const rows = document.querySelectorAll('tr.zA');
+      const emails = [];
+      for (const row of rows) {
+        const from = (row.querySelector('.yW span[email]') || row.querySelector('.yW'))?.textContent?.trim() || '';
+        const subject = row.querySelector('.bog')?.textContent?.trim() || '';
+        const snippet = row.querySelector('.y2')?.textContent?.trim() || '';
+        const date = row.querySelector('.xW')?.textContent?.trim() || '';
+        const unread = row.classList.contains('zE');
+        emails.push({ from, subject, snippet, date, unread });
+      }
+      return JSON.stringify(emails);
+    })()
+
+steps:
+  - goto: "https://mail.google.com/mail/u/0/#{{ label }}"
+    wait_for: "tr.zA"
+  - wait: 3000
+  - eval:
+      ref: extract_emails
+      save_as: emails
+  - output:
+      label: "{{ label }}"
+      emails: "{{ emails }}"

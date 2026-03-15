@@ -1,0 +1,86 @@
+# fill-and-submit.yaml -- Fill a form and submit it.
+#
+# Type: MUTATION (submits a form -- may have side effects!)
+# Auth: depends on the target site
+#
+# WARNING: This recipe SUBMITS a form. Use --confirm to execute.
+#
+# Usage:
+#   pwright script run examples/recipes/automation/fill-and-submit.yaml \
+#     --param url="https://example.com/contact" \
+#     --param 'fields=[{"selector":"#name","value":"John"},{"selector":"#email","value":"john@example.com"},{"selector":"#message","value":"Hello"}]' \
+#     --confirm
+
+name: "Fill and Submit Form"
+version: 1
+type: mutation
+
+params:
+  url:
+    type: string
+    required: true
+    description: "Form page URL"
+  fields:
+    type: string
+    required: true
+    description: 'JSON array: [{"selector":"#name","value":"John"},...]'
+  submit_selector:
+    type: string
+    default: "button[type='submit'], input[type='submit']"
+    description: "CSS selector for submit button"
+
+config:
+  default_timeout_ms: 10000
+
+scripts:
+  fill_fields: |
+    ((fieldsJson) => {
+      const fields = JSON.parse(fieldsJson);
+      const results = [];
+      for (const field of fields) {
+        const el = document.querySelector(field.selector);
+        if (el) {
+          el.focus();
+          el.value = field.value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          results.push({ selector: field.selector, status: 'filled' });
+        } else {
+          results.push({ selector: field.selector, status: 'not found' });
+        }
+      }
+      return JSON.stringify(results);
+    })
+  check_result: |
+    (() => {
+      const success = document.querySelector('.success, .alert-success, [role="alert"]');
+      return JSON.stringify({
+        url: window.location.href,
+        has_success_message: !!success,
+        message: success ? success.textContent.trim().substring(0, 200) : ''
+      });
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "form"
+  - wait: 1000
+
+  # Fill all fields via JS (more reliable than individual fill steps)
+  - eval:
+      ref: fill_fields
+      args: ["{{ fields }}"]
+      save_as: fill_result
+  - wait: 500
+
+  # Submit
+  - click: "{{ submit_selector }}"
+  - wait: 3000
+
+  # Check result
+  - eval:
+      ref: check_result
+      save_as: result
+  - output:
+      fill: "{{ fill_result }}"
+      result: "{{ result }}"

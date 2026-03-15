@@ -1,0 +1,61 @@
+# google-search.yaml -- Search Google and extract top results.
+#
+# Type: query (read-only, safe)
+# Auth: none
+#
+# Usage:
+#   pwright script run examples/recipes/research/google-search.yaml \
+#     --param query="rust browser automation"
+
+name: "Google Search"
+version: 1
+type: query
+
+params:
+  query:
+    type: string
+    required: true
+    description: "Search query"
+  max_results:
+    type: integer
+    default: "10"
+    description: "Maximum results to extract"
+
+config:
+  default_timeout_ms: 10000
+
+scripts:
+  extract_results: |
+    (() => {
+      const max = parseInt(document.title) || 10;
+      const results = [];
+      const items = document.querySelectorAll('.g');
+      for (const item of items) {
+        if (results.length >= max) break;
+        const titleEl = item.querySelector('h3');
+        const linkEl = item.querySelector('a[href]');
+        const snippetEl = item.querySelector('.VwiC3b, [data-sncf], [style*="-webkit-line-clamp"]');
+        if (titleEl && linkEl) {
+          const href = linkEl.href;
+          if (href.startsWith('http') && !href.includes('google.com/search')) {
+            results.push({
+              title: titleEl.textContent.trim(),
+              url: href,
+              snippet: snippetEl ? snippetEl.textContent.trim().substring(0, 200) : ''
+            });
+          }
+        }
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://www.google.com/search?q={{ query }}&num={{ max_results }}"
+    wait_for: ".g"
+  - wait: 1000
+  - eval:
+      ref: extract_results
+      save_as: results
+  - output:
+      query: "{{ query }}"
+      results: "{{ results }}"

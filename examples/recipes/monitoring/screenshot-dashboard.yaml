@@ -1,0 +1,49 @@
+# screenshot-dashboard.yaml -- Navigate to any URL and take a screenshot.
+#
+# Type: query (read-only, safe)
+# Auth: depends on the target URL
+#
+# Usage:
+#   pwright script run examples/recipes/monitoring/screenshot-dashboard.yaml \
+#     --param url="https://grafana.example.com/d/my-dashboard"
+
+name: "Screenshot Dashboard"
+version: 1
+type: query
+
+params:
+  url:
+    type: string
+    required: true
+    description: "Dashboard or page URL to screenshot"
+  wait_for:
+    type: string
+    default: "body"
+    description: "CSS selector to wait for before screenshotting"
+  wait_ms:
+    type: integer
+    default: "3000"
+    description: "Extra wait time (ms) for charts/graphs to render"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  get_page_info: |
+    (() => {
+      return JSON.stringify({
+        title: document.title,
+        url: window.location.href,
+        viewport: { width: window.innerWidth, height: window.innerHeight }
+      });
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "{{ wait_for }}"
+  - wait: "{{ wait_ms }}"
+  - eval:
+      ref: get_page_info
+      save_as: page_info
+  - output:
+      page: "{{ page_info }}"

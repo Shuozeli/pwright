@@ -1,0 +1,94 @@
+# login-and-extract.yaml -- Log into a site and extract protected content.
+#
+# Type: query (login is a side effect, but the goal is read-only extraction)
+# Auth: credentials provided via params (use --param-file for secrets)
+#
+# Usage:
+#   pwright script run examples/recipes/automation/login-and-extract.yaml \
+#     --param login_url="https://example.com/login" \
+#     --param target_url="https://example.com/dashboard" \
+#     --param extract_selector=".dashboard-content" \
+#     --param-file secrets.yaml
+#
+# secrets.yaml:
+#   username: "user@example.com"
+#   password: "secret123"
+
+name: "Login and Extract"
+version: 1
+type: query
+
+params:
+  login_url:
+    type: string
+    required: true
+    description: "Login page URL"
+  username:
+    type: string
+    required: true
+    description: "Username or email"
+  password:
+    type: string
+    required: true
+    description: "Password"
+  username_selector:
+    type: string
+    default: "#username, #email, input[name='email'], input[type='email']"
+    description: "CSS selector for username field"
+  password_selector:
+    type: string
+    default: "#password, input[name='password'], input[type='password']"
+    description: "CSS selector for password field"
+  submit_selector:
+    type: string
+    default: "button[type='submit'], input[type='submit']"
+    description: "CSS selector for submit button"
+  target_url:
+    type: string
+    required: true
+    description: "URL to visit after login"
+  extract_selector:
+    type: string
+    required: true
+    description: "CSS selector for content to extract"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  extract_content: |
+    ((selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return JSON.stringify({ error: 'element not found', selector });
+      return JSON.stringify({
+        text: el.innerText.trim().substring(0, 5000),
+        html_length: el.innerHTML.length
+      });
+    })
+
+steps:
+  - goto: "{{ login_url }}"
+    wait_for: "{{ username_selector }}"
+  - wait: 1000
+
+  - fill:
+      selector: "{{ username_selector }}"
+      value: "{{ username }}"
+  - fill:
+      selector: "{{ password_selector }}"
+      value: "{{ password }}"
+  - wait: 500
+  - click: "{{ submit_selector }}"
+  - wait: 3000
+
+  - goto: "{{ target_url }}"
+    wait_for: "{{ extract_selector }}"
+  - wait: 1000
+
+  - eval:
+      ref: extract_content
+      args: ["{{ extract_selector }}"]
+      save_as: content
+  - output:
+      url: "{{ target_url }}"
+      content: "{{ content }}"

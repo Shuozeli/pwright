@@ -1,0 +1,73 @@
+# extract-table.yaml -- Extract HTML table data as structured JSON.
+#
+# Type: query (read-only, safe)
+# Auth: none
+#
+# Usage:
+#   pwright script run examples/recipes/research/extract-table.yaml \
+#     --param url="https://example.com/data"
+#   pwright script run examples/recipes/research/extract-table.yaml \
+#     --param url="https://example.com" --param table_selector=".pricing-table"
+
+name: "Extract Table"
+version: 1
+type: query
+
+params:
+  url:
+    type: string
+    required: true
+    description: "Page URL containing the table"
+  table_selector:
+    type: string
+    default: "table"
+    description: "CSS selector for the target table"
+
+config:
+  default_timeout_ms: 10000
+
+scripts:
+  extract_table: |
+    ((selector) => {
+      const table = document.querySelector(selector);
+      if (!table) return JSON.stringify({ error: 'table not found', selector });
+
+      // Extract headers
+      const headers = [];
+      const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
+      if (headerRow) {
+        headerRow.querySelectorAll('th, td').forEach(cell => {
+          headers.push(cell.textContent.trim());
+        });
+      }
+
+      // Extract rows
+      const rows = [];
+      const bodyRows = table.querySelectorAll('tbody tr') || table.querySelectorAll('tr');
+      bodyRows.forEach((tr, i) => {
+        // Skip header row if no thead
+        if (i === 0 && !table.querySelector('thead')) return;
+        const cells = tr.querySelectorAll('td');
+        if (cells.length === 0) return;
+        const row = {};
+        cells.forEach((cell, j) => {
+          const key = headers[j] || `col_${j}`;
+          row[key] = cell.textContent.trim();
+        });
+        rows.push(row);
+      });
+
+      return JSON.stringify({ headers, rows, row_count: rows.length });
+    })
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "{{ table_selector }}"
+  - wait: 1000
+  - eval:
+      ref: extract_table
+      args: ["{{ table_selector }}"]
+      save_as: table_data
+  - output:
+      url: "{{ url }}"
+      data: "{{ table_data }}"

@@ -1,0 +1,58 @@
+# check-deploy.yaml -- Verify a deployment is healthy.
+#
+# Type: query (read-only, safe)
+# Auth: none
+#
+# Usage:
+#   pwright script run examples/recipes/monitoring/check-deploy.yaml \
+#     --param url="https://app.example.com" \
+#     --param expected_text="Welcome"
+
+name: "Check Deployment"
+version: 1
+type: query
+
+params:
+  url:
+    type: string
+    required: true
+    description: "URL to check"
+  expected_text:
+    type: string
+    required: true
+    description: "Text that must appear on the page for it to be healthy"
+  timeout_ms:
+    type: integer
+    default: "10000"
+    description: "Navigation timeout"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  check_health: |
+    ((expectedText) => {
+      const title = document.title;
+      const bodyText = document.body.innerText;
+      const found = bodyText.includes(expectedText);
+      return JSON.stringify({
+        status: found ? 'pass' : 'fail',
+        title: title,
+        expected_text_found: found,
+        page_text_length: bodyText.length,
+        timestamp: new Date().toISOString()
+      });
+    })
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "body"
+    timeout_ms: "{{ timeout_ms }}"
+  - wait: 1000
+  - eval:
+      ref: check_health
+      args: ["{{ expected_text }}"]
+      save_as: health
+  - output:
+      url: "{{ url }}"
+      health: "{{ health }}"

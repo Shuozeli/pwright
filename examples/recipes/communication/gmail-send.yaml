@@ -1,0 +1,85 @@
+# gmail-send.yaml -- Compose and send an email via Gmail.
+#
+# Type: MUTATION (sends an email -- irreversible!)
+# Auth: YES -- you must be logged into Gmail in the Chrome instance
+#
+# WARNING: This recipe SENDS a real email. Use --confirm to execute.
+#
+# Usage:
+#   pwright script run examples/recipes/communication/gmail-send.yaml \
+#     --param to="recipient@example.com" \
+#     --param subject="Meeting tomorrow" \
+#     --param body="Hi, can we reschedule to 3pm?" \
+#     --confirm
+
+name: "Gmail Send"
+version: 1
+type: mutation
+
+params:
+  to:
+    type: string
+    required: true
+    description: "Recipient email address"
+  subject:
+    type: string
+    required: true
+    description: "Email subject line"
+  body:
+    type: string
+    required: true
+    description: "Email body text"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  verify_sent: |
+    (() => {
+      const flash = document.querySelector('.bAq, .vh');
+      return JSON.stringify({
+        sent: flash ? flash.textContent.includes('sent') || flash.textContent.includes('Sent') : false,
+        message: flash ? flash.textContent.trim() : 'no confirmation found'
+      });
+    })()
+
+steps:
+  # Open Gmail
+  - goto: "https://mail.google.com/mail/u/0/"
+    wait_for: ".T-I.T-I-KE"
+  - wait: 2000
+
+  # Click Compose
+  - click: ".T-I.T-I-KE"
+  - wait: 1500
+
+  # Fill To field
+  - fill:
+      selector: "input[name='to'], textarea[name='to'], [aria-label='To']"
+      value: "{{ to }}"
+  - wait: 500
+
+  # Fill Subject
+  - fill:
+      selector: "input[name='subjectbox'], [aria-label='Subject']"
+      value: "{{ subject }}"
+  - wait: 500
+
+  # Fill Body
+  - fill:
+      selector: "[aria-label='Message Body'], .Am.Al.editable, [role='textbox']"
+      value: "{{ body }}"
+  - wait: 500
+
+  # Click Send
+  - click: "[aria-label*='Send'], .T-I.J-J5-Ji[data-tooltip*='Send']"
+  - wait: 3000
+
+  # Verify
+  - eval:
+      ref: verify_sent
+      save_as: result
+  - output:
+      to: "{{ to }}"
+      subject: "{{ subject }}"
+      result: "{{ result }}"

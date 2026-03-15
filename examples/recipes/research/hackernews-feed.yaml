@@ -1,0 +1,60 @@
+# hackernews-feed.yaml -- Extract stories from Hacker News front page.
+#
+# Type: query (read-only, safe)
+# Auth: none
+#
+# Usage:
+#   pwright script run examples/recipes/research/hackernews-feed.yaml
+#   pwright script run examples/recipes/research/hackernews-feed.yaml --param max_stories=5
+
+name: "Hacker News Feed"
+version: 1
+type: query
+
+params:
+  max_stories:
+    type: integer
+    default: "30"
+    description: "Maximum stories to extract"
+
+config:
+  default_timeout_ms: 10000
+
+scripts:
+  extract_stories: |
+    (() => {
+      const rows = document.querySelectorAll('.athing');
+      const subtexts = document.querySelectorAll('.subtext');
+      const results = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const titleEl = row.querySelector('.titleline > a');
+        const rank = row.querySelector('.rank');
+        const sub = subtexts[i];
+        if (titleEl) {
+          const score = sub ? (sub.querySelector('.score') || {}).textContent || '0 points' : '0 points';
+          const comments = sub ? (sub.querySelectorAll('a')[sub.querySelectorAll('a').length - 1] || {}).textContent || '0 comments' : '0 comments';
+          const age = sub ? (sub.querySelector('.age') || {}).textContent || '' : '';
+          results.push({
+            rank: rank ? rank.textContent.trim().replace('.', '') : String(i + 1),
+            title: titleEl.textContent.trim(),
+            url: titleEl.href,
+            points: score.trim(),
+            comments: comments.trim(),
+            age: age.trim()
+          });
+        }
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://news.ycombinator.com"
+    wait_for: ".athing"
+  - wait: 1000
+  - eval:
+      ref: extract_stories
+      save_as: stories
+  - output:
+      source: "Hacker News"
+      stories: "{{ stories }}"

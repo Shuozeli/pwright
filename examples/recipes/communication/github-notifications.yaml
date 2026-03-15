@@ -1,0 +1,50 @@
+# github-notifications.yaml -- Read GitHub notifications.
+#
+# Type: query (read-only, safe)
+# Auth: YES -- you must be logged into GitHub in the Chrome instance
+#
+# Usage:
+#   pwright script run examples/recipes/communication/github-notifications.yaml
+
+name: "GitHub Notifications"
+version: 1
+type: query
+
+params:
+  max_notifications:
+    type: integer
+    default: "20"
+    description: "Maximum notifications to extract"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  extract_notifications: |
+    (() => {
+      const items = document.querySelectorAll('.notifications-list-item, .notification-list-item-link');
+      const notifications = [];
+      for (const item of items) {
+        const repo = item.querySelector('.text-bold')?.textContent?.trim()
+          || item.querySelector('.f6')?.textContent?.trim() || '';
+        const title = item.querySelector('.markdown-title, .notification-list-item-link')?.textContent?.trim()
+          || item.querySelector('a.notification-list-item-link')?.textContent?.trim() || '';
+        const type = item.querySelector('.octicon')?.classList?.[1]?.replace('octicon-', '') || '';
+        const time = item.querySelector('relative-time')?.getAttribute('datetime') || '';
+        const unread = item.classList.contains('notification-unread') || !item.classList.contains('notification-read');
+        if (title) {
+          notifications.push({ repo, title, type, time, unread });
+        }
+      }
+      return JSON.stringify(notifications);
+    })()
+
+steps:
+  - goto: "https://github.com/notifications"
+    wait_for: ".notifications-list, .blankslate"
+  - wait: 2000
+  - eval:
+      ref: extract_notifications
+      save_as: notifications
+  - output:
+      notifications: "{{ notifications }}"

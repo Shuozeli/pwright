@@ -8,6 +8,12 @@ WebSocket, exposes Playwright-compatible Rust API + gRPC + CLI.
 Read `docs/index.md` for the full project guide, architecture decisions,
 and crate map. That file is the authoritative reference for agents.
 
+## Git Rules
+
+- Do NOT commit or push unless the user explicitly asks you to
+- Do NOT amend commits unless the user explicitly asks you to
+- Do NOT force push unless the user explicitly asks you to
+
 ## Key Rules
 
 - Do NOT propose adding browser launch/install - pwright is attach-only by design

@@ -13,15 +13,17 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 - [gRPC API Reference](grpc-api.md) — All RPCs with request/response schemas
 - [Codelabs](codelabs.md) — Usage examples with Rust, CLI, and gRPC
 
-## Script Runner
+## Script Runner & Recipes
 
 - [Script Examples](../examples/scripts/) — Ready-to-use YAML automation scripts
+- [Recipes](../examples/recipes/) — Pre-built recipes for search, monitoring, email, automation
 - [Codelabs: Script Runner](codelabs.md#11-script-runner) — Tutorial with examples
 - [Script Runner Design](knowledge/script-runner-design.md) — Full design with protobuf schema and phases
+- [Recipes Design](knowledge/recipes-design.md) — Recipe specifications and design principles
 
 ## Agent Integration
 
-- [Agent Skill](../skill/pwright/SKILL.md) — Skill definition for AI agent frameworks (comparable to playwright-cli and pinchtab skills)
+- [Agent Skill](../skill/pwright/SKILL.md) — Skill definition for AI agent frameworks
 
 ## Reference
 
@@ -29,4 +31,5 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 - [API Parity](knowledge/api-parity.md) — gRPC vs CLI vs Playwright bridge coverage gaps
 - [Feature Comparison](knowledge/feature-comparison.md) — Playwright vs PinchTab vs pwright side-by-side
 - [Testing Strategy](knowledge/testing-strategy.md) — FakeCdpClient + Docker integration tests
-- [Script Runner Design](knowledge/script-runner-design.md) — Declarative YAML script execution with structured output
+- [Known Issues](known-issues.md) — Bug tracker and fixed issues
+- [TODO](todo.md) — Planned features and roadmap
