@@ -26,6 +26,7 @@ pwright-bridge       High-level browser operations
                      Page, Locator, Keyboard, Mouse, Touchscreen
                      Actions, navigation, snapshot, cookies, evaluate
                      Clock trait for DI in time-dependent code
+                     TabCloser trait + ChromeHttpClient for HTTP tab lifecycle
 
 pwright-server       gRPC server wrapping pwright-bridge
                      20 RPCs, protobuf schemas
@@ -108,7 +109,7 @@ Use for: "is_checked returns true for checked checkbox"
 
 ### Tier 3: Docker integration (end-to-end)
 Real Chrome via `chromedp/headless-shell` with in-process test server.
-72 tests across 12 files. Concurrency tests with 5 parallel tabs.
+80 tests across 13 files. Concurrency tests with 5 parallel tabs.
 
 **Integration test gotchas:**
 - Chrome rejects non-IP `Host` headers (resolve hostname to IP)

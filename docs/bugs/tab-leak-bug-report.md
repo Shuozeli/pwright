@@ -3,16 +3,15 @@
 
 ## Status: FIXED (root cause eliminated)
 
-**What was fixed:** `with_page` has been removed entirely. Callers now
-use `Browser::new_tab` / `TabHandle::close` for explicit tab lifecycle
-management. Close errors are always visible to the caller, and
-`TabHandle::target_id()` is available for HTTP-based fallback cleanup.
+**What was fixed:**
 
-**What remains open:** When the CDP WebSocket is dead (Chrome under memory
-pressure, network hiccup), the `target_close` CDP command still cannot
-reach Chrome. The error is now surfaced to the caller, but the tab still
-leaks in Chrome. An HTTP-based fallback (`/json/close/{targetId}`) would
-fix this -- see proposed fixes below.
+1. `with_page` removed entirely. Callers manage tab lifecycle explicitly.
+2. `TabCloser` trait abstracts the close transport. `Browser::connect_http`
+   auto-selects `HttpTabCloser` which uses Chrome's HTTP debug endpoint
+   (`GET /json/close/{targetId}`) -- this works even when the CDP WebSocket
+   is dead under Chrome memory pressure.
+3. `ChromeHttpClient` provides HTTP-based `list_targets`, `close_target`,
+   `create_target`, and `version` for direct Chrome management.
 
 ## Original Symptom
 
@@ -39,14 +38,18 @@ None closed. Chrome instances that hit 1536MB limit were OOMKilled.
 The original `with_page` silently swallowed close errors with
 `let _ = self.browser_session.target_close(&target_id).await`.
 
-This has been refactored: `with_page` now delegates to `TabHandle::close()`
-which calls `self.browser_client.target_close()` via the `CdpClient` trait,
-and errors are propagated via `combine_results()` / `CdpError::Compound`.
+This was a two-part problem:
 
-However, when the WebSocket is dead, the CDP command still cannot reach Chrome,
-so the tab leaks regardless of error propagation. The caller now knows the
-close failed (via the error) and has access to `TabHandle::target_id()` for
-HTTP-based fallback cleanup.
+1. **Error swallowing:** `with_page` discarded the close error. Fixed by
+   removing `with_page` -- callers now use `TabHandle::close()` which
+   always returns errors.
+
+2. **WebSocket unreliable under pressure:** CDP `Target.closeTarget` goes
+   over the same WebSocket as DOM operations. Under Chrome memory pressure,
+   the WebSocket dies and close commands never reach Chrome. Fixed by
+   adding `HttpTabCloser` which uses Chrome's HTTP debug endpoint
+   (`GET /json/close/{targetId}`), a simpler code path that stays alive
+   when the WebSocket is dead.
 
 ## Why This Doesn't Affect Short-Lived Usage
 

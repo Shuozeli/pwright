@@ -7,4 +7,4 @@ bug/improvement list, see [known-issues.md](../known-issues.md).
 
 | Report | Status | Severity | Summary |
 |--------|--------|----------|---------|
-| [tab-leak-bug-report](tab-leak-bug-report.md) | Fixed | Critical | `with_page` leaked tabs when CDP WebSocket was dead. Removed `with_page`; callers use explicit `new_tab`/`close` lifecycle. |
+| [tab-leak-bug-report](tab-leak-bug-report.md) | Fixed | Critical | Tabs leaked when CDP WebSocket died under Chrome memory pressure. Removed `with_page`; added `TabCloser` trait with `HttpTabCloser` that uses Chrome HTTP endpoint for reliable close. |

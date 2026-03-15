@@ -24,7 +24,7 @@ in `tab_locks`. Very slow growth, only matters for long-running servers.
 | Proposal | Why it's not an issue |
 |----------|----------------------|
 | gRPC needs authentication | Binds localhost by default. `--bind-all` requires user-managed firewall. Auth is a future feature. |
-| `with_page` should register in tab map | Ephemeral tabs with auto-close by design. |
+| Tab close needs auto-close wrapper | Callers manage lifecycle via `TabHandle::close()`. No auto-close. |
 | Ref cache staleness between CLI invocations | Inherent to stateless CLI. gRPC server uses tab locks. |
 | Download file race condition | Chrome's filename is unpredictable. Not practical to exploit. |
 | Snapshot depth should use BFS | O(n*d) with d<20 is fast enough. |
