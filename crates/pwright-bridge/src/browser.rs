@@ -2,12 +2,57 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use async_trait::async_trait;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
 use pwright_cdp::{CdpClient, CdpConnection, CdpSession};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 use tracing::info;
 
+use crate::chrome_http::ChromeHttpClient;
 use crate::playwright::Page;
+
+/// Strategy for closing a tab. Implementations choose the transport
+/// (CDP WebSocket or Chrome HTTP debug endpoint).
+#[async_trait]
+pub trait TabCloser: Send + Sync {
+    async fn close_tab(&self, target_id: &str) -> CdpResult<()>;
+}
+
+/// Close a tab via CDP WebSocket (`Target.closeTarget`).
+pub struct CdpTabCloser {
+    client: Arc<dyn CdpClient>,
+}
+
+impl CdpTabCloser {
+    pub fn new(client: Arc<dyn CdpClient>) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl TabCloser for CdpTabCloser {
+    async fn close_tab(&self, target_id: &str) -> CdpResult<()> {
+        self.client.target_close(target_id).await
+    }
+}
+
+/// Close a tab via Chrome's HTTP debug endpoint (`GET /json/close/{targetId}`).
+pub struct HttpTabCloser {
+    http_client: ChromeHttpClient,
+}
+
+impl HttpTabCloser {
+    pub fn new(http_client: ChromeHttpClient) -> Self {
+        Self { http_client }
+    }
+}
+
+#[async_trait]
+impl TabCloser for HttpTabCloser {
+    async fn close_tab(&self, target_id: &str) -> CdpResult<()> {
+        self.http_client.close_target(target_id).await
+    }
+}
 
 /// Rewrite a WebSocket debugger URL to use the host/port from an HTTP URL.
 ///
@@ -69,6 +114,7 @@ pub struct Browser {
     tabs: RwLock<HashMap<String, Tab>>,
     ref_caches: RwLock<HashMap<String, RefCache>>,
     config: BrowserConfig,
+    http_url: Option<String>,
     tab_semaphore: Arc<Semaphore>,
     tab_locks: dashmap::DashMap<String, Arc<Mutex<()>>>,
     tab_counter: std::sync::atomic::AtomicU64,
@@ -77,23 +123,36 @@ pub struct Browser {
 impl Browser {
     /// Connect to a running Chrome instance via CDP WebSocket.
     pub async fn connect(config: BrowserConfig) -> CdpResult<Arc<Self>> {
-        info!(url = config.cdp_url, "connecting to Chrome");
-        let connection = CdpConnection::connect(&config.cdp_url).await?;
+        Self::connect_inner(config, None).await
+    }
+
+    fn build(
+        connection: Arc<CdpConnection>,
+        config: BrowserConfig,
+        http_url: Option<String>,
+    ) -> Self {
         let browser_session = CdpSession::browser(connection.clone());
-
         let max_parallel = config.max_parallel_tabs.max(1);
-
-        let browser = Arc::new(Self {
+        Self {
             connection,
             browser_session,
             tabs: RwLock::new(HashMap::new()),
             ref_caches: RwLock::new(HashMap::new()),
             config,
+            http_url,
             tab_semaphore: Arc::new(Semaphore::new(max_parallel)),
             tab_locks: dashmap::DashMap::new(),
             tab_counter: std::sync::atomic::AtomicU64::new(0),
-        });
+        }
+    }
 
+    async fn connect_inner(
+        config: BrowserConfig,
+        http_url: Option<String>,
+    ) -> CdpResult<Arc<Self>> {
+        info!(url = config.cdp_url, "connecting to Chrome");
+        let connection = CdpConnection::connect(&config.cdp_url).await?;
+        let browser = Arc::new(Self::build(connection, config, http_url));
         info!("connected to Chrome successfully");
         Ok(browser)
     }
@@ -207,7 +266,20 @@ impl Browser {
             cdp_url: rewritten,
             ..BrowserConfig::default()
         };
-        Self::connect(config).await
+        Self::connect_inner(config, Some(http_url.trim_end_matches('/').to_string())).await
+    }
+
+    /// The Chrome HTTP debug URL, if connected via [`connect_http`].
+    pub fn http_url(&self) -> Option<&str> {
+        self.http_url.as_deref()
+    }
+
+    /// Get a [`ChromeHttpClient`] for HTTP-based tab management.
+    ///
+    /// Returns `None` if the browser was connected via WebSocket directly
+    /// (no HTTP URL available).
+    pub fn http_client(&self) -> Option<ChromeHttpClient> {
+        self.http_url.as_ref().map(|url| ChromeHttpClient::new(url))
     }
 
     /// Open a new browser tab and return a [`TabHandle`] for lifecycle management.
@@ -233,20 +305,27 @@ impl Browser {
             session_id,
             target_id.clone(),
         ));
-        let browser_client: Arc<dyn CdpClient> =
-            Arc::new(CdpSession::browser(self.connection.clone()));
-        Ok(TabHandle::new(browser_client, session, target_id))
+
+        let closer: Arc<dyn TabCloser> = match &self.http_url {
+            Some(url) => Arc::new(HttpTabCloser::new(ChromeHttpClient::new(url))),
+            None => {
+                let browser_client: Arc<dyn CdpClient> =
+                    Arc::new(CdpSession::browser(self.connection.clone()));
+                Arc::new(CdpTabCloser::new(browser_client))
+            }
+        };
+
+        Ok(TabHandle::new(closer, session, target_id))
     }
 }
 
 /// Handle for an ephemeral browser tab with explicit lifecycle control.
 ///
 /// Created by [`Browser::new_tab`]. The caller is responsible for closing
-/// the tab via [`TabHandle::close`]. If the CDP close fails,
-/// [`TabHandle::target_id`] is available for fallback cleanup
-/// (e.g., HTTP `GET /json/close/{target_id}`).
+/// the tab via [`TabHandle::close`]. If the browser was connected via HTTP,
+/// close uses the HTTP endpoint; otherwise it uses CDP WebSocket.
 pub struct TabHandle {
-    browser_client: Arc<dyn CdpClient>,
+    closer: Arc<dyn TabCloser>,
     session: Arc<dyn CdpClient>,
     target_id: String,
     closed: AtomicBool,
@@ -255,16 +334,12 @@ pub struct TabHandle {
 impl TabHandle {
     /// Create a new `TabHandle`.
     ///
-    /// - `browser_client`: browser-level CDP client for `Target.closeTarget`
+    /// - `closer`: strategy for closing the tab (CDP or HTTP)
     /// - `session`: tab-level CDP client for page operations
     /// - `target_id`: Chrome CDP target ID
-    pub fn new(
-        browser_client: Arc<dyn CdpClient>,
-        session: Arc<dyn CdpClient>,
-        target_id: String,
-    ) -> Self {
+    pub fn new(closer: Arc<dyn TabCloser>, session: Arc<dyn CdpClient>, target_id: String) -> Self {
         Self {
-            browser_client,
+            closer,
             session,
             target_id,
             closed: AtomicBool::new(false),
@@ -272,9 +347,6 @@ impl TabHandle {
     }
 
     /// The Chrome CDP target ID for this tab.
-    ///
-    /// Useful for fallback cleanup via Chrome's HTTP debug API:
-    /// `GET http://{host}:{port}/json/close/{target_id}`
     pub fn target_id(&self) -> &str {
         &self.target_id
     }
@@ -284,14 +356,14 @@ impl TabHandle {
         Page::with_tab(self.session.clone(), self.target_id.clone())
     }
 
-    /// Close the tab via CDP. Returns the error if close fails.
+    /// Close the tab. Uses HTTP or CDP depending on how the browser was connected.
     ///
     /// Idempotent: calling close on an already-closed handle returns `Ok(())`.
     pub async fn close(&self) -> CdpResult<()> {
         if self.closed.swap(true, Ordering::SeqCst) {
             return Ok(());
         }
-        self.browser_client.target_close(&self.target_id).await
+        self.closer.close_tab(&self.target_id).await
     }
 }
 
@@ -302,63 +374,63 @@ mod tests {
 
     #[tokio::test]
     async fn test_tab_handle_close_calls_target_close() {
-        let browser_client = Arc::new(MockCdpClient::new());
+        let mock = Arc::new(MockCdpClient::new());
+        let closer: Arc<dyn TabCloser> = Arc::new(CdpTabCloser::new(mock.clone()));
         let session = Arc::new(MockCdpClient::new());
-        let handle = TabHandle::new(
-            browser_client.clone() as Arc<dyn CdpClient>,
-            session as Arc<dyn CdpClient>,
-            "target-abc".to_string(),
-        );
+        let handle = TabHandle::new(closer, session as Arc<dyn CdpClient>, "target-abc".into());
 
         handle.close().await.unwrap();
 
-        let calls = browser_client.calls_for("Target.closeTarget");
+        let calls = mock.calls_for("Target.closeTarget");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].args[0], "target-abc");
     }
 
     #[tokio::test]
     async fn test_tab_handle_close_idempotent() {
-        let browser_client = Arc::new(MockCdpClient::new());
+        let mock = Arc::new(MockCdpClient::new());
+        let closer: Arc<dyn TabCloser> = Arc::new(CdpTabCloser::new(mock.clone()));
         let session = Arc::new(MockCdpClient::new());
-        let handle = TabHandle::new(
-            browser_client.clone() as Arc<dyn CdpClient>,
-            session as Arc<dyn CdpClient>,
-            "target-abc".to_string(),
-        );
+        let handle = TabHandle::new(closer, session as Arc<dyn CdpClient>, "target-abc".into());
 
         handle.close().await.unwrap();
         handle.close().await.unwrap();
 
-        let calls = browser_client.calls_for("Target.closeTarget");
+        let calls = mock.calls_for("Target.closeTarget");
         assert_eq!(calls.len(), 1);
     }
 
     #[test]
     fn test_tab_handle_target_id() {
-        let browser_client = Arc::new(MockCdpClient::new());
+        let closer: Arc<dyn TabCloser> =
+            Arc::new(CdpTabCloser::new(Arc::new(MockCdpClient::new())));
         let session = Arc::new(MockCdpClient::new());
-        let handle = TabHandle::new(
-            browser_client as Arc<dyn CdpClient>,
-            session as Arc<dyn CdpClient>,
-            "target-xyz".to_string(),
-        );
+        let handle = TabHandle::new(closer, session as Arc<dyn CdpClient>, "target-xyz".into());
 
         assert_eq!(handle.target_id(), "target-xyz");
     }
 
     #[test]
     fn test_tab_handle_page_has_target_id() {
-        let browser_client = Arc::new(MockCdpClient::new());
+        let closer: Arc<dyn TabCloser> =
+            Arc::new(CdpTabCloser::new(Arc::new(MockCdpClient::new())));
         let session = Arc::new(MockCdpClient::new());
-        let handle = TabHandle::new(
-            browser_client as Arc<dyn CdpClient>,
-            session as Arc<dyn CdpClient>,
-            "target-page".to_string(),
-        );
+        let handle = TabHandle::new(closer, session as Arc<dyn CdpClient>, "target-page".into());
 
         let page = handle.page();
         assert_eq!(page.target_id(), Some("target-page"));
+    }
+
+    #[tokio::test]
+    async fn test_cdp_tab_closer_delegates_to_client() {
+        let mock = Arc::new(MockCdpClient::new());
+        let closer = CdpTabCloser::new(mock.clone() as Arc<dyn CdpClient>);
+
+        closer.close_tab("t1").await.unwrap();
+
+        let calls = mock.calls_for("Target.closeTarget");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].args[0], "t1");
     }
 
     #[test]
