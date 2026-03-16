@@ -2,6 +2,7 @@ pub mod client_trait;
 pub mod connection;
 pub mod domains;
 pub mod events;
+pub mod generated;
 pub mod session;
 
 pub use client_trait::CdpClient;

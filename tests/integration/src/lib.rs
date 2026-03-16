@@ -253,7 +253,13 @@ pub async fn connect_and_navigate(path: &str) -> Page {
     let page = Page::with_tab(session, target_id);
 
     let url = format!("{server_url}{path}");
-    page.goto(&url, None).await.expect("failed to navigate");
+    let opts = pwright_bridge::playwright::GotoOptions {
+        wait_until: Some("domcontentloaded".to_string()),
+        ..Default::default()
+    };
+    page.goto(&url, Some(opts))
+        .await
+        .expect("failed to navigate");
 
     page
 }

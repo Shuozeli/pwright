@@ -1,9 +1,9 @@
 //! Target domain — create, close, list, and attach to targets (tabs).
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::connection::Result;
+use crate::generated::target as cdp_gen;
 use crate::session::CdpSession;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,22 +24,35 @@ pub struct TargetInfo {
 impl CdpSession {
     /// Create a new browser target (tab) at the given URL.
     pub async fn target_create(&self, url: &str) -> Result<String> {
+        let params = cdp_gen::CreateTargetParams {
+            url: url.to_string(),
+            ..Default::default()
+        };
         let result = self
-            .send("Target.createTarget", json!({ "url": url }))
+            .send("Target.createTarget", serde_json::to_value(&params)?)
             .await?;
-        Ok(result["targetId"].as_str().unwrap_or_default().to_string())
+        let returns: cdp_gen::CreateTargetReturns = serde_json::from_value(result)?;
+        Ok(returns.target_id)
     }
 
     /// Close a target by ID.
     pub async fn target_close(&self, target_id: &str) -> Result<()> {
-        self.send("Target.closeTarget", json!({ "targetId": target_id }))
+        let params = cdp_gen::CloseTargetParams {
+            target_id: target_id.to_string(),
+        };
+        self.send("Target.closeTarget", serde_json::to_value(&params)?)
             .await?;
         Ok(())
     }
 
     /// List all targets, optionally filtered by type.
     pub async fn target_get_targets(&self) -> Result<Vec<TargetInfo>> {
-        let result = self.send("Target.getTargets", json!({})).await?;
+        let result = self
+            .send(
+                "Target.getTargets",
+                serde_json::to_value(cdp_gen::GetTargetsParams::default())?,
+            )
+            .await?;
         let targets: Vec<TargetInfo> =
             serde_json::from_value(result["targetInfos"].clone()).unwrap_or_default();
         Ok(targets)
@@ -47,22 +60,25 @@ impl CdpSession {
 
     /// Attach to a target, enabling session-scoped commands. Returns session ID.
     pub async fn target_attach(&self, target_id: &str) -> Result<String> {
+        let params = cdp_gen::AttachToTargetParams {
+            target_id: target_id.to_string(),
+            flatten: Some(true),
+        };
         let result = self
-            .send(
-                "Target.attachToTarget",
-                json!({ "targetId": target_id, "flatten": true }),
-            )
+            .send("Target.attachToTarget", serde_json::to_value(&params)?)
             .await?;
-        Ok(result["sessionId"].as_str().unwrap_or_default().to_string())
+        let returns: cdp_gen::AttachToTargetReturns = serde_json::from_value(result)?;
+        Ok(returns.session_id)
     }
 
     /// Detach from a target session.
     pub async fn target_detach(&self, session_id: &str) -> Result<()> {
-        self.send(
-            "Target.detachFromTarget",
-            json!({ "sessionId": session_id }),
-        )
-        .await?;
+        let params = cdp_gen::DetachFromTargetParams {
+            session_id: Some(session_id.to_string()),
+            ..Default::default()
+        };
+        self.send("Target.detachFromTarget", serde_json::to_value(&params)?)
+            .await?;
         Ok(())
     }
 }

@@ -3,6 +3,7 @@
 use serde_json::json;
 
 use crate::connection::Result;
+use crate::generated::input as cdp_gen;
 use crate::session::CdpSession;
 
 impl CdpSession {
@@ -42,28 +43,32 @@ impl CdpSession {
         code: &str,
         windows_virtual_key_code: Option<i64>,
     ) -> Result<()> {
-        let mut params = json!({
-            "type": event_type,
-            "key": key,
-            "code": code,
-        });
-        if let Some(vk) = windows_virtual_key_code {
-            params["windowsVirtualKeyCode"] = json!(vk);
-            params["nativeVirtualKeyCode"] = json!(vk);
-        }
-        self.send("Input.dispatchKeyEvent", params).await?;
+        let params = cdp_gen::DispatchKeyEventParams {
+            r#type: event_type.to_string(),
+            key: Some(key.to_string()),
+            code: Some(code.to_string()),
+            windows_virtual_key_code,
+            native_virtual_key_code: windows_virtual_key_code,
+            ..Default::default()
+        };
+        self.send("Input.dispatchKeyEvent", serde_json::to_value(&params)?)
+            .await?;
         Ok(())
     }
 
     /// Insert text (for character input after focus).
     pub async fn input_insert_text(&self, text: &str) -> Result<()> {
-        self.send("Input.insertText", json!({ "text": text }))
+        let params = cdp_gen::InsertTextParams {
+            text: text.to_string(),
+        };
+        self.send("Input.insertText", serde_json::to_value(&params)?)
             .await?;
         Ok(())
     }
 
     /// Dispatch a touch event (touchStart, touchMove, touchEnd).
     pub async fn input_dispatch_touch_event(&self, event_type: &str, x: f64, y: f64) -> Result<()> {
+        // Touch points must be empty for touchEnd, populated for touchStart/touchMove.
         let touch_points = if event_type == "touchEnd" {
             json!([])
         } else {

@@ -1,9 +1,10 @@
 //! Accessibility domain — full accessibility tree retrieval.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::connection::Result;
+use crate::generated::accessibility as cdp_gen;
 use crate::session::CdpSession;
 
 /// Raw accessibility node from CDP.
@@ -49,15 +50,23 @@ pub struct AXProperty {
 impl CdpSession {
     /// Enable the Accessibility domain (required before getFullAXTree).
     pub async fn accessibility_enable(&self) -> Result<()> {
-        self.send("Accessibility.enable", json!({})).await?;
+        self.send("Accessibility.enable", serde_json::json!({}))
+            .await?;
         Ok(())
     }
 
     /// Get the full accessibility tree for the current page.
     /// Passes depth=-1 to retrieve the complete tree (not just root).
     pub async fn accessibility_get_full_tree(&self) -> Result<Vec<RawAXNode>> {
+        let params = cdp_gen::GetFullAXTreeParams {
+            depth: Some(-1),
+            ..Default::default()
+        };
         let result = self
-            .send("Accessibility.getFullAXTree", json!({"depth": -1}))
+            .send(
+                "Accessibility.getFullAXTree",
+                serde_json::to_value(&params)?,
+            )
             .await?;
         let nodes: Vec<RawAXNode> =
             serde_json::from_value(result["nodes"].clone()).unwrap_or_default();
@@ -84,7 +93,7 @@ mod tests {
             value_type: "boolean".to_string(),
             value: Value::Bool(true),
         };
-        assert_eq!(v.as_str(), ""); // returns default
+        assert_eq!(v.as_str(), "");
     }
 
     #[test]

@@ -1,0 +1,40 @@
+{
+  "description": "Chrome HTTP debug endpoint field mappings. These endpoints use different field names than CDP. This file maps CDP type fields to their HTTP equivalents so codegen can add serde aliases automatically.",
+  "source": "https://chromium.googlesource.com/chromium/src/+/main/content/browser/devtools/devtools_http_handler.cc",
+  "field_aliases": [
+    {
+      "domain": "Target",
+      "type": "TargetInfo",
+      "cdp_field": "targetId",
+      "http_field": "id",
+      "reason": "HTTP /json/list and /json/new return 'id' instead of CDP's 'targetId'"
+    }
+  ],
+  "http_only_types": {
+    "HttpTargetInfo": {
+      "description": "Target info as returned by Chrome HTTP debug endpoints (/json/list, /json/new). Superset of CDP TargetInfo with extra fields.",
+      "fields": {
+        "id": { "type": "string", "always": true, "maps_to": "Target.TargetInfo.targetId" },
+        "type": { "type": "string", "always": true },
+        "title": { "type": "string", "always": true },
+        "url": { "type": "string", "always": true },
+        "description": { "type": "string", "always": true },
+        "parentId": { "type": "string", "optional": true },
+        "faviconUrl": { "type": "string", "optional": true },
+        "webSocketDebuggerUrl": { "type": "string", "optional": true },
+        "devtoolsFrontendUrl": { "type": "string", "optional": true }
+      }
+    },
+    "HttpVersionInfo": {
+      "description": "Browser version info from /json/version",
+      "fields": {
+        "Browser": { "type": "string" },
+        "Protocol-Version": { "type": "string" },
+        "User-Agent": { "type": "string" },
+        "V8-Version": { "type": "string" },
+        "WebKit-Version": { "type": "string" },
+        "webSocketDebuggerUrl": { "type": "string" }
+      }
+    }
+  }
+}

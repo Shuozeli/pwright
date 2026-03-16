@@ -1,9 +1,10 @@
 //! Runtime domain — JavaScript evaluation and function invocation.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::connection::Result;
+use crate::generated::runtime as cdp_gen;
 use crate::session::CdpSession;
 
 /// Typed representation of a CDP RemoteObject.
@@ -45,14 +46,13 @@ impl CdpSession {
     ///
     /// Returns an error if the expression throws a JavaScript exception.
     pub async fn runtime_evaluate(&self, expression: &str) -> Result<Value> {
+        let params = cdp_gen::EvaluateParams {
+            expression: expression.to_string(),
+            return_by_value: Some(true),
+            ..Default::default()
+        };
         let result = self
-            .send(
-                "Runtime.evaluate",
-                json!({
-                    "expression": expression,
-                    "returnByValue": true,
-                }),
-            )
+            .send("Runtime.evaluate", serde_json::to_value(&params)?)
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
             return Err(crate::connection::CdpError::Other(format_js_exception(
@@ -68,14 +68,13 @@ impl CdpSession {
     /// raw CDP result with `objectId` for DOM elements. Required for JS-based
     /// selector resolution where we need the objectId to call DOM.requestNode.
     pub async fn runtime_evaluate_as_object(&self, expression: &str) -> Result<Value> {
+        let params = cdp_gen::EvaluateParams {
+            expression: expression.to_string(),
+            return_by_value: Some(false),
+            ..Default::default()
+        };
         let result = self
-            .send(
-                "Runtime.evaluate",
-                json!({
-                    "expression": expression,
-                    "returnByValue": false,
-                }),
-            )
+            .send("Runtime.evaluate", serde_json::to_value(&params)?)
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
             return Err(crate::connection::CdpError::Other(format_js_exception(
@@ -94,16 +93,21 @@ impl CdpSession {
         function_declaration: &str,
         arguments: Vec<Value>,
     ) -> Result<Value> {
+        // Arguments arrive pre-formatted as CallArgument JSON objects ({"value": X}).
+        // Deserialize them into the generated type rather than double-wrapping.
+        let typed_args: Vec<cdp_gen::CallArgument> = arguments
+            .into_iter()
+            .map(|v| serde_json::from_value(v).unwrap_or_default())
+            .collect();
+        let params = cdp_gen::CallFunctionOnParams {
+            function_declaration: function_declaration.to_string(),
+            object_id: Some(object_id.to_string()),
+            arguments: Some(typed_args),
+            return_by_value: Some(true),
+            ..Default::default()
+        };
         let result = self
-            .send(
-                "Runtime.callFunctionOn",
-                json!({
-                    "functionDeclaration": function_declaration,
-                    "objectId": object_id,
-                    "arguments": arguments,
-                    "returnByValue": true,
-                }),
-            )
+            .send("Runtime.callFunctionOn", serde_json::to_value(&params)?)
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
             return Err(crate::connection::CdpError::Other(format_js_exception(
@@ -115,7 +119,7 @@ impl CdpSession {
 
     /// Enable the Runtime domain.
     pub async fn runtime_enable(&self) -> Result<()> {
-        self.send("Runtime.enable", json!({})).await?;
+        self.send("Runtime.enable", serde_json::json!({})).await?;
         Ok(())
     }
 
@@ -144,15 +148,14 @@ impl CdpSession {
     /// so expressions like `fetch(...).then(r => r.text())` resolve to
     /// the final string value instead of an opaque Promise object.
     pub async fn runtime_evaluate_async(&self, expression: &str) -> Result<Value> {
+        let params = cdp_gen::EvaluateParams {
+            expression: expression.to_string(),
+            return_by_value: Some(true),
+            await_promise: Some(true),
+            ..Default::default()
+        };
         let result = self
-            .send(
-                "Runtime.evaluate",
-                json!({
-                    "expression": expression,
-                    "returnByValue": true,
-                    "awaitPromise": true,
-                }),
-            )
+            .send("Runtime.evaluate", serde_json::to_value(&params)?)
             .await?;
         if let Some(details) = result.get("exceptionDetails") {
             return Err(crate::connection::CdpError::Other(format_js_exception(

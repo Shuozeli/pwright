@@ -1,9 +1,10 @@
 //! Network domain — cookies, resource blocking.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::connection::Result;
+use crate::generated::network as cdp_gen;
 use crate::session::CdpSession;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,20 +27,33 @@ pub struct Cookie {
 impl CdpSession {
     /// Enable Network domain events.
     pub async fn network_enable(&self) -> Result<()> {
-        self.send("Network.enable", json!({})).await?;
+        self.send(
+            "Network.enable",
+            serde_json::to_value(cdp_gen::EnableParams::default())?,
+        )
+        .await?;
         Ok(())
     }
 
     /// Block URLs matching patterns.
     pub async fn network_set_blocked_urls(&self, patterns: &[String]) -> Result<()> {
-        self.send("Network.setBlockedURLs", json!({ "urls": patterns }))
+        let params = cdp_gen::SetBlockedURLsParams {
+            urls: Some(patterns.to_vec()),
+            ..Default::default()
+        };
+        self.send("Network.setBlockedURLs", serde_json::to_value(&params)?)
             .await?;
         Ok(())
     }
 
     /// Get all cookies for the current page.
     pub async fn network_get_cookies(&self) -> Result<Vec<Cookie>> {
-        let result = self.send("Network.getCookies", json!({})).await?;
+        let result = self
+            .send(
+                "Network.getCookies",
+                serde_json::to_value(cdp_gen::GetCookiesParams::default())?,
+            )
+            .await?;
         let cookies: Vec<Cookie> =
             serde_json::from_value(result["cookies"].clone()).unwrap_or_default();
         Ok(cookies)
@@ -47,8 +61,11 @@ impl CdpSession {
 
     /// Set cookies.
     pub async fn network_set_cookies(&self, cookies: Vec<Value>) -> Result<()> {
-        self.send("Network.setCookies", json!({ "cookies": cookies }))
-            .await?;
+        self.send(
+            "Network.setCookies",
+            serde_json::json!({ "cookies": cookies }),
+        )
+        .await?;
         Ok(())
     }
 
@@ -57,11 +74,11 @@ impl CdpSession {
     /// Maps to CDP [`Network.getResponseBody`](https://chromedevtools.github.io/devtools-protocol/tot/Network/#method-getResponseBody).
     /// The `request_id` comes from `NetworkResponse.request_id` (captured via `on_response()`).
     pub async fn network_get_response_body(&self, request_id: &str) -> Result<ResponseBody> {
+        let params = cdp_gen::GetResponseBodyParams {
+            request_id: request_id.to_string(),
+        };
         let result = self
-            .send(
-                "Network.getResponseBody",
-                json!({ "requestId": request_id }),
-            )
+            .send("Network.getResponseBody", serde_json::to_value(&params)?)
             .await?;
         serde_json::from_value(result).map_err(crate::connection::CdpError::Json)
     }
@@ -148,7 +165,6 @@ mod tests {
             same_site: "None".to_string(),
         };
         let json = serde_json::to_value(&cookie).unwrap();
-        // Verify camelCase
         assert!(json.get("httpOnly").is_some());
         assert!(json.get("sameSite").is_some());
         assert!(json.get("http_only").is_none());

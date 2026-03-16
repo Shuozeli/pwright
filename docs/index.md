@@ -137,4 +137,6 @@ Real Chrome via `chromedp/headless-shell` with in-process test server.
 | `docs/knowledge/testing-strategy.md` | Fake + Docker test architecture |
 | `docs/knowledge/playwright-api.md` | Playwright API compatibility matrix |
 | `docs/knowledge/feature-comparison.md` | pwright vs Playwright vs PinchTab |
+| `docs/knowledge/chrome-devtools-mcp-comparison.md` | pwright CLI vs Google's chrome-devtools-mcp CLI |
+| `docs/knowledge/cdp-codegen-design.md` | CDP protocol codegen crate design |
 | `docs/codelabs.md` | Usage examples (Rust, CLI, gRPC, scripts) |

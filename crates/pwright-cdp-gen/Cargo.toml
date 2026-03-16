@@ -1,0 +1,14 @@
+[package]
+name = "pwright-cdp-gen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CDP protocol codegen: generates typed Rust structs from Chrome DevTools Protocol JSON"
+
+[[bin]]
+name = "cdp-gen"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

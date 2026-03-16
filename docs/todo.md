@@ -129,9 +129,36 @@ calls may return empty. Should poll `readyState` like `goto()` does.
 
 ---
 
+### P2: `handle_dialog` - Alert/confirm/prompt handling
+
+Chrome fires `Page.javascriptDialogOpening` when alert/confirm/prompt appears.
+pwright currently has no way to handle these, causing automation to hang.
+
+```rust
+page.on_dialog(|dialog| async {
+    dialog.accept(Some("response")).await
+});
+// or for CLI:
+// pwright handle-dialog accept
+// pwright handle-dialog dismiss
+```
+
+Uses CDP `Page.handleJavaScriptDialog`. chrome-devtools-mcp has this.
+
+---
+
 ### P3: Script runner Phase 3 (paginate, screenshot, debug mode)
 
 See `docs/knowledge/script-runner-design.md` Phase 3.
+
+---
+
+### P3: CDP protocol codegen crate (`pwright-cdp-gen`)
+
+Generate typed Rust structs and async methods from the CDP protocol JSON spec
+instead of hand-writing domain wrappers. See `docs/knowledge/cdp-codegen-design.md`.
+
+Phases: types/enums -> command params/returns -> async methods -> migrate domains -> events.
 
 ---
 

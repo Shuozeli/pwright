@@ -8,6 +8,7 @@ members = [
     "crates/pwright-cli",
     "crates/pwright-fake",
     "crates/pwright-script",
+    "crates/pwright-cdp-gen",
     "tests/integration",
     "examples/todomvc",
     "examples/svgomg",
