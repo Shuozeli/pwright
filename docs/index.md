@@ -139,4 +139,5 @@ Real Chrome via `chromedp/headless-shell` with in-process test server.
 | `docs/knowledge/feature-comparison.md` | pwright vs Playwright vs PinchTab |
 | `docs/knowledge/chrome-devtools-mcp-comparison.md` | pwright CLI vs Google's chrome-devtools-mcp CLI |
 | `docs/knowledge/cdp-codegen-design.md` | CDP protocol codegen crate design |
+| `docs/knowledge/network-capture-design.md` | Network capture CLI design (second CDP session) |
 | `docs/codelabs.md` | Usage examples (Rust, CLI, gRPC, scripts) |

@@ -174,17 +174,22 @@ to reverse-engineer site APIs and create typed wrappers. The Rust API has
 `on_request`/`on_response`/`response_body` but none of it is in the CLI.
 
 ```bash
-pwright network-list                         # List captured requests since navigation
-pwright network-get <reqid>                  # Get request/response headers + body
-pwright network-get <reqid> --body-file out.json  # Save response body to file
+pwright network-listen                       # Stream traffic as JSONL (separate terminal)
+pwright network-listen --filter "/api/"      # Filter by URL substring
+pwright network-list                         # Quick retroactive query (JS Performance API)
+pwright network-get <reqid>                  # Get response body by request ID
 ```
+
+**Design:** `docs/knowledge/network-capture-design.md` — uses a second CDP
+session attached to the same tab so the listener doesn't interfere with
+the user's interaction commands.
 
 **Why:** dataviz1000's HN comment (573 points) describes intercepting all
 requests to create strongly-typed API proxies. Multiple commenters doing the
 same with Playwright. This is pwright's biggest CLI gap vs chrome-devtools-mcp.
 
-**Implementation:** Wire `network_get_response_body` and network event
-listeners to CLI subcommands. The bridge layer already has everything needed.
+**Implementation:** All CDP primitives exist (`target_attach`, `network_enable`,
+`subscribe_events`, `network_get_response_body`). Only CLI wiring needed.
 
 ---
 
