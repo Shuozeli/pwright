@@ -550,6 +550,252 @@ pub async fn tab_select(state: &mut CliState, tab_id: &str) -> Result<()> {
     Ok(())
 }
 
+// ─── Network Commands ───
+
+/// `pwright network-listen [--duration N] [--filter X] [--type T]`
+///
+/// Attaches a SECOND CDP session to the active tab, enables Network domain,
+/// and streams request/response events as JSONL to stdout until Ctrl+C or timeout.
+pub async fn network_listen(
+    state: &mut CliState,
+    duration: Option<u64>,
+    filter: Option<&str>,
+    resource_type: Option<&str>,
+) -> Result<()> {
+    if state.ws_url.is_empty() || state.target_id.is_empty() {
+        anyhow::bail!("No active tab. Run `pwright open` first.");
+    }
+
+    // Connect and create a SECOND session on the same target
+    let config = BrowserConfig {
+        cdp_url: state.ws_url.clone(),
+        ..Default::default()
+    };
+    let browser = Browser::connect(config)
+        .await
+        .context("failed to connect to Chrome")?;
+
+    let session_id = browser
+        .browser_session()
+        .target_attach(&state.target_id)
+        .await
+        .context("failed to attach listener session")?;
+
+    let listener_session = Arc::new(pwright_cdp::CdpSession::new(
+        browser.connection().clone(),
+        session_id.clone(),
+        state.target_id.clone(),
+    ));
+
+    // Enable Network domain on the listener session
+    listener_session
+        .network_enable()
+        .await
+        .context("failed to enable Network domain")?;
+
+    let mut event_rx = listener_session.subscribe_events();
+
+    output::info("Listening for network traffic (Ctrl+C to stop)...");
+
+    let deadline =
+        duration.map(|d| tokio::time::Instant::now() + std::time::Duration::from_secs(d));
+
+    loop {
+        let event = if let Some(dl) = deadline {
+            match tokio::time::timeout_at(dl, event_rx.recv()).await {
+                Ok(result) => result,
+                Err(_) => break, // timeout
+            }
+        } else {
+            event_rx.recv().await
+        };
+
+        match event {
+            Ok(cdp_event) => {
+                let method = cdp_event.method.as_str();
+                let params = &cdp_event.params;
+
+                if method == "Network.requestWillBeSent"
+                    && let Some(req) =
+                        pwright_bridge::playwright::network::parse_network_request(params)
+                    && matches_filter(&req.url, filter)
+                    && matches_type(&req.resource_type, resource_type)
+                {
+                    let json = serde_json::json!({
+                        "event": "request",
+                        "reqid": req.request_id,
+                        "method": req.method,
+                        "url": req.url,
+                        "type": req.resource_type,
+                        "post_data": req.post_data,
+                    });
+                    println!("{json}");
+                } else if method == "Network.responseReceived"
+                    && let Some(resp) =
+                        pwright_bridge::playwright::network::parse_network_response(params)
+                    && matches_filter(&resp.url, filter)
+                {
+                    let json = serde_json::json!({
+                        "event": "response",
+                        "reqid": resp.request_id,
+                        "status": resp.status,
+                        "mime": resp.mime_type,
+                        "url": resp.url,
+                    });
+                    println!("{json}");
+                } else if method == "Network.loadingFailed"
+                    && let Some(reqid) = params.get("requestId").and_then(|v| v.as_str())
+                {
+                    let error_text = params
+                        .get("errorText")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let json = serde_json::json!({
+                        "event": "failed",
+                        "reqid": reqid,
+                        "error": error_text,
+                    });
+                    println!("{json}");
+                }
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                eprintln!("warning: listener lagged, missed {n} events");
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+        }
+    }
+
+    // Cleanup: detach the listener session
+    let _ = browser.browser_session().target_detach(&session_id).await;
+
+    output::info("Listener stopped.");
+    Ok(())
+}
+
+fn matches_filter(url: &str, filter: Option<&str>) -> bool {
+    match filter {
+        Some(f) => url.contains(f),
+        None => true,
+    }
+}
+
+fn matches_type(actual: &str, filter: Option<&str>) -> bool {
+    match filter {
+        Some(f) => f.split(',').any(|t| t.eq_ignore_ascii_case(actual)),
+        None => true,
+    }
+}
+
+/// `pwright network-list [--filter X]`
+///
+/// Quick retroactive query using JS Performance API. No listener needed.
+pub async fn network_list(state: &mut CliState, filter: Option<&str>) -> Result<()> {
+    let browser = connect(state).await?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    let js = r##"JSON.stringify(performance.getEntriesByType('resource').map(e => ({
+        name: e.name,
+        type: e.initiatorType,
+        duration: Math.round(e.duration),
+        size: e.transferSize || 0,
+        status: e.responseStatus || 0
+    })))"##;
+
+    let result = pwright_bridge::evaluate::evaluate(tab.session.as_ref(), js)
+        .await
+        .context("failed to query performance entries")?;
+
+    let json_str = result.get("value").and_then(|v| v.as_str()).unwrap_or("[]");
+
+    let entries: Vec<serde_json::Value> = serde_json::from_str(json_str).unwrap_or_default();
+
+    if entries.is_empty() {
+        println!("  (no resources)");
+        return Ok(());
+    }
+
+    let header = "    #  Type       Status     Size  Duration  URL";
+    println!("{header}");
+    for (i, e) in entries.iter().enumerate() {
+        let url = e["name"].as_str().unwrap_or("");
+        if let Some(f) = filter
+            && !url.contains(f)
+        {
+            continue;
+        }
+        let entry_type = e["type"].as_str().unwrap_or("");
+        let status = e["status"].as_i64().unwrap_or(0);
+        let size = e["size"].as_i64().unwrap_or(0);
+        let duration = e["duration"].as_i64().unwrap_or(0);
+        let size_str = if size > 1024 {
+            format!("{:.1}KB", size as f64 / 1024.0)
+        } else {
+            format!("{}B", size)
+        };
+        println!(
+            "  {:>3}  {:<10} {:>6} {:>8} {:>6}ms  {}",
+            i + 1,
+            entry_type,
+            status,
+            size_str,
+            duration,
+            url
+        );
+    }
+    Ok(())
+}
+
+/// `pwright network-get <reqid> [--output file]`
+///
+/// Fetch response body from Chrome by request ID. Chrome keeps bodies in
+/// memory for the current page load.
+pub async fn network_get(
+    state: &mut CliState,
+    reqid: &str,
+    output_file: Option<&str>,
+) -> Result<()> {
+    let browser = connect(state).await?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    // Network domain must be enabled to fetch response bodies
+    tab.session
+        .network_enable()
+        .await
+        .context("failed to enable Network domain")?;
+
+    let body = tab
+        .session
+        .network_get_response_body(reqid)
+        .await
+        .context(format!("failed to get response body for {reqid}"))?;
+
+    let content = if body.base64_encoded {
+        let decoded = BASE64.decode(&body.body).context("invalid base64 body")?;
+        if let Some(path) = output_file {
+            std::fs::write(path, &decoded).context("failed to write file")?;
+            output::ok(&format!("Saved {} bytes to {}", decoded.len(), path));
+            return Ok(());
+        }
+        String::from_utf8_lossy(&decoded).to_string()
+    } else {
+        body.body
+    };
+
+    if let Some(path) = output_file {
+        std::fs::write(path, &content).context("failed to write file")?;
+        output::ok(&format!("Saved {} bytes to {}", content.len(), path));
+    } else {
+        println!("{}", content);
+    }
+    Ok(())
+}
+
 // ─── Cookie / PDF / Health ───
 
 /// `pwright cookie-list`

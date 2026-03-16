@@ -101,6 +101,28 @@ pwright pdf                        # PDF export -> page.pdf
 pwright pdf --filename=report.pdf
 ```
 
+### Network Capture
+
+```bash
+# Terminal 1: listen for network traffic (streams JSONL)
+pwright network-listen                         # all traffic
+pwright network-listen --filter "/api/"        # filter by URL
+pwright network-listen --type XHR              # filter by type
+pwright network-listen --duration 30           # stop after 30s
+
+# Quick list of resources on current page (no listener needed)
+pwright network-list
+pwright network-list --filter ".js"
+
+# Get response body by request ID (from network-listen output)
+pwright network-get <reqid>
+pwright network-get <reqid> --output data.json
+```
+
+> **Workflow:** Run `network-listen` in one terminal, interact in another.
+> The listener uses a separate CDP session so it doesn't interfere with
+> your commands. Use the `reqid` from listener output with `network-get`.
+
 ### Tabs
 
 ```bash

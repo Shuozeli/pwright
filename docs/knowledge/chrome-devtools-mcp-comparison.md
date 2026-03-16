@@ -71,8 +71,8 @@ Feature comparison against Google's official Chrome DevTools MCP CLI.
 | performance_stop_trace | -- | Yes |
 | performance_analyze_insight | -- | Yes |
 | take_memory_snapshot | -- | Yes |
-| list_network_requests | -- | Yes |
-| get_network_request | -- | Yes |
+| list_network_requests | `network-listen` / `network-list` | Yes |
+| get_network_request | `network-get <reqid>` | Yes |
 | list_console_messages | -- | Yes |
 | get_console_message | -- | Yes |
 | lighthouse_audit | -- | Yes |

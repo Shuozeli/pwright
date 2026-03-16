@@ -205,6 +205,35 @@ enum Command {
         tab_id: String,
     },
 
+    /// Stream network traffic as JSONL (run in separate terminal while interacting)
+    NetworkListen {
+        /// Maximum seconds to listen (default: unlimited)
+        #[arg(long)]
+        duration: Option<u64>,
+        /// Filter by URL substring
+        #[arg(long)]
+        filter: Option<String>,
+        /// Filter by resource type (XHR, Fetch, Document, Script, etc.)
+        #[arg(long, name = "type")]
+        resource_type: Option<String>,
+    },
+
+    /// List resources loaded on current page (retroactive, no listener needed)
+    NetworkList {
+        /// Filter by URL substring
+        #[arg(long)]
+        filter: Option<String>,
+    },
+
+    /// Get response body for a request by ID (from network-listen output)
+    NetworkGet {
+        /// Request ID from network-listen output
+        reqid: String,
+        /// Save response body to file instead of printing
+        #[arg(long)]
+        output: Option<String>,
+    },
+
     /// List cookies for active tab
     CookieList,
 
@@ -333,6 +362,25 @@ async fn main() {
         Command::TabNew { url } => commands::tab_new(&mut state, url.as_deref()).await,
         Command::TabClose { tab_id } => commands::tab_close(&mut state, tab_id.as_deref()).await,
         Command::TabSelect { tab_id } => commands::tab_select(&mut state, &tab_id).await,
+        Command::NetworkListen {
+            duration,
+            filter,
+            resource_type,
+        } => {
+            commands::network_listen(
+                &mut state,
+                duration,
+                filter.as_deref(),
+                resource_type.as_deref(),
+            )
+            .await
+        }
+        Command::NetworkList { filter } => {
+            commands::network_list(&mut state, filter.as_deref()).await
+        }
+        Command::NetworkGet { reqid, output } => {
+            commands::network_get(&mut state, &reqid, output.as_deref()).await
+        }
         Command::CookieList => commands::cookie_list(&mut state).await,
         Command::CookieSet {
             name,
