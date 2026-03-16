@@ -153,6 +153,12 @@ mouse.click(100.0, 200.0, None).await?;
 mouse.dblclick(100.0, 200.0).await?;
 mouse.move_to(300.0, 400.0).await?;
 mouse.wheel(0, -300).await?; // Scroll up
+
+// Right-click
+mouse.click(100.0, 200.0, Some(ClickOptions {
+    button: Some("right".to_string()),
+    ..Default::default()
+})).await?;
 ```
 
 ### Touchscreen
@@ -168,10 +174,17 @@ touch.tap(150.0, 250.0).await?;  // Touch tap
 
 ```bash
 pwright click e1           # Click element by ref
+pwright dblclick e1        # Double-click element by ref
 pwright type "Hello"       # Type text
 pwright press Enter        # Press key
 pwright fill e2 "value"    # Fill input
 pwright hover e3           # Hover element
+
+# Coordinate-based (for SPAs with empty accessibility trees)
+pwright click-at 282 293              # Click at (x, y)
+pwright click-at 282 293 --button right   # Right-click
+pwright click-at 282 293 --click-count 2  # Double-click
+pwright hover-at 282 293              # Hover at (x, y)
 ```
 
 ---

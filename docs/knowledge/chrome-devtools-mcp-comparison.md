@@ -22,12 +22,14 @@ Feature comparison against Google's official Chrome DevTools MCP CLI.
 | Tool | pwright | CD-MCP | Notes |
 |------|:-------:|:------:|-------|
 | click | `click eN` | `click uid` | Both use a11y tree refs |
+| click-at | `click-at x y` | -- | **pwright only**: coordinate-based real CDP input |
 | dblclick | `dblclick eN` | `click uid --dblClick` | CD-MCP uses flag |
 | fill | `fill eN "val"` | `fill uid "val"` | Equivalent |
 | fill_form (batch) | -- | `fill_form [...]` | **CD-MCP only**: fills multiple form elements at once |
 | type | `type "text"` | `type_text "text"` | Equivalent |
 | press key | `press Enter` | `press_key Enter` | Equivalent |
 | hover | `hover eN` | `hover uid` | Equivalent |
+| hover-at | `hover-at x y` | -- | **pwright only**: coordinate-based hover |
 | drag | `drag eN --dx --dy` | `drag from to` | pwright uses offset, CD-MCP uses target element |
 | upload | `upload eN ./file` | `upload_file uid path` | Equivalent |
 | select | `select eN "val"` | -- | **pwright only** |

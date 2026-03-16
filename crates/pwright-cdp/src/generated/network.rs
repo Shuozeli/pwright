@@ -1039,7 +1039,7 @@ pub enum ContentEncoding {
 #[serde(rename_all = "camelCase")]
 pub struct NetworkConditions {
     /// Only matching requests will be affected by these conditions. Patterns use the URLPattern constructor string
-    /// syntax (<https://urlpattern.spec.whatwg.org/)> and must be absolute. If the pattern is empty, all requests are
+    /// syntax (<https://urlpattern.spec.whatwg.org/>) and must be absolute. If the pattern is empty, all requests are
     /// matched (including p2p connections).
     pub url_pattern: String,
     /// Minimum latency from request sent to response headers received (ms).
@@ -1066,7 +1066,7 @@ pub struct NetworkConditions {
 #[serde(rename_all = "camelCase")]
 pub struct BlockPattern {
     /// URL pattern to match. Patterns use the URLPattern constructor string syntax
-    /// (<https://urlpattern.spec.whatwg.org/)> and must be absolute. Example: `*://*:*/*.css`.
+    /// (<https://urlpattern.spec.whatwg.org/>) and must be absolute. Example: `*://*:*/*.css`.
     pub url_pattern: String,
     /// Whether or not to block the pattern. If false, a matching request will not be blocked even if it matches a later
     /// `BlockPattern`.

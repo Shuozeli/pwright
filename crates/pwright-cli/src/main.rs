@@ -54,6 +54,35 @@ enum Command {
         ref_str: String,
     },
 
+    /// Click at viewport coordinates (real CDP input event)
+    ClickAt {
+        /// X coordinate (pixels)
+        x: f64,
+        /// Y coordinate (pixels)
+        y: f64,
+        /// Mouse button
+        #[arg(long, default_value = "left")]
+        button: String,
+        /// Click count (2 for double-click)
+        #[arg(long, default_value = "1")]
+        click_count: i32,
+    },
+
+    /// Double-click element by ref
+    Dblclick {
+        /// Element ref (e.g. "e1")
+        #[arg(name = "ref")]
+        ref_str: String,
+    },
+
+    /// Hover at viewport coordinates
+    HoverAt {
+        /// X coordinate (pixels)
+        x: f64,
+        /// Y coordinate (pixels)
+        y: f64,
+    },
+
     /// Type text into focused element
     Type {
         /// Text to type
@@ -273,6 +302,14 @@ async fn main() {
         Command::Goto { url } => commands::goto(&mut state, &url).await,
         Command::Close => commands::close(&mut state).await,
         Command::Click { ref_str } => commands::click(&mut state, &ref_str).await,
+        Command::ClickAt {
+            x,
+            y,
+            button,
+            click_count,
+        } => commands::click_at(&mut state, x, y, &button, click_count).await,
+        Command::Dblclick { ref_str } => commands::dblclick(&mut state, &ref_str).await,
+        Command::HoverAt { x, y } => commands::hover_at(&mut state, x, y).await,
         Command::Type { text } => commands::type_text(&mut state, &text).await,
         Command::Fill { ref_str, text } => commands::fill(&mut state, &ref_str, &text).await,
         Command::Press { key } => commands::press(&mut state, &key).await,

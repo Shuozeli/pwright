@@ -599,7 +599,7 @@ fn escape_doc_comment(line: &str) -> String {
         {
             // Find end of URL (space, comma, or end of line)
             let url_start = i;
-            while i < chars.len() && !chars[i].is_whitespace() && chars[i] != ',' {
+            while i < chars.len() && !chars[i].is_whitespace() && !matches!(chars[i], ',' | ')') {
                 i += 1;
             }
             let url = &line[url_start..i];
@@ -748,5 +748,166 @@ mod tests {
         assert_eq!(enum_variant_name("auto-subframe"), "AutoSubframe");
         assert_eq!(enum_variant_name("3d"), "V3d");
         assert_eq!(enum_variant_name(""), "Empty");
+    }
+
+    #[test]
+    fn test_escape_doc_brackets() {
+        assert_eq!(escape_doc_comment("[0,359]"), "\\[0,359\\]");
+        assert_eq!(escape_doc_comment("range [0,1]"), "range \\[0,1\\]");
+        assert_eq!(escape_doc_comment("no brackets"), "no brackets");
+    }
+
+    #[test]
+    fn test_escape_doc_preserves_markdown_links() {
+        // Markdown links like [text](url) should not be escaped
+        assert_eq!(
+            escape_doc_comment("[link](https://example.com)"),
+            "[link](<https://example.com>)"
+        );
+    }
+
+    #[test]
+    fn test_escape_doc_bare_urls() {
+        assert_eq!(
+            escape_doc_comment("see https://example.com for details"),
+            "see <https://example.com> for details"
+        );
+        assert_eq!(
+            escape_doc_comment("http://localhost:9222/json"),
+            "<http://localhost:9222/json>"
+        );
+    }
+
+    #[test]
+    fn test_needs_serde_rename_simple_camel_case() {
+        // Standard camelCase -> snake_case round-trips correctly
+        assert!(!needs_serde_rename("nodeId", "node_id"));
+        assert!(!needs_serde_rename("targetId", "target_id"));
+    }
+
+    #[test]
+    fn test_needs_serde_rename_acronyms() {
+        // Acronyms don't round-trip: backendDOMNodeId -> backend_dom_node_id -> backendDomNodeId
+        assert!(needs_serde_rename(
+            "backendDOMNodeId",
+            "backend_dom_node_id"
+        ));
+        assert!(needs_serde_rename("XMLHttpRequest", "xml_http_request"));
+    }
+
+    #[test]
+    fn test_recursive_field_detection() {
+        assert!(is_recursive_field("Node", Some("Node")));
+        assert!(is_recursive_field("StackTrace", Some("StackTrace")));
+        assert!(!is_recursive_field("Node", Some("FrameId")));
+        assert!(!is_recursive_field("SomeStruct", Some("Node")));
+    }
+
+    #[test]
+    fn test_resolve_ref_same_domain() {
+        assert_eq!(resolve_ref("FrameId", "Page"), "FrameId");
+        assert_eq!(resolve_ref("NodeId", "DOM"), "NodeId");
+    }
+
+    #[test]
+    fn test_resolve_ref_cross_domain_generated() {
+        assert_eq!(
+            resolve_ref("Network.LoaderId", "Page"),
+            "super::network::LoaderId"
+        );
+        assert_eq!(
+            resolve_ref("Runtime.ScriptId", "Page"),
+            "super::runtime::ScriptId"
+        );
+    }
+
+    #[test]
+    fn test_resolve_ref_cross_domain_not_generated() {
+        // IO domain is not generated, should fall back to Value
+        assert_eq!(resolve_ref("IO.StreamHandle", "Network"), "Value");
+        assert_eq!(resolve_ref("Security.CertificateId", "Network"), "Value");
+    }
+
+    #[test]
+    fn test_is_default_type() {
+        let string_prop = Property {
+            name: "x".into(),
+            description: String::new(),
+            optional: false,
+            type_kind: Some("string".into()),
+            ref_type: None,
+            items: None,
+            enum_values: vec![],
+        };
+        assert!(is_default_type(&string_prop));
+
+        let ref_prop = Property {
+            name: "x".into(),
+            description: String::new(),
+            optional: false,
+            type_kind: None,
+            ref_type: Some("SomeType".into()),
+            items: None,
+            enum_values: vec![],
+        };
+        assert!(!is_default_type(&ref_prop));
+
+        let binary_prop = Property {
+            name: "x".into(),
+            description: String::new(),
+            optional: false,
+            type_kind: Some("binary".into()),
+            ref_type: None,
+            items: None,
+            enum_values: vec![],
+        };
+        assert!(is_default_type(&binary_prop));
+    }
+
+    #[test]
+    fn test_all_fields_optional() {
+        let props = vec![
+            Property {
+                name: "a".into(),
+                description: String::new(),
+                optional: true,
+                type_kind: Some("string".into()),
+                ref_type: None,
+                items: None,
+                enum_values: vec![],
+            },
+            Property {
+                name: "b".into(),
+                description: String::new(),
+                optional: true,
+                type_kind: Some("integer".into()),
+                ref_type: None,
+                items: None,
+                enum_values: vec![],
+            },
+        ];
+        assert!(all_fields_optional(&props));
+
+        let mixed = vec![
+            Property {
+                name: "a".into(),
+                description: String::new(),
+                optional: true,
+                type_kind: Some("string".into()),
+                ref_type: None,
+                items: None,
+                enum_values: vec![],
+            },
+            Property {
+                name: "b".into(),
+                description: String::new(),
+                optional: false,
+                type_kind: Some("string".into()),
+                ref_type: None,
+                items: None,
+                enum_values: vec![],
+            },
+        ];
+        assert!(!all_fields_optional(&mixed));
     }
 }

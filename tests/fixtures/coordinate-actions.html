@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head><title>Coordinate Actions Test</title></head>
+<body>
+  <div id="click-target" style="width: 200px; height: 100px; background: #ddd; text-align: center; line-height: 100px;">
+    Click me
+  </div>
+  <div id="click-result">Not clicked</div>
+
+  <div id="hover-target" style="width: 200px; height: 100px; background: #eee; margin-top: 20px; text-align: center; line-height: 100px;">
+    Hover me
+  </div>
+  <div id="hover-result">Not hovered</div>
+
+  <div id="dblclick-target" style="width: 200px; height: 100px; background: #ccc; margin-top: 20px; text-align: center; line-height: 100px;">
+    Double-click me
+  </div>
+  <div id="dblclick-result">Not double-clicked</div>
+
+  <div id="rightclick-target" style="width: 200px; height: 100px; background: #bbb; margin-top: 20px; text-align: center; line-height: 100px;">
+    Right-click me
+  </div>
+  <div id="rightclick-result">Not right-clicked</div>
+
+  <script>
+    document.getElementById('click-target').addEventListener('click', function() {
+      document.getElementById('click-result').textContent = 'Clicked!';
+    });
+    document.getElementById('hover-target').addEventListener('mouseenter', function() {
+      document.getElementById('hover-result').textContent = 'Hovered!';
+    });
+    document.getElementById('dblclick-target').addEventListener('dblclick', function() {
+      document.getElementById('dblclick-result').textContent = 'Double-clicked!';
+    });
+    document.getElementById('rightclick-target').addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      document.getElementById('rightclick-result').textContent = 'Right-clicked!';
+    });
+  </script>
+</body>
+</html>

@@ -340,7 +340,7 @@ pub struct PermissionsPolicyFeatureState {
     pub locator: Option<PermissionsPolicyBlockLocator>,
 }
 
-/// Origin Trial(<https://www.chromium.org/blink/origin-trials)> support.
+/// Origin Trial(<https://www.chromium.org/blink/origin-trials>) support.
 /// Status for an Origin Trial token.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OriginTrialTokenStatus {

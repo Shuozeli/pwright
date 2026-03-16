@@ -73,7 +73,16 @@ pwright check e6                   # Check checkbox
 pwright uncheck e6                 # Uncheck checkbox
 pwright drag e7 --dx 100 --dy 0   # Drag element by offset
 pwright upload e8 ./file.pdf       # Upload file to file input
+pwright click-at 282 293           # Click at viewport coordinates (real CDP input)
+pwright click-at 282 293 --button right  # Right-click at coordinates
+pwright click-at 282 293 --click-count 2 # Double-click at coordinates
+pwright hover-at 282 293           # Hover at viewport coordinates
 ```
+
+> **Coordinate-based commands** (`click-at`, `hover-at`) send real CDP input events
+> that work on SPAs with empty accessibility trees (e.g. Gmail, Google Docs). Use
+> `pwright eval` to get element coordinates via `getBoundingClientRect()`, then
+> `click-at` to interact.
 
 ### Inspection
 

@@ -204,6 +204,91 @@ pub async fn click(state: &mut CliState, ref_str: &str) -> Result<()> {
     Ok(())
 }
 
+/// `pwright click-at <x> <y> [--button] [--click-count]`
+pub async fn click_at(
+    state: &mut CliState,
+    x: f64,
+    y: f64,
+    button: &str,
+    click_count: i32,
+) -> Result<()> {
+    let browser = connect(state).await?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    let session = tab.session.as_ref();
+    session
+        .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
+        .await
+        .context("mouseMoved failed")?;
+    session
+        .input_dispatch_mouse_event(
+            "mousePressed",
+            x,
+            y,
+            Some(button),
+            Some(click_count),
+            Some(1),
+        )
+        .await
+        .context("mousePressed failed")?;
+    session
+        .input_dispatch_mouse_event(
+            "mouseReleased",
+            x,
+            y,
+            Some(button),
+            Some(click_count),
+            Some(0),
+        )
+        .await
+        .context("mouseReleased failed")?;
+
+    output::ok(&format!("Clicked at ({}, {})", x, y));
+    Ok(())
+}
+
+/// `pwright dblclick <ref>`
+pub async fn dblclick(state: &mut CliState, ref_str: &str) -> Result<()> {
+    let browser = connect(state).await?;
+    let node_id = browser
+        .resolve_ref(&state.active_tab, ref_str)
+        .await
+        .context(format!("ref '{}' not found", ref_str))?;
+
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    pwright_bridge::actions::dblclick_by_node_id(tab.session.as_ref(), node_id)
+        .await
+        .context("dblclick failed")?;
+
+    output::ok(&format!("Double-clicked [{}]", ref_str));
+    Ok(())
+}
+
+/// `pwright hover-at <x> <y>`
+pub async fn hover_at(state: &mut CliState, x: f64, y: f64) -> Result<()> {
+    let browser = connect(state).await?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    tab.session
+        .as_ref()
+        .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
+        .await
+        .context("hover-at failed")?;
+
+    output::ok(&format!("Hovered at ({}, {})", x, y));
+    Ok(())
+}
+
 /// `pwright fill <ref> <text>`
 pub async fn fill(state: &mut CliState, ref_str: &str, text: &str) -> Result<()> {
     let browser = connect(state).await?;
