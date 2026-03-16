@@ -127,11 +127,11 @@ async fn new_tab_page_interaction_then_http_close() {
     page.goto("data:text/html,<h1>Hello</h1>", None)
         .await
         .unwrap();
-    let title = page
-        .evaluate("document.querySelector('h1').textContent")
+    let title: String = page
+        .evaluate_into("document.querySelector('h1').textContent")
         .await
         .unwrap();
-    assert_eq!(title["value"].as_str().unwrap_or(""), "Hello");
+    assert_eq!(title, "Hello");
 
     // Close goes over HTTP
     handle.close().await.unwrap();

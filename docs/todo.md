@@ -81,6 +81,46 @@ See `docs/knowledge/script-runner-design.md` Phase 2.
 
 ---
 
+---
+
+### P1: `page.wait_for_text()` / `page.wait_until()`
+
+Text-based and JS-expression-based waiting for SPAs where you can't predict
+which element will contain the content. More robust than `wait_for_selector()`
+for dynamic pages:
+
+```rust
+// Wait until body contains "Results" (poll every 1s, timeout 120s)
+page.wait_for_text("Results", 120_000).await?;
+
+// General: wait until a JS expression returns truthy
+page.wait_until("document.body.innerText.includes('Ready')", 120_000).await?;
+```
+
+Implement as polling loops similar to existing `wait_for_selector`.
+
+**Location:** `crates/pwright-bridge/src/playwright/page.rs`
+
+---
+
+### P2: Connection health check
+
+`Browser::connect_http()` succeeds once but the connection can die silently.
+Add a lightweight ping:
+
+```rust
+if !browser.is_alive().await {
+    browser = Browser::connect_http(url).await?;
+}
+```
+
+Implement via `ChromeHttpClient::version()` (HTTP) or a no-op CDP call
+(WebSocket). Return `bool`, not `Result` -- this is a health probe.
+
+**Location:** `crates/pwright-bridge/src/browser.rs`
+
+---
+
 ### P2: `page.reload()` should wait for page load
 
 Currently `Page::reload()` fires `Page.reload` CDP command and returns
@@ -96,8 +136,6 @@ See `docs/knowledge/script-runner-design.md` Phase 3.
 ---
 
 ## Bugs from Field Testing
-
-Track bugs reported from production usage (dragb integration).
 
 | # | Bug | Severity | Status |
 |---|-----|----------|--------|

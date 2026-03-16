@@ -2,6 +2,7 @@
 //!
 //! Requires: docker compose -f docker-compose.local.yml up -d
 
+use pwright_bridge::FromEvalJson;
 use pwright_integration_tests::{connect_and_navigate, server_base_url};
 
 #[tokio::test]
@@ -94,8 +95,38 @@ async fn inner_html_returns_markup() {
 async fn evaluate_returns_result() {
     let page = connect_and_navigate("/content.html").await;
 
+    // Raw evaluate still works
     let result = page.evaluate("1 + 2 + 3").await.unwrap();
     assert_eq!(result["value"], 6);
+
+    // Typed evaluate_into
+    let sum: i64 = page.evaluate_into("1 + 2 + 3").await.unwrap();
+    assert_eq!(sum, 6);
+
+    let title: String = page.evaluate_into("document.title").await.unwrap();
+    assert!(!title.is_empty());
+
+    let has_body: bool = page.evaluate_into("!!document.body").await.unwrap();
+    assert!(has_body);
+
+    // FromEvalJson for structured data
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct LinkInfo {
+        text: String,
+        href: String,
+    }
+    let links: FromEvalJson<Vec<LinkInfo>> = page
+        .evaluate_into(
+            r##"JSON.stringify([...document.querySelectorAll('a[href]')].map(a => ({text: a.textContent.trim(), href: a.href})))"##,
+        )
+        .await
+        .unwrap();
+    assert!(!links.0.is_empty(), "should find at least one link");
+    assert!(!links.0[0].text.is_empty(), "link text should not be empty");
+    assert!(
+        links.0[0].href.starts_with("http"),
+        "link href should be absolute"
+    );
 }
 
 #[tokio::test]

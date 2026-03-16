@@ -24,6 +24,7 @@ and crate map. That file is the authoritative reference for agents.
 - Do NOT change `nodeId` back to `backendNodeId` in DOM methods
 - Use `serde_json::to_string()` for JS string escaping (not manual `replace`)
 - Use `r##"..."##` for raw strings containing `@`, `#` in tests (Rust 2024 edition)
+- pwright-bridge is a **stateless library** - it does NOT track tabs, manage pools, or do implicit cleanup. Callers own tab lifecycle. Do NOT propose automatic tab leak detection, tab garbage collection, or drop guards that implicitly close tabs. The `with_page` mistake (implicit lifecycle) must not be repeated.
 
 ## Build & Test
 

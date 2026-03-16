@@ -169,6 +169,20 @@ impl Locator {
         Ok(result.get("result").cloned().unwrap_or(Value::Null))
     }
 
+    /// Evaluate a JavaScript function on the element and convert to a typed value.
+    ///
+    /// ```rust,ignore
+    /// let height: i64 = locator.evaluate_into("function() { return this.offsetHeight; }").await?;
+    /// let visible: bool = locator.evaluate_into("function() { return this.checkVisibility(); }").await?;
+    /// ```
+    pub async fn evaluate_into<T: crate::evaluate::FromEvalResult>(
+        &self,
+        function_body: &str,
+    ) -> CdpResult<T> {
+        let remote_object = self.evaluate(function_body).await?;
+        T::from_eval_result(&remote_object)
+    }
+
     /// Dispatch a custom event on the element.
     pub async fn dispatch_event(&self, event_type: &str) -> CdpResult<()> {
         let node = self.resolve_one().await?;

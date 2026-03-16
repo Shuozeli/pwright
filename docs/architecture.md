@@ -48,7 +48,7 @@ Translates user-intent into CDP command sequences.
 - **`actions.rs`** — 9 browser actions: click, type, fill, press, focus, hover, select, scroll, drag. Each follows the CDP pattern learned from PinchTab (e.g., `scrollIntoView → getBoxModel → dispatchMouseEvent`).
 - **`snapshot.rs`** — Builds a flat accessibility tree from `Accessibility.getFullAXTree`. Assigns refs (`e0`, `e1`, ...) mapped to `backendDOMNodeId` for stable element references.
 - **`content.rs`** — Screenshot (PNG/JPEG/WebP), PDF, text extraction.
-- **`evaluate.rs`** — JavaScript evaluation.
+- **`evaluate.rs`** — JavaScript evaluation. `FromEvalResult` trait for typed `evaluate_into::<T>()` (String, bool, i64, f64, Value, `FromEvalJson<T>` for JSON deserialization).
 - **`cookies.rs`** — Cookie get/set.
 - **`clock.rs`** — `Clock` trait for dependency-injected time operations. `TokioClock` (real) for production, `FakeClock` (deterministic) for tests.
 - **`keys.rs`** — Named key definitions (Enter, Tab, Escape, Arrow keys, F1-F12).

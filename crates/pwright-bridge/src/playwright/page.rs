@@ -265,12 +265,44 @@ impl Page {
         crate::evaluate::evaluate(&*self.session, expression).await
     }
 
+    /// Evaluate a JavaScript expression and convert the result to a typed value.
+    ///
+    /// ```rust,ignore
+    /// let title: String = page.evaluate_into("document.title").await?;
+    /// let count: i64 = page.evaluate_into("document.querySelectorAll('a').length").await?;
+    /// let ready: bool = page.evaluate_into("!!document.querySelector('.loaded')").await?;
+    ///
+    /// // For JSON.stringify results into arbitrary types:
+    /// use pwright_bridge::evaluate::FromEvalJson;
+    /// let items: FromEvalJson<Vec<Item>> = page.evaluate_into("JSON.stringify([...])").await?;
+    /// ```
+    pub async fn evaluate_into<T: crate::evaluate::FromEvalResult>(
+        &self,
+        expression: &str,
+    ) -> CdpResult<T> {
+        self.ensure_open()?;
+        crate::evaluate::evaluate_into(&*self.session, expression).await
+    }
+
     /// Evaluate a JS expression, awaiting any returned Promise.
     ///
     /// Use this for async JS like `fetch(...).then(r => r.text())`.
     pub async fn evaluate_async(&self, expression: &str) -> CdpResult<Value> {
         self.ensure_open()?;
         crate::evaluate::evaluate_async(&*self.session, expression).await
+    }
+
+    /// Evaluate a JS expression (Promise-aware) and convert to a typed value.
+    ///
+    /// ```rust,ignore
+    /// let text: String = page.evaluate_async_into("fetch('/api').then(r => r.text())").await?;
+    /// ```
+    pub async fn evaluate_async_into<T: crate::evaluate::FromEvalResult>(
+        &self,
+        expression: &str,
+    ) -> CdpResult<T> {
+        self.ensure_open()?;
+        crate::evaluate::evaluate_async_into(&*self.session, expression).await
     }
 
     // ── Screenshots & PDF ──

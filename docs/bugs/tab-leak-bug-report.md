@@ -98,7 +98,7 @@ Add a method `Browser::close_orphaned_tabs()` that:
 2. Compares against known active tabs (would need a tracking set)
 3. Closes any tabs not in the active set
 
-The caller (llm-web-proxy) would call this periodically.
+The caller would run this periodically.
 
 ### Option C: Navigate to about:blank in `with_page` before close
 

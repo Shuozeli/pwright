@@ -285,13 +285,21 @@ pwright cookie-set --name session --value abc123 --domain example.com
 ### Rust
 
 ```rust
+// Raw evaluate (returns serde_json::Value)
 let result = page.evaluate("1 + 1").await?;
-let title = page.evaluate("document.title").await?;
 
-// Complex evaluation
-let data = page.evaluate(r#"
-    fetch('/api/data').then(r => r.json())
-"#).await?;
+// Typed evaluate_into (generic, returns concrete types)
+let title: String = page.evaluate_into("document.title").await?;
+let count: i64 = page.evaluate_into("document.querySelectorAll('a').length").await?;
+let ready: bool = page.evaluate_into("!!document.querySelector('.loaded')").await?;
+
+// Structured JSON data via FromEvalJson wrapper
+use pwright_bridge::FromEvalJson;
+let items: FromEvalJson<Vec<Item>> = page.evaluate_into("JSON.stringify([...])").await?;
+let data = items.0;
+
+// Async evaluation (awaits Promises)
+let text: String = page.evaluate_async_into("fetch('/api').then(r => r.text())").await?;
 ```
 
 ### CLI
