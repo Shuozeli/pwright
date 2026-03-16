@@ -158,7 +158,112 @@ See `docs/knowledge/script-runner-design.md` Phase 3.
 Generate typed Rust structs and async methods from the CDP protocol JSON spec
 instead of hand-writing domain wrappers. See `docs/knowledge/cdp-codegen-design.md`.
 
-Phases: types/enums -> command params/returns -> async methods -> migrate domains -> events.
+Phases 1-3 done (types, params, migration). Remaining: event dispatcher, new domains.
+
+---
+
+## CLI Gaps (from HN chrome-devtools-mcp discussion, 2026-03-16)
+
+These features exist in the Rust API but are not exposed in the CLI,
+or are missing entirely. Ordered by demand from real-world usage reports.
+
+### P1: Network capture CLI commands
+
+The most requested use case: intercepting requests/responses while navigating
+to reverse-engineer site APIs and create typed wrappers. The Rust API has
+`on_request`/`on_response`/`response_body` but none of it is in the CLI.
+
+```bash
+pwright network-list                         # List captured requests since navigation
+pwright network-get <reqid>                  # Get request/response headers + body
+pwright network-get <reqid> --body-file out.json  # Save response body to file
+```
+
+**Why:** dataviz1000's HN comment (573 points) describes intercepting all
+requests to create strongly-typed API proxies. Multiple commenters doing the
+same with Playwright. This is pwright's biggest CLI gap vs chrome-devtools-mcp.
+
+**Implementation:** Wire `network_get_response_body` and network event
+listeners to CLI subcommands. The bridge layer already has everything needed.
+
+---
+
+### P1: `--capabilities` structured self-description
+
+Agents need to discover what a CLI can do. A `pwright --capabilities` command
+that outputs JSON describing all tools, params, and examples would make pwright
+usable by any agent without a skill file.
+
+```bash
+pwright --capabilities  # JSON output of all commands with params and descriptions
+```
+
+**Why:** quotemstr and yammosk on HN describe the need for structured CLI
+help consumable by LLMs and shell completion. Current `--help` is human-readable
+but not machine-optimal. This is the CLI equivalent of MCP's tool discovery.
+
+**Implementation:** Auto-generate from clap's command metadata. One new flag.
+
+---
+
+### P2: Request blocking CLI
+
+Block images/ads/tracking to reduce page weight during agent browsing.
+Already have `network_set_blocked_urls` in the API, just needs CLI exposure.
+
+```bash
+pwright block-urls "*.jpg" "*.png" "*.gif" "*.mp4"
+pwright block-urls "google-analytics.com/*" "facebook.net/*"
+```
+
+**Why:** Token efficiency is the #1 complaint about browser automation tools.
+Blocking unnecessary resources cuts page load time and snapshot size.
+
+---
+
+### P2: Viewport / device emulation CLI
+
+Capture responsive behavior by adjusting viewport. Useful for testing
+responsive layouts and mobile-specific behavior.
+
+```bash
+pwright emulate --viewport 375x812         # iPhone-sized
+pwright emulate --viewport 1920x1080       # Desktop
+pwright resize 375 812                     # Simple resize
+```
+
+**Why:** bredren on HN describes capturing responsive behavior by adjusting
+viewport widths and monitoring DOM changes. Requires CDP `Emulation` domain
+(not yet generated in codegen — add to domain list).
+
+---
+
+### P2: Console message capture CLI
+
+Access browser console messages for debugging.
+
+```bash
+pwright console-list                       # List console messages
+pwright console-get <msgid>                # Get full message with stack trace
+```
+
+**Why:** chrome-devtools-mcp has this. Useful for debugging JS errors during
+automation without needing to look at Chrome directly.
+
+---
+
+### P3: Cookie import/export
+
+Save and restore authenticated sessions across runs.
+
+```bash
+pwright cookie-export cookies.json
+pwright cookie-import cookies.json
+```
+
+**Why:** Multiple HN commenters discuss reusing authenticated browser sessions.
+pwright's attach-only model handles this for live Chrome, but cookie
+import/export enables session persistence across Chrome restarts.
 
 ---
 
