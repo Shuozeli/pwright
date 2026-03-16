@@ -129,12 +129,17 @@ async fn network_get_fetches_response_body() {
 }
 
 /// network-list: retroactive query via JS Performance API.
+/// Navigate to api-demo (which triggers a fetch), then verify the
+/// performance API returns the fetch as a resource entry.
 #[tokio::test]
 #[ignore = "requires docker: chrome + test-server"]
 async fn network_list_via_performance_api() {
-    let page = connect_and_navigate("/content.html").await;
+    let page = connect_and_navigate("/api-demo").await;
 
-    // Query performance entries
+    // api-demo page fires a fetch to /api/search on load.
+    // Give it a moment to complete.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
     let result: String = page
         .evaluate_into(
             r##"JSON.stringify(performance.getEntriesByType('resource').map(e => e.name))"##,
@@ -144,14 +149,11 @@ async fn network_list_via_performance_api() {
 
     let urls: Vec<String> = serde_json::from_str(&result).unwrap();
 
-    // content.html loads from the test server, so there should be at least
-    // the document itself in the resource timing entries
-    // (Note: the document may not appear if PerformanceObserver wasn't set up,
-    // but sub-resources like CSS/JS should appear if the page has any)
-    // For a static HTML page, entries may be empty — that's acceptable.
-    // The important thing is the API call works without error.
-    // The call succeeding without error is the test — static pages may have 0 entries.
-    let _ = urls;
+    assert!(!urls.is_empty(), "api-demo should have resource entries");
+    assert!(
+        urls.iter().any(|u| u.contains("/api/search")),
+        "should contain the /api/search fetch, got: {urls:?}"
+    );
 }
 
 /// Listener captures requests across multiple interactions on the same page.
