@@ -64,3 +64,31 @@ Marked with `type: mutation` in the recipe header.
 |--------|------|-------------|:------------:|
 | [login-and-extract.yaml](automation/login-and-extract.yaml) | query | Login + extract protected content | Yes |
 | [fill-and-submit.yaml](automation/fill-and-submit.yaml) | **mutation** | Fill form + submit | Depends |
+
+### Network Capture (shell scripts)
+
+These use `pwright network-listen` + `network-get` to intercept API traffic.
+Run in a terminal while interacting with the site.
+
+| Recipe | Description | Auth required |
+|--------|-------------|:------------:|
+| [discover-api.sh](network/discover-api.sh) | Navigate a site, capture all XHR/Fetch calls, list unique endpoints | Depends |
+| [capture-form-submit.sh](network/capture-form-submit.sh) | Fill + submit a form, capture the API request and response body | Depends |
+| [extract-api-responses.sh](network/extract-api-responses.sh) | Capture API responses matching a URL pattern and print bodies | Depends |
+| [page-resource-audit.sh](network/page-resource-audit.sh) | Audit all resources loaded by a page (sizes, types, timing) | No |
+
+```bash
+# Discover API endpoints on a site
+./examples/recipes/network/discover-api.sh https://example.com
+
+# Capture what happens when you search
+./examples/recipes/network/capture-form-submit.sh \
+  https://example.com/search "#query" "test" "#search-btn"
+
+# Extract all /api/ response bodies
+./examples/recipes/network/extract-api-responses.sh \
+  https://example.com "/api/" 15
+
+# Audit page resources
+./examples/recipes/network/page-resource-audit.sh https://example.com
+```

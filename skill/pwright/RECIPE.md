@@ -220,6 +220,38 @@ pwright script run recipe.yaml --param-file secrets.yaml
 # Output is JSONL (one JSON object per step + summary)
 ```
 
+## Network Capture Workflow
+
+For sites where the data comes from API calls (most modern SPAs),
+use network capture to reverse-engineer the API instead of scraping the DOM:
+
+```bash
+# Terminal 1: start listener filtered to API calls
+pwright network-listen --type XHR,Fetch --filter "/api/"
+
+# Terminal 2: interact with the site
+pwright open https://example.com
+pwright snapshot
+pwright fill e3 "search query"
+pwright press Enter
+
+# Terminal 1 shows:
+# {"event":"request","reqid":"1001","method":"POST","url":".../api/search",...}
+# {"event":"response","reqid":"1001","status":200,"mime":"application/json",...}
+
+# Grab the response body
+pwright network-get 1001
+# {"results": [{"title": "Result 1", ...}]}
+
+# Quick resource audit (no listener needed)
+pwright network-list
+```
+
+Once you know the API shape, write a direct API call instead of browser automation:
+the captured request shows the URL, method, headers, and POST body.
+
+See `examples/recipes/network/` for complete shell scripts.
+
 ## Exploration-First Workflow
 
 When creating a recipe for a new site:
@@ -227,8 +259,9 @@ When creating a recipe for a new site:
 1. Open the site: `pwright open https://target-site.com`
 2. Snapshot: `pwright snapshot` -- see the accessibility tree
 3. Test selectors: `pwright eval "document.querySelector('.data')?.textContent"`
-4. Iterate until extraction works
-5. Package the working selectors/JS into a YAML recipe
-6. Validate: `pwright script validate recipe.yaml`
+4. Try network capture: `pwright network-listen --filter "/api/"` (in another terminal)
+5. Interact with the page and observe API calls
+6. Package the working selectors/JS/API calls into a YAML recipe
+7. Validate: `pwright script validate recipe.yaml`
 
 This is a one-time cost per site. Every execution after that is deterministic.
