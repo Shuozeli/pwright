@@ -41,6 +41,14 @@ cargo test -p pwright-integration-tests -- --ignored --test-threads=1
 cd tests/integration && docker compose up --build --abort-on-container-exit --exit-code-from test-runner
 ```
 
+## CI
+
+After pushing, check GitHub Actions status:
+```bash
+gh run list --limit 3
+gh run view <run-id>        # if a run fails
+```
+
 ## Key Docs
 
 - `docs/index.md` - Full project guide for agents
