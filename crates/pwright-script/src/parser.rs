@@ -5,8 +5,8 @@ use std::path::Path;
 
 use crate::error::ScriptError;
 use crate::model::{
-    ClickStep, EvalStep, ExtractStep, FillStep, GotoStep, JsFunction, OutputStep, ParamDef,
-    PressStep, Script, ScriptConfig, Step, StepKind, WaitStep,
+    ClickStep, EvalStep, ExtractStep, FillStep, GotoStep, JsFunction, OnError, OutputStep,
+    ParamDef, ParamType, PressStep, Script, ScriptConfig, Step, StepKind, WaitStep,
 };
 
 /// Parse a YAML string into a Script.
@@ -72,8 +72,14 @@ fn parse_params(val: &serde_yaml::Value) -> Result<HashMap<String, ParamDef>, Sc
                 .as_str()
                 .ok_or_else(|| ScriptError::Parse("param key must be string".into()))?;
             let def = if let Some(m) = v.as_mapping() {
+                let param_type = match yaml_map_str(m, "type").unwrap_or("string") {
+                    "integer" => ParamType::Integer,
+                    "boolean" => ParamType::Boolean,
+                    // Default to String for "string" or any unrecognized type
+                    _ => ParamType::String,
+                };
                 ParamDef {
-                    param_type: yaml_map_str(m, "type").unwrap_or("string").to_string(),
+                    param_type,
                     required: yaml_map_bool(m, "required").unwrap_or(false),
                     default_value: m
                         .get(serde_yaml::Value::String("default".into()))
@@ -83,7 +89,7 @@ fn parse_params(val: &serde_yaml::Value) -> Result<HashMap<String, ParamDef>, Sc
             } else {
                 // Short form: param_name: { type: string, required: true }
                 ParamDef {
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     required: false,
                     default_value: Some(yaml_value_to_string(v)),
                     description: String::new(),
@@ -99,12 +105,15 @@ fn parse_config(val: &serde_yaml::Value) -> ScriptConfig {
     if val.is_null() {
         return ScriptConfig::default();
     }
+    let default_on_error = match val["default_on_error"].as_str().unwrap_or("fail") {
+        "continue" => OnError::Continue,
+        "retry" => OnError::Retry,
+        // Default to Fail for "fail" or any unrecognized value
+        _ => OnError::Fail,
+    };
     ScriptConfig {
         default_timeout_ms: val["default_timeout_ms"].as_i64().unwrap_or(30000) as u64,
-        default_on_error: val["default_on_error"]
-            .as_str()
-            .unwrap_or("fail")
-            .to_string(),
+        default_on_error,
     }
 }
 
@@ -145,7 +154,11 @@ fn parse_steps(val: &serde_yaml::Value) -> Result<Vec<Step>, ScriptError> {
 }
 
 fn parse_step(val: &serde_yaml::Value, index: usize) -> Result<Step, ScriptError> {
-    let on_error = val["on_error"].as_str().unwrap_or("fail").to_string();
+    let on_error = match val["on_error"].as_str().unwrap_or("fail") {
+        "continue" => OnError::Continue,
+        "retry" => OnError::Retry,
+        _ => OnError::Fail,
+    };
 
     let kind = if let Some(url) = val["goto"].as_str() {
         StepKind::Goto(GotoStep {
@@ -349,6 +362,6 @@ steps:
 "#;
         let script = parse_yaml(yaml).unwrap();
         assert_eq!(script.config.default_timeout_ms, 5000);
-        assert_eq!(script.config.default_on_error, "continue");
+        assert_eq!(script.config.default_on_error, OnError::Continue);
     }
 }

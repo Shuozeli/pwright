@@ -6,7 +6,7 @@ use std::time::Instant;
 use pwright_bridge::playwright::Page;
 
 use crate::error::ScriptError;
-use crate::model::{Script, StepKind};
+use crate::model::{OnError, Script, StepKind};
 use crate::output::{OutputSink, StepResult};
 
 /// Execute a script against a Page, streaming results to the sink.
@@ -54,7 +54,7 @@ pub async fn execute(
             }
             Err(e) => {
                 let err_msg = e.to_string();
-                if step.on_error == "continue" {
+                if step.on_error == OnError::Continue {
                     failed += 1;
                     sink.emit(StepResult {
                         step_index: i as u32,

@@ -9,7 +9,8 @@ awareness.
 
 ### CdpClient trait delegation (185 lines)
 `client_trait.rs:128-313` — 50+ methods that all just delegate to CdpSession.
-A proc macro could generate this from the trait definition.
+Cannot use `macro_rules!` due to `#[async_trait]` lifetime expansion conflict.
+Would need a proc macro crate to solve properly.
 
 ### MockCdpClient (722 lines)
 `test_utils.rs` — 15 setter methods and 60+ trait impls that are all identical
@@ -25,24 +26,21 @@ A macro or closure could eliminate the repetition.
 
 ## Copy-Paste Patterns
 
-### Root node ID extraction (4 locations)
-`.get("root").and_then(|r| r.get("nodeId")).and_then(|n| n.as_i64()).unwrap_or(1)`
-appears in `selectors.rs:84`, `selectors.rs:128`, `actions.rs:152`, `page.rs:746`.
-Extract: `fn root_node_id(doc: &Value) -> i64`.
+### ~~Root node ID extraction~~ FIXED
+Extracted `root_node_id()` helper in selectors.rs, used by all call sites.
 
-### on_request/on_response (58 lines)
-`page.rs:566-624` — Structurally identical, differing only in event name and
-parser function. Should be one generic `subscribe_network_event<T>()` method.
+### ~~on_request/on_response~~ FIXED
+Extracted generic `subscribe_network_event<T>()` method.
 
 ## Stringly-Typed APIs (partially fixed)
 
 ### Fixed
 - [x] `GotoOptions.wait_until` -> `WaitUntil` enum
 - [x] `ScreenshotOptions.format` -> `ImageFormat` enum
+- [x] Script model: `on_error: String` -> `OnError` enum, `param_type: String` -> `ParamType` enum
 
 ### Remaining
-- [ ] Script model: `wait_for: Option<String>`, `on_error: String`, `param_type: String`
-- [ ] Selector encoding: `__pw_text=`, `__pw_label=` etc. Should be `SelectorKind` enum
+- [ ] Selector encoding: `__pw_text=`, `__pw_label=` etc. Should be `SelectorKind` enum (31 occurrences across 3 files — architectural change)
 
 ## Test Coverage Illusion
 

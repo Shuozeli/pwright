@@ -2,6 +2,28 @@
 
 use std::collections::HashMap;
 
+use serde::Deserialize;
+
+/// Error handling behavior for a step.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OnError {
+    #[default]
+    Fail,
+    Continue,
+    Retry,
+}
+
+/// Type of a script parameter.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ParamType {
+    #[default]
+    String,
+    Integer,
+    Boolean,
+}
+
 #[derive(Debug, Clone)]
 pub struct Script {
     pub name: String,
@@ -16,21 +38,21 @@ pub struct Script {
 #[derive(Debug, Clone)]
 pub struct ScriptConfig {
     pub default_timeout_ms: u64,
-    pub default_on_error: String,
+    pub default_on_error: OnError,
 }
 
 impl Default for ScriptConfig {
     fn default() -> Self {
         Self {
             default_timeout_ms: 30000,
-            default_on_error: "fail".into(),
+            default_on_error: OnError::Fail,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ParamDef {
-    pub param_type: String,
+    pub param_type: ParamType,
     pub required: bool,
     pub default_value: Option<String>,
     pub description: String,
@@ -46,7 +68,7 @@ pub struct JsFunction {
 #[derive(Debug, Clone)]
 pub struct Step {
     pub kind: StepKind,
-    pub on_error: String,
+    pub on_error: OnError,
 }
 
 #[derive(Debug, Clone)]

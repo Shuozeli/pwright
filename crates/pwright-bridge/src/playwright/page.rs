@@ -15,6 +15,7 @@ use super::keyboard::Keyboard;
 use super::locator::Locator;
 use super::mouse::Mouse;
 use super::network::{self, NetworkRequest, NetworkResponse};
+use super::selectors::root_node_id;
 use super::touchscreen::Touchscreen;
 
 /// Wait strategy for navigation.
@@ -566,24 +567,29 @@ impl Page {
         Touchscreen::new(self.session.clone())
     }
 
-    /// Subscribe to network responses. Enables the Network domain and returns
-    /// a channel that receives `NetworkResponse` for each `Network.responseReceived` event.
+    /// Subscribe to a network event, enabling the Network domain and returning a
+    /// channel that receives parsed values for each matching CDP event.
     ///
     /// The listener task is tracked and will be aborted when `close()` is called.
-    pub async fn on_response(&self) -> CdpResult<tokio::sync::mpsc::Receiver<NetworkResponse>> {
+    async fn subscribe_network_event<T: Send + 'static>(
+        &self,
+        event_method: &str,
+        parser: fn(&serde_json::Value) -> Option<T>,
+    ) -> CdpResult<tokio::sync::mpsc::Receiver<T>> {
         self.ensure_open()?;
         // Subscribe BEFORE enabling so no events are missed
         let mut event_rx = self.session.subscribe_events();
         self.session.network_enable().await?;
         let (tx, rx) = tokio::sync::mpsc::channel(256);
+        let method = event_method.to_string();
 
         let handle = tokio::spawn(async move {
             loop {
                 match event_rx.recv().await {
                     Ok(event) => {
-                        if event.method == "Network.responseReceived"
-                            && let Some(resp) = network::parse_network_response(&event.params)
-                            && tx.send(resp).await.is_err()
+                        if event.method == method
+                            && let Some(parsed) = parser(&event.params)
+                            && tx.send(parsed).await.is_err()
                         {
                             break;
                         }
@@ -598,36 +604,22 @@ impl Page {
         Ok(rx)
     }
 
+    /// Subscribe to network responses. Enables the Network domain and returns
+    /// a channel that receives `NetworkResponse` for each `Network.responseReceived` event.
+    ///
+    /// The listener task is tracked and will be aborted when `close()` is called.
+    pub async fn on_response(&self) -> CdpResult<tokio::sync::mpsc::Receiver<NetworkResponse>> {
+        self.subscribe_network_event("Network.responseReceived", network::parse_network_response)
+            .await
+    }
+
     /// Subscribe to network requests. Enables the Network domain and returns
     /// a channel that receives `NetworkRequest` for each `Network.requestWillBeSent` event.
     ///
     /// The listener task is tracked and will be aborted when `close()` is called.
     pub async fn on_request(&self) -> CdpResult<tokio::sync::mpsc::Receiver<NetworkRequest>> {
-        self.ensure_open()?;
-        // Subscribe BEFORE enabling so no events are missed
-        let mut event_rx = self.session.subscribe_events();
-        self.session.network_enable().await?;
-        let (tx, rx) = tokio::sync::mpsc::channel(256);
-
-        let handle = tokio::spawn(async move {
-            loop {
-                match event_rx.recv().await {
-                    Ok(event) => {
-                        if event.method == "Network.requestWillBeSent"
-                            && let Some(req) = network::parse_network_request(&event.params)
-                            && tx.send(req).await.is_err()
-                        {
-                            break;
-                        }
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        });
-        self.listener_handles.lock().await.push(handle);
-
-        Ok(rx)
+        self.subscribe_network_event("Network.requestWillBeSent", network::parse_network_request)
+            .await
     }
 
     /// Get the response body for a captured network response.
@@ -742,11 +734,7 @@ impl Page {
         // We use DOM.getDocument + DOM.resolveNode which returns an objectId
         // without trying to serialize the entire global scope.
         let doc = self.session.dom_get_document().await?;
-        let root_id = doc
-            .get("root")
-            .and_then(|r| r.get("nodeId"))
-            .and_then(|n| n.as_i64())
-            .unwrap_or(1);
+        let root_id = root_node_id(&doc);
         let resolved = self.session.dom_resolve_node(root_id).await?;
         let object_id = resolved
             .get("object")

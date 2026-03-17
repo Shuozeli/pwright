@@ -92,13 +92,7 @@ pub fn validate(
             StepKind::Wait(_) => {} // no validation needed
         }
 
-        // Validate on_error
-        if !matches!(step.on_error.as_str(), "fail" | "continue" | "retry") {
-            errors.push(format!(
-                "step {i}: on_error must be 'fail', 'continue', or 'retry', got '{}'",
-                step.on_error
-            ));
-        }
+        // on_error is now an enum -- all values are valid by construction.
     }
 
     if errors.is_empty() {
