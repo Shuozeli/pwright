@@ -43,10 +43,48 @@ pwr --server remote:50051 script run scraper.yaml --param url=https://example.co
 
 ---
 
+### P1: `page.wait_for_text()` / `page.wait_until()`
+
+Text-based and JS-expression-based waiting for SPAs where you can't predict
+which element will contain the content. More robust than `wait_for_selector()`
+for dynamic pages:
+
+```rust
+// Wait until body contains "Results" (poll every 1s, timeout 120s)
+page.wait_for_text("Results", 120_000).await?;
+
+// General: wait until a JS expression returns truthy
+page.wait_until("document.body.innerText.includes('Ready')", 120_000).await?;
+```
+
+Implement as polling loops similar to existing `wait_for_selector`.
+
+**Location:** `crates/pwright-bridge/src/playwright/page.rs`
+
+---
+
+### P1: `--capabilities` structured self-description
+
+Agents need to discover what a CLI can do. A `pwright --capabilities` command
+that outputs JSON describing all tools, params, and examples would make pwright
+usable by any agent without a skill file.
+
+```bash
+pwright --capabilities  # JSON output of all commands with params and descriptions
+```
+
+**Why:** quotemstr and yammosk on HN describe the need for structured CLI
+help consumable by LLMs and shell completion. Current `--help` is human-readable
+but not machine-optimal. This is the CLI equivalent of MCP's tool discovery.
+
+**Implementation:** Auto-generate from clap's command metadata. One new flag.
+
+---
+
 ### P1: Publish Docker image to ghcr.io
 
 Eliminate the `--build` step from `docker compose up`. CI pipeline builds
-and pushes `ghcr.io/shuozeli/pwright-server:latest` on each release.
+and pushes a pre-built image on each release.
 
 ---
 
@@ -75,55 +113,11 @@ consumes the stream and prints JSONL.
 
 ---
 
-### P2: Script runner Phase 2 (for_each, retry, if)
+### P2: `page.reload()` should wait for page load (bridge layer)
 
-See `docs/knowledge/script-runner-design.md` Phase 2.
-
----
-
-### P1: `page.wait_for_text()` / `page.wait_until()`
-
-Text-based and JS-expression-based waiting for SPAs where you can't predict
-which element will contain the content. More robust than `wait_for_selector()`
-for dynamic pages:
-
-```rust
-// Wait until body contains "Results" (poll every 1s, timeout 120s)
-page.wait_for_text("Results", 120_000).await?;
-
-// General: wait until a JS expression returns truthy
-page.wait_until("document.body.innerText.includes('Ready')", 120_000).await?;
-```
-
-Implement as polling loops similar to existing `wait_for_selector`.
-
-**Location:** `crates/pwright-bridge/src/playwright/page.rs`
-
----
-
-### P2: Connection health check
-
-`Browser::connect_http()` succeeds once but the connection can die silently.
-Add a lightweight ping:
-
-```rust
-if !browser.is_alive().await {
-    browser = Browser::connect_http(url).await?;
-}
-```
-
-Implement via `ChromeHttpClient::version()` (HTTP) or a no-op CDP call
-(WebSocket). Return `bool`, not `Result` -- this is a health probe.
-
-**Location:** `crates/pwright-bridge/src/browser.rs`
-
----
-
-### P2: `page.reload()` should wait for page load
-
-Currently `Page::reload()` fires `Page.reload` CDP command and returns
-immediately. The JS execution context resets, so subsequent `evaluate()`
-calls may return empty. Should poll `readyState` like `goto()` does.
+The CLI reload command already waits via `poll_ready_state`, but the bridge
+`Page::reload()` still fires `Page.reload` and returns immediately. The JS
+execution context resets, so subsequent `evaluate()` calls may return empty.
 
 ---
 
@@ -145,48 +139,27 @@ Uses CDP `Page.handleJavaScriptDialog`. chrome-devtools-mcp has this.
 
 ---
 
-### P3: Script runner Phase 3 (paginate, screenshot, debug mode)
+### P2: Connection health check
 
-See `docs/knowledge/script-runner-design.md` Phase 3.
+`Browser::connect_http()` succeeds once but the connection can die silently.
+Add a lightweight ping:
 
----
-
-### P3: CDP protocol codegen crate (`pwright-cdp-gen`)
-
-Generate typed Rust structs and async methods from the CDP protocol JSON spec
-instead of hand-writing domain wrappers. See `docs/knowledge/cdp-codegen-design.md`.
-
-Phases 1-3 done (types, params, migration). Remaining: event dispatcher, new domains.
-
----
-
-## CLI Gaps (from HN chrome-devtools-mcp discussion, 2026-03-16)
-
-These features exist in the Rust API but are not exposed in the CLI,
-or are missing entirely. Ordered by demand from real-world usage reports.
-
-### ~~P1: Network capture CLI commands~~ DONE
-
-Implemented: `network-listen`, `network-list`, `network-get`.
-See `docs/knowledge/network-capture-design.md` and `examples/recipes/network/`.
-
----
-
-### P1: `--capabilities` structured self-description
-
-Agents need to discover what a CLI can do. A `pwright --capabilities` command
-that outputs JSON describing all tools, params, and examples would make pwright
-usable by any agent without a skill file.
-
-```bash
-pwright --capabilities  # JSON output of all commands with params and descriptions
+```rust
+if !browser.is_alive().await {
+    browser = Browser::connect_http(url).await?;
+}
 ```
 
-**Why:** quotemstr and yammosk on HN describe the need for structured CLI
-help consumable by LLMs and shell completion. Current `--help` is human-readable
-but not machine-optimal. This is the CLI equivalent of MCP's tool discovery.
+Implement via `ChromeHttpClient::version()` (HTTP) or a no-op CDP call
+(WebSocket). Return `bool`, not `Result` -- this is a health probe.
 
-**Implementation:** Auto-generate from clap's command metadata. One new flag.
+**Location:** `crates/pwright-bridge/src/browser.rs`
+
+---
+
+### P2: Script runner Phase 2 (for_each, retry, if)
+
+See `docs/knowledge/script-runner-design.md` Phase 2.
 
 ---
 
@@ -216,9 +189,7 @@ pwright emulate --viewport 1920x1080       # Desktop
 pwright resize 375 812                     # Simple resize
 ```
 
-**Why:** bredren on HN describes capturing responsive behavior by adjusting
-viewport widths and monitoring DOM changes. Requires CDP `Emulation` domain
-(not yet generated in codegen — add to domain list).
+**Why:** Requires CDP `Emulation` domain (not yet generated in codegen).
 
 ---
 
@@ -236,6 +207,20 @@ automation without needing to look at Chrome directly.
 
 ---
 
+### P3: Script runner Phase 3 (paginate, screenshot, debug mode)
+
+See `docs/knowledge/script-runner-design.md` Phase 3.
+
+---
+
+### P3: CDP codegen remaining
+
+Phases 1-4 done (types, params, returns, domain migration).
+Remaining: CDP event dispatcher, add new domains (Emulation, Console, Log).
+See `docs/knowledge/cdp-codegen-design.md`.
+
+---
+
 ### P3: Cookie import/export
 
 Save and restore authenticated sessions across runs.
@@ -245,11 +230,27 @@ pwright cookie-export cookies.json
 pwright cookie-import cookies.json
 ```
 
-**Why:** Multiple HN commenters discuss reusing authenticated browser sessions.
-pwright's attach-only model handles this for live Chrome, but cookie
-import/export enables session persistence across Chrome restarts.
+---
+
+### P3: Split CdpClient trait
+
+Current `CdpClient` trait has 45+ methods. Consider splitting into
+domain-specific sub-traits for cleaner mock/fake implementations.
 
 ---
+
+## Completed
+
+| Feature | Commit |
+|---------|--------|
+| CDP codegen phases 1-4 (types, params, returns, migration) | `448e430` |
+| `FromEvalResult` / `evaluate_into::<T>()` | `c73702c` |
+| Network capture CLI (`network-listen`, `network-list`, `network-get`) | `7157788` |
+| `click-at` / `dblclick` / `hover-at` coordinate CLI commands | `03b3de9` |
+| Chrome HTTP integration test fixes (TargetInfo alias, PUT /json/new) | `2b038ca` |
+| RECIPE.md skill doc for recipe authoring | `c73702c` |
+| Chrome-devtools-mcp feature comparison | `448e430` |
+| Code review: 12 code improvements + 16 review items fixed | `fbbd82d` |
 
 ## Bugs from Field Testing
 
