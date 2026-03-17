@@ -252,7 +252,7 @@ A skill definition for agent frameworks is available at `skill/pwright/SKILL.md`
 
 ## gRPC API
 
-pwright also exposes a gRPC server for programmatic access (20 RPCs covering
+pwright also exposes a gRPC server for programmatic access (21 RPCs covering
 tabs, navigation, actions, content, cookies, downloads, and JS evaluation).
 
 ```bash

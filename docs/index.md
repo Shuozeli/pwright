@@ -9,7 +9,7 @@ A lightweight Rust CDP (Chrome DevTools Protocol) bridge. It connects to an
 already-running Chrome instance and provides browser automation via:
 
 - **Rust library** (`pwright-bridge`): Playwright-compatible Page/Locator API
-- **gRPC server** (`pwright-server`): 20 RPCs for tabs, navigation, actions, content
+- **gRPC server** (`pwright-server`): 21 RPCs for tabs, navigation, actions, content
 - **CLI** (`pwright-cli`): snapshot-act-snapshot workflow for terminal/agent use
 - **Script runner** (`pwright-script`): declarative YAML automation scripts
 
@@ -29,7 +29,7 @@ pwright-bridge       High-level browser operations
                      TabCloser trait + ChromeHttpClient for HTTP tab lifecycle
 
 pwright-server       gRPC server wrapping pwright-bridge
-                     20 RPCs, protobuf schemas
+                     21 RPCs, protobuf schemas
 
 pwright-cli          CLI wrapping pwright-bridge
                      Stateless: persists session in .pwright/state.json
