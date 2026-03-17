@@ -27,6 +27,27 @@ and crate map. That file is the authoritative reference for agents.
 - Do NOT use `#[allow(...)]` to bypass clippy or rustdoc warnings - fix the root cause instead (escape doc comments, fix the code, etc.)
 - pwright-bridge is a **stateless library** - it does NOT track tabs, manage pools, or do implicit cleanup. Callers own tab lifecycle. Do NOT propose automatic tab leak detection, tab garbage collection, or drop guards that implicitly close tabs. The `with_page` mistake (implicit lifecycle) must not be repeated.
 
+## Code Quality Discipline
+
+When implementing a feature or fix, re-read your own diff before declaring
+it done. Do not silently leave shortcuts in the code. Specifically:
+
+- **Flag known shortcuts** with `// TODO(refactor):` comments. Examples:
+  `.clone()` where `.take()` would work, duplicated patterns that should
+  be extracted, silently swallowed errors via `unwrap_or_default()`.
+- **Do not duplicate code 3+ times** without extracting a helper. If you
+  find yourself writing the same pattern a third time, stop and refactor.
+- **Do not silently swallow errors.** If you write `let _ = ...` or
+  `.unwrap_or_default()`, add a comment explaining why it's safe, or
+  propagate the error properly.
+- **Self-review pass:** After getting the feature working and tests passing,
+  re-read the full diff once. Fix obvious issues (unnecessary clones,
+  missing error context, copy-pasted code). This is cheaper than a
+  separate review pass later.
+
+This rule exists because implementation-mode focus ("make it work") tends to
+accumulate silent tech debt that only surfaces in dedicated code reviews.
+
 ## Build & Test
 
 ```bash
