@@ -28,7 +28,11 @@ async fn navigate_back_and_forward() {
 
     // Navigate to page 2
     let base = server_base_url();
-    page.goto(&format!("{base}/navigation-extras-page2.html"), None)
+    let opts = pwright_bridge::playwright::GotoOptions {
+        wait_until: Some("domcontentloaded".to_string()),
+        ..Default::default()
+    };
+    page.goto(&format!("{base}/navigation-extras-page2.html"), Some(opts))
         .await
         .unwrap();
 
