@@ -24,7 +24,7 @@ Async WebSocket client for Chrome DevTools Protocol.
 - **`connection.rs`** — WebSocket transport with JSON-RPC framing. Each outbound command gets a unique `id`; responses are routed back via `oneshot` channels. Events are broadcast to all subscribers.
 - **`session.rs`** — Wraps a connection with an optional `sessionId` for tab-scoped commands. Browser-level commands use `sessionId = None`.
 - **`events.rs`** — `CdpEvent` type for event dispatch.
-- **`domains/`** — Typed wrappers for 8 CDP domains:
+- **`domains/`** — Typed wrappers for 9 CDP domains:
 
 | Domain | Key Methods |
 |--------|-------------|
@@ -36,6 +36,7 @@ Async WebSocket client for Chrome DevTools Protocol.
 | `accessibility` | `getFullAXTree` |
 | `network` | `setBlockedURLs`, `getCookies`, `setCookies` |
 | `fetch` | `enable`, `disable`, `continueRequest`, `failRequest` |
+| `browser` | `getVersion`, `downloadProgress` |
 
 ### `pwright-bridge` — High-Level Operations
 
@@ -45,7 +46,7 @@ Translates user-intent into CDP command sequences.
 - **`chrome_http.rs`** — HTTP client for Chrome's debug endpoints (`/json/list`, `/json/close`, `/json/new`, `/json/version`). More reliable than CDP WebSocket under memory pressure.
 - **`tab.rs`** — Tab lifecycle: create (via `Target.createTarget` + `attachToTarget`), close, list, resolve.
 - **`navigate.rs`** — Navigation with 4 wait strategies: None, DOM ready, NetworkIdle, Selector.
-- **`actions.rs`** — 9 browser actions: click, type, fill, press, focus, hover, select, scroll, drag. Each follows the CDP pattern learned from PinchTab (e.g., `scrollIntoView → getBoxModel → dispatchMouseEvent`).
+- **`actions.rs`** — 12 browser actions: click, dblclick, type, fill, press, focus, hover, select, scroll, drag, check, uncheck. Each follows the CDP pattern learned from PinchTab (e.g., `scrollIntoView → getBoxModel → dispatchMouseEvent`).
 - **`snapshot.rs`** — Builds a flat accessibility tree from `Accessibility.getFullAXTree`. Assigns refs (`e0`, `e1`, ...) mapped to `backendDOMNodeId` for stable element references.
 - **`content.rs`** — Screenshot (PNG/JPEG/WebP), PDF, text extraction.
 - **`evaluate.rs`** — JavaScript evaluation. `FromEvalResult` trait for typed `evaluate_into::<T>()` (String, bool, i64, f64, Value, `FromEvalJson<T>` for JSON deserialization).
@@ -84,7 +85,7 @@ Test-only crate providing `FakeCdpClient` with an in-memory DOM tree.
 ### `pwright-server` — gRPC Server
 
 - **`main.rs`** — CLI entrypoint with `clap`. Configurable via flags or env vars (`CDP_URL`, `GRPC_ADDR`, etc.).
-- **`service.rs`** — Implements all 20 gRPC RPCs, mapping each to bridge layer operations.
+- **`service.rs`** — Implements all 21 gRPC RPCs, mapping each to bridge layer operations.
 - **`build.rs`** — Protobuf codegen via `tonic-build`.
 
 ## Concurrency Model

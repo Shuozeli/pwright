@@ -251,17 +251,19 @@ pwright pdf --filename page.pdf
 ### Rust (via Browser)
 
 ```rust
-// List tabs
-let tabs = browser.list_tabs().await?;
+// Create new tab (returns TabHandle with Page access)
+let handle = browser.new_tab("https://example.com").await?;
+let page = handle.page();
 
-// Create new tab
-let tab_id = browser.create_tab("https://example.com").await?;
+// Use page for automation
+let title = page.title().await?;
+page.locator("h1").click().await?;
 
-// Switch tab
-browser.bring_to_front(&tab_id).await?;
+// Bring tab to front
+page.bring_to_front().await?;
 
-// Close tab
-browser.close_tab(&tab_id).await?;
+// Close tab when done (caller-managed lifecycle)
+handle.close().await?;
 ```
 
 ### CLI

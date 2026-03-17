@@ -41,6 +41,9 @@ pwright-script       Declarative YAML script runner (Phase 1 done)
 pwright-fake         In-memory browser fake for testing
                      DOM tree, CSS selector engine, HTML parser
                      FakeCdpClient implementing CdpClient trait
+
+pwright-cdp-gen      CDP protocol code generator (standalone binary)
+                     Generates typed Rust structs from protocol JSON spec
 ```
 
 ## Architecture Decisions

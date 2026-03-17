@@ -78,6 +78,20 @@ pwright uses 9 of 55 domains, ~44 of ~300+ available commands:
 Most responses are parsed as `serde_json::Value` with manual field extraction.
 Only a handful have typed structs: `TargetInfo`, `Cookie`, `RawAXNode`.
 
+## Implementation Status
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 | Parser + codegen for types/enums | Done |
+| 2 | Codegen for command params + return types | Done |
+| 3 | Migrate pwright-cdp domains to use generated types | Done |
+| 4 | Codegen for event types | Done (structs generated, dispatcher not yet) |
+| 5 | Add new domains (Emulation, Console, Log) via config | Not started |
+| 6 | Codegen unit tests (serialization round-trips) | Not started |
+
+**Note:** Phases 1-4 are complete. Domain selection is currently hardcoded in
+`codegen.rs::DOMAINS` (9 domains), not yet configurable via CLI flag or config file.
+
 ## Proposed Crate: `pwright-cdp-gen`
 
 ### What It Generates

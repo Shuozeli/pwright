@@ -104,7 +104,7 @@ Playwright
 | `page.content()` | `page.content()` | ✅ Exists | `Runtime.evaluate` |
 | `page.setContent(html)` | `page.set_content()` | ✅ Exists | `Page.setDocumentContent` |
 | `page.isClosed()` | `page.is_closed()` | ✅ Exists | Track state |
-| `page.close()` | `page.close()` | ✅ Exists | `Target.closeTarget` (when created with `with_tab`) |
+| `page.close()` | `page.close()` | ✅ Exists | `Target.closeTarget` via `TabHandle::close` |
 
 ### Evaluation
 

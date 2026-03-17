@@ -6,6 +6,24 @@ A declarative script runner for pwright that takes a YAML script with parameters
 executes browser automation steps sequentially (with control flow), and produces
 structured JSONL output with full observability.
 
+## Implementation Status
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 | Basic steps (goto, click, fill, press, extract, eval, output, wait) | Done |
+| 2 | Variables, for_each, retry, if, extract_all, error policies | Not started |
+| 3 | Pagination, screenshot, debug mode | Not started |
+| 4 | External JS files, param files, includes | Partial (param files work) |
+| 5 | DSL language | Not started |
+
+**Note:** The design below describes the full vision. Only Phase 1 is implemented.
+Deviations from design in current implementation:
+- EvalStep args are `Vec<String>`, not typed `google.protobuf.Value`
+- Output JSONL uses `step_index`/`duration_ms` (not `step`/`ms`), no `ts` field
+- `--dry-run` and `--debug` CLI flags not yet implemented
+- No external JS file loading (`scripts_dir`/`scripts_files`)
+- No built-in variables (`__step_index`, `__timestamp`)
+
 ## Architecture
 
 ```
