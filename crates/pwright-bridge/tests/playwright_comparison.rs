@@ -522,7 +522,7 @@ mod tests {
 
         // pwright — JPEG with quality
         page.screenshot(Some(ScreenshotOptions {
-            format: Some("jpeg".to_string()),
+            format: pwright_bridge::playwright::ImageFormat::Jpeg,
             quality: Some(50),
             full_page: false,
         }))

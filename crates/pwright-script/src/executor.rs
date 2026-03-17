@@ -120,7 +120,7 @@ async fn execute_step(
                 .wait_for
                 .as_ref()
                 .map(|_sel| pwright_bridge::playwright::GotoOptions {
-                    wait_until: Some("domcontentloaded".into()),
+                    wait_until: pwright_bridge::playwright::WaitUntil::DomContentLoaded,
                     timeout_ms: g.timeout_ms,
                 });
             page.goto(&url, opts).await.map_err(ScriptError::Cdp)?;

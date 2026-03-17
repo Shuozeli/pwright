@@ -254,7 +254,7 @@ pub async fn connect_and_navigate(path: &str) -> Page {
 
     let url = format!("{server_url}{path}");
     let opts = pwright_bridge::playwright::GotoOptions {
-        wait_until: Some("domcontentloaded".to_string()),
+        wait_until: pwright_bridge::playwright::WaitUntil::DomContentLoaded,
         ..Default::default()
     };
     page.goto(&url, Some(opts))

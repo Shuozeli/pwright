@@ -22,5 +22,5 @@ pub use keyboard::Keyboard;
 pub use locator::{BoundingBox, Locator, WaitState};
 pub use mouse::{ClickOptions, Mouse};
 pub use network::{NetworkRequest, NetworkResponse};
-pub use page::{GotoOptions, Page, ScreenshotOptions};
+pub use page::{GotoOptions, ImageFormat, Page, ScreenshotOptions, WaitUntil};
 pub use touchscreen::Touchscreen;

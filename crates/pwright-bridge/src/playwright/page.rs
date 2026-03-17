@@ -17,21 +17,42 @@ use super::mouse::Mouse;
 use super::network::{self, NetworkRequest, NetworkResponse};
 use super::touchscreen::Touchscreen;
 
+/// Wait strategy for navigation.
+#[derive(Debug, Clone, Default)]
+pub enum WaitUntil {
+    /// Don't wait beyond initial navigation response.
+    #[default]
+    None,
+    /// Wait for `DOMContentLoaded` event.
+    DomContentLoaded,
+    /// Wait for network idle (approximate).
+    NetworkIdle,
+}
+
 /// Options for `page.goto()`.
 #[derive(Debug, Clone, Default)]
 pub struct GotoOptions {
-    /// Wait strategy: "load", "domcontentloaded", "networkidle".
-    pub wait_until: Option<String>,
+    /// Wait strategy for navigation.
+    pub wait_until: WaitUntil,
     /// Timeout in milliseconds.
     pub timeout_ms: Option<u64>,
+}
+
+/// Image format for screenshots.
+#[derive(Debug, Clone, Default)]
+pub enum ImageFormat {
+    #[default]
+    Png,
+    Jpeg,
+    Webp,
 }
 
 /// Options for screenshots.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenshotOptions {
-    /// Image format: "png" (default) or "jpeg".
-    pub format: Option<String>,
-    /// JPEG quality (0-100).
+    /// Image format.
+    pub format: ImageFormat,
+    /// JPEG/WebP quality (0-100).
     pub quality: Option<i32>,
     /// Capture the full page, not just the viewport.
     pub full_page: bool,
@@ -125,10 +146,10 @@ impl Page {
         let opts = options.unwrap_or_default();
         let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
 
-        let wait_for = match opts.wait_until.as_deref() {
-            Some("domcontentloaded") => crate::navigate::WaitStrategy::Dom,
-            Some("networkidle") => crate::navigate::WaitStrategy::NetworkIdle,
-            _ => crate::navigate::WaitStrategy::None,
+        let wait_for = match opts.wait_until {
+            WaitUntil::None => crate::navigate::WaitStrategy::None,
+            WaitUntil::DomContentLoaded => crate::navigate::WaitStrategy::Dom,
+            WaitUntil::NetworkIdle => crate::navigate::WaitStrategy::NetworkIdle,
         };
 
         let nav_opts = crate::navigate::NavigateOptions {
@@ -152,47 +173,33 @@ impl Page {
     /// Navigate back in history. Returns Ok(()) even if already at the
     /// beginning (no-op, matches Playwright behavior).
     pub async fn go_back(&self) -> CdpResult<()> {
-        self.ensure_open()?;
-        let history = self.session.page_get_navigation_history().await?;
-        let current_index = history
-            .get("currentIndex")
-            .and_then(|i| i.as_i64())
-            .unwrap_or(0);
-
-        if current_index > 0 {
-            let entries = history
-                .get("entries")
-                .and_then(|e| e.as_array())
-                .cloned()
-                .unwrap_or_default();
-            if let Some(entry) = entries.get((current_index - 1) as usize) {
-                let entry_id = entry.get("id").and_then(|id| id.as_i64()).unwrap_or(0);
-                self.session
-                    .page_navigate_to_history_entry(entry_id)
-                    .await?;
-            }
-        }
-        Ok(())
+        self.navigate_history(-1).await
     }
 
     /// Navigate forward in history. Returns Ok(()) even if already at the
     /// end (no-op, matches Playwright behavior).
     pub async fn go_forward(&self) -> CdpResult<()> {
+        self.navigate_history(1).await
+    }
+
+    /// Navigate to a history entry by offset (-1 = back, +1 = forward).
+    async fn navigate_history(&self, offset: i64) -> CdpResult<()> {
         self.ensure_open()?;
         let history = self.session.page_get_navigation_history().await?;
-        let current_index = history
+        let current = history
             .get("currentIndex")
             .and_then(|i| i.as_i64())
             .unwrap_or(0);
+        let target = current + offset;
+        if target < 0 {
+            return Ok(());
+        }
         let entries = history
             .get("entries")
             .and_then(|e| e.as_array())
             .cloned()
             .unwrap_or_default();
-
-        if (current_index + 1) < entries.len() as i64
-            && let Some(entry) = entries.get((current_index + 1) as usize)
-        {
+        if let Some(entry) = entries.get(target as usize) {
             let entry_id = entry.get("id").and_then(|id| id.as_i64()).unwrap_or(0);
             self.session
                 .page_navigate_to_history_entry(entry_id)
@@ -313,10 +320,10 @@ impl Page {
     pub async fn screenshot(&self, options: Option<ScreenshotOptions>) -> CdpResult<String> {
         self.ensure_open()?;
         let opts = options.unwrap_or_default();
-        let format = match opts.format.as_deref() {
-            Some("jpeg") => crate::content::ScreenshotFormat::Jpeg(opts.quality.unwrap_or(80)),
-            Some("webp") => crate::content::ScreenshotFormat::Webp(opts.quality.unwrap_or(80)),
-            _ => crate::content::ScreenshotFormat::Png,
+        let format = match opts.format {
+            ImageFormat::Png => crate::content::ScreenshotFormat::Png,
+            ImageFormat::Jpeg => crate::content::ScreenshotFormat::Jpeg(opts.quality.unwrap_or(80)),
+            ImageFormat::Webp => crate::content::ScreenshotFormat::Webp(opts.quality.unwrap_or(80)),
         };
         crate::content::take_screenshot(&*self.session, &format, opts.full_page).await
     }
