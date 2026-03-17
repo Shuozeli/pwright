@@ -81,8 +81,6 @@ See `docs/knowledge/script-runner-design.md` Phase 2.
 
 ---
 
----
-
 ### P1: `page.wait_for_text()` / `page.wait_until()`
 
 Text-based and JS-expression-based waiting for SPAs where you can't predict
@@ -167,29 +165,10 @@ Phases 1-3 done (types, params, migration). Remaining: event dispatcher, new dom
 These features exist in the Rust API but are not exposed in the CLI,
 or are missing entirely. Ordered by demand from real-world usage reports.
 
-### P1: Network capture CLI commands
+### ~~P1: Network capture CLI commands~~ DONE
 
-The most requested use case: intercepting requests/responses while navigating
-to reverse-engineer site APIs and create typed wrappers. The Rust API has
-`on_request`/`on_response`/`response_body` but none of it is in the CLI.
-
-```bash
-pwright network-listen                       # Stream traffic as JSONL (separate terminal)
-pwright network-listen --filter "/api/"      # Filter by URL substring
-pwright network-list                         # Quick retroactive query (JS Performance API)
-pwright network-get <reqid>                  # Get response body by request ID
-```
-
-**Design:** `docs/knowledge/network-capture-design.md` — uses a second CDP
-session attached to the same tab so the listener doesn't interfere with
-the user's interaction commands.
-
-**Why:** dataviz1000's HN comment (573 points) describes intercepting all
-requests to create strongly-typed API proxies. Multiple commenters doing the
-same with Playwright. This is pwright's biggest CLI gap vs chrome-devtools-mcp.
-
-**Implementation:** All CDP primitives exist (`target_attach`, `network_enable`,
-`subscribe_events`, `network_get_response_body`). Only CLI wiring needed.
+Implemented: `network-listen`, `network-list`, `network-get`.
+See `docs/knowledge/network-capture-design.md` and `examples/recipes/network/`.
 
 ---
 
