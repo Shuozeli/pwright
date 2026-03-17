@@ -107,6 +107,82 @@ async fn checkbox_toggle_via_js() {
     assert!(!page.locator("#agree").is_checked().await.unwrap());
 }
 
+// ── Check / Uncheck via Locator ──
+
+#[tokio::test]
+#[ignore = "requires docker: chrome"]
+async fn check_sets_checkbox() {
+    let page = connect_and_navigate("/action-extras.html").await;
+
+    assert!(!page.locator("#agree").is_checked().await.unwrap());
+    page.locator("#agree").check().await.unwrap();
+    assert!(page.locator("#agree").is_checked().await.unwrap());
+}
+
+#[tokio::test]
+#[ignore = "requires docker: chrome"]
+async fn uncheck_clears_checkbox() {
+    let page = connect_and_navigate("/action-extras.html").await;
+
+    // Check first
+    page.locator("#agree").check().await.unwrap();
+    assert!(page.locator("#agree").is_checked().await.unwrap());
+
+    // Then uncheck
+    page.locator("#agree").uncheck().await.unwrap();
+    assert!(!page.locator("#agree").is_checked().await.unwrap());
+}
+
+#[tokio::test]
+#[ignore = "requires docker: chrome"]
+async fn check_is_idempotent() {
+    let page = connect_and_navigate("/action-extras.html").await;
+
+    page.locator("#agree").check().await.unwrap();
+    assert!(page.locator("#agree").is_checked().await.unwrap());
+
+    // Check again should be a no-op
+    page.locator("#agree").check().await.unwrap();
+    assert!(page.locator("#agree").is_checked().await.unwrap());
+}
+
+// ── Scroll ──
+
+#[tokio::test]
+#[ignore = "requires docker: chrome"]
+async fn scroll_into_view() {
+    let page = connect_and_navigate("/content.html").await;
+
+    // scroll_into_view should succeed without error
+    page.locator("#heading").scroll_into_view().await.unwrap();
+
+    // Element should still be accessible after scroll
+    let text = page.locator("#heading").text_content().await.unwrap();
+    assert_eq!(text, Some("Hello pwright".to_string()));
+}
+
+// ── Text extraction ──
+
+#[tokio::test]
+#[ignore = "requires docker: chrome"]
+async fn body_text_extraction() {
+    let page = connect_and_navigate("/content.html").await;
+
+    let text: String = page
+        .evaluate_into("(document.body?.innerText || '')")
+        .await
+        .unwrap();
+
+    assert!(
+        text.contains("Hello pwright"),
+        "body text should contain heading"
+    );
+    assert!(
+        text.contains("Example Link"),
+        "body text should contain link text"
+    );
+}
+
 // ── Touchscreen ──
 
 #[tokio::test]
