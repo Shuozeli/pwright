@@ -29,13 +29,32 @@ impl CliState {
     }
 
     /// Load state from disk, or return default.
+    /// Warns on corruption instead of silently losing the session.
     pub fn load() -> Self {
         let path = Self::state_path();
-        if path.exists() {
-            let data = std::fs::read_to_string(&path).unwrap_or_default();
-            serde_json::from_str(&data).unwrap_or_default()
-        } else {
-            Self::default()
+        if !path.exists() {
+            return Self::default();
+        }
+        match std::fs::read_to_string(&path) {
+            Ok(data) => match serde_json::from_str(&data) {
+                Ok(state) => state,
+                Err(e) => {
+                    eprintln!(
+                        "[warning] state file {} is corrupted ({}), starting fresh",
+                        path.display(),
+                        e
+                    );
+                    Self::default()
+                }
+            },
+            Err(e) => {
+                eprintln!(
+                    "[warning] cannot read state file {} ({}), starting fresh",
+                    path.display(),
+                    e
+                );
+                Self::default()
+            }
         }
     }
 

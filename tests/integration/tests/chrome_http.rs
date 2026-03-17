@@ -16,7 +16,7 @@ use pwright_integration_tests::chrome_http_url;
 #[tokio::test]
 #[ignore = "requires docker: chrome"]
 async fn http_client_version() {
-    let http = ChromeHttpClient::new(&chrome_http_url());
+    let http = ChromeHttpClient::new(&chrome_http_url()).unwrap();
     let version = http.version().await.unwrap();
 
     assert!(version.get("Browser").is_some(), "missing Browser field");
@@ -29,7 +29,7 @@ async fn http_client_version() {
 #[tokio::test]
 #[ignore = "requires docker: chrome"]
 async fn http_client_list_targets() {
-    let http = ChromeHttpClient::new(&chrome_http_url());
+    let http = ChromeHttpClient::new(&chrome_http_url()).unwrap();
     let targets = http.list_targets().await.unwrap();
 
     // Chrome always has at least one target (the default blank page)
@@ -43,7 +43,7 @@ async fn http_client_list_targets() {
 #[tokio::test]
 #[ignore = "requires docker: chrome"]
 async fn http_client_create_and_close_target() {
-    let http = ChromeHttpClient::new(&chrome_http_url());
+    let http = ChromeHttpClient::new(&chrome_http_url()).unwrap();
 
     // Create a tab
     let target = http.create_target("about:blank").await.unwrap();
@@ -67,7 +67,7 @@ async fn http_client_create_and_close_target() {
 #[tokio::test]
 #[ignore = "requires docker: chrome"]
 async fn http_client_close_nonexistent_target() {
-    let http = ChromeHttpClient::new(&chrome_http_url());
+    let http = ChromeHttpClient::new(&chrome_http_url()).unwrap();
     // Closing a nonexistent target should fail
     let result = http.close_target("DOES_NOT_EXIST").await;
     assert!(result.is_err(), "closing nonexistent target should fail");
@@ -89,7 +89,7 @@ async fn connect_http_stores_http_url() {
 #[tokio::test]
 #[ignore = "requires docker: chrome"]
 async fn new_tab_with_http_close() {
-    let http = ChromeHttpClient::new(&chrome_http_url());
+    let http = ChromeHttpClient::new(&chrome_http_url()).unwrap();
     let browser = Browser::connect_http(&chrome_http_url()).await.unwrap();
 
     // Create tab via Browser (WebSocket for create + attach, HTTP for close)

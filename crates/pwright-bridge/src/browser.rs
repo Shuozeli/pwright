@@ -278,7 +278,7 @@ impl Browser {
     ///
     /// Returns `None` if the browser was connected via WebSocket directly
     /// (no HTTP URL available).
-    pub fn http_client(&self) -> Option<ChromeHttpClient> {
+    pub fn http_client(&self) -> Option<CdpResult<ChromeHttpClient>> {
         self.http_url.as_ref().map(|url| ChromeHttpClient::new(url))
     }
 
@@ -307,7 +307,7 @@ impl Browser {
         ));
 
         let closer: Arc<dyn TabCloser> = match &self.http_url {
-            Some(url) => Arc::new(HttpTabCloser::new(ChromeHttpClient::new(url))),
+            Some(url) => Arc::new(HttpTabCloser::new(ChromeHttpClient::new(url)?)),
             None => {
                 let browser_client: Arc<dyn CdpClient> =
                     Arc::new(CdpSession::browser(self.connection.clone()));

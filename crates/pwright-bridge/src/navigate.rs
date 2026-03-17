@@ -59,7 +59,8 @@ pub async fn navigate(
         let mut patterns = Vec::new();
         if opts.block_media {
             patterns.extend(MEDIA_BLOCK_PATTERNS.iter().map(|s| s.to_string()));
-        } else if opts.block_images {
+        }
+        if opts.block_images {
             patterns.extend(IMAGE_BLOCK_PATTERNS.iter().map(|s| s.to_string()));
         }
         session.network_set_blocked_urls(&patterns).await?;
@@ -305,12 +306,11 @@ mod tests {
     /// Helper: given NavigateOptions, compute which patterns would be applied.
     fn compute_block_patterns(opts: &NavigateOptions) -> Vec<String> {
         let mut patterns = Vec::new();
-        if opts.block_media || opts.block_images {
-            if opts.block_media {
-                patterns.extend(MEDIA_BLOCK_PATTERNS.iter().map(|s| s.to_string()));
-            } else if opts.block_images {
-                patterns.extend(IMAGE_BLOCK_PATTERNS.iter().map(|s| s.to_string()));
-            }
+        if opts.block_media {
+            patterns.extend(MEDIA_BLOCK_PATTERNS.iter().map(|s| s.to_string()));
+        }
+        if opts.block_images {
+            patterns.extend(IMAGE_BLOCK_PATTERNS.iter().map(|s| s.to_string()));
         }
         patterns
     }
@@ -342,16 +342,20 @@ mod tests {
     }
 
     #[test]
-    fn block_media_takes_precedence_when_both_set() {
+    fn both_block_media_and_images_apply() {
         let opts = NavigateOptions {
             block_media: true,
             block_images: true,
             ..Default::default()
         };
         let patterns = compute_block_patterns(&opts);
-        // When both are set, block_media takes precedence (else-if logic)
-        assert_eq!(patterns.len(), MEDIA_BLOCK_PATTERNS.len());
-        assert!(patterns.iter().any(|p| p == "*.mp4"));
+        // Both media and image patterns should be present
+        assert_eq!(
+            patterns.len(),
+            MEDIA_BLOCK_PATTERNS.len() + IMAGE_BLOCK_PATTERNS.len()
+        );
+        assert!(patterns.iter().any(|p| p == "*.mp4"), "should block media");
+        assert!(patterns.iter().any(|p| p == "*.jpg"), "should block images");
     }
 
     #[test]

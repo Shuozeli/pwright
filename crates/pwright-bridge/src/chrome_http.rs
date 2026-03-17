@@ -24,7 +24,7 @@ const DEFAULT_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 /// which is more reliable than CDP WebSocket under Chrome memory pressure.
 ///
 /// ```rust,ignore
-/// let http = ChromeHttpClient::new("http://localhost:9222");
+/// let http = ChromeHttpClient::new("http://localhost:9222")?;
 /// let targets = http.list_targets().await?;
 /// http.close_target("TARGET_ID").await?;
 /// ```
@@ -38,27 +38,27 @@ impl ChromeHttpClient {
     /// Create a new HTTP client for Chrome debug endpoints.
     ///
     /// `base_url` should be the Chrome HTTP endpoint, e.g. `http://localhost:9222`.
-    pub fn new(base_url: &str) -> Self {
+    pub fn new(base_url: &str) -> CdpResult<Self> {
         let client = reqwest::Client::builder()
             .timeout(DEFAULT_HTTP_TIMEOUT)
             .build()
-            .expect("failed to build reqwest client");
-        Self {
+            .map_err(|e| CdpError::Other(format!("failed to build HTTP client: {e}")))?;
+        Ok(Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             client,
-        }
+        })
     }
 
     /// Create a new HTTP client with a custom timeout.
-    pub fn with_timeout(base_url: &str, timeout: Duration) -> Self {
+    pub fn with_timeout(base_url: &str, timeout: Duration) -> CdpResult<Self> {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
-            .expect("failed to build reqwest client");
-        Self {
+            .map_err(|e| CdpError::Other(format!("failed to build HTTP client: {e}")))?;
+        Ok(Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             client,
-        }
+        })
     }
 
     /// The base URL for this client.
