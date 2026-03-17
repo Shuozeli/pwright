@@ -47,14 +47,14 @@ impl CdpSession {
 
     /// List all targets, optionally filtered by type.
     pub async fn target_get_targets(&self) -> Result<Vec<TargetInfo>> {
-        let result = self
+        let mut result = self
             .send(
                 "Target.getTargets",
                 serde_json::to_value(cdp_gen::GetTargetsParams::default())?,
             )
             .await?;
         let targets: Vec<TargetInfo> =
-            serde_json::from_value(result["targetInfos"].clone()).unwrap_or_default();
+            serde_json::from_value(result["targetInfos"].take()).unwrap_or_default();
         Ok(targets)
     }
 

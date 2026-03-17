@@ -25,7 +25,10 @@ pub async fn evaluate(
         .map_err(|e| Status::internal(format!("evaluate: {}", e)))?;
 
     Ok(Response::new(proto::EvaluateResponse {
-        result: serde_json::to_string(&result).unwrap_or_default(),
+        result: serde_json::to_string(&result).map_err(|e| {
+            tracing::warn!("failed to serialize evaluate result: {e}");
+            Status::internal(format!("serialize evaluate result: {e}"))
+        })?,
     }))
 }
 

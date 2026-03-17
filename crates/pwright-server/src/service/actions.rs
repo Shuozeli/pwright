@@ -80,8 +80,13 @@ pub async fn execute_action(
                     .await
                     .map_err(|e| Status::internal(format!("scroll: {}", e)))?;
             } else {
-                let dx = if req.scroll_x != 0 { req.scroll_x } else { 0 };
-                let dy = if req.scroll_y != 0 { req.scroll_y } else { 800 };
+                let dx = req.scroll_x;
+                const DEFAULT_SCROLL_DY: i32 = 800;
+                let dy = if req.scroll_y != 0 {
+                    req.scroll_y
+                } else {
+                    DEFAULT_SCROLL_DY
+                };
                 pwright_bridge::actions::scroll_page(session, dx, dy)
                     .await
                     .map_err(|e| Status::internal(format!("scroll: {}", e)))?;

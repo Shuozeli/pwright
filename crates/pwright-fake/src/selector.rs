@@ -249,11 +249,13 @@ fn collect_ancestors<'a>(target_id: i64, all_nodes: &[&'a DomNode]) -> Vec<&'a D
         }
     }
 
+    let node_by_id: HashMap<i64, &'a DomNode> = all_nodes.iter().map(|n| (n.node_id, *n)).collect();
+
     let mut ancestors = Vec::new();
     let mut current = target_id;
     while let Some(&parent_id) = parent_map.get(&current) {
-        if let Some(parent) = all_nodes.iter().find(|n| n.node_id == parent_id) {
-            ancestors.push(*parent);
+        if let Some(&parent) = node_by_id.get(&parent_id) {
+            ancestors.push(parent);
         }
         current = parent_id;
     }

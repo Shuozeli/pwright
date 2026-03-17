@@ -54,11 +54,7 @@ impl CdpSession {
         let result = self
             .send("Runtime.evaluate", serde_json::to_value(&params)?)
             .await?;
-        if let Some(details) = result.get("exceptionDetails") {
-            return Err(crate::connection::CdpError::Other(format_js_exception(
-                details,
-            )));
-        }
+        check_js_exception(&result)?;
         Ok(result)
     }
 
@@ -76,11 +72,7 @@ impl CdpSession {
         let result = self
             .send("Runtime.evaluate", serde_json::to_value(&params)?)
             .await?;
-        if let Some(details) = result.get("exceptionDetails") {
-            return Err(crate::connection::CdpError::Other(format_js_exception(
-                details,
-            )));
-        }
+        check_js_exception(&result)?;
         Ok(result)
     }
 
@@ -109,11 +101,7 @@ impl CdpSession {
         let result = self
             .send("Runtime.callFunctionOn", serde_json::to_value(&params)?)
             .await?;
-        if let Some(details) = result.get("exceptionDetails") {
-            return Err(crate::connection::CdpError::Other(format_js_exception(
-                details,
-            )));
-        }
+        check_js_exception(&result)?;
         Ok(result)
     }
 
@@ -157,13 +145,19 @@ impl CdpSession {
         let result = self
             .send("Runtime.evaluate", serde_json::to_value(&params)?)
             .await?;
-        if let Some(details) = result.get("exceptionDetails") {
-            return Err(crate::connection::CdpError::Other(format_js_exception(
-                details,
-            )));
-        }
+        check_js_exception(&result)?;
         Ok(result)
     }
+}
+
+/// Check for a JavaScript exception in a CDP result and return an error if present.
+fn check_js_exception(result: &Value) -> Result<()> {
+    if let Some(details) = result.get("exceptionDetails") {
+        return Err(crate::connection::CdpError::Other(format_js_exception(
+            details,
+        )));
+    }
+    Ok(())
 }
 
 /// Format a CDP exceptionDetails object into a human-readable error message.

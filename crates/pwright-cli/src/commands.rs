@@ -13,6 +13,13 @@ use pwright_bridge::{Browser, BrowserConfig};
 use crate::output;
 use crate::state::CliState;
 
+fn ref_not_found(ref_str: &str) -> String {
+    format!(
+        "ref '{}' not found -- run `pwright snapshot` first",
+        ref_str
+    )
+}
+
 /// Connect to Chrome and re-attach to the active tab from state.
 pub async fn connect(state: &mut CliState) -> Result<Arc<Browser>> {
     if state.ws_url.is_empty() {
@@ -190,10 +197,7 @@ pub async fn click(state: &mut CliState, ref_str: &str) -> Result<()> {
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!(
-            "ref '{}' not found — run `pwright snapshot` first",
-            ref_str
-        ))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)
@@ -260,7 +264,7 @@ pub async fn dblclick(state: &mut CliState, ref_str: &str) -> Result<()> {
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!("ref '{}' not found", ref_str))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)
@@ -299,7 +303,7 @@ pub async fn fill(state: &mut CliState, ref_str: &str, text: &str) -> Result<()>
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!("ref '{}' not found", ref_str))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)
@@ -354,7 +358,7 @@ pub async fn hover(state: &mut CliState, ref_str: &str) -> Result<()> {
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!("ref '{}' not found", ref_str))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)
@@ -375,7 +379,7 @@ pub async fn select(state: &mut CliState, ref_str: &str, value: &str) -> Result<
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!("ref '{}' not found", ref_str))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)
@@ -396,7 +400,7 @@ pub async fn download(state: &mut CliState, ref_str: &str, dest: Option<&str>) -
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!("ref '{}' not found", ref_str))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)
@@ -443,6 +447,8 @@ pub async fn reload(state: &mut CliState) -> Result<()> {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // Evaluate errors are expected during reload — the page may be mid-navigation,
+        // so we silently retry until readyState reaches "interactive" or "complete".
         if let Ok(result) =
             pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "document.readyState").await
         {
@@ -670,7 +676,9 @@ pub async fn network_listen(
     }
 
     // Cleanup: detach the listener session
-    let _ = browser.browser_session().target_detach(&session_id).await;
+    if let Err(e) = browser.browser_session().target_detach(&session_id).await {
+        tracing::debug!("listener session detach failed: {e}");
+    }
 
     output::info("Listener stopped.");
     Ok(())
@@ -869,7 +877,7 @@ pub async fn focus(state: &mut CliState, ref_str: &str) -> Result<()> {
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!("ref '{}' not found", ref_str))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)
@@ -891,7 +899,7 @@ pub async fn drag(state: &mut CliState, ref_str: &str, dx: i32, dy: i32) -> Resu
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!("ref '{}' not found", ref_str))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)
@@ -912,7 +920,7 @@ pub async fn upload(state: &mut CliState, ref_str: &str, files: &[String]) -> Re
     let node_id = browser
         .resolve_ref(&state.active_tab, ref_str)
         .await
-        .context(format!("ref '{}' not found", ref_str))?;
+        .context(ref_not_found(ref_str))?;
 
     let tab = browser
         .resolve_tab(&state.active_tab)

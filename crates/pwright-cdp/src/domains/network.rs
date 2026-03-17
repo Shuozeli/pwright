@@ -48,14 +48,14 @@ impl CdpSession {
 
     /// Get all cookies for the current page.
     pub async fn network_get_cookies(&self) -> Result<Vec<Cookie>> {
-        let result = self
+        let mut result = self
             .send(
                 "Network.getCookies",
                 serde_json::to_value(cdp_gen::GetCookiesParams::default())?,
             )
             .await?;
         let cookies: Vec<Cookie> =
-            serde_json::from_value(result["cookies"].clone()).unwrap_or_default();
+            serde_json::from_value(result["cookies"].take()).unwrap_or_default();
         Ok(cookies)
     }
 

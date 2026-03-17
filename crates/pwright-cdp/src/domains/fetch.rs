@@ -22,6 +22,7 @@ impl CdpSession {
     }
 
     /// Continue an intercepted request.
+    // Uses json!() because generated ErrorReason enum doesn't match the string-based API.
     pub async fn fetch_continue_request(&self, request_id: &str) -> Result<()> {
         let params = serde_json::json!({ "requestId": request_id });
         self.send("Fetch.continueRequest", params).await?;
@@ -29,6 +30,7 @@ impl CdpSession {
     }
 
     /// Fail an intercepted request.
+    // Uses json!() because generated ErrorReason enum doesn't match the string-based API.
     pub async fn fetch_fail_request(&self, request_id: &str, reason: &str) -> Result<()> {
         self.send(
             "Fetch.failRequest",

@@ -69,7 +69,7 @@ impl DomNode {
         out.push_str(&self.tag);
         // Sort attributes for deterministic output
         let mut attrs: Vec<_> = self.attributes.iter().collect();
-        attrs.sort_by_key(|(k, _)| (*k).clone());
+        attrs.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
         for (key, val) in &attrs {
             out.push(' ');
             out.push_str(key);

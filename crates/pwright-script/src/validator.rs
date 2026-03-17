@@ -21,7 +21,6 @@ pub fn validate(
     // 2. Collect known variables (params + defaults)
     let mut known_vars: HashSet<String> = param_values.keys().cloned().collect();
     for (name, def) in &script.params {
-        known_vars.insert(name.clone());
         if let Some(ref default) = def.default_value
             && !default.is_empty()
         {

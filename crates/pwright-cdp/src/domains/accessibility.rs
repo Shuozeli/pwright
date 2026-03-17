@@ -62,14 +62,14 @@ impl CdpSession {
             depth: Some(-1),
             ..Default::default()
         };
-        let result = self
+        let mut result = self
             .send(
                 "Accessibility.getFullAXTree",
                 serde_json::to_value(&params)?,
             )
             .await?;
         let nodes: Vec<RawAXNode> =
-            serde_json::from_value(result["nodes"].clone()).unwrap_or_default();
+            serde_json::from_value(result["nodes"].take()).unwrap_or_default();
         Ok(nodes)
     }
 }

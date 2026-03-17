@@ -8,6 +8,7 @@ use crate::session::CdpSession;
 
 impl CdpSession {
     /// Dispatch a mouse event.
+    // Uses json!() because the generated MouseButton enum doesn't match the string-based API.
     pub async fn input_dispatch_mouse_event(
         &self,
         event_type: &str,

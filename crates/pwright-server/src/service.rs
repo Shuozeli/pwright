@@ -53,13 +53,6 @@ impl BrowserServiceImpl {
         }
     }
 
-    /// Set the allowed upload directory for `set_input_files`.
-    #[allow(dead_code)]
-    pub fn with_upload_dir(mut self, dir: std::path::PathBuf) -> Self {
-        self.upload_dir = Some(dir);
-        self
-    }
-
     pub(crate) async fn get_browser(&self) -> Result<Arc<Browser>, Status> {
         let guard = self.browser.read().await;
         guard.clone().ok_or_else(|| {
