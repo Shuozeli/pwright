@@ -439,27 +439,15 @@ pub async fn reload(state: &mut CliState) -> Result<()> {
         .await
         .context("no active tab")?;
 
-    // Use CDP Page.reload for a proper reload
     tab.session.page_reload().await.context("reload failed")?;
 
-    // Wait for DOM ready
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
-        if std::time::Instant::now() > deadline {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        // Evaluate errors are expected during reload — the page may be mid-navigation,
-        // so we silently retry until readyState reaches "interactive" or "complete".
-        if let Ok(result) =
-            pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "document.readyState").await
-        {
-            let state_str = result.get("value").and_then(|v| v.as_str()).unwrap_or("");
-            if state_str == "interactive" || state_str == "complete" {
-                break;
-            }
-        }
-    }
+    // Wait for DOM ready using the shared poll function
+    pwright_bridge::navigate::poll_ready_state(
+        tab.session.as_ref(),
+        std::time::Duration::from_secs(10),
+    )
+    .await
+    .context("reload wait timed out")?;
 
     output::ok("Reloaded");
     Ok(())

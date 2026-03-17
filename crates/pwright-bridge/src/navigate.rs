@@ -136,6 +136,11 @@ pub async fn poll_ready_state(session: &dyn CdpClient, timeout: Duration) -> Cdp
 }
 
 /// Approximate network idle: readyState == "complete" and URL stable for 2 checks.
+///
+/// Limitation: this does NOT monitor actual network activity via CDP. It only
+/// checks readyState and URL stability. SPAs that fire additional fetches after
+/// `readyState == "complete"` will appear idle prematurely. For those cases,
+/// use `WaitStrategy::Selector` with a selector that appears after data loads.
 async fn wait_network_idle(session: &dyn CdpClient, timeout: Duration) -> CdpResult<()> {
     let deadline = tokio::time::Instant::now() + timeout;
     let mut interval = tokio::time::interval(Duration::from_millis(250));

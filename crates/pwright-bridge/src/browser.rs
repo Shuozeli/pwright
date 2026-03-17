@@ -367,6 +367,17 @@ impl TabHandle {
     }
 }
 
+impl Drop for TabHandle {
+    fn drop(&mut self) {
+        if !self.closed.load(Ordering::SeqCst) {
+            tracing::warn!(
+                target_id = %self.target_id,
+                "TabHandle dropped without calling close() -- tab may be leaked"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

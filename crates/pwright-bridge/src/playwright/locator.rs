@@ -296,11 +296,7 @@ impl Locator {
         let obj_id = self.resolve_object_id(node.node_id).await?;
         let result = self
             .session
-            .runtime_call_function_on(
-                &obj_id,
-                "function() { return this.disabled === true; }",
-                vec![],
-            )
+            .runtime_call_function_on(&obj_id, pwright_js::element::IS_DISABLED, vec![])
             .await?;
         Ok(result
             .get("result")
@@ -315,11 +311,7 @@ impl Locator {
         let obj_id = self.resolve_object_id(node.node_id).await?;
         let result = self
             .session
-            .runtime_call_function_on(
-                &obj_id,
-                "function() { return this.checked === true; }",
-                vec![],
-            )
+            .runtime_call_function_on(&obj_id, pwright_js::element::IS_CHECKED, vec![])
             .await?;
         Ok(result
             .get("result")

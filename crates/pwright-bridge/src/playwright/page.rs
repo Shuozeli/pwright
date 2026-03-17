@@ -149,7 +149,8 @@ impl Page {
         self.session.page_reload().await
     }
 
-    /// Navigate back in history.
+    /// Navigate back in history. Returns Ok(()) even if already at the
+    /// beginning (no-op, matches Playwright behavior).
     pub async fn go_back(&self) -> CdpResult<()> {
         self.ensure_open()?;
         let history = self.session.page_get_navigation_history().await?;
@@ -174,7 +175,8 @@ impl Page {
         Ok(())
     }
 
-    /// Navigate forward in history.
+    /// Navigate forward in history. Returns Ok(()) even if already at the
+    /// end (no-op, matches Playwright behavior).
     pub async fn go_forward(&self) -> CdpResult<()> {
         self.ensure_open()?;
         let history = self.session.page_get_navigation_history().await?;

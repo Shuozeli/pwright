@@ -261,20 +261,7 @@ pub async fn select_by_node_id(
             )
         })?;
 
-    let js = r#"function(v) {
-        for (let i = 0; i < this.options.length; i++) {
-            if (this.options[i].value === v) {
-                this.selectedIndex = i;
-                this.dispatchEvent(new Event('input', {bubbles: true}));
-                this.dispatchEvent(new Event('change', {bubbles: true}));
-                return true;
-            }
-        }
-        this.value = v;
-        this.dispatchEvent(new Event('input', {bubbles: true}));
-        this.dispatchEvent(new Event('change', {bubbles: true}));
-        return false;
-    }"#;
+    let js = pwright_js::element::SELECT_OPTION;
 
     session
         .runtime_call_function_on(object_id, js, vec![serde_json::json!({"value": value})])

@@ -1,7 +1,7 @@
 //! Accessibility tree snapshot — builds a flat list from CDP's AX tree.
 //! Mirrors PinchTab's snapshot.go: BuildSnapshot, InteractiveRoles, ref cache.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::Result as CdpResult;
@@ -23,7 +23,7 @@ pub struct A11yNode {
 /// Ref cache mapping element refs to backend DOM node IDs.
 #[derive(Debug, Clone, Default)]
 pub struct RefCache {
-    pub refs: HashMap<String, i64>,
+    pub refs: BTreeMap<String, i64>,
     pub nodes: Vec<A11yNode>,
 }
 
@@ -69,8 +69,8 @@ pub fn build_snapshot(
     nodes: &[RawAXNode],
     filter: &SnapshotFilter,
     max_depth: i32,
-) -> (Vec<A11yNode>, HashMap<String, i64>) {
-    let mut parent_map: HashMap<&str, &str> = HashMap::new();
+) -> (Vec<A11yNode>, BTreeMap<String, i64>) {
+    let mut parent_map: BTreeMap<&str, &str> = BTreeMap::new();
     for n in nodes {
         for child_id in &n.child_ids {
             parent_map.insert(child_id.as_str(), n.node_id.as_str());
@@ -88,7 +88,7 @@ pub fn build_snapshot(
     };
 
     let mut flat = Vec::new();
-    let mut refs: HashMap<String, i64> = HashMap::new();
+    let mut refs: BTreeMap<String, i64> = BTreeMap::new();
     let mut ref_id = 0;
 
     for n in nodes {
@@ -157,7 +157,7 @@ pub async fn get_snapshot(
     session: &dyn CdpClient,
     filter: &SnapshotFilter,
     max_depth: i32,
-) -> CdpResult<(Vec<A11yNode>, HashMap<String, i64>)> {
+) -> CdpResult<(Vec<A11yNode>, BTreeMap<String, i64>)> {
     // Accessibility domain must be enabled to get a full tree
     session.accessibility_enable().await?;
     let raw_nodes = session.accessibility_get_full_tree().await?;

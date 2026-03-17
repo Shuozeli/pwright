@@ -37,6 +37,33 @@ pub const GET_INPUT_VALUE: &str = "function() { return this.value; }";
 /// Used via `callFunctionOn` — `this` is the element.
 pub const BLUR: &str = "function() { this.blur(); }";
 
+/// Check if an element is disabled.
+/// Used via `callFunctionOn` — `this` is the element.
+pub const IS_DISABLED: &str = "function() { return this.disabled === true; }";
+
+/// Check if a checkbox/radio is checked.
+/// Used via `callFunctionOn` — `this` is the element.
+pub const IS_CHECKED: &str = "function() { return this.checked === true; }";
+
+/// Select an option from a `<select>` element by value.
+/// Matches by `option.value`, falls back to setting `.value` directly.
+/// Dispatches `input` and `change` events.
+/// Used via `callFunctionOn(objectId, SELECT_OPTION, [{ value: "val" }])`.
+pub const SELECT_OPTION: &str = r#"function(v) {
+    for (let i = 0; i < this.options.length; i++) {
+        if (this.options[i].value === v) {
+            this.selectedIndex = i;
+            this.dispatchEvent(new Event('input', {bubbles: true}));
+            this.dispatchEvent(new Event('change', {bubbles: true}));
+            return true;
+        }
+    }
+    this.value = v;
+    this.dispatchEvent(new Event('input', {bubbles: true}));
+    this.dispatchEvent(new Event('change', {bubbles: true}));
+    return false;
+}"#;
+
 /// Dispatch a custom event.
 /// Used via `callFunctionOn(objectId, DISPATCH_EVENT, [{ value: "click" }])`.
 pub const DISPATCH_EVENT: &str = r#"function(type) {
