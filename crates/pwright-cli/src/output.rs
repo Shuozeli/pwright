@@ -32,17 +32,16 @@ pub fn print_snapshot(nodes: &[A11yNode]) {
     }
 }
 
-/// Print a status message with icon.
 pub fn ok(msg: &str) {
-    println!("✅ {}", msg);
+    println!("[ok] {msg}");
 }
 
 pub fn info(msg: &str) {
-    println!("{}", msg);
+    println!("{msg}");
 }
 
 pub fn error(msg: &str) {
-    eprintln!("❌ {}", msg);
+    eprintln!("[error] {msg}");
 }
 
 /// Print a list of tabs.

@@ -150,7 +150,11 @@ pub async fn screenshot(state: &mut CliState, filename: Option<&str>) -> Result<
     });
 
     std::fs::write(&name, &data).context("failed to write screenshot")?;
-    output::info(&format!("📸 {} ({} bytes)", name, data.len()));
+    output::ok(&format!(
+        "Screenshot saved: {} ({} bytes)",
+        name,
+        data.len()
+    ));
     Ok(())
 }
 
@@ -834,16 +838,23 @@ pub async fn cookie_set(
         .await
         .context("no active tab")?;
 
-    let cookie = serde_json::json!({
-        "name": name,
-        "value": value,
-        "domain": domain,
-        "path": path,
-    });
+    let cookie = pwright_cdp::domains::network::Cookie {
+        name: name.to_string(),
+        value: value.to_string(),
+        domain: domain.to_string(),
+        path: path.to_string(),
+        expires: 0.0,
+        http_only: false,
+        secure: false,
+        same_site: String::new(),
+    };
 
-    pwright_bridge::cookies::set_cookies(tab.session.as_ref(), vec![cookie])
-        .await
-        .context("failed to set cookie")?;
+    pwright_bridge::cookies::set_cookies(
+        tab.session.as_ref(),
+        vec![serde_json::to_value(&cookie).context("failed to serialize cookie")?],
+    )
+    .await
+    .context("failed to set cookie")?;
 
     output::ok(&format!(
         "Set cookie {} = {} ({}{})",
@@ -941,7 +952,7 @@ pub async fn pdf(state: &mut CliState, filename: Option<&str>) -> Result<()> {
     });
 
     std::fs::write(&name, &data).context("failed to write PDF")?;
-    output::info(&format!("📄 {} ({} bytes)", name, data.len()));
+    output::ok(&format!("PDF saved: {} ({} bytes)", name, data.len()));
     Ok(())
 }
 

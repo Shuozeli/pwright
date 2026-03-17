@@ -216,6 +216,8 @@ pub async fn drag_by_node_id(
 /// Dispatch a named key press (Enter, Tab, Escape, etc.).
 pub async fn press_key(session: &dyn CdpClient, key: &str) -> CdpResult<()> {
     if let Some(def) = keys::get_key_def(key) {
+        // CDP key param must be the W3C key value. "Return" is accepted by
+        // get_key_def as an alias but "Enter" is the canonical W3C name.
         let w3c_key = if key == "Return" { "Enter" } else { key };
 
         session
