@@ -102,7 +102,7 @@ Playwright
 | `page.url()` | `page.url()` | ✅ Exists | `Runtime.evaluate` |
 | `page.title()` | `page.title()` | ✅ Exists | `Runtime.evaluate` |
 | `page.content()` | `page.content()` | ✅ Exists | `Runtime.evaluate` |
-| `page.setContent(html)` | `page.set_content()` | ✅ Exists | `Page.setDocumentContent` |
+| `page.setContent(html)` | `page.set_content()` | Partial | CDP `Page.setDocumentContent` exists, no Page wrapper yet |
 | `page.isClosed()` | `page.is_closed()` | ✅ Exists | Track state |
 | `page.close()` | `page.close()` | ✅ Exists | `Target.closeTarget` via `TabHandle::close` |
 
@@ -113,7 +113,7 @@ Playwright
 | `page.evaluate(fn, arg)` | `page.evaluate()` | ✅ Exists | `Runtime.evaluate` |
 | `page.evaluate(fn, arg)` (async) | `page.evaluate_async()` | ✅ Exists | `Runtime.evaluate` with `awaitPromise: true` |
 | `page.evaluateHandle(fn)` | `page.evaluate_handle()` | Planned | `Runtime.evaluate` `returnByValue:false` |
-| `page.addInitScript(s)` | `page.add_init_script()` | ✅ Exists | `Page.addScriptToEvaluateOnNewDocument` |
+| `page.addInitScript(s)` | `page.add_init_script()` | Partial | CDP method exists, no Page wrapper yet |
 | `page.addScriptTag(opts)` | `page.add_script_tag()` | Planned | JS eval inject `<script>` |
 | `page.addStyleTag(opts)` | `page.add_style_tag()` | Planned | JS eval inject `<style>` |
 | `page.exposeFunction()` | — | Planned (Tier 3) | `Runtime.addBinding` |
@@ -231,7 +231,7 @@ Playwright
 | `locator.click(opts)` | `locator.click()` | ✅ Exists | Resolve → click via box model |
 | `locator.dblclick(opts)` | `locator.dblclick()` | ✅ Exists | `clickCount: 2` |
 | `locator.fill(value)` | `locator.fill()` | ✅ Exists | Resolve → focus + set value |
-| `locator.clear()` | `locator.clear()` | ✅ Exists | `fill("")` |
+| `locator.clear()` | `locator.clear()` | Planned | `fill("")` |
 | `locator.type(text)` | `locator.type_text()` | ✅ Exists | Resolve → key events |
 | `locator.pressSequentially(t)` | `locator.press_sequentially()` | Planned | Alias for `type` |
 | `locator.press(key)` | `locator.press()` | ✅ Exists | Resolve → key dispatch |

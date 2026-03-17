@@ -152,7 +152,7 @@ let mouse = page.mouse();
 mouse.click(100.0, 200.0, None).await?;
 mouse.dblclick(100.0, 200.0).await?;
 mouse.move_to(300.0, 400.0).await?;
-mouse.wheel(0, -300).await?; // Scroll up
+mouse.wheel(0.0, -300.0).await?; // Scroll up
 
 // Right-click
 mouse.click(100.0, 200.0, Some(ClickOptions {
@@ -282,8 +282,10 @@ pwright tab-close <tab_id>
 ### Rust
 
 ```rust
-let cookies = browser.get_cookies(&tab_id).await?;
-browser.set_cookies(&tab_id, cookies).await?;
+use pwright_bridge::cookies;
+
+let cookies = cookies::get_cookies(&session).await?;
+cookies::set_cookies(&session, cookies).await?;
 ```
 
 ### CLI

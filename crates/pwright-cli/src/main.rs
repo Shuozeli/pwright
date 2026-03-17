@@ -137,6 +137,30 @@ enum Command {
         ref_str: String,
     },
 
+    /// Check a checkbox by ref
+    Check {
+        /// Element ref
+        #[arg(name = "ref")]
+        ref_str: String,
+    },
+
+    /// Uncheck a checkbox by ref
+    Uncheck {
+        /// Element ref
+        #[arg(name = "ref")]
+        ref_str: String,
+    },
+
+    /// Scroll element into view by ref
+    Scroll {
+        /// Element ref
+        #[arg(name = "ref")]
+        ref_str: String,
+    },
+
+    /// Get visible text content of the page
+    Text,
+
     /// Drag element by ref with dx/dy offset
     Drag {
         /// Element ref
@@ -350,6 +374,10 @@ async fn main() {
         Command::Focus { ref_str } => commands::focus(&mut state, &ref_str).await,
         Command::Drag { ref_str, dx, dy } => commands::drag(&mut state, &ref_str, dx, dy).await,
         Command::Upload { ref_str, files } => commands::upload(&mut state, &ref_str, &files).await,
+        Command::Check { ref_str } => commands::check(&mut state, &ref_str).await,
+        Command::Uncheck { ref_str } => commands::uncheck(&mut state, &ref_str).await,
+        Command::Scroll { ref_str } => commands::scroll(&mut state, &ref_str).await,
+        Command::Text => commands::text(&mut state).await,
         Command::Snapshot => commands::snapshot(&mut state).await,
         Command::Screenshot { filename } => {
             commands::screenshot(&mut state, filename.as_deref()).await

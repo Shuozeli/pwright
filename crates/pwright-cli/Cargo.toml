@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 pwright-cdp = { workspace = true }
 pwright-bridge = { workspace = true }
+pwright-js = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

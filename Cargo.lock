@@ -1361,6 +1361,7 @@ dependencies = [
  "clap",
  "pwright-bridge",
  "pwright-cdp",
+ "pwright-js",
  "pwright-script",
  "reqwest",
  "serde",

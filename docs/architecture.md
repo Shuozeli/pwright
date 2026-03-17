@@ -46,7 +46,7 @@ Translates user-intent into CDP command sequences.
 - **`chrome_http.rs`** — HTTP client for Chrome's debug endpoints (`/json/list`, `/json/close`, `/json/new`, `/json/version`). More reliable than CDP WebSocket under memory pressure.
 - **`tab.rs`** — Tab lifecycle: create (via `Target.createTarget` + `attachToTarget`), close, list, resolve.
 - **`navigate.rs`** — Navigation with 4 wait strategies: None, DOM ready, NetworkIdle, Selector.
-- **`actions.rs`** — 12 browser actions: click, dblclick, type, fill, press, focus, hover, select, scroll, drag, check, uncheck. Each follows the CDP pattern learned from PinchTab (e.g., `scrollIntoView → getBoxModel → dispatchMouseEvent`).
+- **`actions.rs`** — 10 browser actions: click, dblclick, type, fill, press, hover, select, scroll (element + page), drag. Each follows the CDP pattern (e.g., `scrollIntoView → getBoxModel → dispatchMouseEvent`). Focus uses `DOM.focus` directly. Check/uncheck are in `Locator` (check state + click).
 - **`snapshot.rs`** — Builds a flat accessibility tree from `Accessibility.getFullAXTree`. Assigns refs (`e0`, `e1`, ...) mapped to `backendDOMNodeId` for stable element references.
 - **`content.rs`** — Screenshot (PNG/JPEG/WebP), PDF, text extraction.
 - **`evaluate.rs`** — JavaScript evaluation. `FromEvalResult` trait for typed `evaluate_into::<T>()` (String, bool, i64, f64, Value, `FromEvalJson<T>` for JSON deserialization).

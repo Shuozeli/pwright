@@ -112,7 +112,7 @@ Use for: "is_checked returns true for checked checkbox"
 
 ### Tier 3: Docker integration (end-to-end)
 Real Chrome via `chromedp/headless-shell` with in-process test server.
-80 tests across 13 files. Concurrency tests with 5 parallel tabs.
+85 tests across 15 files. Concurrency tests with 5 parallel tabs.
 
 **Integration test gotchas:**
 - Chrome rejects non-IP `Host` headers (resolve hostname to IP)

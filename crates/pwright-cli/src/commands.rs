@@ -930,6 +930,107 @@ pub async fn upload(state: &mut CliState, ref_str: &str, files: &[String]) -> Re
     Ok(())
 }
 
+/// Check if a checkbox is checked by node_id.
+async fn is_checked(session: &dyn pwright_bridge::CdpClient, node_id: i64) -> Result<bool> {
+    let resolved = session.dom_resolve_node(node_id).await?;
+    let obj_id = resolved["object"]["objectId"]
+        .as_str()
+        .context("could not resolve node")?;
+    let result = session
+        .runtime_call_function_on(obj_id, pwright_js::element::IS_CHECKED, vec![])
+        .await?;
+    Ok(result
+        .get("result")
+        .and_then(|r| r.get("value"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
+}
+
+/// `pwright check <ref>`
+pub async fn check(state: &mut CliState, ref_str: &str) -> Result<()> {
+    let browser = connect(state).await?;
+    let node_id = browser
+        .resolve_ref(&state.active_tab, ref_str)
+        .await
+        .context(ref_not_found(ref_str))?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    if !is_checked(tab.session.as_ref(), node_id).await? {
+        pwright_bridge::actions::click_by_node_id(tab.session.as_ref(), node_id)
+            .await
+            .context("click to check failed")?;
+    }
+
+    output::ok(&format!("Checked [{}]", ref_str));
+    Ok(())
+}
+
+/// `pwright uncheck <ref>`
+pub async fn uncheck(state: &mut CliState, ref_str: &str) -> Result<()> {
+    let browser = connect(state).await?;
+    let node_id = browser
+        .resolve_ref(&state.active_tab, ref_str)
+        .await
+        .context(ref_not_found(ref_str))?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    if is_checked(tab.session.as_ref(), node_id).await? {
+        pwright_bridge::actions::click_by_node_id(tab.session.as_ref(), node_id)
+            .await
+            .context("click to uncheck failed")?;
+    }
+
+    output::ok(&format!("Unchecked [{}]", ref_str));
+    Ok(())
+}
+
+/// `pwright scroll <ref>`
+pub async fn scroll(state: &mut CliState, ref_str: &str) -> Result<()> {
+    let browser = connect(state).await?;
+    let node_id = browser
+        .resolve_ref(&state.active_tab, ref_str)
+        .await
+        .context(ref_not_found(ref_str))?;
+
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    pwright_bridge::actions::scroll_by_node_id(tab.session.as_ref(), node_id)
+        .await
+        .context("scroll failed")?;
+
+    output::ok(&format!("Scrolled [{}] into view", ref_str));
+    Ok(())
+}
+
+/// `pwright text`
+pub async fn text(state: &mut CliState) -> Result<()> {
+    let browser = connect(state).await?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+
+    let result = pwright_bridge::evaluate::evaluate(
+        tab.session.as_ref(),
+        "(document.body?.innerText || '')",
+    )
+    .await
+    .context("text extraction failed")?;
+
+    let text = result.get("value").and_then(|v| v.as_str()).unwrap_or("");
+    println!("{text}");
+    Ok(())
+}
+
 /// `pwright pdf [--filename]`
 pub async fn pdf(state: &mut CliState, filename: Option<&str>) -> Result<()> {
     let browser = connect(state).await?;

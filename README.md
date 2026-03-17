@@ -108,7 +108,7 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 | `pwright hover <ref>` | Hover over element |
 | `pwright focus <ref>` | Focus element |
 | `pwright select <ref> "value"` | Select dropdown option |
-| `pwright scroll <ref> --dx N --dy N` | Scroll element |
+| `pwright scroll <ref>` | Scroll element into view |
 | `pwright drag <ref> --dx N --dy N` | Drag element by offset |
 | `pwright check <ref>` | Check checkbox |
 | `pwright uncheck <ref>` | Uncheck checkbox |
