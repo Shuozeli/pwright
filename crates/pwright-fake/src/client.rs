@@ -437,6 +437,14 @@ impl CdpClient for FakeCdpClient {
         if let Some(result) = self.eval_property_check(object_id, function_declaration) {
             return Ok(result);
         }
+        // Return bounding rect for functions that request element center coordinates
+        if function_declaration.contains("getBoundingClientRect")
+            || function_declaration.contains("getClientRects")
+        {
+            return Ok(serde_json::json!({
+                "result": {"value": {"x": 150.0, "y": 250.0}}
+            }));
+        }
         // Fallback
         Ok(serde_json::json!({"result": {"value": null}}))
     }

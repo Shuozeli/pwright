@@ -102,7 +102,8 @@ async fn wait_for_ready_state(
     timeout: Duration,
 ) -> CdpResult<()> {
     match strategy {
-        WaitStrategy::None | WaitStrategy::Dom => poll_ready_state(session, timeout).await,
+        WaitStrategy::None => Ok(()),
+        WaitStrategy::Dom => poll_ready_state(session, timeout).await,
         WaitStrategy::NetworkIdle => wait_network_idle(session, timeout).await,
         WaitStrategy::Selector(sel) => wait_selector_visible(session, sel, timeout).await,
     }

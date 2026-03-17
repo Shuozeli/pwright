@@ -61,18 +61,18 @@ async fn get_element_center_js(
         .runtime_call_function_on(object_id, rect_fn, vec![])
         .await?;
 
-    let x = result
+    let value = result
         .get("result")
         .and_then(|r| r.get("value"))
-        .and_then(|v| v.get("x"))
+        .ok_or_else(|| CdpError::Other("getBoundingClientRect returned no value".into()))?;
+    let x = value
+        .get("x")
         .and_then(|x| x.as_f64())
-        .unwrap_or(0.0);
-    let y = result
-        .get("result")
-        .and_then(|r| r.get("value"))
-        .and_then(|v| v.get("y"))
+        .ok_or_else(|| CdpError::Other("getBoundingClientRect missing x coordinate".into()))?;
+    let y = value
+        .get("y")
         .and_then(|y| y.as_f64())
-        .unwrap_or(0.0);
+        .ok_or_else(|| CdpError::Other("getBoundingClientRect missing y coordinate".into()))?;
 
     Ok((x, y))
 }
@@ -154,10 +154,12 @@ pub async fn fill_by_node_id(session: &dyn CdpClient, node_id: i64, value: &str)
     Ok(())
 }
 
-/// Hover over an element by backendNodeId.
+/// Hover over an element by nodeId.
+///
+/// Scrolls into view first, then gets viewport-relative coordinates.
 pub async fn hover_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResult<()> {
-    let (x, y) = get_element_center(session, node_id).await?;
     session.dom_scroll_into_view(node_id).await?;
+    let (x, y) = get_element_center(session, node_id).await?;
     session
         .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
         .await?;
@@ -183,12 +185,11 @@ pub async fn drag_by_node_id(
     dx: i32,
     dy: i32,
 ) -> CdpResult<()> {
+    session.dom_scroll_into_view(node_id).await?;
     let (x, y) = get_element_center(session, node_id).await?;
 
     let dist = ((dx * dx + dy * dy) as f64).sqrt();
     let steps = (dist / 10.0).clamp(5.0, 40.0) as i32;
-
-    session.dom_scroll_into_view(node_id).await?;
 
     session
         .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
@@ -366,8 +367,9 @@ mod tests {
         hover_by_node_id(&mock, 5).await.unwrap();
 
         let methods = mock.method_names();
-        assert_eq!(methods[0], "DOM.getBoxModel");
-        assert_eq!(methods[1], "DOM.scrollIntoViewIfNeeded");
+        // scroll FIRST, then get coords, then dispatch
+        assert_eq!(methods[0], "DOM.scrollIntoViewIfNeeded");
+        assert_eq!(methods[1], "DOM.getBoxModel");
         assert_eq!(methods[2], "Input.dispatchMouseEvent");
 
         let mouse = mock.calls_for("Input.dispatchMouseEvent");
@@ -422,10 +424,10 @@ mod tests {
         drag_by_node_id(&mock, 1, 100, 0).await.unwrap();
 
         let methods = mock.method_names();
-        // getBoxModel + scrollIntoView + mouseMoved(start) + mousePressed + N×mouseMoved + mouseReleased
-        assert_eq!(methods[0], "DOM.getBoxModel");
-        assert_eq!(methods[1], "DOM.scrollIntoViewIfNeeded");
-        assert_eq!(methods[2], "Input.dispatchMouseEvent"); // moveMoved to start
+        // scrollIntoView + getBoxModel + mouseMoved(start) + mousePressed + N*mouseMoved + mouseReleased
+        assert_eq!(methods[0], "DOM.scrollIntoViewIfNeeded");
+        assert_eq!(methods[1], "DOM.getBoxModel");
+        assert_eq!(methods[2], "Input.dispatchMouseEvent"); // mouseMoved to start
 
         let mouse_calls = mock.calls_for("Input.dispatchMouseEvent");
         // First=mouseMoved(start), Second=mousePressed, Middle=intermediate moves, Last=mouseReleased

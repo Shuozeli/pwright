@@ -326,8 +326,10 @@ pub async fn type_text(state: &mut CliState, text: &str) -> Result<()> {
         .await
         .context("no active tab")?;
 
+    // Use insertText (1 CDP call per char) instead of press_key (3 CDP calls per char)
     for ch in text.chars() {
-        pwright_bridge::actions::press_key(tab.session.as_ref(), &ch.to_string())
+        tab.session
+            .input_insert_text(&ch.to_string())
             .await
             .context("type failed")?;
     }

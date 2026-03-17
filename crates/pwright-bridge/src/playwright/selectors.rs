@@ -184,9 +184,14 @@ async fn resolve_by_js(
 }
 
 /// Escape a value for safe use in CSS attribute selectors (`[attr="value"]`).
-/// Prevents breakout via `"`, `]`, or `\`.
+/// Prevents breakout via `\`, `"`, `]`, newlines, and null bytes.
 pub fn css_escape_attr(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace(']', "\\]")
+        .replace('\n', "\\a ")
+        .replace('\0', "\u{FFFD}")
 }
 
 /// Escape a string for safe embedding in JS. Uses serde_json which handles

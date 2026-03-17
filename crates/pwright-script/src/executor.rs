@@ -55,6 +55,7 @@ pub async fn execute(
             Err(e) => {
                 let err_msg = e.to_string();
                 if step.on_error == "continue" {
+                    failed += 1;
                     sink.emit(StepResult {
                         step_index: i as u32,
                         step_type,
@@ -289,13 +290,17 @@ fn resolve_template(template: &str, vars: &HashMap<String, serde_json::Value>) -
         let after = &rest[start + 2..];
         if let Some(end) = after.find("}}") {
             let var_name = after[..end].trim();
-            let value = vars
-                .get(var_name)
-                .map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })
-                .unwrap_or_default();
+            let value = match vars.get(var_name) {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => {
+                    tracing::warn!(
+                        var = var_name,
+                        "template variable not found, using empty string"
+                    );
+                    String::new()
+                }
+            };
             result.push_str(&value);
             rest = &after[end + 2..];
         } else {
