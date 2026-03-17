@@ -1,69 +1,62 @@
 # Tech Debt
 
-Structural issues from AI-generated code that need human-directed refactoring.
-These are not bugs — the code works. They are maintainability and design issues
-that accumulate when code is generated function-by-function without cross-cutting
-awareness.
+Remaining structural issues. Updated 2026-03-17.
 
-## Boilerplate Explosion
+## Open
+
+### Selector encoding: `__pw_` string prefixes
+31 occurrences across `selectors.rs`, `locator.rs`, `page.rs`. Selector
+metadata encoded as string prefixes (`__pw_text=`, `__pw_label=`, etc.),
+parsed back with `strip_prefix`. Should be a `SelectorKind` enum.
+**Effort:** Large (architectural change, touches Locator internals).
 
 ### CdpClient trait delegation (185 lines)
-`client_trait.rs:128-313` — 50+ methods that all just delegate to CdpSession.
-Cannot use `macro_rules!` due to `#[async_trait]` lifetime expansion conflict.
-Would need a proc macro crate to solve properly.
+`client_trait.rs` — 50+ methods that all delegate to CdpSession.
+`macro_rules!` doesn't work due to `#[async_trait]` lifetime expansion.
+Needs a proc macro crate.
 
 ### MockCdpClient (722 lines)
-`test_utils.rs` — 15 setter methods and 60+ trait impls that are all identical
-patterns. Should be macro-generated.
+`test_utils.rs` — 15 setter methods + 60+ trait impls, all identical
+patterns. Same `#[async_trait]` macro limitation.
 
-### gRPC handlers (21 handlers)
-`service/*.rs` — All start with the same `get_browser -> resolve_tab_locked`
-boilerplate. Should extract a helper or macro.
+### CLI command boilerplate
+`commands.rs` — 10+ ref-based action commands follow the same
+`connect -> resolve_ref -> resolve_tab -> action -> output::ok` pattern.
+Extract a `with_ref()` closure helper.
 
-### CLI commands (40+ functions)
-`commands.rs` — All follow `connect -> resolve_tab -> do_thing -> output::ok`.
-A macro or closure could eliminate the repetition.
+### gRPC error conversion
+`service/*.rs` — 40+ `map_err(|e| Status::internal(...))` closures.
+Implement `From<CdpError> for tonic::Status` with proper status codes
+(timeout -> DEADLINE_EXCEEDED, closed -> UNAVAILABLE, etc.).
 
-## Copy-Paste Patterns
+### Unit test gaps
+These modules have zero unit tests (covered only by integration tests):
+- `navigate.rs` — 5 wait strategies
+- `tab.rs` — create/close/reattach/resolve
+- `touchscreen.rs` — tap dispatch
 
-### ~~Root node ID extraction~~ FIXED
-Extracted `root_node_id()` helper in selectors.rs, used by all call sites.
+## Resolved
 
-### ~~on_request/on_response~~ FIXED
-Extracted generic `subscribe_network_event<T>()` method.
-
-## Stringly-Typed APIs (partially fixed)
-
-### Fixed
-- [x] `GotoOptions.wait_until` -> `WaitUntil` enum
-- [x] `ScreenshotOptions.format` -> `ImageFormat` enum
-- [x] Script model: `on_error: String` -> `OnError` enum, `param_type: String` -> `ParamType` enum
-
-### Remaining
-- [ ] Selector encoding: `__pw_text=`, `__pw_label=` etc. Should be `SelectorKind` enum (31 occurrences across 3 files — architectural change)
-
-## Test Coverage Illusion
-
-### Well-tested (easy to test)
-- String manipulation, mock passthrough, locator resolution (151+ tests)
-
-### Not tested (hard to test)
-- `navigate.rs` (363 lines): all 5 wait strategies — zero unit tests
-- `tab.rs` (149 lines): create/close/reattach/resolve — zero unit tests
-- `chrome_http.rs` (164 lines): HTTP endpoints — zero unit tests
-- `touchscreen.rs`: entire module — zero unit tests
-
-These are only covered by integration tests which run against real Chrome.
-
-## Over-engineering
-
-### pwright-fake (1,643 lines)
-Full HTML parser + DOM tree + CSS selector engine, used by exactly one test
-file (`pwright-script/tests/execute_script.rs`). The investment is
-disproportionate to the test surface it enables.
-
-## Priority
-
-Focus refactoring on the copy-paste patterns first — they cause the most
-maintenance burden. The boilerplate explosion is annoying but stable (it
-doesn't change often). The test coverage gap is addressed by integration tests.
+| Item | Resolution |
+|------|-----------|
+| Root node ID extraction (4 locations) | Extracted `root_node_id()` helper |
+| on_request/on_response duplication | Generic `subscribe_network_event<T>()` |
+| `GotoOptions.wait_until: String` | `WaitUntil` enum |
+| `ScreenshotOptions.format: String` | `ImageFormat` enum |
+| `on_error: String` / `param_type: String` | `OnError` / `ParamType` enums |
+| go_back/go_forward duplication | `navigate_history(offset)` helper |
+| `block_media` else-if bug | Independent `if` statements |
+| `ChromeHttpClient::new()` panic | Returns `CdpResult<Self>` |
+| State file corruption silent | Warns with error message |
+| hover/drag coords before scroll | Swap order: scroll first |
+| `WaitStrategy::None` waits | Returns immediately |
+| `on_error: continue` wrong counter | Increments `failed` |
+| CSS escaping missing `]` | Escapes `]`, `\n`, `\0` |
+| unwrap_or(0.0) in get_element_center_js | Returns error |
+| Inline JS in locator | Moved to pwright-js constants |
+| Duplicate poll_ready_state | CLI reload uses shared function |
+| Non-deterministic RefCache HashMap | Switched to BTreeMap |
+| CLI type_text 3x overhead | Uses insert_text |
+| TabHandle no Drop warning | Added Drop impl with tracing::warn |
+| Emoji in CLI output | Replaced with [ok]/[error] |
+| json!() cookie construction | Typed Cookie struct |
