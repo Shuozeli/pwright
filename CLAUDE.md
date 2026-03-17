@@ -29,24 +29,17 @@ and crate map. That file is the authoritative reference for agents.
 
 ## Code Quality Discipline
 
-When implementing a feature or fix, re-read your own diff before declaring
-it done. Do not silently leave shortcuts in the code. Specifically:
+Shortcuts during exploration are fine — getting things working is the
+priority. But tech debt must be visible, not silent.
 
-- **Flag known shortcuts** with `// TODO(refactor):` comments. Examples:
-  `.clone()` where `.take()` would work, duplicated patterns that should
-  be extracted, silently swallowed errors via `unwrap_or_default()`.
-- **Do not duplicate code 3+ times** without extracting a helper. If you
-  find yourself writing the same pattern a third time, stop and refactor.
-- **Do not silently swallow errors.** If you write `let _ = ...` or
-  `.unwrap_or_default()`, add a comment explaining why it's safe, or
-  propagate the error properly.
+- **Always leave `// TODO(refactor):` comments** when you take a shortcut.
+  `.clone()` that should be `.take()`, duplicated patterns, swallowed
+  errors, O(n^2) loops — any of these are OK to ship, but leave the TODO
+  so we can track the debt. Silent shortcuts are invisible and accumulate
+  until someone does a full code review to discover them.
 - **Self-review pass:** After getting the feature working and tests passing,
-  re-read the full diff once. Fix obvious issues (unnecessary clones,
-  missing error context, copy-pasted code). This is cheaper than a
-  separate review pass later.
-
-This rule exists because implementation-mode focus ("make it work") tends to
-accumulate silent tech debt that only surfaces in dedicated code reviews.
+  re-read the diff once. You don't have to fix everything — just leave
+  `// TODO(refactor):` markers on anything you'd flag in a code review.
 
 ## Build & Test
 
