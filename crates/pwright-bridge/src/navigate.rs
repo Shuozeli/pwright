@@ -369,4 +369,51 @@ mod tests {
         let patterns = compute_block_patterns(&opts);
         assert!(patterns.is_empty());
     }
+
+    use crate::test_utils::MockCdpClient;
+
+    #[tokio::test]
+    async fn poll_ready_state_succeeds_when_complete() {
+        let mock = MockCdpClient::new();
+        mock.set_evaluate_response(serde_json::json!({
+            "result": {"value": "complete"}
+        }));
+
+        poll_ready_state(&mock, Duration::from_secs(2))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn poll_ready_state_succeeds_when_interactive() {
+        let mock = MockCdpClient::new();
+        mock.set_evaluate_response(serde_json::json!({
+            "result": {"value": "interactive"}
+        }));
+
+        poll_ready_state(&mock, Duration::from_secs(2))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn poll_ready_state_times_out_when_loading() {
+        let mock = MockCdpClient::new();
+        mock.set_evaluate_response(serde_json::json!({
+            "result": {"value": "loading"}
+        }));
+
+        let result = poll_ready_state(&mock, Duration::from_millis(400)).await;
+        assert!(matches!(result, Err(CdpError::Timeout)));
+    }
+
+    #[tokio::test]
+    async fn wait_for_ready_state_none_returns_immediately() {
+        let mock = MockCdpClient::new();
+        // No evaluate response configured — should never be called
+        wait_for_ready_state(&mock, &WaitStrategy::None, Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert!(mock.method_names().is_empty());
+    }
 }

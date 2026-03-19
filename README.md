@@ -281,6 +281,8 @@ See [deploy/README.md](deploy/README.md) for details.
 - [CLI Guide](docs/cli-guide.md) -- full command reference
 - [gRPC API Reference](docs/grpc-api.md) -- all RPCs with request/response schemas
 - [Codelabs](docs/codelabs.md) -- usage examples
+- [TODO](docs/todo.md) -- planned features and roadmap
+- [Tech Debt](docs/tech-debt.md) -- tracked structural issues
 
 ## Prerequisites
 

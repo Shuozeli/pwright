@@ -13,7 +13,7 @@ cd pwright
 cargo build --release
 ```
 
-The binary is at `target/release/pwright-server` (~5.9 MB).
+Two binaries are produced: `target/release/pwright` (CLI) and `target/release/pwright-server` (gRPC server).
 
 ---
 

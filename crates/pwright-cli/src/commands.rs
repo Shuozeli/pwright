@@ -9,10 +9,27 @@ use pwright_bridge::content::ScreenshotFormat;
 use pwright_bridge::navigate::{NavigateOptions, WaitStrategy};
 use pwright_bridge::snapshot::{self, SnapshotFilter};
 use pwright_bridge::{Browser, BrowserConfig};
-use pwright_cdp::{MouseButton, MouseEventType};
+use pwright_cdp::{CdpClient, MouseButton, MouseEventType};
 
 use crate::output;
 use crate::state::CliState;
+
+/// Resolve a ref to a (session, node_id) pair. Used by ref-based action commands.
+async fn resolve_ref_to_session(
+    state: &mut CliState,
+    ref_str: &str,
+) -> Result<(Arc<dyn pwright_bridge::CdpClient>, i64)> {
+    let browser = connect(state).await?;
+    let node_id = browser
+        .resolve_ref(&state.active_tab, ref_str)
+        .await
+        .context(ref_not_found(ref_str))?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+    Ok((tab.session.clone(), node_id))
+}
 
 fn ref_not_found(ref_str: &str) -> String {
     format!(
@@ -194,21 +211,10 @@ pub async fn eval(state: &mut CliState, expression: &str) -> Result<()> {
 
 /// `pwright click <ref>`
 pub async fn click(state: &mut CliState, ref_str: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    pwright_bridge::actions::click_by_node_id(tab.session.as_ref(), node_id)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    pwright_bridge::actions::click_by_node_id(&*session, nid)
         .await
         .context("click failed")?;
-
     output::ok(&format!("Clicked [{}]", ref_str));
     Ok(())
 }
@@ -266,21 +272,10 @@ pub async fn click_at(
 
 /// `pwright dblclick <ref>`
 pub async fn dblclick(state: &mut CliState, ref_str: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    pwright_bridge::actions::dblclick_by_node_id(tab.session.as_ref(), node_id)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    pwright_bridge::actions::dblclick_by_node_id(&*session, nid)
         .await
         .context("dblclick failed")?;
-
     output::ok(&format!("Double-clicked [{}]", ref_str));
     Ok(())
 }
@@ -305,21 +300,10 @@ pub async fn hover_at(state: &mut CliState, x: f64, y: f64) -> Result<()> {
 
 /// `pwright fill <ref> <text>`
 pub async fn fill(state: &mut CliState, ref_str: &str, text: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    pwright_bridge::actions::fill_by_node_id(tab.session.as_ref(), node_id, text)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    pwright_bridge::actions::fill_by_node_id(&*session, nid, text)
         .await
         .context("fill failed")?;
-
     output::ok(&format!("Filled [{}] with \"{}\"", ref_str, text));
     Ok(())
 }
@@ -362,61 +346,29 @@ pub async fn press(state: &mut CliState, key: &str) -> Result<()> {
 
 /// `pwright hover <ref>`
 pub async fn hover(state: &mut CliState, ref_str: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    pwright_bridge::actions::hover_by_node_id(tab.session.as_ref(), node_id)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    pwright_bridge::actions::hover_by_node_id(&*session, nid)
         .await
         .context("hover failed")?;
-
     output::ok(&format!("Hovered [{}]", ref_str));
     Ok(())
 }
 
 /// `pwright select <ref> <val>`
 pub async fn select(state: &mut CliState, ref_str: &str, value: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    pwright_bridge::actions::select_by_node_id(tab.session.as_ref(), node_id, value)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    pwright_bridge::actions::select_by_node_id(&*session, nid, value)
         .await
         .context("select failed")?;
-
     output::ok(&format!("Selected [{}] value=\"{}\"", ref_str, value));
     Ok(())
 }
 
 /// `pwright download <ref> [--dest <path>]`
 pub async fn download(state: &mut CliState, ref_str: &str, dest: Option<&str>) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    let page = pwright_bridge::playwright::Page::new(tab.session.clone());
-    let session: &dyn pwright_bridge::CdpClient = tab.session.as_ref();
+    let (session, node_id) = resolve_ref_to_session(state, ref_str).await?;
+    let page = pwright_bridge::playwright::Page::new(session.clone());
+    let session: &dyn CdpClient = &*session;
 
     let dl_path = page
         .expect_download(|| async {
@@ -866,65 +818,29 @@ pub async fn cookie_set(
 
 /// `pwright focus <ref>`
 pub async fn focus(state: &mut CliState, ref_str: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    tab.session
-        .dom_focus(node_id)
-        .await
-        .context("focus failed")?;
-
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    session.dom_focus(nid).await.context("focus failed")?;
     output::ok(&format!("Focused [{}]", ref_str));
     Ok(())
 }
 
 /// `pwright drag <ref> --dx N --dy N`
 pub async fn drag(state: &mut CliState, ref_str: &str, dx: i32, dy: i32) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    pwright_bridge::actions::drag_by_node_id(tab.session.as_ref(), node_id, dx, dy)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    pwright_bridge::actions::drag_by_node_id(&*session, nid, dx, dy)
         .await
         .context("drag failed")?;
-
     output::ok(&format!("Dragged [{}] by ({}, {})", ref_str, dx, dy));
     Ok(())
 }
 
 /// `pwright upload <ref> <files...>`
 pub async fn upload(state: &mut CliState, ref_str: &str, files: &[String]) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    tab.session
-        .dom_set_file_input_files(node_id, files)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    session
+        .dom_set_file_input_files(nid, files)
         .await
         .context("upload failed")?;
-
     output::ok(&format!(
         "Uploaded {} file(s) to [{}]",
         files.len(),
@@ -951,18 +867,9 @@ async fn is_checked(session: &dyn pwright_bridge::CdpClient, node_id: i64) -> Re
 
 /// `pwright check <ref>`
 pub async fn check(state: &mut CliState, ref_str: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    if !is_checked(tab.session.as_ref(), node_id).await? {
-        pwright_bridge::actions::click_by_node_id(tab.session.as_ref(), node_id)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    if !is_checked(&*session, nid).await? {
+        pwright_bridge::actions::click_by_node_id(&*session, nid)
             .await
             .context("click to check failed")?;
     }
@@ -973,18 +880,9 @@ pub async fn check(state: &mut CliState, ref_str: &str) -> Result<()> {
 
 /// `pwright uncheck <ref>`
 pub async fn uncheck(state: &mut CliState, ref_str: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    if is_checked(tab.session.as_ref(), node_id).await? {
-        pwright_bridge::actions::click_by_node_id(tab.session.as_ref(), node_id)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    if is_checked(&*session, nid).await? {
+        pwright_bridge::actions::click_by_node_id(&*session, nid)
             .await
             .context("click to uncheck failed")?;
     }
@@ -995,18 +893,8 @@ pub async fn uncheck(state: &mut CliState, ref_str: &str) -> Result<()> {
 
 /// `pwright scroll <ref>`
 pub async fn scroll(state: &mut CliState, ref_str: &str) -> Result<()> {
-    let browser = connect(state).await?;
-    let node_id = browser
-        .resolve_ref(&state.active_tab, ref_str)
-        .await
-        .context(ref_not_found(ref_str))?;
-
-    let tab = browser
-        .resolve_tab(&state.active_tab)
-        .await
-        .context("no active tab")?;
-
-    pwright_bridge::actions::scroll_by_node_id(tab.session.as_ref(), node_id)
+    let (session, nid) = resolve_ref_to_session(state, ref_str).await?;
+    pwright_bridge::actions::scroll_by_node_id(&*session, nid)
         .await
         .context("scroll failed")?;
 

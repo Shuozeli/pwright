@@ -26,3 +26,25 @@ impl Touchscreen {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::MockCdpClient;
+
+    #[tokio::test]
+    async fn test_tap_dispatches_start_then_end() {
+        let mock = Arc::new(MockCdpClient::new());
+        let ts = Touchscreen::new(mock.clone());
+        ts.tap(100.0, 200.0).await.unwrap();
+
+        let calls = mock.calls_for("Input.dispatchTouchEvent");
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].args[0]["type"], "touchStart");
+        assert_eq!(calls[0].args[0]["x"], 100.0);
+        assert_eq!(calls[0].args[0]["y"], 200.0);
+        assert_eq!(calls[1].args[0]["type"], "touchEnd");
+        assert_eq!(calls[1].args[0]["x"], 100.0);
+        assert_eq!(calls[1].args[0]["y"], 200.0);
+    }
+}

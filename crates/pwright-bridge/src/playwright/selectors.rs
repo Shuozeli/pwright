@@ -1,12 +1,9 @@
 //! Selector parsing and resolution.
 //!
 //! Converts Playwright-style selectors into DOM operations.
-//! Supports CSS selectors and special prefixes:
-//!   - `__pw_text=<text>` — find element by text content (substring)
-//!   - `__pw_text_exact=<text>` — find element by exact text content
-//!   - `__pw_label=<text>` — find element by associated label text
-//!   - `__pw_role=<role>` — find element by ARIA role
-//!   - `__pw_role=<role>|<name>` — find element by ARIA role with accessible name
+//! Supports CSS selectors and typed semantic selectors via [`SelectorKind`].
+
+use std::fmt;
 
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
@@ -19,6 +16,46 @@ pub(super) fn root_node_id(doc: &serde_json::Value) -> CdpResult<i64> {
         .ok_or_else(|| CdpError::Other("DOM.getDocument missing root.nodeId".to_string()))
 }
 
+/// Typed selector — replaces the old `__pw_*` string-prefix encoding.
+#[derive(Debug, Clone)]
+pub enum SelectorKind {
+    /// Plain CSS selector.
+    Css(String),
+    /// Find by text content (substring match).
+    Text(String),
+    /// Find by exact text content.
+    TextExact(String),
+    /// Find by label text (via `<label>` for/wrapping or `aria-label`).
+    Label(String),
+    /// Find by ARIA role, optionally filtered by accessible name.
+    Role { role: String, name: Option<String> },
+    /// Pick the nth match from a base selector.
+    Nth { base: Box<SelectorKind>, index: i64 },
+    /// Filter a base selector's matches by text content.
+    FilterText {
+        base: Box<SelectorKind>,
+        text: String,
+    },
+}
+
+impl fmt::Display for SelectorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Css(s) => write!(f, "{s}"),
+            Self::Text(t) => write!(f, "text={t}"),
+            Self::TextExact(t) => write!(f, "text_exact={t}"),
+            Self::Label(t) => write!(f, "label={t}"),
+            Self::Role { role, name: None } => write!(f, "role={role}"),
+            Self::Role {
+                role,
+                name: Some(n),
+            } => write!(f, "role={role}[{n}]"),
+            Self::Nth { base, index } => write!(f, "{base}.nth({index})"),
+            Self::FilterText { base, text } => write!(f, "{base}.filter_text({text})"),
+        }
+    }
+}
+
 /// Resolved element — a nodeId from the DOM domain.
 #[derive(Debug, Clone, Copy)]
 pub struct ResolvedElement {
@@ -27,102 +64,87 @@ pub struct ResolvedElement {
 
 /// Resolve a selector to a single node, returning its nodeId.
 ///
-/// Supports CSS selectors and special `__pw_*` prefixes.
-pub async fn resolve_selector(
-    session: &dyn CdpClient,
-    selector: &str,
-) -> CdpResult<Option<ResolvedElement>> {
-    // __pw_nth=<base_selector>|<index>: resolve all CSS matches, then pick by index
-    if let Some(rest) = selector.strip_prefix("__pw_nth=")
-        && let Some(idx) = rest.rfind('|')
-    {
-        let base_selector = &rest[..idx];
-        let index_str = &rest[idx + 1..];
-        let index: i64 = index_str
-            .parse()
-            .map_err(|_| CdpError::Other(format!("invalid nth index: {index_str}")))?;
-        // Use resolve_css_selector_all to avoid recursion
-        let elements = resolve_css_selector_all(session, base_selector).await?;
-        if elements.is_empty() {
-            return Ok(None);
-        }
-        let resolved_index = if index < 0 {
-            let positive = elements.len() as i64 + index;
-            if positive < 0 {
-                return Ok(None);
+/// Uses `Box::pin` for recursive calls (Nth/FilterText on non-CSS bases)
+/// because async recursion requires indirection to avoid infinite future sizes.
+pub fn resolve_selector<'a>(
+    session: &'a dyn CdpClient,
+    selector: &'a SelectorKind,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = CdpResult<Option<ResolvedElement>>> + Send + 'a>,
+> {
+    Box::pin(async move {
+        match selector {
+            SelectorKind::Nth { base, index } => {
+                let css_selector = match base.as_ref() {
+                    SelectorKind::Css(s) => s.as_str(),
+                    other => {
+                        // Nth on non-CSS base: resolve the base, return single result
+                        return resolve_selector(session, other).await;
+                    }
+                };
+                let elements = resolve_css_selector_all(session, css_selector).await?;
+                if elements.is_empty() {
+                    return Ok(None);
+                }
+                let resolved_index = if *index < 0 {
+                    let positive = elements.len() as i64 + index;
+                    if positive < 0 {
+                        return Ok(None);
+                    }
+                    positive as usize
+                } else {
+                    *index as usize
+                };
+                Ok(elements.get(resolved_index).copied())
             }
-            positive as usize
-        } else {
-            index as usize
-        };
-        return Ok(elements.get(resolved_index).copied());
-    }
-
-    resolve_pw_selector(session, selector).await
+            SelectorKind::FilterText { base, text } => {
+                let css_selector = match base.as_ref() {
+                    SelectorKind::Css(s) => s.as_str(),
+                    _ => return resolve_selector(session, base).await,
+                };
+                resolve_by_js(session, &js_filter_by_text(css_selector, text)).await
+            }
+            SelectorKind::TextExact(text) => {
+                resolve_by_js(session, &js_find_by_text(text, true)).await
+            }
+            SelectorKind::Text(text) => resolve_by_js(session, &js_find_by_text(text, false)).await,
+            SelectorKind::Label(text) => resolve_by_js(session, &js_find_by_label(text)).await,
+            SelectorKind::Role { role, name } => {
+                resolve_by_js(session, &js_find_by_role(role, name.as_deref())).await
+            }
+            SelectorKind::Css(css) => {
+                let doc = session.dom_get_document().await?;
+                let root_id = root_node_id(&doc)?;
+                let node_id = session.dom_query_selector(root_id, css).await?;
+                if node_id == 0 {
+                    Ok(None)
+                } else {
+                    Ok(Some(ResolvedElement { node_id }))
+                }
+            }
+        }
+    })
 }
 
-/// Resolve __pw_* prefixed selectors or plain CSS selectors (no __pw_nth).
-async fn resolve_pw_selector(
+/// Resolve a selector to all matching nodes.
+pub async fn resolve_selector_all(
     session: &dyn CdpClient,
-    selector: &str,
-) -> CdpResult<Option<ResolvedElement>> {
-    if let Some(rest) = selector.strip_prefix("__pw_text_exact=") {
-        return resolve_by_js(session, &js_find_by_text(rest, true)).await;
-    }
-    if let Some(rest) = selector.strip_prefix("__pw_text=") {
-        return resolve_by_js(session, &js_find_by_text(rest, false)).await;
-    }
-    if let Some(rest) = selector.strip_prefix("__pw_label=") {
-        return resolve_by_js(session, &js_find_by_label(rest)).await;
-    }
-    if let Some(rest) = selector.strip_prefix("__pw_role=") {
-        return resolve_by_js(session, &js_find_by_role(rest)).await;
-    }
-    if let Some(rest) = selector.strip_prefix("__pw_filter_text=")
-        && let Some(idx) = rest.rfind('|')
-    {
-        let base_selector = &rest[..idx];
-        let text = &rest[idx + 1..];
-        return resolve_by_js(session, &js_filter_by_text(base_selector, text)).await;
-    }
-
-    // Default: CSS selector
-    let doc = session.dom_get_document().await?;
-    let root_id = root_node_id(&doc)?;
-
-    let node_id = session.dom_query_selector(root_id, selector).await?;
-    if node_id == 0 {
-        Ok(None)
-    } else {
-        Ok(Some(ResolvedElement { node_id }))
+    selector: &SelectorKind,
+) -> CdpResult<Vec<ResolvedElement>> {
+    match selector {
+        SelectorKind::Css(css) => resolve_css_selector_all(session, css).await,
+        // Non-CSS selectors resolve to at most one element
+        _ => {
+            if let Some(elem) = resolve_selector(session, selector).await? {
+                Ok(vec![elem])
+            } else {
+                Ok(vec![])
+            }
+        }
     }
 }
 
 /// Resolve a CSS selector to all matching nodes.
-pub async fn resolve_selector_all(
-    session: &dyn CdpClient,
-    selector: &str,
-) -> CdpResult<Vec<ResolvedElement>> {
-    // For __pw_nth, resolve to the specific single element
-    if selector.starts_with("__pw_nth=") {
-        if let Some(elem) = resolve_selector(session, selector).await? {
-            return Ok(vec![elem]);
-        }
-        return Ok(vec![]);
-    }
-
-    // For other __pw_* selectors, use JS-based resolution (single element only)
-    if selector.starts_with("__pw_") {
-        if let Some(elem) = resolve_pw_selector(session, selector).await? {
-            return Ok(vec![elem]);
-        }
-        return Ok(vec![]);
-    }
-
-    resolve_css_selector_all(session, selector).await
-}
-
-/// Resolve a CSS selector to all matching nodes (no __pw_* handling).
 async fn resolve_css_selector_all(
     session: &dyn CdpClient,
     selector: &str,
@@ -139,7 +161,6 @@ async fn resolve_css_selector_all(
 
 /// Get an objectId for a resolved element (needed for callFunctionOn).
 pub async fn resolve_object_id(session: &dyn CdpClient, node_id: i64) -> CdpResult<Option<String>> {
-    // DOM.resolveNode works with nodeId (not just backendNodeId)
     let result = session.dom_resolve_node(node_id).await?;
     Ok(result
         .get("object")
@@ -151,15 +172,12 @@ pub async fn resolve_object_id(session: &dyn CdpClient, node_id: i64) -> CdpResu
 // ── JS-based resolution helpers ──
 
 /// Resolve an element using a JS expression that returns the element or null.
-/// Uses Runtime.evaluate to find the element, then DOM.requestNode to get its nodeId.
 async fn resolve_by_js(
     session: &dyn CdpClient,
     js_expr: &str,
 ) -> CdpResult<Option<ResolvedElement>> {
-    // Must use returnByValue=false to get objectId for DOM elements
     let result = session.runtime_evaluate_as_object(js_expr).await?;
 
-    // Check if the result is a DOM element (has objectId)
     let object_id = result
         .get("result")
         .and_then(|r| r.get("objectId"))
@@ -167,14 +185,11 @@ async fn resolve_by_js(
 
     let object_id = match object_id {
         Some(id) => id.to_string(),
-        None => return Ok(None), // JS returned null/undefined or a primitive
+        None => return Ok(None),
     };
 
-    // DOM.getDocument must be called first to enable the DOM domain,
-    // otherwise DOM.requestNode fails with "No node with given id".
     session.dom_get_document().await?;
 
-    // Use DOM.requestNode to convert the JS objectId → DOM nodeId
     let node_id = session.dom_request_node(&object_id).await?;
     if node_id == 0 {
         Ok(None)
@@ -184,7 +199,6 @@ async fn resolve_by_js(
 }
 
 /// Escape a value for safe use in CSS attribute selectors (`[attr="value"]`).
-/// Prevents breakout via `\`, `"`, `]`, newlines, and null bytes.
 pub fn css_escape_attr(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -194,14 +208,11 @@ pub fn css_escape_attr(value: &str) -> String {
         .replace('\0', "\u{FFFD}")
 }
 
-/// Escape a string for safe embedding in JS. Uses serde_json which handles
-/// newlines, backticks, null bytes, unicode separators, and all special chars.
-/// Returns the string WITH surrounding quotes (e.g. `"hello \"world\""`)
+/// Escape a string for safe embedding in JS.
 fn js_escape(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-/// Generate JS to find an element by text content.
 fn js_find_by_text(text: &str, exact: bool) -> String {
     let escaped = js_escape(text);
     if exact {
@@ -215,7 +226,6 @@ fn js_find_by_text(text: &str, exact: bool) -> String {
     }
 }
 
-/// Generate JS to filter elements by CSS selector and text content.
 fn js_filter_by_text(base_selector: &str, text: &str) -> String {
     let escaped_text = js_escape(text);
     let escaped_selector = js_escape(base_selector);
@@ -224,7 +234,6 @@ fn js_filter_by_text(base_selector: &str, text: &str) -> String {
     )
 }
 
-/// Generate JS to find an element by label text.
 fn js_find_by_label(text: &str) -> String {
     let escaped = js_escape(text);
     format!(
@@ -248,18 +257,9 @@ fn js_find_by_label(text: &str) -> String {
     )
 }
 
-/// Generate JS to find an element by ARIA role.
-/// Format: "role" or "role|name"
-fn js_find_by_role(spec: &str) -> String {
-    let (role, name) = if let Some(idx) = spec.find('|') {
-        (&spec[..idx], Some(&spec[idx + 1..]))
-    } else {
-        (spec, None)
-    };
-
+fn js_find_by_role(role: &str, name: Option<&str>) -> String {
     let css_escaped_role = css_escape_attr(role);
 
-    // Map implicit roles to element selectors
     let implicit_selectors = match role {
         "button" => "button, [type=\"button\"], [type=\"submit\"], [type=\"reset\"]",
         "link" => "a[href]",
@@ -334,19 +334,20 @@ mod tests {
     use crate::test_utils::MockCdpClient;
 
     #[tokio::test]
-    async fn test_resolve_selector_found() {
+    async fn test_resolve_css_selector_found() {
         let mock = MockCdpClient::new();
         mock.set_query_selector_response(42);
-        let result = resolve_selector(&mock, "button.submit").await.unwrap();
+        let sel = SelectorKind::Css("button.submit".into());
+        let result = resolve_selector(&mock, &sel).await.unwrap();
         assert!(result.is_some());
         assert_eq!(result.unwrap().node_id, 42);
     }
 
     #[tokio::test]
-    async fn test_resolve_selector_not_found() {
+    async fn test_resolve_css_selector_not_found() {
         let mock = MockCdpClient::new();
-        // Default is 0 = not found
-        let result = resolve_selector(&mock, ".nonexistent").await.unwrap();
+        let sel = SelectorKind::Css(".nonexistent".into());
+        let result = resolve_selector(&mock, &sel).await.unwrap();
         assert!(result.is_none());
     }
 
@@ -354,7 +355,8 @@ mod tests {
     async fn test_resolve_selector_all() {
         let mock = MockCdpClient::new();
         mock.set_query_selector_all_response(vec![10, 20, 30]);
-        let results = resolve_selector_all(&mock, "li").await.unwrap();
+        let sel = SelectorKind::Css("li".into());
+        let results = resolve_selector_all(&mock, &sel).await.unwrap();
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].node_id, 10);
         assert_eq!(results[2].node_id, 30);
@@ -363,7 +365,27 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_selector_all_empty() {
         let mock = MockCdpClient::new();
-        let results = resolve_selector_all(&mock, ".nothing").await.unwrap();
+        let sel = SelectorKind::Css(".nothing".into());
+        let results = resolve_selector_all(&mock, &sel).await.unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn selector_kind_display() {
+        assert_eq!(SelectorKind::Css("div".into()).to_string(), "div");
+        assert_eq!(SelectorKind::Text("hello".into()).to_string(), "text=hello");
+        assert_eq!(
+            SelectorKind::Role {
+                role: "button".into(),
+                name: Some("Submit".into())
+            }
+            .to_string(),
+            "role=button[Submit]"
+        );
+        let nth = SelectorKind::Nth {
+            base: Box::new(SelectorKind::Css("li".into())),
+            index: 2,
+        };
+        assert_eq!(nth.to_string(), "li.nth(2)");
     }
 }

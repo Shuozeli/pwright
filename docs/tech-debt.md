@@ -4,37 +4,16 @@ Remaining structural issues. Updated 2026-03-19.
 
 ## Open
 
-### Selector encoding: `__pw_` string prefixes
-31 occurrences across `selectors.rs`, `locator.rs`, `page.rs`. Selector
-metadata encoded as string prefixes (`__pw_text=`, `__pw_label=`, etc.),
-parsed back with `strip_prefix`. Should be a `SelectorKind` enum.
-**Effort:** Large (architectural change, touches Locator internals).
-
-### CdpClient trait delegation (185 lines)
-`client_trait.rs` — 50+ methods that all delegate to CdpSession.
-`macro_rules!` doesn't work due to `#[async_trait]` lifetime expansion.
-Needs a proc macro crate.
-
-### MockCdpClient (722 lines)
-`test_utils.rs` — 15 setter methods + 60+ trait impls, all identical
-patterns. Same `#[async_trait]` macro limitation.
-
-### CLI command boilerplate
-`commands.rs` — 10+ ref-based action commands follow the same
-`connect -> resolve_ref -> resolve_tab -> action -> output::ok` pattern.
-Extract a `with_ref()` closure helper.
-
 ### Unit test gaps
-These modules have zero unit tests (covered only by integration tests):
-- `navigate.rs` — 5 wait strategies
-- `tab.rs` — create/close/reattach/resolve
-- `touchscreen.rs` — tap dispatch
+These modules have only integration test coverage:
+- `tab.rs` — create/close/reattach/resolve (requires Browser + real connection)
 
 ## Resolved
 
 | Item | Resolution |
 |------|-----------|
 | **Stringly-typed APIs** | |
+| `__pw_` selector string prefixes (31 sites) | `SelectorKind` enum in `selectors.rs` |
 | CDP input event types (30+ strings) | `MouseEventType`, `KeyEventType`, `TouchEventType` enums |
 | Mouse button `Option<String>` | `MouseButton` enum |
 | `ExecutionResult.status: String` | `ExecutionStatus` enum |
@@ -42,8 +21,10 @@ These modules have zero unit tests (covered only by integration tests):
 | `ScreenshotOptions.format: String` | `ImageFormat` enum |
 | `on_error: String` / `param_type: String` | `OnError` / `ParamType` enums |
 | **Duplication** | |
+| CdpClient trait delegation (185 lines) | `cdp_delegate_impl!` macro |
 | gRPC error conversion (40+ closures) | `cdp_to_status()` with proper status codes |
 | Node ID validation (10 match arms) | `require_node_id!()` macro |
+| CLI command boilerplate (12 ref commands) | `resolve_ref_to_session()` helper |
 | go_back/go_forward duplication | `navigate_history(offset)` helper |
 | on_request/on_response duplication | Generic `subscribe_network_event<T>()` |
 | Root node ID extraction (4 locations) | `root_node_id()` helper returning `CdpResult` |
@@ -63,8 +44,8 @@ These modules have zero unit tests (covered only by integration tests):
 | State file corruption silent | Warns with error message |
 | `unwrap_or(0.0)` in get_element_center_js | Returns error |
 | `root_node_id` unwrap_or(1) | Returns `CdpResult<i64>` |
-| Reload poll_ready_state silenced | Logs `tracing::warn!` |
-| JsonlSink silent error drops | Logs `tracing::warn!` |
+| Reload poll_ready_state silenced | Propagates error to client |
+| JsonlSink silent error drops | `OutputSink::emit()` returns `io::Result` |
 | State file permission silenced | Logs `tracing::debug!` |
 | f64-to-u64 timeout cast | `.max(0.0)` guard |
 | **Cleanup** | |
@@ -79,3 +60,6 @@ These modules have zero unit tests (covered only by integration tests):
 | Duplicate doc comment | Removed |
 | Empty placeholder test file | Deleted |
 | MockCdpClient missing setters | Added `set_targets_response()`, `set_describe_node_response()` |
+| **Unit tests** | |
+| `navigate.rs` — wait strategies | `poll_ready_state` + `wait_for_ready_state` tests |
+| `touchscreen.rs` — tap dispatch | `test_tap_dispatches_start_then_end` |

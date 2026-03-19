@@ -29,6 +29,11 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 
 - [Agent Skill](../skill/pwright/SKILL.md) — Skill definition for AI agent frameworks
 
+## Network Capture
+
+- [Network Capture Design](knowledge/network-capture-design.md) — Second CDP session listener architecture
+- CLI commands: `network-listen`, `network-list`, `network-get`
+
 ## Reference
 
 - [Playwright API Mapping](knowledge/playwright-api.md) — Full Playwright API compatibility matrix

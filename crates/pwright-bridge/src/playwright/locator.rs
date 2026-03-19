@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use crate::clock::{Clock, TokioClock};
 
 use super::selectors;
+use super::selectors::SelectorKind;
 
 /// State to wait for in `Locator::wait_for`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -37,33 +38,44 @@ pub enum WaitState {
 /// ```
 pub struct Locator {
     session: Arc<dyn CdpClient>,
-    selector: String,
+    selector: SelectorKind,
     clock: Arc<dyn Clock>,
 }
 
 impl Locator {
+    /// Create a locator from a CSS selector string (backwards-compatible convenience).
     pub(crate) fn new(session: Arc<dyn CdpClient>, selector: impl Into<String>) -> Self {
         Self {
             session,
-            selector: selector.into(),
+            selector: SelectorKind::Css(selector.into()),
             clock: Arc::new(TokioClock::new()),
         }
     }
 
-    pub(crate) fn with_clock(
+    /// Create a locator from a typed `SelectorKind`.
+    pub(crate) fn new_with_kind(session: Arc<dyn CdpClient>, selector: SelectorKind) -> Self {
+        Self {
+            session,
+            selector,
+            clock: Arc::new(TokioClock::new()),
+        }
+    }
+
+    /// Create a locator from a `SelectorKind` with a custom clock (for testing).
+    pub(crate) fn with_clock_and_kind(
         session: Arc<dyn CdpClient>,
-        selector: impl Into<String>,
+        selector: SelectorKind,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             session,
-            selector: selector.into(),
+            selector,
             clock,
         }
     }
 
-    /// Get the selector string.
-    pub fn selector(&self) -> &str {
+    /// Get the selector kind.
+    pub fn selector(&self) -> &SelectorKind {
         &self.selector
     }
 
@@ -403,48 +415,73 @@ impl Locator {
 
     // ── Composition ──
 
-    /// Create a derived locator inheriting this locator's clock.
-    fn derive(&self, selector: impl Into<String>) -> Locator {
-        Locator::with_clock(self.session.clone(), selector, self.clock.clone())
+    /// Create a derived locator from a `SelectorKind`, inheriting this locator's clock.
+    fn derive_kind(&self, selector: SelectorKind) -> Locator {
+        Locator::with_clock_and_kind(self.session.clone(), selector, self.clock.clone())
     }
 
     /// Return a Locator matching the first element.
     pub fn first(&self) -> Locator {
-        self.derive(format!("__pw_nth={}|0", self.selector))
+        self.derive_kind(SelectorKind::Nth {
+            base: Box::new(self.selector.clone()),
+            index: 0,
+        })
     }
 
     /// Return a Locator matching the last element.
     pub fn last(&self) -> Locator {
-        self.derive(format!("__pw_nth={}|-1", self.selector))
+        self.derive_kind(SelectorKind::Nth {
+            base: Box::new(self.selector.clone()),
+            index: -1,
+        })
     }
 
     /// Return a Locator matching the nth element (0-based).
     pub fn nth(&self, index: i64) -> Locator {
-        self.derive(format!("__pw_nth={}|{}", self.selector, index))
+        self.derive_kind(SelectorKind::Nth {
+            base: Box::new(self.selector.clone()),
+            index,
+        })
     }
 
     /// Return a Locator scoped to a sub-selector.
+    ///
+    /// For CSS base selectors, combines as `"base sub"`. For non-CSS bases,
+    /// uses the sub-selector alone since CSS descendant chaining is meaningless.
     pub fn locator(&self, sub_selector: &str) -> Locator {
-        self.derive(format!("{} {}", self.selector, sub_selector))
+        let combined = match &self.selector {
+            SelectorKind::Css(css) => SelectorKind::Css(format!("{css} {sub_selector}")),
+            _ => SelectorKind::Css(sub_selector.to_string()),
+        };
+        self.derive_kind(combined)
     }
 
     /// Filter matched elements by text content.
     ///
     /// Returns a new Locator that uses JS-based text filtering.
     pub fn filter_by_text(&self, text: &str) -> Locator {
-        self.derive(format!("__pw_filter_text={}|{}", self.selector, text))
+        self.derive_kind(SelectorKind::FilterText {
+            base: Box::new(self.selector.clone()),
+            text: text.to_string(),
+        })
     }
 
     /// Combine with another locator using AND (intersection).
     /// The resulting locator matches elements that satisfy both selectors.
     pub fn and(&self, other: &Locator) -> Locator {
-        self.derive(format!("{}:is({})", self.selector, other.selector))
+        self.derive_kind(SelectorKind::Css(format!(
+            "{}:is({})",
+            self.selector, other.selector
+        )))
     }
 
     /// Combine with another locator using OR (union).
     /// The resulting locator matches elements that satisfy either selector.
     pub fn or(&self, other: &Locator) -> Locator {
-        self.derive(format!("{}, {}", self.selector, other.selector))
+        self.derive_kind(SelectorKind::Css(format!(
+            "{}, {}",
+            self.selector, other.selector
+        )))
     }
 
     // ── Internal ──
@@ -453,7 +490,7 @@ impl Locator {
         selectors::resolve_selector(&*self.session, &self.selector)
             .await?
             .ok_or_else(|| CdpError::ElementNotFound {
-                selector: self.selector.clone(),
+                selector: self.selector.to_string(),
             })
     }
 
@@ -584,16 +621,16 @@ mod tests {
         let loc = Locator::new(mock.clone(), "ul");
 
         let child = loc.locator("li");
-        assert_eq!(child.selector(), "ul li");
+        assert_eq!(child.selector().to_string(), "ul li");
 
         let first = loc.first();
-        assert_eq!(first.selector(), "__pw_nth=ul|0");
+        assert_eq!(first.selector().to_string(), "ul.nth(0)");
 
         let last = loc.last();
-        assert_eq!(last.selector(), "__pw_nth=ul|-1");
+        assert_eq!(last.selector().to_string(), "ul.nth(-1)");
 
         let nth = loc.nth(2);
-        assert_eq!(nth.selector(), "__pw_nth=ul|2");
+        assert_eq!(nth.selector().to_string(), "ul.nth(2)");
     }
 
     #[tokio::test]

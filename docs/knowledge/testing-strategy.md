@@ -121,6 +121,8 @@ tests/integration/
     recipes.rs                 YAML recipe execution
     script_execution.rs        Script runner end-to-end
     chrome_http.rs             ChromeHttpClient + HTTP tab lifecycle
+    coordinate_actions.rs      click-at, hover-at, dblclick coordinate commands
+    network_capture.rs         network-listen, network-get, second CDP session
 ```
 
 ### Docker Compose
@@ -142,7 +144,7 @@ services:
 |------|---------|---------------|
 | `login.html` | Form with email/password/submit | fill, click, is_disabled, wait_for |
 | `todo.html` | Todo list with add/check/delete | first/last/nth, count, is_checked |
-| `api.html` | SPA making fetch() calls on load | wait_for_response, response_body |
+| `api-demo.html` | SPA making fetch() calls on load | wait_for_response, response_body |
 
 ### Running
 
@@ -169,7 +171,9 @@ cd tests/integration && docker compose up --build --abort-on-container-exit --ex
 
 ### Phase 2: Docker Integration -- DONE
 1. Docker compose with Chrome (`chromedp/headless-shell`) + in-process test server
-2. 80 integration tests across 13 test files
+2. 96 integration tests across 15 test files
 3. Concurrency tests (6 Docker + 6 FakeCdpClient)
-4. CI: Dockerized test runner (`docker compose up --abort-on-container-exit`)
-5. Two compose files: `docker-compose.yml` (CI) + `docker-compose.local.yml` (dev)
+4. Coordinate action tests (click-at, hover-at, dblclick)
+5. Network capture tests (network-listen, network-get)
+6. CI: Dockerized test runner (`docker compose up --abort-on-container-exit`)
+7. Two compose files: `docker-compose.yml` (CI) + `docker-compose.local.yml` (dev)

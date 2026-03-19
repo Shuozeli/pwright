@@ -26,12 +26,12 @@ This document tracks feature coverage across pwright's three API surfaces.
 | Press key | `keyboard.press()` | `ExecuteAction(PRESS)` | `press` | ✅ All |
 | Hover | `locator.hover()` | `ExecuteAction(HOVER)` | `hover` | ✅ All |
 | Select | `locator.select_option()` | `ExecuteAction(SELECT)` | `select` | ✅ All |
-| Scroll | `locator.scroll_into_view()` | `ExecuteAction(SCROLL)` | via `eval` | ✅ All |
+| Scroll | `locator.scroll_into_view()` | `ExecuteAction(SCROLL)` | `scroll` | ✅ All |
 | Drag | `locator.drag()` | `ExecuteAction(DRAG)` | `drag` | ✅ All |
 | Focus | `locator.focus()` | `ExecuteAction(FOCUS)` | `focus` | ✅ All |
-| Check | `locator.check()` | `ExecuteAction(CHECK)` | via `click` | ✅ All |
-| Uncheck | `locator.uncheck()` | `ExecuteAction(UNCHECK)` | via `click` | ✅ All |
-| Double-click | `locator.dblclick()` | `ExecuteAction(DBLCLICK)` | via `eval` | ✅ gRPC + Rust |
+| Check | `locator.check()` | `ExecuteAction(CHECK)` | `check` | ✅ All |
+| Uncheck | `locator.uncheck()` | `ExecuteAction(UNCHECK)` | `uncheck` | ✅ All |
+| Double-click | `locator.dblclick()` | `ExecuteAction(DBLCLICK)` | `dblclick` | ✅ All |
 | Blur | `locator.blur()` | ❌ | ❌ | Rust API only |
 | Dispatch event | `locator.dispatch_event()` | ❌ | ❌ | Rust API only |
 | **File Operations** |

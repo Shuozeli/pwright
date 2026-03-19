@@ -64,15 +64,32 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 | `pwright hover <ref>` | Hover over element |
 | `pwright select <ref> "value"` | Select dropdown option |
 | `pwright focus <ref>` | Focus element |
+| `pwright check <ref>` | Check checkbox |
+| `pwright uncheck <ref>` | Uncheck checkbox |
+| `pwright scroll <ref>` | Scroll element into view |
 | `pwright drag <ref> --dx N --dy N` | Drag element by offset |
 | `pwright upload <ref> <files...>` | Upload files to file input |
 | `pwright download <ref> [--dest path]` | Click + capture download |
+
+### Coordinate-Based Actions
+
+For pages with empty accessibility trees (Gmail, Google Docs, heavy SPAs), use coordinate-based commands that send real CDP input events:
+
+| Command | Description |
+|---------|-------------|
+| `pwright click-at <x> <y>` | Click at viewport coordinates |
+| `pwright click-at <x> <y> --button right` | Right-click at coordinates |
+| `pwright click-at <x> <y> --click-count 2` | Double-click at coordinates |
+| `pwright hover-at <x> <y>` | Hover at viewport coordinates |
+
+Use `pwright eval` to find element coordinates via `getBoundingClientRect()`, then `click-at` to interact.
 
 ### Inspection
 
 | Command | Description |
 |---------|-------------|
 | `pwright snapshot` | Accessibility tree with element refs |
+| `pwright text` | Extract visible page text content |
 | `pwright eval "expression"` | Execute JavaScript |
 | `pwright health` | Check Chrome connectivity |
 
@@ -107,6 +124,21 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 | `pwright script run <script.yaml> --param key=val` | Pass parameters |
 | `pwright script run <script.yaml> --param-file secrets.yaml` | Load params from file |
 | `pwright script validate <script.yaml>` | Validate script without executing |
+
+### Network Capture
+
+| Command | Description |
+|---------|-------------|
+| `pwright network-listen` | Stream network traffic as JSONL |
+| `pwright network-listen --filter "/api/"` | Filter by URL substring |
+| `pwright network-listen --type XHR` | Filter by resource type |
+| `pwright network-listen --duration 30` | Stop after N seconds |
+| `pwright network-list` | List resources on current page (retroactive) |
+| `pwright network-list --filter ".js"` | Filter resource list |
+| `pwright network-get <reqid>` | Get response body by request ID |
+| `pwright network-get <reqid> --output data.json` | Save body to file |
+
+> Run `network-listen` in a separate terminal while interacting with the site. It uses a second CDP session so it does not interfere with your commands. The `reqid` in listener output can be used with `network-get`.
 
 ### Options
 

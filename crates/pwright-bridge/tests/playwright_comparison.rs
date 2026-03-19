@@ -326,15 +326,15 @@ mod tests {
         let mock = Arc::new(MockCdpClient::new());
         let page = Page::new(mock);
 
-        // pwright — first()/last() use __pw_nth internally (resolved via querySelectorAll + index)
+        // pwright — first()/last() use SelectorKind::Nth internally (resolved via querySelectorAll + index)
         let first = page.locator("li").first();
-        assert_eq!(first.selector(), "__pw_nth=li|0");
+        assert_eq!(first.selector().to_string(), "li.nth(0)");
 
         let last = page.locator("li").last();
-        assert_eq!(last.selector(), "__pw_nth=li|-1");
+        assert_eq!(last.selector().to_string(), "li.nth(-1)");
 
         let child = page.locator("ul").locator("li");
-        assert_eq!(child.selector(), "ul li");
+        assert_eq!(child.selector().to_string(), "ul li");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -355,15 +355,21 @@ mod tests {
 
         // pwright — same CSS attribute selectors as Playwright
         assert_eq!(
-            page.get_by_test_id("login-btn").selector(),
+            page.get_by_test_id("login-btn").selector().to_string(),
             r#"[data-testid="login-btn"]"#
         );
         assert_eq!(
-            page.get_by_placeholder("Email").selector(),
+            page.get_by_placeholder("Email").selector().to_string(),
             r#"[placeholder="Email"]"#
         );
-        assert_eq!(page.get_by_alt_text("Logo").selector(), r#"[alt="Logo"]"#);
-        assert_eq!(page.get_by_title("Help").selector(), r#"[title="Help"]"#);
+        assert_eq!(
+            page.get_by_alt_text("Logo").selector().to_string(),
+            r#"[alt="Logo"]"#
+        );
+        assert_eq!(
+            page.get_by_title("Help").selector().to_string(),
+            r#"[title="Help"]"#
+        );
     }
 
     // ═══════════════════════════════════════════════════════════

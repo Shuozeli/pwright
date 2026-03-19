@@ -15,7 +15,7 @@ use super::keyboard::Keyboard;
 use super::locator::Locator;
 use super::mouse::Mouse;
 use super::network::{self, NetworkRequest, NetworkResponse};
-use super::selectors::root_node_id;
+use super::selectors::{SelectorKind, root_node_id};
 use super::touchscreen::Touchscreen;
 
 /// Wait strategy for navigation.
@@ -447,7 +447,8 @@ impl Page {
 
     /// Double-click an element matched by selector.
     pub async fn dblclick(&self, selector: &str) -> CdpResult<()> {
-        let node = crate::playwright::selectors::resolve_selector(&*self.session, selector)
+        let kind = SelectorKind::Css(selector.to_string());
+        let node = crate::playwright::selectors::resolve_selector(&*self.session, &kind)
             .await?
             .ok_or_else(|| pwright_cdp::connection::CdpError::ElementNotFound {
                 selector: selector.to_string(),
@@ -525,24 +526,28 @@ impl Page {
 
     /// Find element by text content (substring match).
     pub fn get_by_text(&self, text: &str, exact: bool) -> Locator {
-        if exact {
-            Locator::new(self.session.clone(), format!("__pw_text_exact={}", text))
+        let kind = if exact {
+            SelectorKind::TextExact(text.to_string())
         } else {
-            Locator::new(self.session.clone(), format!("__pw_text={}", text))
-        }
+            SelectorKind::Text(text.to_string())
+        };
+        Locator::new_with_kind(self.session.clone(), kind)
     }
 
     /// Find element by label text (via `<label>` for/wrapping or `aria-label`).
     pub fn get_by_label(&self, text: &str) -> Locator {
-        Locator::new(self.session.clone(), format!("__pw_label={}", text))
+        Locator::new_with_kind(self.session.clone(), SelectorKind::Label(text.to_string()))
     }
 
     /// Find element by ARIA role, with optional accessible name filter.
     pub fn get_by_role(&self, role: &str, name: Option<&str>) -> Locator {
-        match name {
-            Some(n) => Locator::new(self.session.clone(), format!("__pw_role={}|{}", role, n)),
-            None => Locator::new(self.session.clone(), format!("__pw_role={}", role)),
-        }
+        Locator::new_with_kind(
+            self.session.clone(),
+            SelectorKind::Role {
+                role: role.to_string(),
+                name: name.map(|n| n.to_string()),
+            },
+        )
     }
 
     // ── Input devices ──
@@ -901,7 +906,7 @@ mod tests {
         let mock = Arc::new(MockCdpClient::new());
         let page = Page::new(mock);
         let loc = page.locator("button.submit");
-        assert_eq!(loc.selector(), "button.submit");
+        assert_eq!(loc.selector().to_string(), "button.submit");
     }
 
     #[tokio::test]
@@ -909,7 +914,7 @@ mod tests {
         let mock = Arc::new(MockCdpClient::new());
         let page = Page::new(mock);
         let loc = page.get_by_test_id("login-btn");
-        assert_eq!(loc.selector(), r#"[data-testid="login-btn"]"#);
+        assert_eq!(loc.selector().to_string(), r#"[data-testid="login-btn"]"#);
     }
 
     #[tokio::test]
@@ -917,7 +922,7 @@ mod tests {
         let mock = Arc::new(MockCdpClient::new());
         let page = Page::new(mock);
         let loc = page.get_by_placeholder("Enter email");
-        assert_eq!(loc.selector(), r#"[placeholder="Enter email"]"#);
+        assert_eq!(loc.selector().to_string(), r#"[placeholder="Enter email"]"#);
     }
 
     #[tokio::test]

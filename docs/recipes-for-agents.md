@@ -249,7 +249,7 @@ for each specific page.
 
 ## What We Ship
 
-11 recipes across 4 categories, ready to use:
+11 YAML recipes + 4 network capture scripts across 5 categories, ready to use:
 
 | Category | Recipes | Auth needed |
 |----------|---------|:-----------:|
