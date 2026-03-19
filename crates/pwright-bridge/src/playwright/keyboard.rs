@@ -31,32 +31,23 @@ impl Keyboard {
 
     /// Press a key down (does not release).
     pub async fn down(&self, key: &str) -> CdpResult<()> {
-        if let Some(def) = get_key_def(key) {
-            self.session
-                .input_dispatch_key_event(
-                    "rawKeyDown",
-                    key,
-                    def.code.as_ref(),
-                    Some(def.virtual_key),
-                )
-                .await
-        } else {
-            // Unknown key — send as raw key name
-            self.session
-                .input_dispatch_key_event("rawKeyDown", key, key, None)
-                .await
-        }
+        self.dispatch_key("rawKeyDown", key).await
     }
 
     /// Release a key.
     pub async fn up(&self, key: &str) -> CdpResult<()> {
+        self.dispatch_key("keyUp", key).await
+    }
+
+    /// Dispatch a key event, resolving the key definition if known.
+    async fn dispatch_key(&self, event_type: &str, key: &str) -> CdpResult<()> {
         if let Some(def) = get_key_def(key) {
             self.session
-                .input_dispatch_key_event("keyUp", key, def.code.as_ref(), Some(def.virtual_key))
+                .input_dispatch_key_event(event_type, key, def.code.as_ref(), Some(def.virtual_key))
                 .await
         } else {
             self.session
-                .input_dispatch_key_event("keyUp", key, key, None)
+                .input_dispatch_key_event(event_type, key, key, None)
                 .await
         }
     }

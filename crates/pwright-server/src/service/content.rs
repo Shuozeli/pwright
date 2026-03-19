@@ -1,13 +1,12 @@
 //! Content extraction handlers — GetSnapshot, TakeScreenshot, GetText, GetPDF.
 
-#[allow(unused_imports)]
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64;
 use tonic::{Request, Response, Status};
 
 use pwright_bridge::snapshot::{RefCache, SnapshotFilter};
 
-use super::BrowserServiceImpl;
+use super::{BrowserServiceImpl, cdp_to_status};
 use crate::proto;
 
 pub async fn get_snapshot(
@@ -27,7 +26,7 @@ pub async fn get_snapshot(
     let (nodes, refs) =
         pwright_bridge::snapshot::get_snapshot(&*tab.session, &filter, req.max_depth)
             .await
-            .map_err(|e| Status::internal(format!("snapshot: {}", e)))?;
+            .map_err(cdp_to_status)?;
 
     let cache = RefCache {
         refs,
@@ -72,7 +71,7 @@ pub async fn take_screenshot(
 
     let b64_data = pwright_bridge::content::take_screenshot(&*tab.session, &format, req.full_page)
         .await
-        .map_err(|e| Status::internal(format!("screenshot: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     let data = B64
         .decode(&b64_data)
@@ -95,7 +94,7 @@ pub async fn get_text(
 
     let text = pwright_bridge::content::get_text(&*tab.session)
         .await
-        .map_err(|e| Status::internal(format!("get text: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::GetTextResponse {
         tab_id: tab.tab_id,
@@ -114,7 +113,7 @@ pub async fn get_pdf(
 
     let b64_data = pwright_bridge::content::get_pdf(&*tab.session)
         .await
-        .map_err(|e| Status::internal(format!("get pdf: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     let data = B64
         .decode(&b64_data)

@@ -54,27 +54,16 @@ pub async fn execute(
             }
             Err(e) => {
                 let err_msg = e.to_string();
-                if step.on_error == OnError::Continue {
-                    failed += 1;
-                    sink.emit(StepResult {
-                        step_index: i as u32,
-                        step_type,
-                        status: "error".into(),
-                        duration_ms,
-                        details: HashMap::new(),
-                        error: Some(err_msg),
-                    });
-                    // continue to next step
-                } else {
-                    failed += 1;
-                    sink.emit(StepResult {
-                        step_index: i as u32,
-                        step_type,
-                        status: "error".into(),
-                        duration_ms,
-                        details: HashMap::new(),
-                        error: Some(err_msg.clone()),
-                    });
+                failed += 1;
+                sink.emit(StepResult {
+                    step_index: i as u32,
+                    step_type,
+                    status: "error".into(),
+                    duration_ms,
+                    details: HashMap::new(),
+                    error: Some(err_msg.clone()),
+                });
+                if step.on_error != OnError::Continue {
                     return Ok(ExecutionResult {
                         status: "error".into(),
                         total_steps: script.steps.len() as u32,
@@ -278,7 +267,6 @@ async fn extract_field(page: &Page, selector: &str, field: &str) -> Result<Strin
     }
 }
 
-/// Resolve {{ var }} templates in a string using the variable map.
 /// Resolve {{ var }} templates in a single pass.
 /// Substituted values are NOT re-processed, preventing injection via
 /// user input containing `{{ other_var }}`.

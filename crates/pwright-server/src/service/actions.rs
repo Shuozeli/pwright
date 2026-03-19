@@ -2,7 +2,7 @@
 
 use tonic::{Request, Response, Status};
 
-use super::BrowserServiceImpl;
+use super::{BrowserServiceImpl, cdp_to_status};
 use crate::proto;
 
 pub async fn execute_action(
@@ -28,43 +28,40 @@ pub async fn execute_action(
 
     match req.kind() {
         proto::ActionKind::Click => {
-            let nid = node_id.ok_or_else(|| Status::invalid_argument("ref required for click"))?;
+            let nid = require_node_id!(node_id, "click");
             pwright_bridge::actions::click_by_node_id(session, nid)
                 .await
-                .map_err(|e| Status::internal(format!("click: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Type => {
-            let nid = node_id.ok_or_else(|| Status::invalid_argument("ref required for type"))?;
+            let nid = require_node_id!(node_id, "type");
             pwright_bridge::actions::type_by_node_id(session, nid, &req.text)
                 .await
-                .map_err(|e| Status::internal(format!("type: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Fill => {
-            let nid = node_id.ok_or_else(|| Status::invalid_argument("ref required for fill"))?;
+            let nid = require_node_id!(node_id, "fill");
             pwright_bridge::actions::fill_by_node_id(session, nid, &req.text)
                 .await
-                .map_err(|e| Status::internal(format!("fill: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Press => {
             pwright_bridge::actions::press_key(session, &req.key)
                 .await
-                .map_err(|e| Status::internal(format!("press: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Focus => {
-            let nid = node_id.ok_or_else(|| Status::invalid_argument("ref required for focus"))?;
-            session
-                .dom_focus(nid)
-                .await
-                .map_err(|e| Status::internal(format!("focus: {}", e)))?;
+            let nid = require_node_id!(node_id, "focus");
+            session.dom_focus(nid).await.map_err(cdp_to_status)?;
         }
         proto::ActionKind::Hover => {
-            let nid = node_id.ok_or_else(|| Status::invalid_argument("ref required for hover"))?;
+            let nid = require_node_id!(node_id, "hover");
             pwright_bridge::actions::hover_by_node_id(session, nid)
                 .await
-                .map_err(|e| Status::internal(format!("hover: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Select => {
-            let nid = node_id.ok_or_else(|| Status::invalid_argument("ref required for select"))?;
+            let nid = require_node_id!(node_id, "select");
             let val = if req.value.is_empty() {
                 &req.text
             } else {
@@ -72,13 +69,13 @@ pub async fn execute_action(
             };
             pwright_bridge::actions::select_by_node_id(session, nid, val)
                 .await
-                .map_err(|e| Status::internal(format!("select: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Scroll => {
             if let Some(nid) = node_id {
                 pwright_bridge::actions::scroll_by_node_id(session, nid)
                     .await
-                    .map_err(|e| Status::internal(format!("scroll: {}", e)))?;
+                    .map_err(cdp_to_status)?;
             } else {
                 let dx = req.scroll_x;
                 const DEFAULT_SCROLL_DY: i32 = 800;
@@ -89,34 +86,32 @@ pub async fn execute_action(
                 };
                 pwright_bridge::actions::scroll_page(session, dx, dy)
                     .await
-                    .map_err(|e| Status::internal(format!("scroll: {}", e)))?;
+                    .map_err(cdp_to_status)?;
             }
         }
         proto::ActionKind::Drag => {
-            let nid = node_id.ok_or_else(|| Status::invalid_argument("ref required for drag"))?;
+            let nid = require_node_id!(node_id, "drag");
             pwright_bridge::actions::drag_by_node_id(session, nid, req.drag_x, req.drag_y)
                 .await
-                .map_err(|e| Status::internal(format!("drag: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Check => {
-            let nid = node_id.ok_or_else(|| Status::invalid_argument("ref required for check"))?;
+            let nid = require_node_id!(node_id, "check");
             pwright_bridge::actions::click_by_node_id(session, nid)
                 .await
-                .map_err(|e| Status::internal(format!("check: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Uncheck => {
-            let nid =
-                node_id.ok_or_else(|| Status::invalid_argument("ref required for uncheck"))?;
+            let nid = require_node_id!(node_id, "uncheck");
             pwright_bridge::actions::click_by_node_id(session, nid)
                 .await
-                .map_err(|e| Status::internal(format!("uncheck: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::Dblclick => {
-            let nid =
-                node_id.ok_or_else(|| Status::invalid_argument("ref required for dblclick"))?;
+            let nid = require_node_id!(node_id, "dblclick");
             pwright_bridge::actions::dblclick_by_node_id(session, nid)
                 .await
-                .map_err(|e| Status::internal(format!("dblclick: {}", e)))?;
+                .map_err(cdp_to_status)?;
         }
         proto::ActionKind::ActionUnspecified => {
             return Err(Status::invalid_argument("action kind required"));
@@ -144,10 +139,7 @@ pub async fn set_input_files(
         svc.resolve_ref_or_node(&browser, &tab.tab_id, &req.r#ref)
             .await?
     } else if !req.selector.is_empty() {
-        let doc = session
-            .dom_get_document()
-            .await
-            .map_err(|e| Status::internal(format!("dom: {}", e)))?;
+        let doc = session.dom_get_document().await.map_err(cdp_to_status)?;
         let root_id = doc
             .get("root")
             .and_then(|r| r.get("nodeId"))
@@ -156,7 +148,7 @@ pub async fn set_input_files(
         session
             .dom_query_selector(root_id, &req.selector)
             .await
-            .map_err(|e| Status::internal(format!("query: {}", e)))?
+            .map_err(cdp_to_status)?
     } else {
         return Err(Status::invalid_argument("ref or selector required"));
     };
@@ -179,7 +171,7 @@ pub async fn set_input_files(
     session
         .dom_set_file_input_files(node_id, &req.files)
         .await
-        .map_err(|e| Status::internal(format!("set_input_files: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::SetInputFilesResponse {
         success: true,
@@ -198,11 +190,11 @@ pub async fn touch_tap(
     tab.session
         .input_dispatch_touch_event("touchStart", req.x, req.y)
         .await
-        .map_err(|e| Status::internal(format!("touch start: {}", e)))?;
+        .map_err(cdp_to_status)?;
     tab.session
         .input_dispatch_touch_event("touchEnd", req.x, req.y)
         .await
-        .map_err(|e| Status::internal(format!("touch end: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::TouchTapResponse { success: true }))
 }
@@ -259,7 +251,7 @@ pub async fn expect_download(
             Ok(())
         })
         .await
-        .map_err(|e| Status::internal(format!("expect_download error: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::ExpectDownloadResponse {
         file_path: result,

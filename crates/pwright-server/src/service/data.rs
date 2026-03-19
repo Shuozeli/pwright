@@ -2,7 +2,7 @@
 
 use tonic::{Request, Response, Status};
 
-use super::BrowserServiceImpl;
+use super::{BrowserServiceImpl, cdp_to_status};
 use crate::proto;
 
 pub async fn evaluate(
@@ -22,7 +22,7 @@ pub async fn evaluate(
 
     let result = pwright_bridge::evaluate::evaluate(&*tab.session, &req.expression)
         .await
-        .map_err(|e| Status::internal(format!("evaluate: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::EvaluateResponse {
         result: serde_json::to_string(&result).map_err(|e| {
@@ -43,7 +43,7 @@ pub async fn get_cookies(
 
     let cookies = pwright_bridge::cookies::get_cookies(&*tab.session)
         .await
-        .map_err(|e| Status::internal(format!("get cookies: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     let entries = cookies
         .into_iter()
@@ -92,7 +92,7 @@ pub async fn set_cookies(
 
     pwright_bridge::cookies::set_cookies(&*tab.session, cookie_values)
         .await
-        .map_err(|e| Status::internal(format!("set cookies: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::SetCookiesResponse { success: true }))
 }

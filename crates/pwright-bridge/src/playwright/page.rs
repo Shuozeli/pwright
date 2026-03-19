@@ -470,12 +470,7 @@ impl Page {
         })?;
         let x = bbox.x + bbox.width / 2.0;
         let y = bbox.y + bbox.height / 2.0;
-        self.session
-            .input_dispatch_touch_event("touchStart", x, y)
-            .await?;
-        self.session
-            .input_dispatch_touch_event("touchEnd", x, y)
-            .await
+        self.touchscreen().tap(x, y).await
     }
 
     /// Wait for a selector to appear in the DOM.

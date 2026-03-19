@@ -2,7 +2,7 @@
 
 use tonic::{Request, Response, Status};
 
-use super::BrowserServiceImpl;
+use super::{BrowserServiceImpl, cdp_to_status};
 use crate::proto;
 
 pub async fn create_tab(
@@ -12,10 +12,7 @@ pub async fn create_tab(
     let browser = svc.get_browser().await?;
     let req = request.into_inner();
 
-    let tab = browser
-        .create_tab(&req.url)
-        .await
-        .map_err(|e| Status::internal(format!("create tab: {}", e)))?;
+    let tab = browser.create_tab(&req.url).await.map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::CreateTabResponse {
         tab_id: tab.tab_id,
@@ -34,7 +31,7 @@ pub async fn close_tab(
     browser
         .close_tab(&req.tab_id)
         .await
-        .map_err(|e| Status::internal(format!("close tab: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::CloseTabResponse { closed: true }))
 }
@@ -45,10 +42,7 @@ pub async fn list_tabs(
 ) -> Result<Response<proto::ListTabsResponse>, Status> {
     let browser = svc.get_browser().await?;
 
-    let targets = browser
-        .list_tabs()
-        .await
-        .map_err(|e| Status::internal(format!("list tabs: {}", e)))?;
+    let targets = browser.list_tabs().await.map_err(cdp_to_status)?;
 
     let tabs = targets
         .into_iter()
@@ -75,7 +69,7 @@ pub async fn bring_to_front(
     tab.session
         .page_bring_to_front()
         .await
-        .map_err(|e| Status::internal(format!("bring to front: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::BringToFrontResponse { success: true }))
 }

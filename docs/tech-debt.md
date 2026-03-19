@@ -24,10 +24,9 @@ patterns. Same `#[async_trait]` macro limitation.
 `connect -> resolve_ref -> resolve_tab -> action -> output::ok` pattern.
 Extract a `with_ref()` closure helper.
 
-### gRPC error conversion
-`service/*.rs` — 40+ `map_err(|e| Status::internal(...))` closures.
-Implement `From<CdpError> for tonic::Status` with proper status codes
-(timeout -> DEADLINE_EXCEEDED, closed -> UNAVAILABLE, etc.).
+### ~~gRPC error conversion~~ (resolved)
+Replaced 40+ `map_err` closures with `cdp_to_status()` helper that maps
+error variants to correct gRPC codes.
 
 ### Unit test gaps
 These modules have zero unit tests (covered only by integration tests):

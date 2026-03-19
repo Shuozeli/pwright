@@ -10,6 +10,7 @@
 
 use std::sync::Arc;
 
+use pwright_cdp::connection::CdpError;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 
@@ -17,6 +18,28 @@ use pwright_bridge::{Browser, BrowserConfig};
 
 use crate::proto;
 use crate::proto::browser_service_server::BrowserService;
+
+/// Convert a CDP error to an appropriate gRPC status code.
+fn cdp_to_status(e: CdpError) -> Status {
+    match &e {
+        CdpError::Timeout => Status::deadline_exceeded(e.to_string()),
+        CdpError::Closed | CdpError::ChannelDropped => Status::unavailable(e.to_string()),
+        CdpError::ElementNotFound { .. } => Status::not_found(e.to_string()),
+        CdpError::NavigationFailed { .. } => Status::internal(e.to_string()),
+        CdpError::WebSocket(_) => Status::unavailable(e.to_string()),
+        CdpError::Protocol { .. }
+        | CdpError::Json(_)
+        | CdpError::Compound { .. }
+        | CdpError::Other(_) => Status::internal(e.to_string()),
+    }
+}
+
+/// Require a resolved node ID, returning INVALID_ARGUMENT if absent.
+macro_rules! require_node_id {
+    ($node_id:expr, $action:expr) => {
+        $node_id.ok_or_else(|| Status::invalid_argument(format!("ref required for {}", $action)))?
+    };
+}
 
 mod actions;
 mod content;
@@ -68,9 +91,7 @@ impl BrowserServiceImpl {
             max_tabs: 0,
         };
 
-        let browser = Browser::connect(config)
-            .await
-            .map_err(|e| Status::internal(format!("failed to connect: {}", e)))?;
+        let browser = Browser::connect(config).await.map_err(cdp_to_status)?;
 
         let mut guard = self.browser.write().await;
         *guard = Some(browser.clone());

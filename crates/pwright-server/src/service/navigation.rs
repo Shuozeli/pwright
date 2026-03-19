@@ -2,7 +2,7 @@
 
 use tonic::{Request, Response, Status};
 
-use super::BrowserServiceImpl;
+use super::{BrowserServiceImpl, cdp_to_status};
 use crate::proto;
 
 pub async fn navigate(
@@ -20,10 +20,7 @@ pub async fn navigate(
         } else {
             &req.url
         };
-        let t = browser
-            .create_tab(url)
-            .await
-            .map_err(|e| Status::internal(format!("create tab: {}", e)))?;
+        let t = browser.create_tab(url).await.map_err(cdp_to_status)?;
         _permit = browser
             .tab_semaphore()
             .clone()
@@ -63,7 +60,7 @@ pub async fn navigate(
 
     let result = pwright_bridge::navigate::navigate(&*tab.session, &tab.tab_id, &req.url, &opts)
         .await
-        .map_err(|e| Status::internal(format!("navigate: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::NavigateResponse {
         tab_id: result.tab_id,
@@ -81,17 +78,17 @@ pub async fn reload(
 
     let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
-    tab.session
-        .page_reload()
-        .await
-        .map_err(|e| Status::internal(format!("reload: {}", e)))?;
+    tab.session.page_reload().await.map_err(cdp_to_status)?;
 
-    // Wait for page to be interactive (reusing bridge layer helper)
-    let _ = pwright_bridge::navigate::poll_ready_state(
+    // Wait for page to be interactive (best-effort)
+    if let Err(e) = pwright_bridge::navigate::poll_ready_state(
         tab.session.as_ref(),
         std::time::Duration::from_secs(10),
     )
-    .await;
+    .await
+    {
+        tracing::warn!("poll_ready_state after reload failed: {e}");
+    }
 
     Ok(Response::new(proto::ReloadResponse { success: true }))
 }
@@ -107,7 +104,7 @@ pub async fn go_back(
 
     pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "history.back()")
         .await
-        .map_err(|e| Status::internal(format!("go_back: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::GoBackResponse { success: true }))
 }
@@ -123,7 +120,7 @@ pub async fn go_forward(
 
     pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "history.forward()")
         .await
-        .map_err(|e| Status::internal(format!("go_forward: {}", e)))?;
+        .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::GoForwardResponse { success: true }))
 }
