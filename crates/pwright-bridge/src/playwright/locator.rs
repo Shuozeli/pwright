@@ -356,7 +356,8 @@ impl Locator {
 
     /// Wait for the selector to reach the desired state.
     pub async fn wait_for(&self, timeout_ms: u64, state: WaitState) -> CdpResult<()> {
-        let poll_interval = std::time::Duration::from_millis(200);
+        const WAIT_POLL_MS: u64 = 200;
+        let poll_interval = std::time::Duration::from_millis(WAIT_POLL_MS);
         let deadline = self
             .clock
             .deadline_from_now(std::time::Duration::from_millis(timeout_ms));

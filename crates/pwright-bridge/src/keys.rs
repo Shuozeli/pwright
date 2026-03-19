@@ -86,6 +86,7 @@ pub fn get_key_def(name: &str) -> Option<KeyDef> {
             if (1..=12).contains(&num) {
                 Some(KeyDef {
                     code: Cow::Owned(k.to_string()),
+                    // Windows VK_F1 = 0x70 = 112; F1 maps to 112, F2 to 113, etc.
                     virtual_key: 111 + num as i64,
                     insert_text: "",
                 })

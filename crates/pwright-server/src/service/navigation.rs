@@ -80,15 +80,12 @@ pub async fn reload(
 
     tab.session.page_reload().await.map_err(cdp_to_status)?;
 
-    // Wait for page to be interactive (best-effort)
-    if let Err(e) = pwright_bridge::navigate::poll_ready_state(
+    pwright_bridge::navigate::poll_ready_state(
         tab.session.as_ref(),
         std::time::Duration::from_secs(10),
     )
     .await
-    {
-        tracing::warn!("poll_ready_state after reload failed: {e}");
-    }
+    .map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::ReloadResponse { success: true }))
 }

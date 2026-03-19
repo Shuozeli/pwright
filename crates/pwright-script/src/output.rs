@@ -38,7 +38,8 @@ pub struct ScriptSummary {
 
 /// Trait for receiving step results during execution.
 pub trait OutputSink {
-    fn emit(&mut self, result: StepResult);
+    /// Emit a step result. Returns an error if the result cannot be written.
+    fn emit(&mut self, result: StepResult) -> std::io::Result<()>;
 }
 
 /// JSONL output: one JSON line per step to a writer.
@@ -51,7 +52,7 @@ impl<W: Write> JsonlSink<W> {
         Self { writer }
     }
 
-    pub fn write_summary(&mut self, name: &str, result: &ExecutionResult) {
+    pub fn write_summary(&mut self, name: &str, result: &ExecutionResult) -> std::io::Result<()> {
         let summary = ScriptSummary {
             summary: true,
             name: name.to_string(),
@@ -64,27 +65,17 @@ impl<W: Write> JsonlSink<W> {
             outputs: result.outputs.clone(),
             error: result.error.clone(),
         };
-        match serde_json::to_string(&summary) {
-            Ok(json) => {
-                if let Err(e) = writeln!(self.writer, "{json}") {
-                    tracing::warn!("failed to write JSONL summary: {e}");
-                }
-            }
-            Err(e) => tracing::warn!("failed to serialize JSONL summary: {e}"),
-        }
+        let json = serde_json::to_string(&summary)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        writeln!(self.writer, "{json}")
     }
 }
 
 impl<W: Write> OutputSink for JsonlSink<W> {
-    fn emit(&mut self, result: StepResult) {
-        match serde_json::to_string(&result) {
-            Ok(json) => {
-                if let Err(e) = writeln!(self.writer, "{json}") {
-                    tracing::warn!("failed to write JSONL step: {e}");
-                }
-            }
-            Err(e) => tracing::warn!("failed to serialize JSONL step: {e}"),
-        }
+    fn emit(&mut self, result: StepResult) -> std::io::Result<()> {
+        let json = serde_json::to_string(&result)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        writeln!(self.writer, "{json}")
     }
 }
 
@@ -108,8 +99,9 @@ impl Default for VecSink {
 }
 
 impl OutputSink for VecSink {
-    fn emit(&mut self, result: StepResult) {
+    fn emit(&mut self, result: StepResult) -> std::io::Result<()> {
         self.results.push(result);
+        Ok(())
     }
 }
 
@@ -129,7 +121,8 @@ mod tests {
             duration_ms: 100,
             details: HashMap::from([("url".into(), "https://example.com".into())]),
             error: None,
-        });
+        })
+        .unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
@@ -148,7 +141,8 @@ mod tests {
             duration_ms: 50,
             details: HashMap::new(),
             error: None,
-        });
+        })
+        .unwrap();
         assert_eq!(sink.results.len(), 1);
         assert_eq!(sink.results[0].step_type, "click");
     }

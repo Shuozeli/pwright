@@ -43,7 +43,7 @@ pub async fn health(
     let guard = svc.browser.read().await;
     let (connected, tab_count) = if let Some(browser) = guard.as_ref() {
         let tabs = browser.tabs().read().await;
-        (true, tabs.len() as i32)
+        (true, i32::try_from(tabs.len()).unwrap_or(i32::MAX))
     } else {
         (false, 0)
     };

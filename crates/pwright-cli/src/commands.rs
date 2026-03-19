@@ -1136,7 +1136,8 @@ pub async fn script(cdp: &str, action: crate::ScriptAction) -> Result<()> {
     let result = executor::execute(&script, &page, &params, &mut sink)
         .await
         .map_err(|e| pwright_cdp::connection::CdpError::Other(e.to_string()))?;
-    sink.write_summary(&script.name, &result);
+    sink.write_summary(&script.name, &result)
+        .map_err(|e| pwright_cdp::connection::CdpError::Other(e.to_string()))?;
 
     handle.close().await?;
 

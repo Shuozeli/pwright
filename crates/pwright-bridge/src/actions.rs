@@ -231,8 +231,11 @@ pub async fn drag_by_node_id(
     session.dom_scroll_into_view(node_id).await?;
     let (x, y) = get_element_center(session, node_id).await?;
 
+    const DRAG_STEP_PX: f64 = 10.0;
+    const DRAG_MIN_STEPS: f64 = 5.0;
+    const DRAG_MAX_STEPS: f64 = 40.0;
     let dist = ((dx * dx + dy * dy) as f64).sqrt();
-    let steps = (dist / 10.0).clamp(5.0, 40.0) as i32;
+    let steps = (dist / DRAG_STEP_PX).clamp(DRAG_MIN_STEPS, DRAG_MAX_STEPS) as i32;
 
     session
         .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)

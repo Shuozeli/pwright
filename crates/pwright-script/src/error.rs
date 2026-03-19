@@ -13,4 +13,7 @@ pub enum ScriptError {
 
     #[error("execution error: {0}")]
     Execution(String),
+
+    #[error("output error: {0}")]
+    Output(#[from] std::io::Error),
 }

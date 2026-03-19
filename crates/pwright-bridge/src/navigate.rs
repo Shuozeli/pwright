@@ -5,6 +5,11 @@ use std::time::Duration;
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
 
+/// Poll interval for ready-state and selector wait loops.
+const POLL_INTERVAL_MS: u64 = 200;
+/// Poll interval for network idle detection.
+const NETWORK_IDLE_POLL_MS: u64 = 250;
+
 /// Wait strategy after navigation.
 #[derive(Debug, Clone, Default)]
 pub enum WaitStrategy {
@@ -113,7 +118,7 @@ async fn wait_for_ready_state(
 /// Poll document.readyState until "interactive" or "complete".
 pub async fn poll_ready_state(session: &dyn CdpClient, timeout: Duration) -> CdpResult<()> {
     let deadline = tokio::time::Instant::now() + timeout;
-    let mut interval = tokio::time::interval(Duration::from_millis(200));
+    let mut interval = tokio::time::interval(Duration::from_millis(POLL_INTERVAL_MS));
 
     loop {
         interval.tick().await;
@@ -144,7 +149,7 @@ pub async fn poll_ready_state(session: &dyn CdpClient, timeout: Duration) -> Cdp
 /// use `WaitStrategy::Selector` with a selector that appears after data loads.
 async fn wait_network_idle(session: &dyn CdpClient, timeout: Duration) -> CdpResult<()> {
     let deadline = tokio::time::Instant::now() + timeout;
-    let mut interval = tokio::time::interval(Duration::from_millis(250));
+    let mut interval = tokio::time::interval(Duration::from_millis(NETWORK_IDLE_POLL_MS));
     let mut last_url = String::new();
     let mut idle_checks = 0;
 
@@ -179,7 +184,7 @@ async fn wait_selector_visible(
     timeout: Duration,
 ) -> CdpResult<()> {
     let deadline = tokio::time::Instant::now() + timeout;
-    let mut interval = tokio::time::interval(Duration::from_millis(200));
+    let mut interval = tokio::time::interval(Duration::from_millis(POLL_INTERVAL_MS));
     let js = pwright_js::dom::query_selector_exists(selector);
 
     loop {

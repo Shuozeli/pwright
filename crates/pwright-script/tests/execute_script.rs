@@ -255,7 +255,7 @@ steps:
         let result = executor::execute(&script, &page, &HashMap::new(), &mut sink)
             .await
             .unwrap();
-        sink.write_summary(&script.name, &result);
+        sink.write_summary(&script.name, &result).unwrap();
     }
 
     let output = String::from_utf8(buf).unwrap();

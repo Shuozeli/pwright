@@ -50,7 +50,7 @@ pub async fn execute(
                     duration_ms,
                     details,
                     error: None,
-                });
+                })?;
             }
             Err(e) => {
                 let err_msg = e.to_string();
@@ -62,7 +62,7 @@ pub async fn execute(
                     duration_ms,
                     details: HashMap::new(),
                     error: Some(err_msg.clone()),
-                });
+                })?;
                 if step.on_error != OnError::Continue {
                     return Ok(ExecutionResult {
                         status: ExecutionStatus::Error,
@@ -281,13 +281,7 @@ fn resolve_template(template: &str, vars: &HashMap<String, serde_json::Value>) -
             let value = match vars.get(var_name) {
                 Some(serde_json::Value::String(s)) => s.clone(),
                 Some(other) => other.to_string(),
-                None => {
-                    tracing::warn!(
-                        var = var_name,
-                        "template variable not found, using empty string"
-                    );
-                    String::new()
-                }
+                None => String::new(), // Validator catches unknown refs; runtime allows empty for optional vars
             };
             result.push_str(&value);
             rest = &after[end + 2..];

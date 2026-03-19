@@ -19,50 +19,43 @@ pub trait FromEvalResult: Sized {
     fn from_eval_result(remote_object: &Value) -> CdpResult<Self>;
 }
 
+/// Return a type-mismatch error for an evaluate result.
+fn eval_type_error(type_name: &str, remote_object: &Value) -> CdpError {
+    CdpError::Other(format!(
+        "expected {type_name} from evaluate, got: {remote_object}"
+    ))
+}
+
 impl FromEvalResult for String {
     fn from_eval_result(remote_object: &Value) -> CdpResult<Self> {
         remote_object["value"]
             .as_str()
             .map(String::from)
-            .ok_or_else(|| {
-                CdpError::Other(format!(
-                    "expected string from evaluate, got: {}",
-                    remote_object
-                ))
-            })
+            .ok_or_else(|| eval_type_error("string", remote_object))
     }
 }
 
 impl FromEvalResult for bool {
     fn from_eval_result(remote_object: &Value) -> CdpResult<Self> {
-        remote_object["value"].as_bool().ok_or_else(|| {
-            CdpError::Other(format!(
-                "expected bool from evaluate, got: {}",
-                remote_object
-            ))
-        })
+        remote_object["value"]
+            .as_bool()
+            .ok_or_else(|| eval_type_error("bool", remote_object))
     }
 }
 
 impl FromEvalResult for i64 {
     fn from_eval_result(remote_object: &Value) -> CdpResult<Self> {
-        remote_object["value"].as_i64().ok_or_else(|| {
-            CdpError::Other(format!(
-                "expected i64 from evaluate, got: {}",
-                remote_object
-            ))
-        })
+        remote_object["value"]
+            .as_i64()
+            .ok_or_else(|| eval_type_error("i64", remote_object))
     }
 }
 
 impl FromEvalResult for f64 {
     fn from_eval_result(remote_object: &Value) -> CdpResult<Self> {
-        remote_object["value"].as_f64().ok_or_else(|| {
-            CdpError::Other(format!(
-                "expected f64 from evaluate, got: {}",
-                remote_object
-            ))
-        })
+        remote_object["value"]
+            .as_f64()
+            .ok_or_else(|| eval_type_error("f64", remote_object))
     }
 }
 

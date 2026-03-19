@@ -16,7 +16,10 @@ pub fn parse_yaml(yaml: &str) -> Result<Script, ScriptError> {
 
     let name = raw["name"].as_str().unwrap_or("unnamed").to_string();
     let description = raw["description"].as_str().unwrap_or("").to_string();
-    let version = raw["version"].as_i64().unwrap_or(1) as i32;
+    let version = raw["version"]
+        .as_i64()
+        .and_then(|n| i32::try_from(n).ok())
+        .unwrap_or(1);
 
     let params = parse_params(&raw["params"])?;
     let config = parse_config(&raw["config"]);
@@ -112,7 +115,7 @@ fn parse_config(val: &serde_yaml::Value) -> ScriptConfig {
         _ => OnError::Fail,
     };
     ScriptConfig {
-        default_timeout_ms: val["default_timeout_ms"].as_i64().unwrap_or(30000) as u64,
+        default_timeout_ms: val["default_timeout_ms"].as_i64().unwrap_or(30000).max(0) as u64,
         default_on_error,
     }
 }
@@ -164,7 +167,7 @@ fn parse_step(val: &serde_yaml::Value, index: usize) -> Result<Step, ScriptError
         StepKind::Goto(GotoStep {
             url: url.to_string(),
             wait_for: val["wait_for"].as_str().map(|s| s.to_string()),
-            timeout_ms: val["timeout_ms"].as_i64().map(|n| n as u64),
+            timeout_ms: val["timeout_ms"].as_i64().map(|n| n.max(0) as u64),
         })
     } else if let Some(selector) = val["click"].as_str() {
         StepKind::Click(ClickStep {
@@ -226,11 +229,11 @@ fn parse_step(val: &serde_yaml::Value, index: usize) -> Result<Step, ScriptError
         StepKind::Output(OutputStep { fields })
     } else if let Some(ms) = val["wait"].as_i64() {
         StepKind::Wait(WaitStep {
-            duration_ms: ms as u64,
+            duration_ms: ms.max(0) as u64,
         })
     } else if let Some(ms) = val["wait"].as_f64() {
         StepKind::Wait(WaitStep {
-            duration_ms: ms as u64,
+            duration_ms: ms.max(0.0) as u64,
         })
     } else {
         return Err(ScriptError::Parse(format!(
