@@ -43,11 +43,11 @@ Audit performed 2026-03-19 against commit d8fbf98. All items resolved.
 
 ## 4. Missing Abstractions
 
-### Proto conversion boilerplate (no From impls)
-- **Status:** Deferred -- medium effort, 4 impl blocks needed. Worth doing when adding new proto fields.
+### Proto conversion boilerplate (no From impls) -- DONE
+- **Fix applied:** Added `conversions.rs` with `From<A11yNode>`, `From<Cookie>`, `From<TargetInfo>`, `From<proto::CookieEntry>` impls. Handlers use `.map(proto::Type::from)`.
 
 ### set_cookies uses json!() instead of typed struct -- DONE
-- **Fix applied:** Changed `network_set_cookies` signature from `Vec<Value>` to `&[Cookie]`. Server now constructs typed `Cookie` structs. Bridge `set_cookies` accepts `&[Cookie]`.
+- **Fix applied:** Changed `network_set_cookies` signature from `Vec<Value>` to `&[Cookie]`. Server uses `From` impl for conversion.
 
 ## 5. Unsafe Patterns
 
@@ -61,11 +61,11 @@ Audit performed 2026-03-19 against commit d8fbf98. All items resolved.
 
 ## 6. Dead Code / Stubs
 
-### Placeholder test file
-- **Status:** Deferred -- intentional placeholder with clear documentation.
+### Placeholder test file -- DONE
+- **Fix applied:** Deleted empty `crates/pwright-cli/tests/download_command.rs`.
 
-### MockCdpClient missing setters
-- **Status:** Deferred -- add when tests need these responses.
+### MockCdpClient missing setters -- DONE
+- **Fix applied:** Added `set_targets_response()` and `set_describe_node_response()` setters.
 
 ## 7. Noise
 

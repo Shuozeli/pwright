@@ -45,19 +45,7 @@ pub async fn get_cookies(
         .await
         .map_err(cdp_to_status)?;
 
-    let entries = cookies
-        .into_iter()
-        .map(|c| proto::CookieEntry {
-            name: c.name,
-            value: c.value,
-            domain: c.domain,
-            path: c.path,
-            expires: c.expires,
-            http_only: c.http_only,
-            secure: c.secure,
-            same_site: c.same_site,
-        })
-        .collect();
+    let entries = cookies.into_iter().map(proto::CookieEntry::from).collect();
 
     Ok(Response::new(proto::GetCookiesResponse {
         cookies: entries,
@@ -76,16 +64,7 @@ pub async fn set_cookies(
     let cookies: Vec<pwright_cdp::domains::network::Cookie> = req
         .cookies
         .into_iter()
-        .map(|c| pwright_cdp::domains::network::Cookie {
-            name: c.name,
-            value: c.value,
-            domain: c.domain,
-            path: c.path,
-            expires: c.expires,
-            http_only: c.http_only,
-            secure: c.secure,
-            same_site: c.same_site,
-        })
+        .map(pwright_cdp::domains::network::Cookie::from)
         .collect();
 
     pwright_bridge::cookies::set_cookies(&*tab.session, &cookies)

@@ -44,15 +44,7 @@ pub async fn list_tabs(
 
     let targets = browser.list_tabs().await.map_err(cdp_to_status)?;
 
-    let tabs = targets
-        .into_iter()
-        .map(|t| proto::TabInfo {
-            target_id: t.target_id,
-            r#type: t.target_type,
-            title: t.title,
-            url: t.url,
-        })
-        .collect();
+    let tabs = targets.into_iter().map(proto::TabInfo::from).collect();
 
     Ok(Response::new(proto::ListTabsResponse { tabs }))
 }

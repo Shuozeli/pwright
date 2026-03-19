@@ -64,3 +64,4 @@ These modules have zero unit tests (covered only by integration tests):
 | JsonlSink silent error drops | `tracing::warn!` on serialization/write failure |
 | State file permission silenced | `tracing::debug!` on failure |
 | f64-to-u64 timeout cast | `.max(0.0)` guard |
+| Proto conversion boilerplate | `From` impls in `conversions.rs` |

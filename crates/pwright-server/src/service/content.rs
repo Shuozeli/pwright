@@ -34,19 +34,7 @@ pub async fn get_snapshot(
     };
     browser.set_ref_cache(&tab.tab_id, cache).await;
 
-    let proto_nodes = nodes
-        .into_iter()
-        .map(|n| proto::A11yNode {
-            r#ref: n.ref_id,
-            role: n.role,
-            name: n.name,
-            depth: n.depth,
-            value: n.value,
-            disabled: n.disabled,
-            focused: n.focused,
-            node_id: n.node_id,
-        })
-        .collect();
+    let proto_nodes = nodes.into_iter().map(proto::A11yNode::from).collect();
 
     Ok(Response::new(proto::GetSnapshotResponse {
         tab_id: tab.tab_id,

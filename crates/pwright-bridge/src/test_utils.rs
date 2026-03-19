@@ -194,6 +194,14 @@ impl MockCdpClient {
         *self.navigation_history_response.lock().unwrap() = Some(response);
     }
 
+    pub fn set_targets_response(&self, targets: Vec<TargetInfo>) {
+        *self.targets_response.lock().unwrap() = Some(targets);
+    }
+
+    pub fn set_describe_node_response(&self, response: Value) {
+        *self.describe_node_response.lock().unwrap() = Some(response);
+    }
+
     /// Make DOM.getBoxModel return an error (element not visible).
     pub fn set_box_model_error(&self, should_error: bool) {
         *self.box_model_error.lock().unwrap() = should_error;
