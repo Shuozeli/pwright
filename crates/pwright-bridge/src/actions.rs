@@ -3,6 +3,7 @@
 
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
+use pwright_cdp::{KeyEventType, MouseButton, MouseEventType};
 use serde_json::json;
 
 use crate::keys;
@@ -93,10 +94,24 @@ pub async fn click_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResul
 
     // 3. Dispatch at viewport coordinates with buttons field
     session
-        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(1), Some(1))
+        .input_dispatch_mouse_event(
+            MouseEventType::Pressed,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(1),
+            Some(1),
+        )
         .await?;
     session
-        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(1), Some(0))
+        .input_dispatch_mouse_event(
+            MouseEventType::Released,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(1),
+            Some(0),
+        )
         .await?;
 
     Ok(())
@@ -109,17 +124,45 @@ pub async fn dblclick_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpRe
 
     // First click
     session
-        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(1), Some(1))
+        .input_dispatch_mouse_event(
+            MouseEventType::Pressed,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(1),
+            Some(1),
+        )
         .await?;
     session
-        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(1), Some(0))
+        .input_dispatch_mouse_event(
+            MouseEventType::Released,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(1),
+            Some(0),
+        )
         .await?;
     // Second click (clickCount=2)
     session
-        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(2), Some(1))
+        .input_dispatch_mouse_event(
+            MouseEventType::Pressed,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(2),
+            Some(1),
+        )
         .await?;
     session
-        .input_dispatch_mouse_event("mouseReleased", x, y, Some("left"), Some(2), Some(0))
+        .input_dispatch_mouse_event(
+            MouseEventType::Released,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(2),
+            Some(0),
+        )
         .await?;
 
     Ok(())
@@ -161,7 +204,7 @@ pub async fn hover_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResul
     session.dom_scroll_into_view(node_id).await?;
     let (x, y) = get_element_center(session, node_id).await?;
     session
-        .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
+        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
         .await?;
     Ok(())
 }
@@ -192,23 +235,37 @@ pub async fn drag_by_node_id(
     let steps = (dist / 10.0).clamp(5.0, 40.0) as i32;
 
     session
-        .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
+        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
         .await?;
     session
-        .input_dispatch_mouse_event("mousePressed", x, y, Some("left"), Some(1), None)
+        .input_dispatch_mouse_event(
+            MouseEventType::Pressed,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(1),
+            None,
+        )
         .await?;
     for i in 1..=steps {
         let t = i as f64 / steps as f64;
         let mx = x + t * dx as f64;
         let my = y + t * dy as f64;
         session
-            .input_dispatch_mouse_event("mouseMoved", mx, my, None, None, Some(1))
+            .input_dispatch_mouse_event(MouseEventType::Moved, mx, my, None, None, Some(1))
             .await?;
     }
     let end_x = x + dx as f64;
     let end_y = y + dy as f64;
     session
-        .input_dispatch_mouse_event("mouseReleased", end_x, end_y, Some("left"), Some(1), None)
+        .input_dispatch_mouse_event(
+            MouseEventType::Released,
+            end_x,
+            end_y,
+            Some(MouseButton::Left),
+            Some(1),
+            None,
+        )
         .await?;
 
     Ok(())
@@ -222,7 +279,12 @@ pub async fn press_key(session: &dyn CdpClient, key: &str) -> CdpResult<()> {
         let w3c_key = if key == "Return" { "Enter" } else { key };
 
         session
-            .input_dispatch_key_event("rawKeyDown", w3c_key, &def.code, Some(def.virtual_key))
+            .input_dispatch_key_event(
+                KeyEventType::RawKeyDown,
+                w3c_key,
+                &def.code,
+                Some(def.virtual_key),
+            )
             .await?;
 
         if !def.insert_text.is_empty() {
@@ -230,7 +292,12 @@ pub async fn press_key(session: &dyn CdpClient, key: &str) -> CdpResult<()> {
         }
 
         session
-            .input_dispatch_key_event("keyUp", w3c_key, &def.code, Some(def.virtual_key))
+            .input_dispatch_key_event(
+                KeyEventType::KeyUp,
+                w3c_key,
+                &def.code,
+                Some(def.virtual_key),
+            )
             .await?;
     } else {
         session.input_insert_text(key).await?;

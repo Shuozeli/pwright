@@ -73,24 +73,22 @@ pub async fn set_cookies(
 
     let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
-    let cookie_values: Vec<serde_json::Value> = req
+    let cookies: Vec<pwright_cdp::domains::network::Cookie> = req
         .cookies
         .into_iter()
-        .map(|c| {
-            serde_json::json!({
-                "name": c.name,
-                "value": c.value,
-                "domain": c.domain,
-                "path": c.path,
-                "expires": c.expires,
-                "httpOnly": c.http_only,
-                "secure": c.secure,
-                "sameSite": c.same_site,
-            })
+        .map(|c| pwright_cdp::domains::network::Cookie {
+            name: c.name,
+            value: c.value,
+            domain: c.domain,
+            path: c.path,
+            expires: c.expires,
+            http_only: c.http_only,
+            secure: c.secure,
+            same_site: c.same_site,
         })
         .collect();
 
-    pwright_bridge::cookies::set_cookies(&*tab.session, cookie_values)
+    pwright_bridge::cookies::set_cookies(&*tab.session, &cookies)
         .await
         .map_err(cdp_to_status)?;
 

@@ -729,7 +729,7 @@ impl Page {
         // We use DOM.getDocument + DOM.resolveNode which returns an objectId
         // without trying to serialize the entire global scope.
         let doc = self.session.dom_get_document().await?;
-        let root_id = root_node_id(&doc);
+        let root_id = root_node_id(&doc)?;
         let resolved = self.session.dom_resolve_node(root_id).await?;
         let object_id = resolved
             .get("object")

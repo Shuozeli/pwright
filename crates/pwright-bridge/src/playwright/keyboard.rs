@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use pwright_cdp::CdpClient;
+use pwright_cdp::KeyEventType;
 use pwright_cdp::connection::Result as CdpResult;
 
 use crate::keys::get_key_def;
@@ -31,16 +32,16 @@ impl Keyboard {
 
     /// Press a key down (does not release).
     pub async fn down(&self, key: &str) -> CdpResult<()> {
-        self.dispatch_key("rawKeyDown", key).await
+        self.dispatch_key(KeyEventType::RawKeyDown, key).await
     }
 
     /// Release a key.
     pub async fn up(&self, key: &str) -> CdpResult<()> {
-        self.dispatch_key("keyUp", key).await
+        self.dispatch_key(KeyEventType::KeyUp, key).await
     }
 
     /// Dispatch a key event, resolving the key definition if known.
-    async fn dispatch_key(&self, event_type: &str, key: &str) -> CdpResult<()> {
+    async fn dispatch_key(&self, event_type: KeyEventType, key: &str) -> CdpResult<()> {
         if let Some(def) = get_key_def(key) {
             self.session
                 .input_dispatch_key_event(event_type, key, def.code.as_ref(), Some(def.virtual_key))

@@ -1,7 +1,6 @@
 //! Network domain — cookies, resource blocking.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::connection::Result;
 use crate::generated::network as cdp_gen;
@@ -60,7 +59,7 @@ impl CdpSession {
     }
 
     /// Set cookies.
-    pub async fn network_set_cookies(&self, cookies: Vec<Value>) -> Result<()> {
+    pub async fn network_set_cookies(&self, cookies: &[Cookie]) -> Result<()> {
         self.send(
             "Network.setCookies",
             serde_json::json!({ "cookies": cookies }),

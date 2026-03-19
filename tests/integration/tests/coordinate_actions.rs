@@ -7,6 +7,7 @@
 
 use pwright_bridge::FromEvalJson;
 use pwright_bridge::playwright::ClickOptions;
+use pwright_cdp::MouseButton;
 use pwright_integration_tests::connect_and_navigate;
 
 #[derive(serde::Deserialize)]
@@ -91,7 +92,7 @@ async fn right_click_at_triggers_contextmenu() {
             x,
             y,
             Some(ClickOptions {
-                button: Some("right".to_string()),
+                button: Some(MouseButton::Right),
                 ..Default::default()
             }),
         )

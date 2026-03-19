@@ -46,7 +46,7 @@ pub async fn execute(
                 sink.emit(StepResult {
                     step_index: i as u32,
                     step_type,
-                    status: "ok".into(),
+                    status: ExecutionStatus::Ok,
                     duration_ms,
                     details,
                     error: None,
@@ -58,14 +58,14 @@ pub async fn execute(
                 sink.emit(StepResult {
                     step_index: i as u32,
                     step_type,
-                    status: "error".into(),
+                    status: ExecutionStatus::Error,
                     duration_ms,
                     details: HashMap::new(),
                     error: Some(err_msg.clone()),
                 });
                 if step.on_error != OnError::Continue {
                     return Ok(ExecutionResult {
-                        status: "error".into(),
+                        status: ExecutionStatus::Error,
                         total_steps: script.steps.len() as u32,
                         succeeded,
                         failed,
@@ -80,7 +80,7 @@ pub async fn execute(
     }
 
     Ok(ExecutionResult {
-        status: "ok".into(),
+        status: ExecutionStatus::Ok,
         total_steps: script.steps.len() as u32,
         succeeded,
         failed,
@@ -308,10 +308,18 @@ fn json_value_to_string(v: &serde_json::Value) -> String {
     }
 }
 
+/// Execution outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExecutionStatus {
+    Ok,
+    Error,
+}
+
 /// Result of script execution.
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
-    pub status: String,
+    pub status: ExecutionStatus,
     pub total_steps: u32,
     pub succeeded: u32,
     pub failed: u32,

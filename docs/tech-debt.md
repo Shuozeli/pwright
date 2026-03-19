@@ -1,6 +1,6 @@
 # Tech Debt
 
-Remaining structural issues. Updated 2026-03-17.
+Remaining structural issues. Updated 2026-03-19.
 
 ## Open
 
@@ -23,10 +23,6 @@ patterns. Same `#[async_trait]` macro limitation.
 `commands.rs` — 10+ ref-based action commands follow the same
 `connect -> resolve_ref -> resolve_tab -> action -> output::ok` pattern.
 Extract a `with_ref()` closure helper.
-
-### ~~gRPC error conversion~~ (resolved)
-Replaced 40+ `map_err` closures with `cdp_to_status()` helper that maps
-error variants to correct gRPC codes.
 
 ### Unit test gaps
 These modules have zero unit tests (covered only by integration tests):
@@ -59,3 +55,12 @@ These modules have zero unit tests (covered only by integration tests):
 | TabHandle no Drop warning | Added Drop impl with tracing::warn |
 | Emoji in CLI output | Replaced with [ok]/[error] |
 | json!() cookie construction | Typed Cookie struct |
+| CDP input event type strings | `MouseEventType`, `KeyEventType`, `TouchEventType` enums |
+| Mouse button `Option<String>` | `MouseButton` enum |
+| `ExecutionResult.status: String` | `ExecutionStatus` enum |
+| gRPC error conversion (40+) | `cdp_to_status()` helper with proper status codes |
+| `root_node_id` unwrap_or(1) | Returns `CdpResult<i64>` |
+| `network_set_cookies(Vec<Value>)` | `network_set_cookies(&[Cookie])` |
+| JsonlSink silent error drops | `tracing::warn!` on serialization/write failure |
+| State file permission silenced | `tracing::debug!` on failure |
+| f64-to-u64 timeout cast | `.max(0.0)` guard |

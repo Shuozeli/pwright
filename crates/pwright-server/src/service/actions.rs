@@ -1,5 +1,6 @@
 //! Action handler — ExecuteAction.
 
+use pwright_cdp::TouchEventType;
 use tonic::{Request, Response, Status};
 
 use super::{BrowserServiceImpl, cdp_to_status};
@@ -188,11 +189,11 @@ pub async fn touch_tap(
     let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     tab.session
-        .input_dispatch_touch_event("touchStart", req.x, req.y)
+        .input_dispatch_touch_event(TouchEventType::Start, req.x, req.y)
         .await
         .map_err(cdp_to_status)?;
     tab.session
-        .input_dispatch_touch_event("touchEnd", req.x, req.y)
+        .input_dispatch_touch_event(TouchEventType::End, req.x, req.y)
         .await
         .map_err(cdp_to_status)?;
 

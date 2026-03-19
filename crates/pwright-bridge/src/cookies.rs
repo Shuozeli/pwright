@@ -3,7 +3,6 @@
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::Result as CdpResult;
 use pwright_cdp::domains::network::Cookie;
-use serde_json::Value;
 
 /// Get all cookies for the current page.
 pub async fn get_cookies(session: &dyn CdpClient) -> CdpResult<Vec<Cookie>> {
@@ -11,7 +10,7 @@ pub async fn get_cookies(session: &dyn CdpClient) -> CdpResult<Vec<Cookie>> {
 }
 
 /// Set cookies.
-pub async fn set_cookies(session: &dyn CdpClient, cookies: Vec<Value>) -> CdpResult<()> {
+pub async fn set_cookies(session: &dyn CdpClient, cookies: &[Cookie]) -> CdpResult<()> {
     session.network_set_cookies(cookies).await
 }
 
@@ -44,9 +43,18 @@ mod tests {
     #[tokio::test]
     async fn test_set_cookies_forwards_to_network() {
         let mock = MockCdpClient::new();
-        let cookies = vec![serde_json::json!({"name": "test", "value": "123"})];
+        let cookies = vec![Cookie {
+            name: "test".to_string(),
+            value: "123".to_string(),
+            domain: String::new(),
+            path: "/".to_string(),
+            expires: 0.0,
+            http_only: false,
+            secure: false,
+            same_site: String::new(),
+        }];
 
-        set_cookies(&mock, cookies).await.unwrap();
+        set_cookies(&mock, &cookies).await.unwrap();
 
         let calls = mock.calls_for("Network.setCookies");
         assert_eq!(calls.len(), 1);

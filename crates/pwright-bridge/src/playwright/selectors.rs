@@ -12,11 +12,11 @@ use pwright_cdp::CdpClient;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
 
 /// Extract the root nodeId from a `DOM.getDocument` response.
-pub(super) fn root_node_id(doc: &serde_json::Value) -> i64 {
+pub(super) fn root_node_id(doc: &serde_json::Value) -> CdpResult<i64> {
     doc.get("root")
         .and_then(|r| r.get("nodeId"))
         .and_then(|n| n.as_i64())
-        .unwrap_or(1)
+        .ok_or_else(|| CdpError::Other("DOM.getDocument missing root.nodeId".to_string()))
 }
 
 /// Resolved element — a nodeId from the DOM domain.
@@ -88,7 +88,7 @@ async fn resolve_pw_selector(
 
     // Default: CSS selector
     let doc = session.dom_get_document().await?;
-    let root_id = root_node_id(&doc);
+    let root_id = root_node_id(&doc)?;
 
     let node_id = session.dom_query_selector(root_id, selector).await?;
     if node_id == 0 {
@@ -128,7 +128,7 @@ async fn resolve_css_selector_all(
     selector: &str,
 ) -> CdpResult<Vec<ResolvedElement>> {
     let doc = session.dom_get_document().await?;
-    let root_id = root_node_id(&doc);
+    let root_id = root_node_id(&doc)?;
 
     let node_ids = session.dom_query_selector_all(root_id, selector).await?;
     Ok(node_ids

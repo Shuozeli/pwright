@@ -4,12 +4,13 @@ use std::sync::Arc;
 
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::Result as CdpResult;
+use pwright_cdp::{MouseButton, MouseEventType};
 
 /// Click options for mouse operations.
 #[derive(Debug, Clone, Default)]
 pub struct ClickOptions {
-    /// Mouse button: "left" (default), "right", "middle".
-    pub button: Option<String>,
+    /// Mouse button (default: Left).
+    pub button: Option<MouseButton>,
     /// Number of clicks (1 = click, 2 = dblclick).
     pub click_count: Option<i32>,
     /// Delay between mousedown and mouseup in milliseconds.
@@ -35,11 +36,18 @@ impl Mouse {
     /// Click at (x, y).
     pub async fn click(&self, x: f64, y: f64, options: Option<ClickOptions>) -> CdpResult<()> {
         let opts = options.unwrap_or_default();
-        let button = opts.button.as_deref().unwrap_or("left");
+        let button = opts.button.unwrap_or_default();
         let count = opts.click_count.unwrap_or(1);
 
         self.session
-            .input_dispatch_mouse_event("mousePressed", x, y, Some(button), Some(count), Some(1))
+            .input_dispatch_mouse_event(
+                MouseEventType::Pressed,
+                x,
+                y,
+                Some(button),
+                Some(count),
+                Some(1),
+            )
             .await?;
 
         if let Some(delay) = opts.delay_ms {
@@ -47,7 +55,14 @@ impl Mouse {
         }
 
         self.session
-            .input_dispatch_mouse_event("mouseReleased", x, y, Some(button), Some(count), Some(0))
+            .input_dispatch_mouse_event(
+                MouseEventType::Released,
+                x,
+                y,
+                Some(button),
+                Some(count),
+                Some(0),
+            )
             .await?;
 
         Ok(())
@@ -69,23 +84,37 @@ impl Mouse {
     /// Move mouse to (x, y).
     pub async fn move_to(&self, x: f64, y: f64) -> CdpResult<()> {
         self.session
-            .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
+            .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
             .await
     }
 
     /// Press mouse button down.
-    pub async fn down(&self, button: Option<&str>) -> CdpResult<()> {
-        let btn = button.unwrap_or("left");
+    pub async fn down(&self, button: Option<MouseButton>) -> CdpResult<()> {
+        let btn = button.unwrap_or_default();
         self.session
-            .input_dispatch_mouse_event("mousePressed", 0.0, 0.0, Some(btn), Some(1), Some(1))
+            .input_dispatch_mouse_event(
+                MouseEventType::Pressed,
+                0.0,
+                0.0,
+                Some(btn),
+                Some(1),
+                Some(1),
+            )
             .await
     }
 
     /// Release mouse button.
-    pub async fn up(&self, button: Option<&str>) -> CdpResult<()> {
-        let btn = button.unwrap_or("left");
+    pub async fn up(&self, button: Option<MouseButton>) -> CdpResult<()> {
+        let btn = button.unwrap_or_default();
         self.session
-            .input_dispatch_mouse_event("mouseReleased", 0.0, 0.0, Some(btn), Some(1), Some(0))
+            .input_dispatch_mouse_event(
+                MouseEventType::Released,
+                0.0,
+                0.0,
+                Some(btn),
+                Some(1),
+                Some(0),
+            )
             .await
     }
 

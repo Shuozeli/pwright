@@ -55,7 +55,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     let output = &result.outputs[0]["results"];
     let parsed: Vec<serde_json::Value> = serde_json::from_str(output).unwrap();
     assert_eq!(parsed.len(), 3);
@@ -105,7 +105,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     let article: serde_json::Value = serde_json::from_str(&result.outputs[0]["article"]).unwrap();
     assert_eq!(article["title"], "Understanding Browser Automation");
     assert_eq!(article["author"], "Jane Doe");
@@ -162,7 +162,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     let data: serde_json::Value = serde_json::from_str(&result.outputs[0]["data"]).unwrap();
     assert_eq!(data["row_count"], 4);
     assert_eq!(data["headers"][0], "Product");
@@ -211,7 +211,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     let health: serde_json::Value = serde_json::from_str(&result.outputs[0]["health"]).unwrap();
     assert_eq!(health["status"], "pass");
     assert_eq!(health["expected_text_found"], true);
@@ -253,7 +253,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     let health: serde_json::Value = serde_json::from_str(&result.outputs[0]["health"]).unwrap();
     assert_eq!(health["status"], "fail");
     assert_eq!(health["expected_text_found"], false);
@@ -299,7 +299,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     let notifs: Vec<serde_json::Value> =
         serde_json::from_str(&result.outputs[0]["notifications"]).unwrap();
     assert_eq!(notifs.len(), 3);

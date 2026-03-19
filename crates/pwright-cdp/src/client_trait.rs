@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::connection::Result;
 use crate::domains::accessibility::RawAXNode;
+use crate::domains::input::{KeyEventType, MouseButton, MouseEventType, TouchEventType};
 use crate::domains::network::{Cookie, ResponseBody};
 use crate::domains::target::TargetInfo;
 
@@ -60,22 +61,27 @@ pub trait CdpClient: Send + Sync {
     // ── Input domain ──
     async fn input_dispatch_mouse_event(
         &self,
-        event_type: &str,
+        event_type: MouseEventType,
         x: f64,
         y: f64,
-        button: Option<&str>,
+        button: Option<MouseButton>,
         click_count: Option<i32>,
         buttons: Option<i32>,
     ) -> Result<()>;
     async fn input_dispatch_key_event(
         &self,
-        event_type: &str,
+        event_type: KeyEventType,
         key: &str,
         code: &str,
         windows_virtual_key_code: Option<i64>,
     ) -> Result<()>;
     async fn input_insert_text(&self, text: &str) -> Result<()>;
-    async fn input_dispatch_touch_event(&self, event_type: &str, x: f64, y: f64) -> Result<()>;
+    async fn input_dispatch_touch_event(
+        &self,
+        event_type: TouchEventType,
+        x: f64,
+        y: f64,
+    ) -> Result<()>;
 
     // ── Runtime domain ──
     async fn runtime_evaluate(&self, expression: &str) -> Result<Value>;
@@ -97,7 +103,7 @@ pub trait CdpClient: Send + Sync {
     async fn network_enable(&self) -> Result<()>;
     async fn network_set_blocked_urls(&self, patterns: &[String]) -> Result<()>;
     async fn network_get_cookies(&self) -> Result<Vec<Cookie>>;
-    async fn network_set_cookies(&self, cookies: Vec<Value>) -> Result<()>;
+    async fn network_set_cookies(&self, cookies: &[Cookie]) -> Result<()>;
     async fn network_get_response_body(&self, request_id: &str) -> Result<ResponseBody>;
 
     // ── Fetch domain ──
@@ -216,10 +222,10 @@ impl CdpClient for CdpSession {
     }
     async fn input_dispatch_mouse_event(
         &self,
-        event_type: &str,
+        event_type: MouseEventType,
         x: f64,
         y: f64,
-        button: Option<&str>,
+        button: Option<MouseButton>,
         click_count: Option<i32>,
         buttons: Option<i32>,
     ) -> Result<()> {
@@ -228,7 +234,7 @@ impl CdpClient for CdpSession {
     }
     async fn input_dispatch_key_event(
         &self,
-        event_type: &str,
+        event_type: KeyEventType,
         key: &str,
         code: &str,
         windows_virtual_key_code: Option<i64>,
@@ -239,7 +245,12 @@ impl CdpClient for CdpSession {
     async fn input_insert_text(&self, text: &str) -> Result<()> {
         CdpSession::input_insert_text(self, text).await
     }
-    async fn input_dispatch_touch_event(&self, event_type: &str, x: f64, y: f64) -> Result<()> {
+    async fn input_dispatch_touch_event(
+        &self,
+        event_type: TouchEventType,
+        x: f64,
+        y: f64,
+    ) -> Result<()> {
         CdpSession::input_dispatch_touch_event(self, event_type, x, y).await
     }
     async fn runtime_evaluate(&self, expression: &str) -> Result<Value> {
@@ -277,7 +288,7 @@ impl CdpClient for CdpSession {
     async fn network_get_cookies(&self) -> Result<Vec<Cookie>> {
         CdpSession::network_get_cookies(self).await
     }
-    async fn network_set_cookies(&self, cookies: Vec<Value>) -> Result<()> {
+    async fn network_set_cookies(&self, cookies: &[Cookie]) -> Result<()> {
         CdpSession::network_set_cookies(self, cookies).await
     }
     async fn network_get_response_body(&self, request_id: &str) -> Result<ResponseBody> {

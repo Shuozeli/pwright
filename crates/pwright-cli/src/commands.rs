@@ -9,6 +9,7 @@ use pwright_bridge::content::ScreenshotFormat;
 use pwright_bridge::navigate::{NavigateOptions, WaitStrategy};
 use pwright_bridge::snapshot::{self, SnapshotFilter};
 use pwright_bridge::{Browser, BrowserConfig};
+use pwright_cdp::{MouseButton, MouseEventType};
 
 use crate::output;
 use crate::state::CliState;
@@ -227,16 +228,21 @@ pub async fn click_at(
         .context("no active tab")?;
 
     let session = tab.session.as_ref();
+    let mouse_button = match button {
+        "right" => MouseButton::Right,
+        "middle" => MouseButton::Middle,
+        _ => MouseButton::Left,
+    };
     session
-        .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
+        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
         .await
         .context("mouseMoved failed")?;
     session
         .input_dispatch_mouse_event(
-            "mousePressed",
+            MouseEventType::Pressed,
             x,
             y,
-            Some(button),
+            Some(mouse_button),
             Some(click_count),
             Some(1),
         )
@@ -244,10 +250,10 @@ pub async fn click_at(
         .context("mousePressed failed")?;
     session
         .input_dispatch_mouse_event(
-            "mouseReleased",
+            MouseEventType::Released,
             x,
             y,
-            Some(button),
+            Some(mouse_button),
             Some(click_count),
             Some(0),
         )
@@ -289,7 +295,7 @@ pub async fn hover_at(state: &mut CliState, x: f64, y: f64) -> Result<()> {
 
     tab.session
         .as_ref()
-        .input_dispatch_mouse_event("mouseMoved", x, y, None, None, None)
+        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
         .await
         .context("hover-at failed")?;
 
@@ -847,12 +853,9 @@ pub async fn cookie_set(
         same_site: String::new(),
     };
 
-    pwright_bridge::cookies::set_cookies(
-        tab.session.as_ref(),
-        vec![serde_json::to_value(&cookie).context("failed to serialize cookie")?],
-    )
-    .await
-    .context("failed to set cookie")?;
+    pwright_bridge::cookies::set_cookies(tab.session.as_ref(), &[cookie])
+        .await
+        .context("failed to set cookie")?;
 
     output::ok(&format!(
         "Set cookie {} = {} ({}{})",
@@ -1137,7 +1140,7 @@ pub async fn script(cdp: &str, action: crate::ScriptAction) -> Result<()> {
 
     handle.close().await?;
 
-    if result.status != "ok" {
+    if result.status != pwright_script::executor::ExecutionStatus::Ok {
         return Err(pwright_cdp::connection::CdpError::Other(
             result.error.unwrap_or_else(|| "script failed".into()),
         )

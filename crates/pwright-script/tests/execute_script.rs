@@ -39,7 +39,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert_eq!(result.total_steps, 2);
     assert_eq!(result.succeeded, 2);
     assert_eq!(result.outputs.len(), 1);
@@ -48,7 +48,7 @@ steps:
     // Check step results
     assert_eq!(sink.results.len(), 2);
     assert_eq!(sink.results[0].step_type, "extract");
-    assert_eq!(sink.results[0].status, "ok");
+    assert_eq!(sink.results[0].status, executor::ExecutionStatus::Ok);
     assert_eq!(sink.results[0].details["value"], "Hello pwright");
     assert_eq!(sink.results[1].step_type, "output");
 }
@@ -79,7 +79,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert_eq!(result.outputs[0]["url"], "https://example.com");
 }
 
@@ -112,7 +112,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert_eq!(result.succeeded, 3);
     assert_eq!(sink.results[0].step_type, "click");
     assert_eq!(sink.results[0].details["selector"], "#btn");
@@ -138,7 +138,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert_eq!(sink.results[0].step_type, "fill");
     assert_eq!(sink.results[0].details["selector"], "#email");
 }
@@ -167,7 +167,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert_eq!(sink.results[0].step_type, "eval");
     assert_eq!(sink.results[0].details["ref"], "get_data");
 }
@@ -194,7 +194,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "error");
+    assert_eq!(result.status, executor::ExecutionStatus::Error);
     assert_eq!(result.succeeded, 0);
     assert_eq!(result.failed, 1);
     assert_eq!(result.skipped, 1); // second step skipped
@@ -227,9 +227,9 @@ steps:
         .unwrap();
 
     // First step errored but continued
-    assert_eq!(result.status, "ok");
-    assert_eq!(sink.results[0].status, "error");
-    assert_eq!(sink.results[1].status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
+    assert_eq!(sink.results[0].status, executor::ExecutionStatus::Error);
+    assert_eq!(sink.results[1].status, executor::ExecutionStatus::Ok);
     assert_eq!(result.outputs[0]["text"], "Success");
 }
 
@@ -295,7 +295,7 @@ steps:
         .unwrap();
     let elapsed = start.elapsed();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert_eq!(result.succeeded, 2);
     assert_eq!(sink.results[0].step_type, "wait");
     assert_eq!(sink.results[0].details["duration_ms"], "50");

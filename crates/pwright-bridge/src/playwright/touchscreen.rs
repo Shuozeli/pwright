@@ -1,6 +1,7 @@
 //! Touchscreen API — emulates touch interactions.
 
 use pwright_cdp::CdpClient;
+use pwright_cdp::TouchEventType;
 use pwright_cdp::connection::Result as CdpResult;
 use std::sync::Arc;
 
@@ -17,10 +18,10 @@ impl Touchscreen {
     /// Dispatch a tap (touchStart + touchEnd) at the given coordinates.
     pub async fn tap(&self, x: f64, y: f64) -> CdpResult<()> {
         self.session
-            .input_dispatch_touch_event("touchStart", x, y)
+            .input_dispatch_touch_event(TouchEventType::Start, x, y)
             .await?;
         self.session
-            .input_dispatch_touch_event("touchEnd", x, y)
+            .input_dispatch_touch_event(TouchEventType::End, x, y)
             .await?;
         Ok(())
     }

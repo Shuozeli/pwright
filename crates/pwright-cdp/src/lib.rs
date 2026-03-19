@@ -7,5 +7,6 @@ pub mod session;
 
 pub use client_trait::CdpClient;
 pub use connection::CdpConnection;
+pub use domains::input::{KeyEventType, MouseButton, MouseEventType, TouchEventType};
 pub use events::CdpEvent;
 pub use session::CdpSession;

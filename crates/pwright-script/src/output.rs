@@ -5,14 +5,14 @@ use std::io::Write;
 
 use serde::Serialize;
 
-use crate::executor::ExecutionResult;
+use crate::executor::{ExecutionResult, ExecutionStatus};
 
 /// A result emitted for each completed step.
 #[derive(Debug, Clone, Serialize)]
 pub struct StepResult {
     pub step_index: u32,
     pub step_type: String,
-    pub status: String,
+    pub status: ExecutionStatus,
     pub duration_ms: u64,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub details: HashMap<String, String>,
@@ -25,7 +25,7 @@ pub struct StepResult {
 pub struct ScriptSummary {
     pub summary: bool,
     pub name: String,
-    pub status: String,
+    pub status: ExecutionStatus,
     pub total_steps: u32,
     pub succeeded: u32,
     pub failed: u32,
@@ -55,7 +55,7 @@ impl<W: Write> JsonlSink<W> {
         let summary = ScriptSummary {
             summary: true,
             name: name.to_string(),
-            status: result.status.clone(),
+            status: result.status,
             total_steps: result.total_steps,
             succeeded: result.succeeded,
             failed: result.failed,
@@ -64,16 +64,26 @@ impl<W: Write> JsonlSink<W> {
             outputs: result.outputs.clone(),
             error: result.error.clone(),
         };
-        if let Ok(json) = serde_json::to_string(&summary) {
-            let _ = writeln!(self.writer, "{json}");
+        match serde_json::to_string(&summary) {
+            Ok(json) => {
+                if let Err(e) = writeln!(self.writer, "{json}") {
+                    tracing::warn!("failed to write JSONL summary: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("failed to serialize JSONL summary: {e}"),
         }
     }
 }
 
 impl<W: Write> OutputSink for JsonlSink<W> {
     fn emit(&mut self, result: StepResult) {
-        if let Ok(json) = serde_json::to_string(&result) {
-            let _ = writeln!(self.writer, "{json}");
+        match serde_json::to_string(&result) {
+            Ok(json) => {
+                if let Err(e) = writeln!(self.writer, "{json}") {
+                    tracing::warn!("failed to write JSONL step: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("failed to serialize JSONL step: {e}"),
         }
     }
 }
@@ -115,7 +125,7 @@ mod tests {
         sink.emit(StepResult {
             step_index: 0,
             step_type: "goto".into(),
-            status: "ok".into(),
+            status: ExecutionStatus::Ok,
             duration_ms: 100,
             details: HashMap::from([("url".into(), "https://example.com".into())]),
             error: None,
@@ -134,7 +144,7 @@ mod tests {
         sink.emit(StepResult {
             step_index: 0,
             step_type: "click".into(),
-            status: "ok".into(),
+            status: ExecutionStatus::Ok,
             duration_ms: 50,
             details: HashMap::new(),
             error: None,

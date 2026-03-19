@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use pwright_cdp::CdpClient;
 use pwright_cdp::connection::Result as CdpResult;
 use pwright_cdp::domains::accessibility::RawAXNode;
 use pwright_cdp::domains::network::{Cookie, ResponseBody};
 use pwright_cdp::domains::target::TargetInfo;
+use pwright_cdp::{CdpClient, KeyEventType, MouseButton, MouseEventType, TouchEventType};
 use serde_json::Value;
 
 use crate::builder;
@@ -353,18 +353,18 @@ impl CdpClient for FakeCdpClient {
 
     async fn input_dispatch_mouse_event(
         &self,
-        event_type: &str,
+        event_type: MouseEventType,
         x: f64,
         y: f64,
-        button: Option<&str>,
+        button: Option<MouseButton>,
         click_count: Option<i32>,
         buttons: Option<i32>,
     ) -> CdpResult<()> {
         self.record(
             "Input.dispatchMouseEvent",
             vec![serde_json::json!({
-                "type": event_type, "x": x, "y": y,
-                "button": button, "clickCount": click_count, "buttons": buttons,
+                "type": event_type.as_str(), "x": x, "y": y,
+                "button": button.map(|b| b.as_str()), "clickCount": click_count, "buttons": buttons,
             })],
         );
         Ok(())
@@ -372,7 +372,7 @@ impl CdpClient for FakeCdpClient {
 
     async fn input_dispatch_key_event(
         &self,
-        event_type: &str,
+        event_type: KeyEventType,
         key: &str,
         code: &str,
         windows_virtual_key_code: Option<i64>,
@@ -380,7 +380,7 @@ impl CdpClient for FakeCdpClient {
         self.record(
             "Input.dispatchKeyEvent",
             vec![serde_json::json!({
-                "type": event_type, "key": key, "code": code,
+                "type": event_type.as_str(), "key": key, "code": code,
                 "windowsVirtualKeyCode": windows_virtual_key_code,
             })],
         );
@@ -392,10 +392,15 @@ impl CdpClient for FakeCdpClient {
         Ok(())
     }
 
-    async fn input_dispatch_touch_event(&self, event_type: &str, x: f64, y: f64) -> CdpResult<()> {
+    async fn input_dispatch_touch_event(
+        &self,
+        event_type: TouchEventType,
+        x: f64,
+        y: f64,
+    ) -> CdpResult<()> {
         self.record(
             "Input.dispatchTouchEvent",
-            vec![serde_json::json!({"type": event_type, "x": x, "y": y})],
+            vec![serde_json::json!({"type": event_type.as_str(), "x": x, "y": y})],
         );
         Ok(())
     }
@@ -494,7 +499,7 @@ impl CdpClient for FakeCdpClient {
         Ok(vec![])
     }
 
-    async fn network_set_cookies(&self, cookies: Vec<Value>) -> CdpResult<()> {
+    async fn network_set_cookies(&self, cookies: &[Cookie]) -> CdpResult<()> {
         self.record("Network.setCookies", vec![serde_json::json!(cookies)]);
         Ok(())
     }

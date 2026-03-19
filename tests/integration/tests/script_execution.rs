@@ -32,7 +32,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert_eq!(result.outputs.len(), 1);
     assert_eq!(result.outputs[0]["title"], "Hello pwright");
 }
@@ -74,7 +74,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert_eq!(result.outputs[0]["heading"], "Hello pwright");
 }
 
@@ -105,7 +105,7 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     assert!(
         start.elapsed().as_millis() >= 100,
         "should wait at least 100ms"
@@ -140,10 +140,10 @@ steps:
         .await
         .unwrap();
 
-    assert_eq!(result.status, "ok");
+    assert_eq!(result.status, executor::ExecutionStatus::Ok);
     // First step errored but continued
-    assert_eq!(sink.results[0].status, "error");
-    assert_eq!(sink.results[1].status, "ok");
+    assert_eq!(sink.results[0].status, executor::ExecutionStatus::Error);
+    assert_eq!(sink.results[1].status, executor::ExecutionStatus::Ok);
     assert_eq!(result.outputs[0]["title"], "Hello pwright");
 }
 

@@ -46,7 +46,7 @@ pub async fn navigate(
     };
 
     let timeout_ms = if req.timeout_ms > 0.0 {
-        req.timeout_ms as u64
+        req.timeout_ms.max(0.0) as u64
     } else {
         svc.nav_timeout_ms
     };
