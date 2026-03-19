@@ -4,9 +4,7 @@ Remaining structural issues. Updated 2026-03-19.
 
 ## Open
 
-### Unit test gaps
-These modules have only integration test coverage:
-- `tab.rs` — create/close/reattach/resolve (requires Browser + real connection)
+No structural issues remain.
 
 ## Resolved
 
@@ -63,3 +61,4 @@ These modules have only integration test coverage:
 | **Unit tests** | |
 | `navigate.rs` — wait strategies | `poll_ready_state` + `wait_for_ready_state` tests |
 | `touchscreen.rs` — tap dispatch | `test_tap_dispatches_start_then_end` |
+| `tab.rs` — Tab struct | Unit tests added; Browser methods covered by integration tests |

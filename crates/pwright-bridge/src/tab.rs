@@ -147,3 +147,34 @@ impl Browser {
         Ok(tab)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::MockCdpClient;
+
+    fn make_tab(tab_id: &str, target_id: &str) -> Tab {
+        Tab {
+            session: Arc::new(MockCdpClient::new()),
+            tab_id: tab_id.to_string(),
+            target_id: target_id.to_string(),
+            created_at: Instant::now(),
+            last_used: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn tab_fields() {
+        let tab = make_tab("tab_0", "target-abc");
+        assert_eq!(tab.tab_id, "tab_0");
+        assert_eq!(tab.target_id, "target-abc");
+    }
+
+    #[test]
+    fn tab_clone_preserves_ids() {
+        let tab = make_tab("tab_1", "target-xyz");
+        let cloned = tab.clone();
+        assert_eq!(cloned.tab_id, "tab_1");
+        assert_eq!(cloned.target_id, "target-xyz");
+    }
+}
