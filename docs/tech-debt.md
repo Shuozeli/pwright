@@ -34,34 +34,48 @@ These modules have zero unit tests (covered only by integration tests):
 
 | Item | Resolution |
 |------|-----------|
-| Root node ID extraction (4 locations) | Extracted `root_node_id()` helper |
-| on_request/on_response duplication | Generic `subscribe_network_event<T>()` |
+| **Stringly-typed APIs** | |
+| CDP input event types (30+ strings) | `MouseEventType`, `KeyEventType`, `TouchEventType` enums |
+| Mouse button `Option<String>` | `MouseButton` enum |
+| `ExecutionResult.status: String` | `ExecutionStatus` enum |
 | `GotoOptions.wait_until: String` | `WaitUntil` enum |
 | `ScreenshotOptions.format: String` | `ImageFormat` enum |
 | `on_error: String` / `param_type: String` | `OnError` / `ParamType` enums |
+| **Duplication** | |
+| gRPC error conversion (40+ closures) | `cdp_to_status()` with proper status codes |
+| Node ID validation (10 match arms) | `require_node_id!()` macro |
 | go_back/go_forward duplication | `navigate_history(offset)` helper |
+| on_request/on_response duplication | Generic `subscribe_network_event<T>()` |
+| Root node ID extraction (4 locations) | `root_node_id()` helper returning `CdpResult` |
+| Duplicate poll_ready_state | CLI reload uses shared function |
+| Touch tap 3x duplication | `Page::tap()` delegates to `Touchscreen::tap()` |
+| Keyboard down/up branching | `dispatch_key()` helper |
+| Executor error emission duplicate | Single emit + conditional return |
+| Proto conversion boilerplate | `From` impls in `conversions.rs` |
+| **Bugs** | |
 | `block_media` else-if bug | Independent `if` statements |
+| `on_error: continue` wrong counter | Increments `failed` |
+| hover/drag coords before scroll | Scroll first, then get coords |
+| `WaitStrategy::None` waits | Returns immediately |
+| CSS escaping missing `]` | Escapes `]`, `\n`, `\0` |
+| **Silent failures** | |
 | `ChromeHttpClient::new()` panic | Returns `CdpResult<Self>` |
 | State file corruption silent | Warns with error message |
-| hover/drag coords before scroll | Swap order: scroll first |
-| `WaitStrategy::None` waits | Returns immediately |
-| `on_error: continue` wrong counter | Increments `failed` |
-| CSS escaping missing `]` | Escapes `]`, `\n`, `\0` |
-| unwrap_or(0.0) in get_element_center_js | Returns error |
+| `unwrap_or(0.0)` in get_element_center_js | Returns error |
+| `root_node_id` unwrap_or(1) | Returns `CdpResult<i64>` |
+| Reload poll_ready_state silenced | Logs `tracing::warn!` |
+| JsonlSink silent error drops | Logs `tracing::warn!` |
+| State file permission silenced | Logs `tracing::debug!` |
+| f64-to-u64 timeout cast | `.max(0.0)` guard |
+| **Cleanup** | |
+| `json!()` cookie construction | Typed `Cookie` struct, `&[Cookie]` API |
+| `network_set_cookies(Vec<Value>)` | `network_set_cookies(&[Cookie])` |
 | Inline JS in locator | Moved to pwright-js constants |
-| Duplicate poll_ready_state | CLI reload uses shared function |
 | Non-deterministic RefCache HashMap | Switched to BTreeMap |
 | CLI type_text 3x overhead | Uses insert_text |
-| TabHandle no Drop warning | Added Drop impl with tracing::warn |
+| TabHandle no Drop warning | Added Drop impl with `tracing::warn` |
 | Emoji in CLI output | Replaced with [ok]/[error] |
-| json!() cookie construction | Typed Cookie struct |
-| CDP input event type strings | `MouseEventType`, `KeyEventType`, `TouchEventType` enums |
-| Mouse button `Option<String>` | `MouseButton` enum |
-| `ExecutionResult.status: String` | `ExecutionStatus` enum |
-| gRPC error conversion (40+) | `cdp_to_status()` helper with proper status codes |
-| `root_node_id` unwrap_or(1) | Returns `CdpResult<i64>` |
-| `network_set_cookies(Vec<Value>)` | `network_set_cookies(&[Cookie])` |
-| JsonlSink silent error drops | `tracing::warn!` on serialization/write failure |
-| State file permission silenced | `tracing::debug!` on failure |
-| f64-to-u64 timeout cast | `.max(0.0)` guard |
-| Proto conversion boilerplate | `From` impls in `conversions.rs` |
+| Unnecessary `#[allow(unused_imports)]` | Removed |
+| Duplicate doc comment | Removed |
+| Empty placeholder test file | Deleted |
+| MockCdpClient missing setters | Added `set_targets_response()`, `set_describe_node_response()` |
