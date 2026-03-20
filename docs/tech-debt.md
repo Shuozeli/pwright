@@ -62,3 +62,4 @@ No structural issues remain.
 | `navigate.rs` — wait strategies | `poll_ready_state` + `wait_for_ready_state` tests |
 | `touchscreen.rs` — tap dispatch | `test_tap_dispatches_start_then_end` |
 | `tab.rs` — Tab struct | Unit tests added; Browser methods covered by integration tests |
+| Browser coupled to CdpConnection/CdpSession | `SessionFactory` trait + `CdpSessionFactory`; Browser stores `Arc<dyn CdpClient>` |

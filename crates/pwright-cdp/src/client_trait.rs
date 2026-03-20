@@ -3,6 +3,8 @@
 //! All bridge functions accept `&dyn CdpClient` instead of `&CdpSession`,
 //! enabling unit testing with `MockCdpClient`.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -11,6 +13,13 @@ use crate::domains::accessibility::RawAXNode;
 use crate::domains::input::{KeyEventType, MouseButton, MouseEventType, TouchEventType};
 use crate::domains::network::{Cookie, ResponseBody};
 use crate::domains::target::TargetInfo;
+
+/// Factory for creating per-tab CDP sessions from an attached session ID.
+///
+/// The real impl wraps `CdpConnection`; test fakes return mock clients.
+pub trait SessionFactory: Send + Sync {
+    fn create_session(&self, session_id: String, target_id: String) -> Arc<dyn CdpClient>;
+}
 
 /// Trait abstracting all CDP domain operations.
 ///

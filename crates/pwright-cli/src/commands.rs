@@ -533,17 +533,10 @@ pub async fn network_listen(
         .await
         .context("failed to connect to Chrome")?;
 
-    let session_id = browser
-        .browser_session()
-        .target_attach(&state.target_id)
+    let listener_session = browser
+        .attach_session(&state.target_id)
         .await
         .context("failed to attach listener session")?;
-
-    let listener_session = Arc::new(pwright_cdp::CdpSession::new(
-        browser.connection().clone(),
-        session_id.clone(),
-        state.target_id.clone(),
-    ));
 
     // Enable Network domain on the listener session
     listener_session
@@ -621,11 +614,6 @@ pub async fn network_listen(
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
         }
-    }
-
-    // Cleanup: detach the listener session
-    if let Err(e) = browser.browser_session().target_detach(&session_id).await {
-        tracing::debug!("listener session detach failed: {e}");
     }
 
     output::info("Listener stopped.");

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
-use pwright_cdp::{CdpClient, CdpConnection, CdpSession};
+use pwright_cdp::{CdpClient, CdpConnection, CdpSession, CdpSessionFactory, SessionFactory};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 use tracing::info;
 
@@ -109,8 +109,8 @@ impl Default for BrowserConfig {
 
 /// High-level browser controller. Wraps a CDP connection and manages tabs.
 pub struct Browser {
-    connection: Arc<CdpConnection>,
-    browser_session: CdpSession,
+    browser_session: Arc<dyn CdpClient>,
+    session_factory: Arc<dyn SessionFactory>,
     tabs: RwLock<HashMap<String, Tab>>,
     ref_caches: RwLock<HashMap<String, RefCache>>,
     config: BrowserConfig,
@@ -131,11 +131,12 @@ impl Browser {
         config: BrowserConfig,
         http_url: Option<String>,
     ) -> Self {
-        let browser_session = CdpSession::browser(connection.clone());
+        let browser_session: Arc<dyn CdpClient> = Arc::new(CdpSession::browser(connection.clone()));
+        let session_factory: Arc<dyn SessionFactory> = Arc::new(CdpSessionFactory::new(connection));
         let max_parallel = config.max_parallel_tabs.max(1);
         Self {
-            connection,
             browser_session,
+            session_factory,
             tabs: RwLock::new(HashMap::new()),
             ref_caches: RwLock::new(HashMap::new()),
             config,
@@ -157,14 +158,20 @@ impl Browser {
         Ok(browser)
     }
 
-    /// Access the browser-level CDP session.
-    pub fn browser_session(&self) -> &CdpSession {
-        &self.browser_session
+    /// Access the browser-level CDP client (for target management).
+    pub(crate) fn browser_client(&self) -> &dyn CdpClient {
+        &*self.browser_session
     }
 
-    /// Access the underlying connection.
-    pub fn connection(&self) -> &Arc<CdpConnection> {
-        &self.connection
+    /// Create a new per-tab CDP session by attaching to a target.
+    pub async fn attach_session(&self, target_id: &str) -> CdpResult<Arc<dyn CdpClient>> {
+        let session_id = self.browser_client().target_attach(target_id).await?;
+        let session = self
+            .session_factory
+            .create_session(session_id, target_id.to_string());
+        session.page_enable().await?;
+        session.runtime_enable().await?;
+        Ok(session)
     }
 
     /// Get the config.
@@ -285,37 +292,36 @@ impl Browser {
     /// Open a new browser tab and return a [`TabHandle`] for lifecycle management.
     ///
     /// The caller owns the tab and is responsible for calling [`TabHandle::close`].
-    /// The handle exposes [`TabHandle::target_id`] so callers can implement
-    /// fallback cleanup (e.g., HTTP `/json/close/{target_id}`) if the CDP
-    /// WebSocket is dead.
-    ///
-    /// ```rust,ignore
-    /// let handle = browser.new_tab("about:blank").await?;
-    /// let page = handle.page();
-    /// page.goto("https://example.com", None).await?;
-    /// let text = page.locator("h1").text_content().await?;
-    /// handle.close().await?;
-    /// ```
     pub async fn new_tab(self: &Arc<Self>, url: &str) -> CdpResult<TabHandle> {
         let nav_url = if url.is_empty() { "about:blank" } else { url };
-        let target_id = self.browser_session.target_create(nav_url).await?;
-        let session_id = self.browser_session.target_attach(&target_id).await?;
-        let session: Arc<dyn CdpClient> = Arc::new(CdpSession::new(
-            self.connection.clone(),
-            session_id,
-            target_id.clone(),
-        ));
+        let target_id = self.browser_client().target_create(nav_url).await?;
+        let session = self.attach_session(&target_id).await?;
 
         let closer: Arc<dyn TabCloser> = match &self.http_url {
             Some(url) => Arc::new(HttpTabCloser::new(ChromeHttpClient::new(url)?)),
-            None => {
-                let browser_client: Arc<dyn CdpClient> =
-                    Arc::new(CdpSession::browser(self.connection.clone()));
-                Arc::new(CdpTabCloser::new(browser_client))
-            }
+            None => Arc::new(CdpTabCloser::new(self.browser_session.clone())),
         };
 
         Ok(TabHandle::new(closer, session, target_id))
+    }
+
+    /// Test-only constructor using injected fakes.
+    #[cfg(test)]
+    pub(crate) fn new_for_test(
+        browser_client: Arc<dyn CdpClient>,
+        session_factory: Arc<dyn SessionFactory>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            browser_session: browser_client,
+            session_factory,
+            tabs: RwLock::new(HashMap::new()),
+            ref_caches: RwLock::new(HashMap::new()),
+            config: BrowserConfig::default(),
+            http_url: None,
+            tab_semaphore: Arc::new(Semaphore::new(4)),
+            tab_locks: dashmap::DashMap::new(),
+            tab_counter: std::sync::atomic::AtomicU64::new(0),
+        })
     }
 }
 

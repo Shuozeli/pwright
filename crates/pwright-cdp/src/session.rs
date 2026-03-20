@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
+use crate::CdpClient;
+use crate::client_trait::SessionFactory;
 use crate::connection::{CdpConnection, Result};
 use crate::events::CdpEvent;
 
@@ -59,5 +61,26 @@ impl CdpSession {
     /// The underlying connection.
     pub fn connection(&self) -> &Arc<CdpConnection> {
         &self.conn
+    }
+}
+
+/// Factory that creates per-tab `CdpSession` instances from a shared connection.
+pub struct CdpSessionFactory {
+    connection: Arc<CdpConnection>,
+}
+
+impl CdpSessionFactory {
+    pub fn new(connection: Arc<CdpConnection>) -> Self {
+        Self { connection }
+    }
+}
+
+impl SessionFactory for CdpSessionFactory {
+    fn create_session(&self, session_id: String, target_id: String) -> Arc<dyn CdpClient> {
+        Arc::new(CdpSession::new(
+            self.connection.clone(),
+            session_id,
+            target_id,
+        ))
     }
 }

@@ -2,16 +2,26 @@
 //!
 //! Records all CDP method calls for assertion, returns configurable responses.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use pwright_cdp::CdpClient;
+use pwright_cdp::SessionFactory;
 use pwright_cdp::connection::Result as CdpResult;
 use pwright_cdp::domains::accessibility::RawAXNode;
 use pwright_cdp::domains::network::{Cookie, ResponseBody};
 use pwright_cdp::domains::target::TargetInfo;
 use pwright_cdp::{KeyEventType, MouseButton, MouseEventType, TouchEventType};
 use serde_json::Value;
+
+/// Fake session factory that returns `MockCdpClient` instances for testing.
+pub struct FakeSessionFactory;
+
+impl SessionFactory for FakeSessionFactory {
+    fn create_session(&self, _session_id: String, _target_id: String) -> Arc<dyn CdpClient> {
+        Arc::new(MockCdpClient::new())
+    }
+}
 
 /// A recorded CDP method call.
 #[derive(Debug, Clone)]
