@@ -325,11 +325,7 @@ pub async fn select_by_node_id(
         .get("object")
         .and_then(|o| o.get("objectId"))
         .and_then(|id| id.as_str())
-        .ok_or_else(|| {
-            pwright_cdp::connection::CdpError::Other(
-                "could not resolve node for select".to_string(),
-            )
-        })?;
+        .ok_or_else(|| CdpError::Other("could not resolve node for select".to_string()))?;
 
     let js = pwright_js::element::SELECT_OPTION;
 

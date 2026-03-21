@@ -1,63 +1,7 @@
 /// Formatted terminal output for CLI results.
 use pwright_bridge::A11yNode;
 
-/// Print a snapshot as a tree of accessibility nodes.
-pub fn print_snapshot(nodes: &[A11yNode]) {
-    if nodes.is_empty() {
-        println!("  (empty snapshot)");
-        return;
-    }
-    for node in nodes {
-        let indent = "  ".repeat(node.depth as usize);
-        let ref_tag = if node.ref_id.is_empty() {
-            String::new()
-        } else {
-            format!("[{}] ", node.ref_id)
-        };
-        let name = if node.name.is_empty() {
-            String::new()
-        } else {
-            format!(" \"{}\"", node.name)
-        };
-        let value = if node.value.is_empty() {
-            String::new()
-        } else {
-            format!(" value={}", node.value)
-        };
-        let extra = if node.focused { " (focused)" } else { "" };
-        println!(
-            "{}{}{}{}{}{}",
-            indent, ref_tag, node.role, name, value, extra
-        );
-    }
-}
-
-pub fn ok(msg: &str) {
-    println!("[ok] {msg}");
-}
-
-pub fn info(msg: &str) {
-    println!("{msg}");
-}
-
-pub fn error(msg: &str) {
-    eprintln!("[error] {msg}");
-}
-
-/// Print a list of tabs.
-pub fn print_tab_list(tabs: &[(String, String, String)], active: &str) {
-    if tabs.is_empty() {
-        println!("  (no tabs)");
-        return;
-    }
-    for (id, title, url) in tabs {
-        let marker = if id == active { " ← active" } else { "" };
-        println!("  {} | {} | {}{}", id, title, url, marker);
-    }
-}
-
-#[cfg(test)]
-/// Format a snapshot node as a string (for testing).
+/// Format a snapshot node as a string.
 fn format_snapshot_node(node: &A11yNode) -> String {
     let indent = "  ".repeat(node.depth as usize);
     let ref_tag = if node.ref_id.is_empty() {
@@ -80,6 +24,41 @@ fn format_snapshot_node(node: &A11yNode) -> String {
         "{}{}{}{}{}{}",
         indent, ref_tag, node.role, name, value, extra
     )
+}
+
+/// Print a snapshot as a tree of accessibility nodes.
+pub fn print_snapshot(nodes: &[A11yNode]) {
+    if nodes.is_empty() {
+        println!("  (empty snapshot)");
+        return;
+    }
+    for node in nodes {
+        println!("{}", format_snapshot_node(node));
+    }
+}
+
+pub fn ok(msg: &str) {
+    println!("[ok] {msg}");
+}
+
+pub fn info(msg: &str) {
+    println!("{msg}");
+}
+
+pub fn error(msg: &str) {
+    eprintln!("[error] {msg}");
+}
+
+/// Print a list of tabs.
+pub fn print_tab_list(tabs: &[(String, String, String)], active: &str) {
+    if tabs.is_empty() {
+        println!("  (no tabs)");
+        return;
+    }
+    for (id, title, url) in tabs {
+        let marker = if id == active { " <- active" } else { "" };
+        println!("  {} | {} | {}{}", id, title, url, marker);
+    }
 }
 
 #[cfg(test)]
