@@ -59,7 +59,7 @@ Translates user-intent into CDP command sequences.
   - **`keyboard.rs`** — `Keyboard` struct: `press()`, `type_text()`, `down()`, `up()`, `insert_text()`.
   - **`mouse.rs`** — `Mouse` struct: `click()`, `dblclick()`, `move_to()`, `wheel()`, `down()`, `up()`.
   - **`touchscreen.rs`** — `Touchscreen` struct: `tap(x, y)` via `Input.dispatchTouchEvent`.
-  - **`selectors.rs`** — Selector resolution engine supporting CSS and JS-based selectors (`__pw_text=`, `__pw_label=`, `__pw_role=`, `__pw_filter_text=`, `__pw_nth=`).
+  - **`selectors.rs`** — Selector resolution engine. Uses `SelectorKind` enum (Css, Text, TextExact, Label, Role, Nth, FilterText) dispatching to CSS queries or JS-based element finding.
   - **`network.rs`** — Network event types (`NetworkRequest`, `NetworkResponse`) and CDP event parsing helpers for `Page::on_request()`/`on_response()`.
 
 ### `pwright-script` — Declarative Script Runner

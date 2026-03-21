@@ -4,7 +4,7 @@
 # Auth: none (unless the article is paywalled)
 #
 # Usage:
-#   pwright script run examples/recipes/research/extract-article.yaml \
+#   pwright script run examples/recipes/research/generic/extract-article.yaml \
 #     --param url="https://example.com/blog/post"
 
 name: "Extract Article"

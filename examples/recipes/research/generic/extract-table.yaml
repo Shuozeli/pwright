@@ -4,9 +4,9 @@
 # Auth: none
 #
 # Usage:
-#   pwright script run examples/recipes/research/extract-table.yaml \
+#   pwright script run examples/recipes/research/generic/extract-table.yaml \
 #     --param url="https://example.com/data"
-#   pwright script run examples/recipes/research/extract-table.yaml \
+#   pwright script run examples/recipes/research/generic/extract-table.yaml \
 #     --param url="https://example.com" --param table_selector=".pricing-table"
 
 name: "Extract Table"

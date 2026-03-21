@@ -1,0 +1,57 @@
+# xueqiu-quote.yaml -- Extract stock quote and stats from Xueqiu.
+#
+# Type: query (read-only, safe)
+# Auth: none required (public stock pages)
+# Tested: 2026-03-21 (Xueqiu stock page with .stock-name, .stock-current, .stock-info)
+#
+# Supports US stocks (AAPL, TSLA), CN A-shares (SH600519, SZ000001),
+# HK stocks (00700, 09988), and indices (SH000001, .DJI).
+#
+# Usage:
+#   pwright script run examples/recipes/research/finance/xueqiu-quote.yaml --param symbol=AAPL
+#   pwright script run examples/recipes/research/finance/xueqiu-quote.yaml --param symbol=SH600519
+#   pwright script run examples/recipes/research/finance/xueqiu-quote.yaml --param symbol=00700
+
+name: "Xueqiu Quote"
+version: 1
+type: query
+
+params:
+  symbol:
+    type: string
+    required: true
+    description: "Stock symbol (AAPL, TSLA, SH600519, SZ000001, 00700, .DJI)"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  extract_quote: |
+    (() => {
+      const stats = {};
+      document.querySelectorAll('.quote-info td').forEach(td => {
+        const text = td.innerText?.trim();
+        if (!text) return;
+        const match = text.match(/^(.+?)[:：](.+)$/);
+        if (match) stats[match[1].trim()] = match[2].trim();
+      });
+      return JSON.stringify({
+        name: document.querySelector('.stock-name')?.innerText?.trim(),
+        price: document.querySelector('.stock-current')?.innerText?.trim(),
+        change: document.querySelector('.stock-change')?.innerText?.trim(),
+        stats,
+        url: window.location.href,
+      });
+    })()
+
+steps:
+  - goto: "https://xueqiu.com/S/{{ symbol }}"
+    wait_for: ".stock-current"
+  - wait: 5000
+  - eval:
+      ref: extract_quote
+      save_as: quote
+  - output:
+      source: "Xueqiu"
+      symbol: "{{ symbol }}"
+      quote: "{{ quote }}"

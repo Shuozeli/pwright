@@ -93,14 +93,32 @@ impl StepKind {
             Self::Extract(_) => "extract",
             Self::Eval(_) => "eval",
             Self::Output(_) => "output",
-            Self::Wait(_) => "wait",
+            Self::Wait(w) => match &w.kind {
+                WaitKind::Duration(_) => "wait",
+                WaitKind::Text { .. } => "wait_for_text",
+                WaitKind::Selector { .. } => "wait_for",
+                WaitKind::Expression { .. } => "wait_until",
+            },
         }
     }
 }
 
+/// What kind of wait to perform.
+#[derive(Debug, Clone)]
+pub enum WaitKind {
+    /// Sleep for a fixed duration.
+    Duration(u64),
+    /// Wait until page body contains text.
+    Text { text: String, timeout_ms: u64 },
+    /// Wait until a CSS selector is attached to the DOM.
+    Selector { selector: String, timeout_ms: u64 },
+    /// Wait until a JS expression returns truthy.
+    Expression { js: String, timeout_ms: u64 },
+}
+
 #[derive(Debug, Clone)]
 pub struct WaitStep {
-    pub duration_ms: u64,
+    pub kind: WaitKind,
 }
 
 #[derive(Debug, Clone)]

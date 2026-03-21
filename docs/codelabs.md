@@ -332,20 +332,20 @@ pwright eval "document.querySelectorAll('a').length"
 
 ### JS-Based Selector Resolution
 
-For `get_by_text`, `get_by_label`, and `get_by_role`, pwright cannot use CSS selectors because CSS has no native text-content or role-matching capability. Instead, these selectors use a **JS bridge approach**:
+For `get_by_text`, `get_by_label`, and `get_by_role`, pwright cannot use CSS selectors because CSS has no native text-content or role-matching capability. Instead, these selectors use a **typed enum + JS bridge approach**:
 
-1. A special prefix (e.g., `__pw_text=`, `__pw_label=`, `__pw_role=`) is embedded in the selector string
-2. `selectors.rs` detects the prefix and delegates to `Runtime.evaluate`
+1. `Page::get_by_text()` etc. create a `SelectorKind::Text(...)` / `SelectorKind::Label(...)` / `SelectorKind::Role { ... }` enum variant
+2. `selectors.rs` matches on the variant and delegates to `Runtime.evaluate` with generated JS
 3. The JS code finds the matching element and returns its `objectId`
 4. `DOM.requestNode` converts the `objectId` to a `nodeId` for CDP operations
 
-This keeps the `Locator` type simple (just a selector string + session + clock reference) while supporting rich matching beyond CSS.
+The `Locator` stores a `SelectorKind` enum (not a raw string), providing compile-time guarantees on selector validity.
 
 ### Selector Composition Strategy
 
 - **`and()`**: CSS `:is()` pseudo-class for same-element intersection (`button:is(.primary)`)
 - **`or()`**: CSS union via comma (`button, a.action`)
-- **`filter_by_text()`**: JS-based post-filter using `__pw_filter_text` prefix
+- **`filter_by_text()`**: `SelectorKind::FilterText { base, text }` — JS-based post-filter
 
 ### Touchscreen via CDP
 

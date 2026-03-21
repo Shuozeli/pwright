@@ -1,0 +1,60 @@
+# weibo-feed.yaml -- Extract posts from Weibo home timeline.
+#
+# Type: query (read-only, safe)
+# Auth: YES -- must be logged into weibo.com in the Chrome instance
+# Tested: 2026-03-21 (Weibo Vue virtual scroller with .wbpro-feed-content)
+#
+# Usage:
+#   pwright script run examples/recipes/research/social/weibo-feed.yaml
+
+name: "Weibo Feed"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  check_login: |
+    (() => {
+      if (window.location.href.includes('/login') || window.location.href.includes('/signup'))
+        return 'logged_out';
+      return 'logged_in';
+    })()
+
+  extract_feed: |
+    (() => {
+      const items = document.querySelectorAll('.wbpro-scroller-item');
+      const results = [];
+      for (const item of items) {
+        const ogText = item.querySelector('.wbpro-feed-ogText');
+        if (!ogText) continue;
+        const nameEl = item.querySelector('[class*=head_info] a[class*=name]')
+            || item.querySelector('[class*=head-info] a');
+        const reText = item.querySelector('.wbpro-feed-reText');
+        results.push({
+          author: nameEl?.textContent?.trim() || null,
+          text: ogText.innerText?.trim()?.slice(0, 300),
+          repost: reText?.innerText?.trim()?.slice(0, 200) || null,
+          time: item.querySelector('[class*=head-info_time]')?.textContent?.trim() || null,
+          link: item.querySelector('a[href*="/detail/"]')?.href || null,
+        });
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://weibo.com/"
+    timeout_ms: 15000
+  - wait: 8000
+  - eval:
+      ref: check_login
+      save_as: login_status
+    on_error: continue
+  - eval:
+      ref: extract_feed
+      save_as: posts
+  - output:
+      source: "Weibo Feed"
+      login_status: "{{ login_status }}"
+      posts: "{{ posts }}"

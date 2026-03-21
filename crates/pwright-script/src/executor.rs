@@ -210,10 +210,36 @@ async fn execute_step(
             }
         }
 
-        StepKind::Wait(w) => {
-            details.insert("duration_ms".into(), w.duration_ms.to_string());
-            tokio::time::sleep(std::time::Duration::from_millis(w.duration_ms)).await;
-        }
+        StepKind::Wait(w) => match &w.kind {
+            crate::model::WaitKind::Duration(ms) => {
+                details.insert("duration_ms".into(), ms.to_string());
+                tokio::time::sleep(std::time::Duration::from_millis(*ms)).await;
+            }
+            crate::model::WaitKind::Text { text, timeout_ms } => {
+                details.insert("text".into(), text.clone());
+                details.insert("timeout_ms".into(), timeout_ms.to_string());
+                page.wait_for_text(text, *timeout_ms)
+                    .await
+                    .map_err(ScriptError::Cdp)?;
+            }
+            crate::model::WaitKind::Selector {
+                selector,
+                timeout_ms,
+            } => {
+                details.insert("selector".into(), selector.clone());
+                details.insert("timeout_ms".into(), timeout_ms.to_string());
+                page.wait_for_selector(selector, *timeout_ms)
+                    .await
+                    .map_err(ScriptError::Cdp)?;
+            }
+            crate::model::WaitKind::Expression { js, timeout_ms } => {
+                details.insert("expression".into(), js.clone());
+                details.insert("timeout_ms".into(), timeout_ms.to_string());
+                page.wait_until(js, *timeout_ms)
+                    .await
+                    .map_err(ScriptError::Cdp)?;
+            }
+        },
 
         StepKind::Output(o) => {
             let mut row = HashMap::new();

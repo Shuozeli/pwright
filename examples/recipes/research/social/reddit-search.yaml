@@ -1,0 +1,59 @@
+# reddit-search.yaml -- Search Reddit and extract results.
+#
+# Type: query (read-only, safe)
+# Auth: none required (public search)
+# Tested: 2026-03-21 (Reddit new UI with shreddit-post web components)
+#
+# Usage:
+#   pwright script run examples/recipes/research/social/reddit-search.yaml --param query="rust async"
+#   pwright script run examples/recipes/research/social/reddit-search.yaml --param query="stock market" --param sort=new
+
+name: "Reddit Search"
+version: 1
+type: query
+
+params:
+  query:
+    type: string
+    required: true
+    description: "Search query"
+  sort:
+    type: string
+    default: "relevance"
+    description: "Sort order: relevance, hot, top, new, comments"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  extract_results: |
+    (() => {
+      const posts = document.querySelectorAll('shreddit-post');
+      if (posts.length === 0) return JSON.stringify([]);
+      const results = [];
+      for (const p of posts) {
+        results.push({
+          title: p.getAttribute('post-title'),
+          url: 'https://www.reddit.com' + p.getAttribute('permalink'),
+          score: parseInt(p.getAttribute('score')) || 0,
+          author: p.getAttribute('author'),
+          comments: parseInt(p.getAttribute('comment-count')) || 0,
+          subreddit: p.getAttribute('subreddit-prefixed-name'),
+          created: p.getAttribute('created-timestamp'),
+        });
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://www.reddit.com/search/?q={{ query }}&sort={{ sort }}"
+    wait_for: "shreddit-post"
+  - wait: 2000
+  - eval:
+      ref: extract_results
+      save_as: results
+  - output:
+      source: "Reddit Search"
+      query: "{{ query }}"
+      sort: "{{ sort }}"
+      results: "{{ results }}"

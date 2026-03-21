@@ -1,0 +1,59 @@
+# weibo-hot.yaml -- Extract trending topics from Weibo hot search.
+#
+# Type: query (read-only, safe)
+# Auth: YES -- must be logged into weibo.com in the Chrome instance
+# Tested: 2026-03-21 (Weibo Vue virtual scroller with .wbpro-scroller-item)
+#
+# Usage:
+#   pwright script run examples/recipes/research/social/weibo-hot.yaml
+
+name: "Weibo Hot Search"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  check_login: |
+    (() => {
+      if (window.location.href.includes('/login') || window.location.href.includes('/signup'))
+        return 'logged_out';
+      return 'logged_in';
+    })()
+
+  extract_hot: |
+    (() => {
+      const items = document.querySelectorAll('.wbpro-scroller-item');
+      const results = [];
+      for (const item of items) {
+        const text = item.innerText?.split('\n').filter(Boolean);
+        if (!text || text.length < 2) continue;
+        const link = item.querySelector('a')?.href;
+        const isRanked = /^\d+$/.test(text[0]);
+        results.push({
+          rank: isRanked ? parseInt(text[0]) : 0,
+          title: isRanked ? text[1] : text[0],
+          tag: isRanked ? (isNaN(parseInt(text[2])) ? text[2] : null) : (isNaN(parseInt(text[1])) ? text[1] : null),
+          heat: parseInt(isRanked ? (text[3] || text[2]) : (text[2] || text[1])) || 0,
+          url: link || null,
+        });
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://weibo.com/hot/search"
+  - wait_until: "document.querySelectorAll('.wbpro-scroller-item').length > 5"
+    timeout_ms: 15000
+  - eval:
+      ref: check_login
+      save_as: login_status
+    on_error: continue
+  - eval:
+      ref: extract_hot
+      save_as: topics
+  - output:
+      source: "Weibo Hot Search"
+      login_status: "{{ login_status }}"
+      topics: "{{ topics }}"

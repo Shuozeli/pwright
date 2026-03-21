@@ -1,0 +1,67 @@
+# reddit-feed.yaml -- Extract posts from a Reddit subreddit or front page.
+#
+# Type: query (read-only, safe)
+# Auth: none required (public subreddits). Logged-in users see personalized feed.
+# Tested: 2026-03-21 (Reddit new UI with shreddit-post web components)
+#
+# Usage:
+#   pwright script run examples/recipes/research/social/reddit-feed.yaml
+#   pwright script run examples/recipes/research/social/reddit-feed.yaml --param subreddit=r/rust
+#   pwright script run examples/recipes/research/social/reddit-feed.yaml --param subreddit=r/wallstreetbets
+
+name: "Reddit Feed"
+version: 1
+type: query
+
+params:
+  subreddit:
+    type: string
+    default: ""
+    description: "Subreddit path (e.g. r/rust). Empty for front page."
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  check_page: |
+    (() => {
+      if (document.querySelector('shreddit-post')) return 'ready';
+      if (document.querySelector('[class*="error"]') || document.title.includes('Sorry'))
+        return 'error: page failed to load or subreddit not found';
+      return 'loading';
+    })()
+
+  extract_posts: |
+    (() => {
+      const posts = document.querySelectorAll('shreddit-post');
+      const results = [];
+      for (const p of posts) {
+        results.push({
+          title: p.getAttribute('post-title'),
+          url: 'https://www.reddit.com' + p.getAttribute('permalink'),
+          score: parseInt(p.getAttribute('score')) || 0,
+          author: p.getAttribute('author'),
+          comments: parseInt(p.getAttribute('comment-count')) || 0,
+          subreddit: p.getAttribute('subreddit-prefixed-name'),
+          created: p.getAttribute('created-timestamp'),
+          flair: p.getAttribute('flair-text-content') || null,
+        });
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://www.reddit.com/{{ subreddit }}"
+    wait_for: "shreddit-post"
+  - wait: 2000
+  - eval:
+      ref: check_page
+      save_as: page_status
+  - eval:
+      ref: extract_posts
+      save_as: posts
+  - output:
+      source: "Reddit"
+      subreddit: "{{ subreddit }}"
+      page_status: "{{ page_status }}"
+      posts: "{{ posts }}"

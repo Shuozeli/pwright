@@ -34,6 +34,16 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 - [Network Capture Design](knowledge/network-capture-design.md) — Second CDP session listener architecture
 - CLI commands: `network-listen`, `network-list`, `network-get`
 
+## Site Explorations
+
+- [Reddit Structure](exploration/reddit-structure.md) — `shreddit-post` web component attributes (tested 2026-03-21)
+- [X.com Structure](exploration/x-structure.md) — `data-testid` tweet selectors (tested 2026-03-21)
+
+## Planning
+
+- [Improvements](knowledge/pwright-improvements.md) — Proposed improvements (P0-P3, prioritized)
+- [Recipe Catalog](knowledge/recipe-catalog.md) — Full proposed recipe list (EN + CN sites)
+
 ## Reference
 
 - [Playwright API Mapping](knowledge/playwright-api.md) — Full Playwright API compatibility matrix

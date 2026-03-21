@@ -284,6 +284,33 @@ enum Command {
         filename: Option<String>,
     },
 
+    /// Wait until page body contains text
+    WaitForText {
+        /// Text to wait for (substring match)
+        text: String,
+        /// Timeout in milliseconds
+        #[arg(long, default_value = "30000")]
+        timeout: u64,
+    },
+
+    /// Wait until a CSS selector appears in the DOM
+    WaitFor {
+        /// CSS selector to wait for
+        selector: String,
+        /// Timeout in milliseconds
+        #[arg(long, default_value = "30000")]
+        timeout: u64,
+    },
+
+    /// Wait until a JS expression returns truthy
+    WaitUntil {
+        /// JavaScript expression
+        expression: String,
+        /// Timeout in milliseconds
+        #[arg(long, default_value = "30000")]
+        timeout: u64,
+    },
+
     /// Check Chrome connectivity
     Health,
 
@@ -417,6 +444,16 @@ async fn main() {
             path,
         } => commands::cookie_set(&mut state, &name, &value, &domain, &path).await,
         Command::Pdf { filename } => commands::pdf(&mut state, filename.as_deref()).await,
+        Command::WaitForText { text, timeout } => {
+            commands::wait_for_text(&mut state, &text, timeout).await
+        }
+        Command::WaitFor { selector, timeout } => {
+            commands::wait_for(&mut state, &selector, timeout).await
+        }
+        Command::WaitUntil {
+            expression,
+            timeout,
+        } => commands::wait_until(&mut state, &expression, timeout).await,
         Command::Health => commands::health(&state).await,
         Command::Script { action } => commands::script(&cdp, action).await,
     };

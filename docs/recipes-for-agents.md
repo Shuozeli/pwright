@@ -249,25 +249,30 @@ for each specific page.
 
 ## What We Ship
 
-11 YAML recipes + 4 network capture scripts across 5 categories, ready to use:
+15 YAML recipes across 5 categories, ready to use. See
+[recipe-catalog.md](knowledge/recipe-catalog.md) for the full proposed list
+including Chinese sites (Zhihu, Weibo, Xueqiu, Baidu).
 
-| Category | Recipes | Auth needed |
-|----------|---------|:-----------:|
-| Research | Google Search, HN Feed, Article Extractor, Table Extractor | No |
-| Monitoring | Dashboard Screenshot, Deploy Health Check | No |
-| Communication | Gmail Read, Gmail Send, GitHub Notifications | Yes |
-| Automation | Login + Extract, Form Fill + Submit | Yes |
+| Category | Subcategory | Recipes | Auth |
+|----------|-------------|---------|:----:|
+| Research | News | HN Feed | No |
+| Research | Social | Reddit Feed, Reddit Search, X Feed, X Search | Mixed |
+| Research | Search | Google Search | No |
+| Research | Generic | Article Extractor, Table Extractor | No |
+| Monitoring | -- | Dashboard Screenshot, Deploy Health Check | No |
+| Communication | -- | Gmail Read, Gmail Send, GitHub Notifications | Yes |
+| Automation | -- | Login + Extract, Form Fill + Submit | Yes |
 
 ```bash
 # Extract HN front page (no auth, stable selectors)
-pwright script run recipes/research/hackernews-feed.yaml
+pwright script run recipes/research/news/hackernews-feed.yaml
 
 # Screenshot an internal dashboard
 pwright script run recipes/monitoring/screenshot-dashboard.yaml \
   --param url="https://grafana.internal/d/api-latency"
 
 # Extract a table from any page
-pwright script run recipes/research/extract-table.yaml \
+pwright script run recipes/research/generic/extract-table.yaml \
   --param url="https://example.com/pricing" --param table_selector=".pricing-table"
 ```
 
@@ -361,7 +366,7 @@ pwright is open source: https://github.com/Shuozeli/pwright
 
 ```bash
 cargo build --release
-pwright script run examples/recipes/research/hackernews-feed.yaml
+pwright script run examples/recipes/research/news/hackernews-feed.yaml
 ```
 
 Recipes are YAML. Write one for your internal dashboard, your

@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::error::ScriptError;
 use crate::model::{
     ClickStep, EvalStep, ExtractStep, FillStep, GotoStep, JsFunction, OnError, OutputStep,
-    ParamDef, ParamType, PressStep, Script, ScriptConfig, Step, StepKind, WaitStep,
+    ParamDef, ParamType, PressStep, Script, ScriptConfig, Step, StepKind, WaitKind, WaitStep,
 };
 
 /// Parse a YAML string into a Script.
@@ -229,11 +229,46 @@ fn parse_step(val: &serde_yaml::Value, index: usize) -> Result<Step, ScriptError
         StepKind::Output(OutputStep { fields })
     } else if let Some(ms) = val["wait"].as_i64() {
         StepKind::Wait(WaitStep {
-            duration_ms: ms.max(0) as u64,
+            kind: WaitKind::Duration(ms.max(0) as u64),
         })
     } else if let Some(ms) = val["wait"].as_f64() {
         StepKind::Wait(WaitStep {
-            duration_ms: ms.max(0.0) as u64,
+            kind: WaitKind::Duration(ms.max(0.0) as u64),
+        })
+    } else if let Some(text) = val["wait_for_text"].as_str() {
+        let timeout_ms = val["timeout_ms"]
+            .as_i64()
+            .map(|n| n.max(0) as u64)
+            .unwrap_or(30000);
+        StepKind::Wait(WaitStep {
+            kind: WaitKind::Text {
+                text: text.to_string(),
+                timeout_ms,
+            },
+        })
+    } else if val["wait_for"].is_string() && val.get("goto").is_none() {
+        // Standalone wait_for (not the goto.wait_for field)
+        let selector = val["wait_for"].as_str().unwrap().to_string();
+        let timeout_ms = val["timeout_ms"]
+            .as_i64()
+            .map(|n| n.max(0) as u64)
+            .unwrap_or(30000);
+        StepKind::Wait(WaitStep {
+            kind: WaitKind::Selector {
+                selector,
+                timeout_ms,
+            },
+        })
+    } else if let Some(js) = val["wait_until"].as_str() {
+        let timeout_ms = val["timeout_ms"]
+            .as_i64()
+            .map(|n| n.max(0) as u64)
+            .unwrap_or(30000);
+        StepKind::Wait(WaitStep {
+            kind: WaitKind::Expression {
+                js: js.to_string(),
+                timeout_ms,
+            },
         })
     } else {
         return Err(ScriptError::Parse(format!(

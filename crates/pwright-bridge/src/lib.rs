@@ -13,7 +13,9 @@ pub mod tab;
 
 pub mod test_utils;
 
-pub use browser::{Browser, BrowserConfig, CdpTabCloser, HttpTabCloser, TabCloser, TabHandle};
+pub use browser::{
+    Browser, BrowserConfig, CdpTabCloser, HttpTabCloser, TabCloser, TabHandle, rewrite_ws_url,
+};
 pub use chrome_http::ChromeHttpClient;
 pub use evaluate::{FromEvalJson, FromEvalResult};
 pub use snapshot::{A11yNode, RefCache};

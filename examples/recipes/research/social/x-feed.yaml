@@ -1,0 +1,75 @@
+# x-feed.yaml -- Extract tweets from X.com (Twitter) timeline.
+#
+# Type: query (read-only, safe)
+# Auth: YES -- must be logged into X.com in the Chrome instance
+# Tested: 2026-03-21 (X.com React UI with data-testid attributes)
+#
+# Usage:
+#   pwright script run examples/recipes/research/social/x-feed.yaml
+#   pwright script run examples/recipes/research/social/x-feed.yaml --param max_tweets=5
+
+name: "X Feed"
+version: 1
+type: query
+
+params:
+  max_tweets:
+    type: integer
+    default: "20"
+    description: "Maximum tweets to extract"
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  check_login: |
+    (() => {
+      const nav = document.querySelector('nav[role="navigation"]');
+      if (!nav) return 'no_navigation';
+      const links = Array.from(nav.querySelectorAll('a')).map(a => a.getAttribute('aria-label') || '');
+      if (links.some(l => l === 'Profile')) return 'logged_in';
+      return 'logged_out';
+    })()
+
+  extract_tweets: |
+    (() => {
+      const tweets = document.querySelectorAll('[data-testid="tweet"]');
+      const results = [];
+      for (const t of tweets) {
+        const parts = (t.querySelector('[data-testid="User-Name"]')?.innerText || '').split('\n');
+        const likesLabel = t.querySelector('[data-testid="like"]')?.getAttribute('aria-label') || '';
+        const retweetsLabel = t.querySelector('[data-testid="retweet"]')?.getAttribute('aria-label') || '';
+        const repliesLabel = t.querySelector('[data-testid="reply"]')?.getAttribute('aria-label') || '';
+        results.push({
+          displayName: parts[0] || '',
+          handle: parts[1] || '',
+          time: parts[3] || '',
+          text: (t.querySelector('[data-testid="tweetText"]')?.innerText || '').slice(0, 500),
+          likes: parseInt(likesLabel) || 0,
+          retweets: parseInt(retweetsLabel) || 0,
+          replies: parseInt(repliesLabel) || 0,
+          link: t.querySelector('a[href*="/status/"]')?.href || null,
+          verified: !!t.querySelector('[data-testid="icon-verified"]'),
+          hasImage: !!t.querySelector('[data-testid="tweetPhoto"]'),
+          hasCard: !!t.querySelector('[data-testid="card.wrapper"]'),
+        });
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://x.com/home"
+    wait_for: "nav[role='navigation']"
+  - wait: 2000
+  - eval:
+      ref: check_login
+      save_as: login_status
+    on_error: continue
+  - wait: 2000
+  - eval:
+      ref: extract_tweets
+      save_as: tweets
+  - output:
+      source: "X.com"
+      login_status: "{{ login_status }}"
+      tweets: "{{ tweets }}"

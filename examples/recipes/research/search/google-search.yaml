@@ -4,7 +4,7 @@
 # Auth: none
 #
 # Usage:
-#   pwright script run examples/recipes/research/google-search.yaml \
+#   pwright script run examples/recipes/research/search/google-search.yaml \
 #     --param query="rust browser automation"
 
 name: "Google Search"

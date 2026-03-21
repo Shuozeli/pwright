@@ -68,7 +68,10 @@ pub async fn connect(state: &mut CliState) -> Result<Arc<Browser>> {
 
 /// `pwright open [url]`
 pub async fn open(state: &mut CliState, cdp_url: &str, url: Option<&str>) -> Result<()> {
-    let ws_url = CliState::fetch_ws_url(cdp_url).await?;
+    let raw_ws = CliState::fetch_ws_url(cdp_url).await?;
+    let ws_url = pwright_bridge::rewrite_ws_url(cdp_url, &raw_ws).context(format!(
+        "failed to rewrite WS URL: cdp={cdp_url}, ws={raw_ws}"
+    ))?;
     state.cdp_url = cdp_url.to_string();
     state.ws_url = ws_url;
 
@@ -950,6 +953,51 @@ pub async fn health(state: &CliState) -> Result<()> {
             output::error(&format!("Chrome unreachable: {}", e));
         }
     }
+    Ok(())
+}
+
+/// `pwright wait-for-text <text> [--timeout ms]`
+pub async fn wait_for_text(state: &mut CliState, text: &str, timeout_ms: u64) -> Result<()> {
+    let browser = connect(state).await?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+    let page = pwright_bridge::playwright::Page::new(tab.session.clone());
+    page.wait_for_text(text, timeout_ms)
+        .await
+        .context("wait_for_text failed")?;
+    output::ok(&format!("Text found: \"{}\"", text));
+    Ok(())
+}
+
+/// `pwright wait-for <selector> [--timeout ms]`
+pub async fn wait_for(state: &mut CliState, selector: &str, timeout_ms: u64) -> Result<()> {
+    let browser = connect(state).await?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+    let page = pwright_bridge::playwright::Page::new(tab.session.clone());
+    page.wait_for_selector(selector, timeout_ms)
+        .await
+        .context("wait_for failed")?;
+    output::ok(&format!("Selector found: \"{}\"", selector));
+    Ok(())
+}
+
+/// `pwright wait-until <expression> [--timeout ms]`
+pub async fn wait_until(state: &mut CliState, expression: &str, timeout_ms: u64) -> Result<()> {
+    let browser = connect(state).await?;
+    let tab = browser
+        .resolve_tab(&state.active_tab)
+        .await
+        .context("no active tab")?;
+    let page = pwright_bridge::playwright::Page::new(tab.session.clone());
+    page.wait_until(expression, timeout_ms)
+        .await
+        .context("wait_until failed")?;
+    output::ok("Expression is truthy");
     Ok(())
 }
 

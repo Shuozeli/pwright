@@ -86,6 +86,27 @@ verification (e.g. "clicking a checkbox changes checked state").
 | "Does is_checked() return true for a checked checkbox?" | FakeCdpClient |
 | "Does first() pick the first of 3 elements?" | FakeCdpClient |
 | "Does wait_for_response capture network events?" | MockCdpClient (event injection) |
+| "Does create_tab call Target.createTarget?" | MockCdpClient + FakeSessionFactory |
+
+### SessionFactory for Browser-level tests
+
+`Browser` stores `Arc<dyn CdpClient>` (browser session) and `Arc<dyn SessionFactory>`
+(tab session creator) instead of concrete `CdpSession`/`CdpConnection`. This enables
+unit testing of `tab.rs` methods (create_tab, close_tab, resolve_tab, list_tabs) without
+a real WebSocket server.
+
+```rust
+use pwright_bridge::test_utils::{MockCdpClient, FakeSessionFactory};
+
+let mock = Arc::new(MockCdpClient::new());
+let browser = Browser::new_for_test(mock.clone(), Arc::new(FakeSessionFactory));
+
+let tab = browser.create_tab("https://example.com").await?;
+assert_eq!(mock.calls_for("Target.createTarget").len(), 1);
+```
+
+`FakeSessionFactory` returns fresh `MockCdpClient` instances for each tab session.
+`Browser::new_for_test()` is `#[cfg(test)]` only.
 
 ---
 

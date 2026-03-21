@@ -1,0 +1,66 @@
+# wikipedia-article.yaml -- Extract article summary, sections, and infobox from Wikipedia.
+#
+# Type: query (read-only, safe)
+# Auth: none required
+# Tested: 2026-03-21 (MediaWiki with .mw-parser-output, .mw-heading2, .infobox)
+#
+# Usage:
+#   pwright script run examples/recipes/research/knowledge/wikipedia-article.yaml --param title="Rust_(programming_language)"
+#   pwright script run examples/recipes/research/knowledge/wikipedia-article.yaml --param title="Large_language_model"
+#   pwright script run examples/recipes/research/knowledge/wikipedia-article.yaml --param title="深度学习" --param lang=zh
+
+name: "Wikipedia Article"
+version: 1
+type: query
+
+params:
+  title:
+    type: string
+    required: true
+    description: "Article title (use underscores for spaces, e.g. Rust_(programming_language))"
+  lang:
+    type: string
+    default: "en"
+    description: "Language code: en, zh, ja, de, fr, etc."
+
+config:
+  default_timeout_ms: 10000
+
+scripts:
+  extract_article: |
+    (() => {
+      const firstP = document.querySelector('.mw-parser-output > p:not(.mw-empty-elt)');
+      const infobox = document.querySelector('.infobox');
+      let infoboxData = null;
+      if (infobox) {
+        infoboxData = {};
+        infobox.querySelectorAll('tr').forEach(r => {
+          const th = r.querySelector('th');
+          const td = r.querySelector('td');
+          if (th && td) infoboxData[th.innerText.trim()] = td.innerText.trim();
+        });
+      }
+      return JSON.stringify({
+        title: document.querySelector('#firstHeading')?.innerText?.trim(),
+        summary: firstP?.innerText?.trim() || null,
+        sections: Array.from(document.querySelectorAll('.mw-heading2 h2'))
+          .map(h => h.innerText?.replace('[edit]', '').trim())
+          .filter(s => !['See also', 'Notes', 'References', 'External links', 'Further reading'].includes(s)),
+        categories: Array.from(document.querySelectorAll('#mw-normal-catlinks li a'))
+          .slice(0, 10).map(a => a.textContent),
+        infobox: infoboxData,
+        url: window.location.href,
+      });
+    })()
+
+steps:
+  - goto: "https://{{ lang }}.wikipedia.org/wiki/{{ title }}"
+    wait_for: "#firstHeading"
+  - wait: 1000
+  - eval:
+      ref: extract_article
+      save_as: article
+  - output:
+      source: "Wikipedia"
+      lang: "{{ lang }}"
+      article: "{{ article }}"

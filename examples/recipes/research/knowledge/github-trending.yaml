@@ -1,0 +1,60 @@
+# github-trending.yaml -- Extract trending repositories from GitHub.
+#
+# Type: query (read-only, safe)
+# Auth: none required
+# Tested: 2026-03-21 (GitHub trending page with article.Box-row elements)
+#
+# Usage:
+#   pwright script run examples/recipes/research/knowledge/github-trending.yaml
+#   pwright script run examples/recipes/research/knowledge/github-trending.yaml --param language=rust
+#   pwright script run examples/recipes/research/knowledge/github-trending.yaml --param language=python --param since=weekly
+
+name: "GitHub Trending"
+version: 1
+type: query
+
+params:
+  language:
+    type: string
+    default: ""
+    description: "Programming language filter (e.g. rust, python, go). Empty for all."
+  since:
+    type: string
+    default: "daily"
+    description: "Time range: daily, weekly, monthly"
+
+config:
+  default_timeout_ms: 10000
+
+scripts:
+  extract_repos: |
+    (() => {
+      const repos = document.querySelectorAll('article.Box-row');
+      const results = [];
+      for (const r of repos) {
+        const links = Array.from(r.querySelectorAll('a.Link--muted'));
+        results.push({
+          repo: r.querySelector('h2 a')?.getAttribute('href')?.slice(1),
+          url: 'https://github.com' + (r.querySelector('h2 a')?.getAttribute('href') || ''),
+          description: r.querySelector('p')?.textContent?.trim() || null,
+          language: r.querySelector('[itemprop="programmingLanguage"]')?.textContent?.trim() || null,
+          stars: parseInt((links[0]?.textContent || '').trim().replace(/,/g, '')) || 0,
+          forks: parseInt((links[1]?.textContent || '').trim().replace(/,/g, '')) || 0,
+          todayStars: parseInt(r.querySelector('.float-sm-right')?.textContent) || 0,
+        });
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://github.com/trending/{{ language }}?since={{ since }}"
+    wait_for: "article.Box-row"
+  - wait: 1000
+  - eval:
+      ref: extract_repos
+      save_as: repos
+  - output:
+      source: "GitHub Trending"
+      language: "{{ language }}"
+      since: "{{ since }}"
+      repos: "{{ repos }}"

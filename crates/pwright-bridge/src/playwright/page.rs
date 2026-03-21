@@ -762,6 +762,87 @@ impl Page {
         Ok(())
     }
 
+    /// Wait until the page body contains the given text (substring match).
+    ///
+    /// Polls `document.body.innerText` every 200ms until the text is found
+    /// or the timeout expires.
+    ///
+    /// ```rust,ignore
+    /// page.goto("https://example.com", None).await?;
+    /// page.wait_for_text("Results", 30_000).await?;
+    /// ```
+    pub async fn wait_for_text(&self, text: &str, timeout_ms: u64) -> CdpResult<()> {
+        self.ensure_open()?;
+        const POLL_MS: u64 = 200;
+        let js = format!(
+            "document.body && document.body.innerText.includes({})",
+            serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string())
+        );
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(POLL_MS)).await;
+
+            if let Ok(result) = self.session.runtime_evaluate(&js).await
+                && result
+                    .get("result")
+                    .and_then(|r| r.get("value"))
+                    .and_then(|v| v.as_bool())
+                    == Some(true)
+            {
+                return Ok(());
+            }
+
+            if tokio::time::Instant::now() > deadline {
+                return Err(pwright_cdp::connection::CdpError::Other(format!(
+                    "Timeout waiting for text '{}' ({timeout_ms}ms)",
+                    text
+                )));
+            }
+        }
+    }
+
+    /// Wait until a JavaScript expression returns a truthy value.
+    ///
+    /// Polls the expression every 200ms until it returns truthy or the
+    /// timeout expires.
+    ///
+    /// ```rust,ignore
+    /// page.wait_until("document.title !== ''", 10_000).await?;
+    /// page.wait_until("document.querySelectorAll('.item').length > 5", 30_000).await?;
+    /// ```
+    pub async fn wait_until(&self, expression: &str, timeout_ms: u64) -> CdpResult<()> {
+        self.ensure_open()?;
+        const POLL_MS: u64 = 200;
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(POLL_MS)).await;
+
+            if let Ok(result) = self.session.runtime_evaluate(expression).await {
+                let value = result.get("result").and_then(|r| r.get("value"));
+                // Truthy: true, non-zero number, non-empty string
+                let is_truthy = match value {
+                    Some(v) if v.is_boolean() => v.as_bool() == Some(true),
+                    Some(v) if v.is_number() => v.as_f64() != Some(0.0),
+                    Some(v) if v.is_string() => !v.as_str().unwrap_or("").is_empty(),
+                    Some(v) if v.is_null() => false,
+                    Some(_) => true, // objects, arrays
+                    None => false,
+                };
+                if is_truthy {
+                    return Ok(());
+                }
+            }
+
+            if tokio::time::Instant::now() > deadline {
+                return Err(pwright_cdp::connection::CdpError::Other(format!(
+                    "Timeout waiting for expression to be truthy ({timeout_ms}ms): {expression}"
+                )));
+            }
+        }
+    }
+
     /// Wait for a download to complete while executing the given action.
     ///
     /// The download is saved to the system's temporary directory.

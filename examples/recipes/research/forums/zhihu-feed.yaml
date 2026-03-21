@@ -1,0 +1,64 @@
+# zhihu-feed.yaml -- Extract recommended posts from Zhihu home feed.
+#
+# Type: query (read-only, safe)
+# Auth: YES -- must be logged into zhihu.com in the Chrome instance
+# Tested: 2026-03-21 (Zhihu with .TopstoryItem, .ContentItem elements)
+#
+# Usage:
+#   pwright script run examples/recipes/research/forums/zhihu-feed.yaml
+
+name: "Zhihu Feed"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  check_login: |
+    (() => {
+      if (window.location.href.includes('/signin')) return 'logged_out';
+      return 'logged_in';
+    })()
+
+  extract_feed: |
+    (() => {
+      const items = document.querySelectorAll('.TopstoryItem');
+      const results = [];
+      for (const item of items) {
+        const titleEl = item.querySelector('.ContentItem-title a, h2.ContentItem-title');
+        const author = item.querySelector('.AuthorInfo-name a, .UserLink-link');
+        const excerpt = item.querySelector('.RichContent-inner, .CopyrightRichTextContainer');
+        const votes = item.querySelector('.VoteButton--up');
+        const url = titleEl?.href || titleEl?.querySelector('a')?.href || null;
+        if (!titleEl) continue;
+        const rawExcerpt = excerpt?.textContent?.trim()?.replace(/阅读全文\s*​?$/, '').trim() || '';
+        // Author often prefixed as "name：" or "name： " in recommendation feed
+        const authorMatch = rawExcerpt.match(/^(.{1,20})[：:]\s/);
+        const authorName = author?.textContent?.trim() || (authorMatch ? authorMatch[1] : null);
+        results.push({
+          title: titleEl.textContent?.trim(),
+          author: authorName,
+          excerpt: rawExcerpt.slice(0, 300),
+          votes: votes?.textContent?.trim() || null,
+          url,
+        });
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://www.zhihu.com/"
+    wait_for: ".TopstoryItem"
+  - wait: 3000
+  - eval:
+      ref: check_login
+      save_as: login_status
+    on_error: continue
+  - eval:
+      ref: extract_feed
+      save_as: posts
+  - output:
+      source: "Zhihu Feed"
+      login_status: "{{ login_status }}"
+      posts: "{{ posts }}"

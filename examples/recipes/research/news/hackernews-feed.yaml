@@ -4,8 +4,8 @@
 # Auth: none
 #
 # Usage:
-#   pwright script run examples/recipes/research/hackernews-feed.yaml
-#   pwright script run examples/recipes/research/hackernews-feed.yaml --param max_stories=5
+#   pwright script run examples/recipes/research/news/hackernews-feed.yaml
+#   pwright script run examples/recipes/research/news/hackernews-feed.yaml --param max_stories=5
 
 name: "Hacker News Feed"
 version: 1

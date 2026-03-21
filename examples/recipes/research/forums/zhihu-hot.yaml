@@ -1,0 +1,54 @@
+# zhihu-hot.yaml -- Extract trending questions from Zhihu hot list.
+#
+# Type: query (read-only, safe)
+# Auth: YES -- must be logged into zhihu.com in the Chrome instance
+# Tested: 2026-03-21 (Zhihu hot page with .HotItem elements)
+#
+# Usage:
+#   pwright script run examples/recipes/research/forums/zhihu-hot.yaml
+
+name: "Zhihu Hot"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 15000
+
+scripts:
+  check_login: |
+    (() => {
+      if (window.location.href.includes('/signin')) return 'logged_out';
+      return 'logged_in';
+    })()
+
+  extract_hot: |
+    (() => {
+      const items = document.querySelectorAll('.HotItem');
+      const results = [];
+      for (const item of items) {
+        const heat = item.querySelector('.HotItem-metrics')?.textContent?.trim() || '';
+        results.push({
+          title: item.querySelector('.HotItem-title')?.textContent?.trim(),
+          excerpt: (item.querySelector('.HotItem-excerpt')?.textContent?.trim() || '').slice(0, 200),
+          heat: heat.replace(/\u200B/g, '').replace('分享', '').trim(),
+          url: item.querySelector('a')?.href || null,
+        });
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://www.zhihu.com/hot"
+  - wait_for_text: "热度"
+    timeout_ms: 15000
+  - eval:
+      ref: check_login
+      save_as: login_status
+    on_error: continue
+  - eval:
+      ref: extract_hot
+      save_as: questions
+  - output:
+      source: "Zhihu Hot"
+      login_status: "{{ login_status }}"
+      questions: "{{ questions }}"
