@@ -87,6 +87,12 @@ impl Locator {
         crate::actions::click_by_node_id(&*self.session, node.node_id).await
     }
 
+    /// Double-click the element.
+    pub async fn dblclick(&self) -> CdpResult<()> {
+        let node = self.resolve_one().await?;
+        crate::actions::dblclick_by_node_id(&*self.session, node.node_id).await
+    }
+
     /// Fill an input element with a value (clears existing value first).
     pub async fn fill(&self, value: &str) -> CdpResult<()> {
         let node = self.resolve_one().await?;
@@ -495,9 +501,7 @@ impl Locator {
     }
 
     async fn resolve_object_id(&self, node_id: i64) -> CdpResult<String> {
-        selectors::resolve_object_id(&*self.session, node_id)
-            .await?
-            .ok_or_else(|| CdpError::Other("Could not resolve object ID".to_string()))
+        crate::actions::resolve_to_object_id(&*self.session, node_id).await
     }
 }
 

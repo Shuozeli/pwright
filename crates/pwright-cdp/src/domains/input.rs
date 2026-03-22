@@ -76,7 +76,6 @@ impl TouchEventType {
 }
 
 impl CdpSession {
-    /// Dispatch a mouse event.
     pub async fn input_dispatch_mouse_event(
         &self,
         event_type: MouseEventType,
@@ -104,7 +103,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Dispatch a key event.
     pub async fn input_dispatch_key_event(
         &self,
         event_type: KeyEventType,
@@ -125,7 +123,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Insert text (for character input after focus).
     pub async fn input_insert_text(&self, text: &str) -> Result<()> {
         let params = cdp_gen::InsertTextParams {
             text: text.to_string(),
@@ -135,7 +132,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Dispatch a touch event (touchStart, touchEnd).
     pub async fn input_dispatch_touch_event(
         &self,
         event_type: TouchEventType,

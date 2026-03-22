@@ -14,7 +14,9 @@ pub struct Tab {
     pub session: Arc<dyn CdpClient>,
     pub tab_id: String,
     pub target_id: String,
-    pub created_at: Instant,
+    // TODO(refactor): last_used is only set at creation, never updated on use.
+    // It functions as a creation timestamp for current_tab() ordering.
+    // Either rename to `created_at` or update it on each tab operation.
     pub last_used: Instant,
 }
 
@@ -37,7 +39,6 @@ impl Browser {
             session,
             tab_id: tab_id.clone(),
             target_id,
-            created_at: now,
             last_used: now,
         };
 
@@ -88,12 +89,12 @@ impl Browser {
     /// Resolve a tab — if tab_id is empty, use the current tab.
     pub async fn resolve_tab(&self, tab_id: &str) -> CdpResult<Tab> {
         if tab_id.is_empty() {
-            self.current_tab()
-                .await
-                .ok_or_else(|| pwright_cdp::connection::CdpError::Other("no tabs open".to_string()))
+            self.current_tab().await.ok_or_else(|| {
+                pwright_cdp::connection::CdpError::TabNotFound("no tabs open".to_string())
+            })
         } else {
             self.get_tab(tab_id).await.ok_or_else(|| {
-                pwright_cdp::connection::CdpError::Other(format!("tab {} not found", tab_id))
+                pwright_cdp::connection::CdpError::TabNotFound(format!("tab {} not found", tab_id))
             })
         }
     }
@@ -108,7 +109,6 @@ impl Browser {
             session,
             tab_id: tab_id.to_string(),
             target_id: target_id.to_string(),
-            created_at: now,
             last_used: now,
         };
 
@@ -131,7 +131,6 @@ mod tests {
             session: Arc::new(MockCdpClient::new()),
             tab_id: tab_id.to_string(),
             target_id: target_id.to_string(),
-            created_at: Instant::now(),
             last_used: Instant::now(),
         }
     }

@@ -22,7 +22,6 @@ pub struct TargetInfo {
 }
 
 impl CdpSession {
-    /// Create a new browser target (tab) at the given URL.
     pub async fn target_create(&self, url: &str) -> Result<String> {
         let params = cdp_gen::CreateTargetParams {
             url: url.to_string(),
@@ -35,7 +34,6 @@ impl CdpSession {
         Ok(returns.target_id)
     }
 
-    /// Close a target by ID.
     pub async fn target_close(&self, target_id: &str) -> Result<()> {
         let params = cdp_gen::CloseTargetParams {
             target_id: target_id.to_string(),
@@ -45,7 +43,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// List all targets, optionally filtered by type.
     pub async fn target_get_targets(&self) -> Result<Vec<TargetInfo>> {
         let mut result = self
             .send(
@@ -53,12 +50,12 @@ impl CdpSession {
                 serde_json::to_value(cdp_gen::GetTargetsParams::default())?,
             )
             .await?;
-        let targets: Vec<TargetInfo> =
-            serde_json::from_value(result["targetInfos"].take()).unwrap_or_default();
+        let targets: Vec<TargetInfo> = serde_json::from_value(result["targetInfos"].take())
+            .map_err(crate::connection::CdpError::Json)?;
         Ok(targets)
     }
 
-    /// Attach to a target, enabling session-scoped commands. Returns session ID.
+    /// Returns session ID.
     pub async fn target_attach(&self, target_id: &str) -> Result<String> {
         let params = cdp_gen::AttachToTargetParams {
             target_id: target_id.to_string(),
@@ -71,7 +68,6 @@ impl CdpSession {
         Ok(returns.session_id)
     }
 
-    /// Detach from a target session.
     pub async fn target_detach(&self, session_id: &str) -> Result<()> {
         let params = cdp_gen::DetachFromTargetParams {
             session_id: Some(session_id.to_string()),

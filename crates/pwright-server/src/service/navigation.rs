@@ -99,9 +99,8 @@ pub async fn go_back(
 
     let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
-    pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "history.back()")
-        .await
-        .map_err(cdp_to_status)?;
+    let page = pwright_bridge::playwright::Page::new(tab.session.clone());
+    page.go_back().await.map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::GoBackResponse { success: true }))
 }
@@ -115,9 +114,8 @@ pub async fn go_forward(
 
     let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
-    pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "history.forward()")
-        .await
-        .map_err(cdp_to_status)?;
+    let page = pwright_bridge::playwright::Page::new(tab.session.clone());
+    page.go_forward().await.map_err(cdp_to_status)?;
 
     Ok(Response::new(proto::GoForwardResponse { success: true }))
 }

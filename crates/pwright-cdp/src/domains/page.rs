@@ -7,7 +7,7 @@ use crate::generated::page as cdp_gen;
 use crate::session::CdpSession;
 
 impl CdpSession {
-    /// Navigate to a URL. Returns frameId, loaderId, errorText.
+    /// Returns frameId, loaderId, errorText.
     pub async fn page_navigate(&self, url: &str) -> Result<Value> {
         let params = cdp_gen::NavigateParams {
             url: url.to_string(),
@@ -17,13 +17,12 @@ impl CdpSession {
             .await
     }
 
-    /// Enable Page domain events.
     pub async fn page_enable(&self) -> Result<()> {
         self.send("Page.enable", serde_json::json!({})).await?;
         Ok(())
     }
 
-    /// Capture a screenshot. Returns base64 PNG data.
+    /// Returns base64 PNG data.
     pub async fn page_capture_screenshot(
         &self,
         format: &str,
@@ -43,14 +42,13 @@ impl CdpSession {
         Ok(returns.data)
     }
 
-    /// Print the page to PDF. Returns base64 PDF data.
+    /// Returns base64 PDF data.
     pub async fn page_print_to_pdf(&self, params: Value) -> Result<String> {
         let result = self.send("Page.printToPDF", params).await?;
         let returns: cdp_gen::PrintToPDFReturns = serde_json::from_value(result)?;
         Ok(returns.data)
     }
 
-    /// Add a script to evaluate on every new document.
     pub async fn page_add_script_on_new_document(&self, source: &str) -> Result<String> {
         let params = cdp_gen::AddScriptToEvaluateOnNewDocumentParams {
             source: source.to_string(),
@@ -67,7 +65,6 @@ impl CdpSession {
         Ok(returns.identifier)
     }
 
-    /// Reload the current page.
     pub async fn page_reload(&self) -> Result<()> {
         self.send(
             "Page.reload",
@@ -77,13 +74,11 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Get navigation history entries and current index.
     pub async fn page_get_navigation_history(&self) -> Result<Value> {
         self.send("Page.getNavigationHistory", serde_json::json!({}))
             .await
     }
 
-    /// Navigate to a specific history entry.
     pub async fn page_navigate_to_history_entry(&self, entry_id: i64) -> Result<()> {
         let params = cdp_gen::NavigateToHistoryEntryParams { entry_id };
         self.send(
@@ -94,14 +89,12 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Bring the page to front (activate tab).
     pub async fn page_bring_to_front(&self) -> Result<()> {
         self.send("Page.bringToFront", serde_json::json!({}))
             .await?;
         Ok(())
     }
 
-    /// Set the document content (replaces current HTML).
     pub async fn page_set_document_content(&self, frame_id: &str, html: &str) -> Result<()> {
         let params = cdp_gen::SetDocumentContentParams {
             frame_id: frame_id.to_string(),

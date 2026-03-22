@@ -5,7 +5,6 @@ use crate::generated::browser as cdp_gen;
 use crate::session::CdpSession;
 
 impl CdpSession {
-    /// Configure the download behavior for the current target/session.
     pub async fn browser_set_download_behavior(
         &self,
         behavior: &str,

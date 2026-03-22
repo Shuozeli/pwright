@@ -42,7 +42,7 @@ impl ChromeHttpClient {
         let client = reqwest::Client::builder()
             .timeout(DEFAULT_HTTP_TIMEOUT)
             .build()
-            .map_err(|e| CdpError::Other(format!("failed to build HTTP client: {e}")))?;
+            .map_err(|e| CdpError::HttpFailed(format!("failed to build HTTP client: {e}")))?;
         Ok(Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             client,
@@ -54,7 +54,7 @@ impl ChromeHttpClient {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
-            .map_err(|e| CdpError::Other(format!("failed to build HTTP client: {e}")))?;
+            .map_err(|e| CdpError::HttpFailed(format!("failed to build HTTP client: {e}")))?;
         Ok(Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             client,
@@ -75,12 +75,11 @@ impl ChromeHttpClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| CdpError::Other(format!("HTTP list_targets failed: {e}")))?;
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP list_targets failed: {e}")))?;
 
-        let targets: Vec<TargetInfo> = resp
-            .json()
-            .await
-            .map_err(|e| CdpError::Other(format!("HTTP list_targets JSON parse failed: {e}")))?;
+        let targets: Vec<TargetInfo> = resp.json().await.map_err(|e| {
+            CdpError::HttpFailed(format!("HTTP list_targets JSON parse failed: {e}"))
+        })?;
 
         debug!(count = targets.len(), "listed targets via HTTP");
         Ok(targets)
@@ -97,7 +96,7 @@ impl ChromeHttpClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| CdpError::Other(format!("HTTP close_target failed: {e}")))?;
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP close_target failed: {e}")))?;
 
         if resp.status().is_success() {
             debug!(target_id, "closed target via HTTP");
@@ -106,7 +105,7 @@ impl ChromeHttpClient {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             warn!(target_id, %status, body, "HTTP close_target rejected");
-            Err(CdpError::Other(format!(
+            Err(CdpError::HttpFailed(format!(
                 "HTTP close_target returned {status}: {body}"
             )))
         }
@@ -126,22 +125,21 @@ impl ChromeHttpClient {
             .put(&req_url)
             .send()
             .await
-            .map_err(|e| CdpError::Other(format!("HTTP create_target failed: {e}")))?;
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP create_target failed: {e}")))?;
 
         // Fall back to GET if PUT is rejected (older Chrome).
         let resp = if resp.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED {
             warn!("PUT /json/new rejected, falling back to GET (older Chrome)");
             self.client.get(&req_url).send().await.map_err(|e| {
-                CdpError::Other(format!("HTTP create_target GET fallback failed: {e}"))
+                CdpError::HttpFailed(format!("HTTP create_target GET fallback failed: {e}"))
             })?
         } else {
             resp
         };
 
-        let target: TargetInfo = resp
-            .json()
-            .await
-            .map_err(|e| CdpError::Other(format!("HTTP create_target JSON parse failed: {e}")))?;
+        let target: TargetInfo = resp.json().await.map_err(|e| {
+            CdpError::HttpFailed(format!("HTTP create_target JSON parse failed: {e}"))
+        })?;
 
         debug!(target_id = target.target_id, "created target via HTTP");
         Ok(target)
@@ -155,10 +153,10 @@ impl ChromeHttpClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| CdpError::Other(format!("HTTP version failed: {e}")))?;
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP version failed: {e}")))?;
 
         resp.json()
             .await
-            .map_err(|e| CdpError::Other(format!("HTTP version JSON parse failed: {e}")))
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP version JSON parse failed: {e}")))
     }
 }

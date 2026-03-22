@@ -98,15 +98,25 @@ pub async fn execute_action(
         }
         proto::ActionKind::Check => {
             let nid = require_node_id!(node_id, "check");
-            pwright_bridge::actions::click_by_node_id(session, nid)
+            if !pwright_bridge::actions::is_checked(session, nid)
                 .await
-                .map_err(cdp_to_status)?;
+                .map_err(cdp_to_status)?
+            {
+                pwright_bridge::actions::click_by_node_id(session, nid)
+                    .await
+                    .map_err(cdp_to_status)?;
+            }
         }
         proto::ActionKind::Uncheck => {
             let nid = require_node_id!(node_id, "uncheck");
-            pwright_bridge::actions::click_by_node_id(session, nid)
+            if pwright_bridge::actions::is_checked(session, nid)
                 .await
-                .map_err(cdp_to_status)?;
+                .map_err(cdp_to_status)?
+            {
+                pwright_bridge::actions::click_by_node_id(session, nid)
+                    .await
+                    .map_err(cdp_to_status)?;
+            }
         }
         proto::ActionKind::Dblclick => {
             let nid = require_node_id!(node_id, "dblclick");
@@ -145,7 +155,7 @@ pub async fn set_input_files(
             .get("root")
             .and_then(|r| r.get("nodeId"))
             .and_then(|n| n.as_i64())
-            .unwrap_or(1);
+            .ok_or_else(|| Status::internal("DOM.getDocument missing root.nodeId"))?;
         session
             .dom_query_selector(root_id, &req.selector)
             .await

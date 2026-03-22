@@ -2,7 +2,7 @@
 
 use crate::protocol::{Command, Domain, Event, ItemRef, Property, TypeDef};
 use std::collections::HashMap;
-use std::fmt::Write;
+use std::fmt::{self, Write};
 
 /// Aliases from `http_endpoints.json`: (domain, type, cdp_field) -> http_field
 pub type FieldAliases = HashMap<(String, String, String), String>;
@@ -21,7 +21,10 @@ const DOMAINS: &[&str] = &[
 ];
 
 /// Generate a complete Rust module file for a single CDP domain.
-pub fn generate_domain_module(domain: &Domain, aliases: &FieldAliases) -> String {
+pub fn generate_domain_module(
+    domain: &Domain,
+    aliases: &FieldAliases,
+) -> Result<String, fmt::Error> {
     let mut out = String::with_capacity(8192);
 
     let snake = to_snake_case(&domain.domain);
@@ -29,57 +32,54 @@ pub fn generate_domain_module(domain: &Domain, aliases: &FieldAliases) -> String
         out,
         "//! CDP `{}` domain — generated from protocol JSON.",
         domain.domain
-    )
-    .unwrap();
+    )?;
     if !domain.description.is_empty() {
-        writeln!(out, "//!").unwrap();
+        writeln!(out, "//!")?;
         for line in domain.description.lines() {
-            writeln!(out, "//! {line}").unwrap();
+            writeln!(out, "//! {line}")?;
         }
     }
-    writeln!(out).unwrap();
-    writeln!(out, "#![allow(clippy::doc_markdown)]").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "use serde::{{Deserialize, Serialize}};").unwrap();
+    writeln!(out)?;
+    writeln!(out, "#![allow(clippy::doc_markdown)]")?;
+    writeln!(out)?;
+    writeln!(out, "use serde::{{Deserialize, Serialize}};")?;
     // Only import Value if it's actually used in the domain
     if domain_uses_value(domain) {
-        writeln!(out, "use serde_json::Value;").unwrap();
+        writeln!(out, "use serde_json::Value;")?;
     }
-    writeln!(out).unwrap();
+    writeln!(out)?;
 
     // Types
     for ty in &domain.types {
-        generate_type(&mut out, ty, &domain.domain, aliases);
+        generate_type(&mut out, ty, &domain.domain, aliases)?;
     }
 
     // Command params + returns
     for cmd in &domain.commands {
-        generate_command_types(&mut out, cmd, &domain.domain);
+        generate_command_types(&mut out, cmd, &domain.domain)?;
     }
 
     // Event types
     for evt in &domain.events {
-        generate_event_type(&mut out, evt, &domain.domain);
+        generate_event_type(&mut out, evt, &domain.domain)?;
     }
 
     // Method signatures (as a trait-like impl block comment showing the API surface)
-    writeln!(out, "// ── Methods ──").unwrap();
-    writeln!(out, "//").unwrap();
+    writeln!(out, "// ── Methods ──")?;
+    writeln!(out, "//")?;
     writeln!(
         out,
         "// These are the typed method signatures for {}.* commands.",
         domain.domain
-    )
-    .unwrap();
+    )?;
     writeln!(
         out,
         "// Integration into CdpSession is done in pwright-cdp."
-    )
-    .unwrap();
-    writeln!(out).unwrap();
+    )?;
+    writeln!(out)?;
 
     for cmd in &domain.commands {
-        generate_method_signature(&mut out, cmd, &domain.domain, &snake);
+        generate_method_signature(&mut out, cmd, &domain.domain, &snake)?;
     }
 
     // Trim trailing whitespace/newlines for rustfmt
@@ -88,7 +88,7 @@ pub fn generate_domain_module(domain: &Domain, aliases: &FieldAliases) -> String
     }
     out.push('\n');
 
-    out
+    Ok(out)
 }
 
 /// Check if a domain should be generated.
@@ -159,71 +159,77 @@ fn domain_uses_value(domain: &Domain) -> bool {
 
 // ── Type generation ──
 
-fn generate_type(out: &mut String, ty: &TypeDef, domain: &str, aliases: &FieldAliases) {
-    write_doc_comment(out, &ty.description, 0);
+fn generate_type(
+    out: &mut String,
+    ty: &TypeDef,
+    domain: &str,
+    aliases: &FieldAliases,
+) -> fmt::Result {
+    write_doc_comment(out, &ty.description, 0)?;
 
     if !ty.enum_values.is_empty() {
-        generate_enum(out, &ty.id, &ty.enum_values);
-        return;
+        generate_enum(out, &ty.id, &ty.enum_values)?;
+        return Ok(());
     }
 
     match ty.type_kind.as_str() {
         "object" if !ty.properties.is_empty() => {
-            generate_struct(out, &ty.id, &ty.properties, domain, aliases);
+            generate_struct(out, &ty.id, &ty.properties, domain, aliases)?;
         }
         "object" => {
             // Empty object — alias to Value
-            writeln!(out, "pub type {} = Value;", ty.id).unwrap();
-            writeln!(out).unwrap();
+            writeln!(out, "pub type {} = Value;", ty.id)?;
+            writeln!(out)?;
         }
         "string" | "binary" => {
-            writeln!(out, "pub type {} = String;", ty.id).unwrap();
-            writeln!(out).unwrap();
+            writeln!(out, "pub type {} = String;", ty.id)?;
+            writeln!(out)?;
         }
         "integer" => {
-            writeln!(out, "pub type {} = i64;", ty.id).unwrap();
-            writeln!(out).unwrap();
+            writeln!(out, "pub type {} = i64;", ty.id)?;
+            writeln!(out)?;
         }
         "number" => {
-            writeln!(out, "pub type {} = f64;", ty.id).unwrap();
-            writeln!(out).unwrap();
+            writeln!(out, "pub type {} = f64;", ty.id)?;
+            writeln!(out)?;
         }
         "boolean" => {
-            writeln!(out, "pub type {} = bool;", ty.id).unwrap();
-            writeln!(out).unwrap();
+            writeln!(out, "pub type {} = bool;", ty.id)?;
+            writeln!(out)?;
         }
         "array" => {
             let elem = resolve_item_type(ty.items.as_ref(), domain);
-            writeln!(out, "pub type {} = Vec<{}>;", ty.id, elem).unwrap();
-            writeln!(out).unwrap();
+            writeln!(out, "pub type {} = Vec<{}>;", ty.id, elem)?;
+            writeln!(out)?;
         }
         "any" => {
-            writeln!(out, "pub type {} = Value;", ty.id).unwrap();
-            writeln!(out).unwrap();
+            writeln!(out, "pub type {} = Value;", ty.id)?;
+            writeln!(out)?;
         }
         _ => {
-            writeln!(out, "pub type {} = Value;", ty.id).unwrap();
-            writeln!(out).unwrap();
+            writeln!(out, "pub type {} = Value;", ty.id)?;
+            writeln!(out)?;
         }
     }
+    Ok(())
 }
 
-fn generate_enum(out: &mut String, name: &str, variants: &[String]) {
+fn generate_enum(out: &mut String, name: &str, variants: &[String]) -> fmt::Result {
     writeln!(
         out,
         "#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]"
-    )
-    .unwrap();
-    writeln!(out, "pub enum {name} {{").unwrap();
+    )?;
+    writeln!(out, "pub enum {name} {{")?;
     for v in variants {
         let rust_variant = enum_variant_name(v);
         if rust_variant != *v {
-            writeln!(out, "    #[serde(rename = \"{v}\")]").unwrap();
+            writeln!(out, "    #[serde(rename = \"{v}\")]")?;
         }
-        writeln!(out, "    {rust_variant},").unwrap();
+        writeln!(out, "    {rust_variant},")?;
     }
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
+    writeln!(out, "}}")?;
+    writeln!(out)?;
+    Ok(())
 }
 
 /// Known self-referencing fields that require Box to break infinite size.
@@ -247,20 +253,19 @@ fn generate_struct(
     properties: &[Property],
     domain: &str,
     aliases: &FieldAliases,
-) {
+) -> fmt::Result {
     if all_fields_optional(properties) {
         writeln!(
             out,
             "#[derive(Debug, Clone, Serialize, Deserialize, Default)]"
-        )
-        .unwrap();
+        )?;
     } else {
-        writeln!(out, "#[derive(Debug, Clone, Serialize, Deserialize)]").unwrap();
+        writeln!(out, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
     }
-    writeln!(out, "#[serde(rename_all = \"camelCase\")]").unwrap();
-    writeln!(out, "pub struct {name} {{").unwrap();
+    writeln!(out, "#[serde(rename_all = \"camelCase\")]")?;
+    writeln!(out, "pub struct {name} {{")?;
     for prop in properties {
-        write_doc_comment(out, &prop.description, 1);
+        write_doc_comment(out, &prop.description, 1)?;
         let rust_name = to_snake_case(&prop.name);
         let raw_type = resolve_property_type(prop, domain);
         let needs_box = is_recursive_field(name, prop.ref_type.as_deref());
@@ -276,28 +281,28 @@ fn generate_struct(
         // HTTP endpoint aliases (from http_endpoints.json)
         let alias_key = (domain.to_string(), name.to_string(), prop.name.clone());
         if let Some(http_field) = aliases.get(&alias_key) {
-            writeln!(out, "    #[serde(alias = \"{http_field}\")]").unwrap();
+            writeln!(out, "    #[serde(alias = \"{http_field}\")]")?;
         }
         // Rename if snake_case differs from camelCase serde expectation
         if needs_serde_rename(&prop.name, &rust_name) {
-            writeln!(out, "    #[serde(rename = \"{}\")]", prop.name).unwrap();
+            writeln!(out, "    #[serde(rename = \"{}\")]", prop.name)?;
         }
         if prop.optional {
             writeln!(
                 out,
                 "    #[serde(default, skip_serializing_if = \"Option::is_none\")]"
-            )
-            .unwrap();
+            )?;
         }
-        writeln!(out, "    pub {rust_name}: {rust_type},").unwrap();
+        writeln!(out, "    pub {rust_name}: {rust_type},")?;
     }
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
+    writeln!(out, "}}")?;
+    writeln!(out)?;
+    Ok(())
 }
 
 // ── Command types ──
 
-fn generate_command_types(out: &mut String, cmd: &Command, domain: &str) {
+fn generate_command_types(out: &mut String, cmd: &Command, domain: &str) -> fmt::Result {
     let pascal = to_pascal_case(&cmd.name);
 
     // Params struct (only if there are parameters)
@@ -306,7 +311,7 @@ fn generate_command_types(out: &mut String, cmd: &Command, domain: &str) {
             out,
             &format!("Parameters for `{}.{}`.", domain, cmd.name),
             0,
-        );
+        )?;
         // Only derive Default if all required fields have Default-implementing types
         let all_defaultable = cmd
             .parameters
@@ -316,15 +321,14 @@ fn generate_command_types(out: &mut String, cmd: &Command, domain: &str) {
             writeln!(
                 out,
                 "#[derive(Debug, Clone, Serialize, Deserialize, Default)]"
-            )
-            .unwrap();
+            )?;
         } else {
-            writeln!(out, "#[derive(Debug, Clone, Serialize, Deserialize)]").unwrap();
+            writeln!(out, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
         }
-        writeln!(out, "#[serde(rename_all = \"camelCase\")]").unwrap();
-        writeln!(out, "pub struct {pascal}Params {{").unwrap();
+        writeln!(out, "#[serde(rename_all = \"camelCase\")]")?;
+        writeln!(out, "pub struct {pascal}Params {{")?;
         for prop in &cmd.parameters {
-            write_doc_comment(out, &prop.description, 1);
+            write_doc_comment(out, &prop.description, 1)?;
             let rust_name = to_snake_case(&prop.name);
             let rust_type = resolve_property_type(prop, domain);
             let rust_type = if prop.optional {
@@ -333,19 +337,18 @@ fn generate_command_types(out: &mut String, cmd: &Command, domain: &str) {
                 rust_type
             };
             if needs_serde_rename(&prop.name, &rust_name) {
-                writeln!(out, "    #[serde(rename = \"{}\")]", prop.name).unwrap();
+                writeln!(out, "    #[serde(rename = \"{}\")]", prop.name)?;
             }
             if prop.optional {
                 writeln!(
                     out,
                     "    #[serde(skip_serializing_if = \"Option::is_none\")]"
-                )
-                .unwrap();
+                )?;
             }
-            writeln!(out, "    pub {rust_name}: {rust_type},").unwrap();
+            writeln!(out, "    pub {rust_name}: {rust_type},")?;
         }
-        writeln!(out, "}}").unwrap();
-        writeln!(out).unwrap();
+        writeln!(out, "}}")?;
+        writeln!(out)?;
     }
 
     // Returns struct (only if there are return values)
@@ -354,12 +357,12 @@ fn generate_command_types(out: &mut String, cmd: &Command, domain: &str) {
             out,
             &format!("Return type for `{}.{}`.", domain, cmd.name),
             0,
-        );
-        writeln!(out, "#[derive(Debug, Clone, Deserialize)]").unwrap();
-        writeln!(out, "#[serde(rename_all = \"camelCase\")]").unwrap();
-        writeln!(out, "pub struct {pascal}Returns {{").unwrap();
+        )?;
+        writeln!(out, "#[derive(Debug, Clone, Deserialize)]")?;
+        writeln!(out, "#[serde(rename_all = \"camelCase\")]")?;
+        writeln!(out, "pub struct {pascal}Returns {{")?;
         for prop in &cmd.returns {
-            write_doc_comment(out, &prop.description, 1);
+            write_doc_comment(out, &prop.description, 1)?;
             let rust_name = to_snake_case(&prop.name);
             let rust_type = resolve_property_type(prop, domain);
             let rust_type = if prop.optional {
@@ -368,35 +371,36 @@ fn generate_command_types(out: &mut String, cmd: &Command, domain: &str) {
                 rust_type
             };
             if needs_serde_rename(&prop.name, &rust_name) {
-                writeln!(out, "    #[serde(rename = \"{}\")]", prop.name).unwrap();
+                writeln!(out, "    #[serde(rename = \"{}\")]", prop.name)?;
             }
             if prop.optional {
-                writeln!(out, "    #[serde(default)]").unwrap();
+                writeln!(out, "    #[serde(default)]")?;
             }
-            writeln!(out, "    pub {rust_name}: {rust_type},").unwrap();
+            writeln!(out, "    pub {rust_name}: {rust_type},")?;
         }
-        writeln!(out, "}}").unwrap();
-        writeln!(out).unwrap();
+        writeln!(out, "}}")?;
+        writeln!(out)?;
     }
+    Ok(())
 }
 
 // ── Event types ──
 
-fn generate_event_type(out: &mut String, evt: &Event, domain: &str) {
+fn generate_event_type(out: &mut String, evt: &Event, domain: &str) -> fmt::Result {
     if evt.parameters.is_empty() {
-        return;
+        return Ok(());
     }
     let pascal = to_pascal_case(&evt.name);
     write_doc_comment(
         out,
         &format!("Event payload for `{}.{}`.", domain, evt.name),
         0,
-    );
-    writeln!(out, "#[derive(Debug, Clone, Deserialize)]").unwrap();
-    writeln!(out, "#[serde(rename_all = \"camelCase\")]").unwrap();
-    writeln!(out, "pub struct {pascal}Event {{").unwrap();
+    )?;
+    writeln!(out, "#[derive(Debug, Clone, Deserialize)]")?;
+    writeln!(out, "#[serde(rename_all = \"camelCase\")]")?;
+    writeln!(out, "pub struct {pascal}Event {{")?;
     for prop in &evt.parameters {
-        write_doc_comment(out, &prop.description, 1);
+        write_doc_comment(out, &prop.description, 1)?;
         let rust_name = to_snake_case(&prop.name);
         let rust_type = resolve_property_type(prop, domain);
         let rust_type = if prop.optional {
@@ -405,20 +409,26 @@ fn generate_event_type(out: &mut String, evt: &Event, domain: &str) {
             rust_type
         };
         if needs_serde_rename(&prop.name, &rust_name) {
-            writeln!(out, "    #[serde(rename = \"{}\")]", prop.name).unwrap();
+            writeln!(out, "    #[serde(rename = \"{}\")]", prop.name)?;
         }
         if prop.optional {
-            writeln!(out, "    #[serde(default)]").unwrap();
+            writeln!(out, "    #[serde(default)]")?;
         }
-        writeln!(out, "    pub {rust_name}: {rust_type},").unwrap();
+        writeln!(out, "    pub {rust_name}: {rust_type},")?;
     }
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
+    writeln!(out, "}}")?;
+    writeln!(out)?;
+    Ok(())
 }
 
 // ── Method signatures ──
 
-fn generate_method_signature(out: &mut String, cmd: &Command, domain: &str, snake_domain: &str) {
+fn generate_method_signature(
+    out: &mut String,
+    cmd: &Command,
+    domain: &str,
+    snake_domain: &str,
+) -> fmt::Result {
     let pascal = to_pascal_case(&cmd.name);
     let method_name = format!("{}_{}", snake_domain, to_snake_case(&cmd.name));
     let cdp_method = format!("{domain}.{}", cmd.name);
@@ -428,9 +438,9 @@ fn generate_method_signature(out: &mut String, cmd: &Command, domain: &str, snak
         for line in cmd.description.lines() {
             let trimmed = line.trim_end();
             if trimmed.is_empty() {
-                writeln!(out, "//").unwrap();
+                writeln!(out, "//")?;
             } else {
-                writeln!(out, "// {trimmed}").unwrap();
+                writeln!(out, "// {trimmed}")?;
             }
         }
     }
@@ -451,19 +461,18 @@ fn generate_method_signature(out: &mut String, cmd: &Command, domain: &str, snak
             writeln!(
                 out,
                 "// async fn {method_name}(&self, params: {pt}) -> Result<{returns_type}>"
-            )
-            .unwrap();
+            )?;
         }
         None => {
             writeln!(
                 out,
                 "// async fn {method_name}(&self) -> Result<{returns_type}>"
-            )
-            .unwrap();
+            )?;
         }
     }
-    writeln!(out, "// CDP: \"{cdp_method}\"").unwrap();
-    writeln!(out).unwrap();
+    writeln!(out, "// CDP: \"{cdp_method}\"")?;
+    writeln!(out)?;
+    Ok(())
 }
 
 // ── Helpers ──
@@ -546,20 +555,21 @@ fn resolve_ref(ref_str: &str, _current_domain: &str) -> String {
     }
 }
 
-fn write_doc_comment(out: &mut String, desc: &str, indent: usize) {
+fn write_doc_comment(out: &mut String, desc: &str, indent: usize) -> fmt::Result {
     if desc.is_empty() {
-        return;
+        return Ok(());
     }
     let prefix = "    ".repeat(indent);
     for line in desc.lines() {
         let escaped = escape_doc_comment(line);
         let trimmed = escaped.trim_end();
         if trimmed.is_empty() {
-            writeln!(out, "{prefix}///").unwrap();
+            writeln!(out, "{prefix}///")?;
         } else {
-            writeln!(out, "{prefix}/// {trimmed}").unwrap();
+            writeln!(out, "{prefix}/// {trimmed}")?;
         }
     }
+    Ok(())
 }
 
 /// Escape doc comment content to prevent rustdoc warnings.

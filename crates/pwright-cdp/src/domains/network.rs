@@ -24,7 +24,6 @@ pub struct Cookie {
 }
 
 impl CdpSession {
-    /// Enable Network domain events.
     pub async fn network_enable(&self) -> Result<()> {
         self.send(
             "Network.enable",
@@ -34,7 +33,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Block URLs matching patterns.
     pub async fn network_set_blocked_urls(&self, patterns: &[String]) -> Result<()> {
         let params = cdp_gen::SetBlockedURLsParams {
             urls: Some(patterns.to_vec()),
@@ -45,7 +43,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Get all cookies for the current page.
     pub async fn network_get_cookies(&self) -> Result<Vec<Cookie>> {
         let mut result = self
             .send(
@@ -53,12 +50,11 @@ impl CdpSession {
                 serde_json::to_value(cdp_gen::GetCookiesParams::default())?,
             )
             .await?;
-        let cookies: Vec<Cookie> =
-            serde_json::from_value(result["cookies"].take()).unwrap_or_default();
+        let cookies: Vec<Cookie> = serde_json::from_value(result["cookies"].take())
+            .map_err(crate::connection::CdpError::Json)?;
         Ok(cookies)
     }
 
-    /// Set cookies.
     pub async fn network_set_cookies(&self, cookies: &[Cookie]) -> Result<()> {
         self.send(
             "Network.setCookies",

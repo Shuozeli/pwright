@@ -37,6 +37,14 @@ pub enum CdpError {
         source: Box<CdpError>,
         system: Box<CdpError>,
     },
+    #[error("Page is closed")]
+    PageClosed,
+    #[error("Tab not found: {0}")]
+    TabNotFound(String),
+    #[error("HTTP request failed: {0}")]
+    HttpFailed(String),
+    #[error("JavaScript exception: {0}")]
+    JsException(String),
     #[error("{0}")]
     Other(String),
 }

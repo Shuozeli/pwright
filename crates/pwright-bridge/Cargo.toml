@@ -21,6 +21,9 @@ rand = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }
 
+[features]
+test-utils = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 pwright-fake = { workspace = true }

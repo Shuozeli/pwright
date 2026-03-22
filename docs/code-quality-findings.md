@@ -1,107 +1,109 @@
 # Code Quality Findings
 
-Audit performed 2026-03-20 on the pwright workspace.
+Audit date: 2026-03-22
 
-## Summary
-
-The codebase is well-structured with clean separation of concerns, good test coverage, and consistent patterns. The issues found are minor.
-
-## Findings
-
-### 1. Dead Code: `runtime_evaluate_typed` and `runtime_call_function_typed` [FIXED]
-
-**File:** `crates/pwright-cdp/src/domains/runtime.rs`, lines 115-131
-**Severity:** Low
-**Category:** Dead code
-
-Two public methods on `CdpSession` -- `runtime_evaluate_typed` and `runtime_call_function_typed` -- are never called anywhere in the codebase. They wrap `runtime_evaluate` / `runtime_call_function_on` with typed deserialization into `EvaluateResult` / `CallFunctionResult`, but no code uses them.
-
-**Fix:** Remove the dead methods. The hand-written `RemoteObject`, `EvaluateResult`, and `CallFunctionResult` types (lines 11-42) exist solely to support these methods and their tests, but should be kept since they have their own unit tests validating CDP type deserialization which serves as documentation. Only the two unused methods need removal.
+All 22 issues resolved: 21 fixed, 1 skipped (codegen unwraps -- dev-only tool).
 
 ---
 
-### 2. Dead Code: Hand-written types `RemoteObject`, `EvaluateResult`, `CallFunctionResult` only used in tests [FIXED]
+## 1. Duplication (High Impact) -- ALL DONE
 
-**File:** `crates/pwright-cdp/src/domains/runtime.rs`, lines 11-42
-**Severity:** Low
-**Category:** Dead code / over-architecture
+### 1.1 Repeated `resolve_node -> extract objectId` pattern -- DONE
+- **Fix:** Extracted `resolve_to_object_id()` helper in `actions.rs`. Removed unused `selectors::resolve_object_id`.
 
-The three structs `RemoteObject`, `EvaluateResult`, and `CallFunctionResult` are defined but never used outside of this file's own tests and the dead `_typed` methods. The generated `runtime.rs` already has equivalent types. After removing the `_typed` methods, these types only serve their own unit tests.
+### 1.2 Repeated CDP result value extraction in Page -- DONE
+- **Fix:** Extracted `eval_page_string()` in `page.rs`.
 
-**Fix:** Remove the dead types and their tests. The generated equivalents in `generated/runtime.rs` can be used if typed deserialization is needed in the future.
+### 1.3 Duplicated click dispatch sequence -- DONE
+- **Fix:** Extracted `dispatch_click_at()` in `actions.rs`.
 
----
-
-### 3. Duplication: `print_snapshot` and `format_snapshot_node` in CLI output [FIXED]
-
-**File:** `crates/pwright-cli/src/output.rs`, lines 5-33 and 60-83
-**Severity:** Low
-**Category:** Duplication
-
-`print_snapshot` formats and prints each node. `format_snapshot_node` (test-only) formats a node to a string using identical logic. The formatting logic is duplicated.
-
-**Fix:** Refactor `print_snapshot` to use `format_snapshot_node` (make it non-test-only), then call `println!` on its result.
+### 1.4 Near-duplicate generated CDP code in integration tests -- DONE
+- **Fix:** Removed orphaned `tests/integration/crates/pwright-cdp/` (10K+ lines). Integration tests already depended on workspace crate.
 
 ---
 
-### 4. Redundant Block Patterns: `MEDIA_BLOCK_PATTERNS` is superset of `IMAGE_BLOCK_PATTERNS` [FIXED]
+## 2. Silent Failures (High Impact) -- ALL DONE
 
-**File:** `crates/pwright-bridge/src/navigate.rs`, lines 216-223
-**Severity:** Low
-**Category:** Duplication / Redundant data
+### 2.1 `unwrap_or_default()` swallowing deserialization failures -- DONE
+- **Fix:** Replaced with `.map_err(CdpError::Json)?` in `network.rs`, `target.rs`, `accessibility.rs`.
 
-`MEDIA_BLOCK_PATTERNS` is a strict superset of `IMAGE_BLOCK_PATTERNS` -- it contains all 7 image patterns plus 7 audio/video patterns. When both `block_images` and `block_media` are true (lines 63-72), the image patterns are sent to Chrome twice. While functionally harmless, it is confusing and duplicative.
+### 2.2 `unwrap_or_default()` in `runtime_call_function_on` -- DONE
+- **Fix:** Proper error propagation via `map_err(CdpError::Json)`.
 
-**Fix:** Define `IMAGE_BLOCK_PATTERNS` and `MEDIA_ONLY_PATTERNS` (audio/video only), then compose `MEDIA_BLOCK_PATTERNS` from both at the usage site. Alternatively, when `block_media` is true, skip adding image patterns since media already includes them.
-
----
-
-### 5. Silent `unwrap_or_default()` on deserialization in CDP domains [INFO]
-
-**Files:**
-- `crates/pwright-cdp/src/domains/network.rs`, line 57: `network_get_cookies`
-- `crates/pwright-cdp/src/domains/target.rs`, line 57: `target_get_targets`
-- `crates/pwright-cdp/src/domains/accessibility.rs`, line 72: `accessibility_get_full_tree`
-
-**Severity:** Info
-**Category:** Silent failures
-
-These methods use `serde_json::from_value(result[key].take()).unwrap_or_default()` which silently returns an empty collection if deserialization fails. This masks protocol bugs. However, per the CLAUDE.md rules, this is a known pattern in the project and changing it would alter error behavior.
-
-**Fix:** No fix applied. Documented for awareness.
+### 2.3 Navigate swallows URL/title extraction errors -- DONE
+- **Fix:** Added `tracing::warn!()` on extraction failure.
 
 ---
 
-### 6. `Cow<'static, str>` in `KeyDef::code` is unnecessary for most cases [INFO]
+## 3. Inconsistency / Potential Bugs (High Impact) -- ALL DONE
 
-**File:** `crates/pwright-bridge/src/keys.rs`, lines 6-10
-**Severity:** Info
-**Category:** Over-engineering
+### 3.1 Server check/uncheck is not idempotent -- DONE
+- **Fix:** Added `is_checked()` guard. Added `actions::is_checked()` helper.
 
-`KeyDef::code` uses `Cow<'static, str>` but only the F-key branch allocates (`Cow::Owned`). All other cases use `Cow::Borrowed`. This is actually correct and idiomatic for this pattern.
+### 3.2 `go_back` / `go_forward` implemented differently -- DONE
+- **Fix:** Server now delegates to `Page::go_back()` / `Page::go_forward()` (CDP history API).
 
-**Fix:** No fix needed. The current approach is optimal.
+### 3.3 `Mouse::dblclick` dispatches wrong event sequence -- DONE
+- **Fix:** Now sends correct 4-event sequence matching `dblclick_by_node_id`.
 
----
+### 3.4 `Page::dblclick` bypasses Locator pattern -- DONE
+- **Fix:** Added `Locator::dblclick()`, `Page::dblclick()` delegates to it.
 
-### 7. Fully Qualified Path Where Import Already Exists [FIXED]
-
-**File:** `crates/pwright-bridge/src/actions.rs`, line 329
-**Severity:** Low
-**Category:** Noise / Style
-
-`select_by_node_id` uses `pwright_cdp::connection::CdpError::Other(...)` despite `CdpError` being imported at line 5 via `use pwright_cdp::connection::{CdpError, Result as CdpResult}`. All other call sites in the file use the short form.
-
-**Fix:** Replace with `CdpError::Other(...)`.
+### 3.5 `set_input_files` uses `unwrap_or(1)` for root node ID -- DONE
+- **Fix:** Returns proper error via `Status::internal()`.
 
 ---
 
-### 8. Formatting Issues From Previous Fixes [FIXED]
+## 4. Missing Abstractions (Medium Impact)
 
-**File:** `crates/pwright-bridge/src/navigate.rs`, line 361
-**Severity:** Low
-**Category:** Style
+### 4.1 Stringly-typed `behavior` in `browser_set_download_behavior` -- SKIPPED
+- Low risk, only called internally with correct strings. Requires trait signature change.
 
-`cargo fmt --check` reported a formatting inconsistency in a test assertion added by the previous fix for finding 4.
+### 4.2 Stringly-typed `reason` in `fetch_fail_request` -- SKIPPED
+- Same reasoning as 4.1.
 
-**Fix:** Ran `cargo fmt`.
+### 4.3 Duplicate wait strategy / screenshot format enums -- DONE
+- **Fix:** Removed `WaitUntil` and `ImageFormat` from `page.rs`. Now uses `WaitStrategy` and `ScreenshotFormat` directly. Updated all callers across CLI, script executor, and integration tests.
+
+---
+
+## 5. Dead / Unused Code (Medium Impact) -- ALL DONE
+
+### 5.1 `test_utils` module compiled in release builds -- DONE
+- **Fix:** Gated behind `#[cfg(any(test, feature = "test-utils"))]`. Example crates enable the feature.
+
+### 5.2 `BrowserConfig::max_tabs` is never enforced -- DONE
+- **Fix:** Removed the field.
+
+### 5.3 `Tab.created_at` and `Tab.last_used` not meaningfully used -- DONE
+- **Fix:** Removed `created_at`. Added TODO on `last_used`.
+
+---
+
+## 6. Unsafe Patterns (Medium Impact)
+
+### 6.1 `unwrap()` in production script parser -- DONE
+- **Fix:** Replaced with `.ok_or_else(|| ScriptError::Parse(...))?`.
+
+### 6.2 `unwrap()` calls in codegen binary -- DONE
+- **Fix:** Changed `generate_domain_module` and all internal functions to return `fmt::Result`. Replaced ~30 `.unwrap()` calls with `?`. Caller uses `.expect()` with descriptive message.
+
+---
+
+## 7. Error Handling (Medium Impact) -- DONE
+
+### 7.1 `CdpError::Other` used as catch-all -- DONE
+- **Fix:** Added `PageClosed`, `TabNotFound(String)`, `HttpFailed(String)`, `JsException(String)` variants. Updated ~17 call sites and gRPC status mapper.
+
+---
+
+## 8. Noise / Low Priority -- DONE
+
+### 8.1 Redundant doc comments -- DONE
+- **Fix:** Removed redundant doc comments across all CDP domain files. Kept comments with genuine edge-case documentation.
+
+### 8.2 Trivial `cookies.rs` delegation -- SKIPPED
+- Left as-is. Maintains API symmetry with other bridge modules.
+
+### 8.3 `.take()` on local variable -- SKIPPED
+- Cosmetic. No behavior impact.

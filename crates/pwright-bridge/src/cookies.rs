@@ -4,12 +4,10 @@ use pwright_cdp::CdpClient;
 use pwright_cdp::connection::Result as CdpResult;
 use pwright_cdp::domains::network::Cookie;
 
-/// Get all cookies for the current page.
 pub async fn get_cookies(session: &dyn CdpClient) -> CdpResult<Vec<Cookie>> {
     session.network_get_cookies().await
 }
 
-/// Set cookies.
 pub async fn set_cookies(session: &dyn CdpClient, cookies: &[Cookie]) -> CdpResult<()> {
     session.network_set_cookies(cookies).await
 }

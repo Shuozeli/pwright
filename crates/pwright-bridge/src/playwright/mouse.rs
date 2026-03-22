@@ -69,7 +69,13 @@ impl Mouse {
     }
 
     /// Double-click at (x, y).
+    ///
+    /// Sends the correct 4-event sequence matching real browser behavior:
+    /// pressed(clickCount=1), released(1), pressed(2), released(2).
     pub async fn dblclick(&self, x: f64, y: f64) -> CdpResult<()> {
+        // First click (clickCount=1)
+        self.click(x, y, None).await?;
+        // Second click (clickCount=2)
         self.click(
             x,
             y,
@@ -159,8 +165,16 @@ mod tests {
         mouse.dblclick(100.0, 200.0).await.unwrap();
 
         let calls = mock.calls_for("Input.dispatchMouseEvent");
-        assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0].args[0]["clickCount"], 2);
+        // Correct 4-event sequence: pressed(1), released(1), pressed(2), released(2)
+        assert_eq!(calls.len(), 4);
+        assert_eq!(calls[0].args[0]["type"], "mousePressed");
+        assert_eq!(calls[0].args[0]["clickCount"], 1);
+        assert_eq!(calls[1].args[0]["type"], "mouseReleased");
+        assert_eq!(calls[1].args[0]["clickCount"], 1);
+        assert_eq!(calls[2].args[0]["type"], "mousePressed");
+        assert_eq!(calls[2].args[0]["clickCount"], 2);
+        assert_eq!(calls[3].args[0]["type"], "mouseReleased");
+        assert_eq!(calls[3].args[0]["clickCount"], 2);
     }
 
     #[tokio::test]

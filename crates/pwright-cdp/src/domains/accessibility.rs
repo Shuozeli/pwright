@@ -48,15 +48,14 @@ pub struct AXProperty {
 }
 
 impl CdpSession {
-    /// Enable the Accessibility domain (required before getFullAXTree).
+    /// Must be called before `accessibility_get_full_tree`.
     pub async fn accessibility_enable(&self) -> Result<()> {
         self.send("Accessibility.enable", serde_json::json!({}))
             .await?;
         Ok(())
     }
 
-    /// Get the full accessibility tree for the current page.
-    /// Passes depth=-1 to retrieve the complete tree (not just root).
+    /// Passes `depth=-1` to retrieve the complete tree (not just root).
     pub async fn accessibility_get_full_tree(&self) -> Result<Vec<RawAXNode>> {
         let params = cdp_gen::GetFullAXTreeParams {
             depth: Some(-1),
@@ -68,8 +67,8 @@ impl CdpSession {
                 serde_json::to_value(&params)?,
             )
             .await?;
-        let nodes: Vec<RawAXNode> =
-            serde_json::from_value(result["nodes"].take()).unwrap_or_default();
+        let nodes: Vec<RawAXNode> = serde_json::from_value(result["nodes"].take())
+            .map_err(crate::connection::CdpError::Json)?;
         Ok(nodes)
     }
 }

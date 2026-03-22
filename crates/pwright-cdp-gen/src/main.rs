@@ -119,7 +119,8 @@ fn main() {
 
     for domain in &domains {
         let snake = codegen::to_snake_case(&domain.domain);
-        let code = codegen::generate_domain_module(domain, &aliases);
+        let code = codegen::generate_domain_module(domain, &aliases)
+            .expect("fmt::Write to String should not fail");
         let file_path = out_dir.join(format!("{snake}.rs"));
         fs::write(&file_path, &code).expect("write domain file");
         let cmds = domain.commands.len();

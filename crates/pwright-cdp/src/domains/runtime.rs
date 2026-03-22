@@ -54,8 +54,8 @@ impl CdpSession {
         // Deserialize them into the generated type rather than double-wrapping.
         let typed_args: Vec<cdp_gen::CallArgument> = arguments
             .into_iter()
-            .map(|v| serde_json::from_value(v).unwrap_or_default())
-            .collect();
+            .map(|v| serde_json::from_value(v).map_err(crate::connection::CdpError::Json))
+            .collect::<crate::connection::Result<Vec<_>>>()?;
         let params = cdp_gen::CallFunctionOnParams {
             function_declaration: function_declaration.to_string(),
             object_id: Some(object_id.to_string()),
@@ -70,7 +70,6 @@ impl CdpSession {
         Ok(result)
     }
 
-    /// Enable the Runtime domain.
     pub async fn runtime_enable(&self) -> Result<()> {
         self.send("Runtime.enable", serde_json::json!({})).await?;
         Ok(())
@@ -99,9 +98,9 @@ impl CdpSession {
 /// Check for a JavaScript exception in a CDP result and return an error if present.
 fn check_js_exception(result: &Value) -> Result<()> {
     if let Some(details) = result.get("exceptionDetails") {
-        return Err(crate::connection::CdpError::Other(format_js_exception(
-            details,
-        )));
+        return Err(crate::connection::CdpError::JsException(
+            format_js_exception(details),
+        ));
     }
     Ok(())
 }

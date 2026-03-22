@@ -86,13 +86,19 @@ pub async fn navigate(
     // Wait for page to be ready
     wait_for_ready_state(session, &opts.wait_for, opts.timeout).await?;
 
-    // Get final URL and title
+    // Get final URL and title (log warnings on extraction failure since navigation succeeded)
     let current_url = eval_string(session, "window.location.href")
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            tracing::warn!("failed to extract URL after navigation");
+            String::new()
+        });
     let title = eval_string(session, "document.title")
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            tracing::warn!("failed to extract title after navigation");
+            String::new()
+        });
 
     Ok(NavigateResult {
         tab_id: tab_id.to_string(),

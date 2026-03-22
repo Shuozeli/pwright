@@ -18,43 +18,23 @@ use super::network::{self, NetworkRequest, NetworkResponse};
 use super::selectors::{SelectorKind, root_node_id};
 use super::touchscreen::Touchscreen;
 
-/// Wait strategy for navigation.
-#[derive(Debug, Clone, Default)]
-pub enum WaitUntil {
-    /// Don't wait beyond initial navigation response.
-    #[default]
-    None,
-    /// Wait for `DOMContentLoaded` event.
-    DomContentLoaded,
-    /// Wait for network idle (approximate).
-    NetworkIdle,
-}
+use crate::content::ScreenshotFormat;
+use crate::navigate::WaitStrategy;
 
 /// Options for `page.goto()`.
 #[derive(Debug, Clone, Default)]
 pub struct GotoOptions {
     /// Wait strategy for navigation.
-    pub wait_until: WaitUntil,
+    pub wait_until: WaitStrategy,
     /// Timeout in milliseconds.
     pub timeout_ms: Option<u64>,
-}
-
-/// Image format for screenshots.
-#[derive(Debug, Clone, Default)]
-pub enum ImageFormat {
-    #[default]
-    Png,
-    Jpeg,
-    Webp,
 }
 
 /// Options for screenshots.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenshotOptions {
-    /// Image format.
-    pub format: ImageFormat,
-    /// JPEG/WebP quality (0-100).
-    pub quality: Option<i32>,
+    /// Screenshot format (PNG, JPEG with quality, WebP with quality).
+    pub format: ScreenshotFormat,
     /// Capture the full page, not just the viewport.
     pub full_page: bool,
 }
@@ -132,9 +112,7 @@ impl Page {
     /// Return an error if the page has been closed.
     fn ensure_open(&self) -> CdpResult<()> {
         if self.closed.load(Ordering::SeqCst) {
-            return Err(pwright_cdp::connection::CdpError::Other(
-                "Page is closed".to_string(),
-            ));
+            return Err(pwright_cdp::connection::CdpError::PageClosed);
         }
         Ok(())
     }
@@ -147,14 +125,8 @@ impl Page {
         let opts = options.unwrap_or_default();
         let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
 
-        let wait_for = match opts.wait_until {
-            WaitUntil::None => crate::navigate::WaitStrategy::None,
-            WaitUntil::DomContentLoaded => crate::navigate::WaitStrategy::Dom,
-            WaitUntil::NetworkIdle => crate::navigate::WaitStrategy::NetworkIdle,
-        };
-
         let nav_opts = crate::navigate::NavigateOptions {
-            wait_for,
+            wait_for: opts.wait_until,
             timeout: std::time::Duration::from_millis(timeout_ms),
             block_images: false,
             block_media: false,
@@ -211,49 +183,33 @@ impl Page {
 
     // ── Content & State ──
 
-    /// Get the current page URL.
-    pub async fn url(&self) -> CdpResult<String> {
+    /// Evaluate a JS expression and extract the string result value.
+    async fn eval_page_string(&self, js: &str) -> CdpResult<String> {
         self.ensure_open()?;
-        let result = self
-            .session
-            .runtime_evaluate(pwright_js::page::GET_LOCATION_HREF)
-            .await?;
+        let result = self.session.runtime_evaluate(js).await?;
         Ok(result
             .get("result")
             .and_then(|r| r.get("value"))
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string())
+    }
+
+    /// Get the current page URL.
+    pub async fn url(&self) -> CdpResult<String> {
+        self.eval_page_string(pwright_js::page::GET_LOCATION_HREF)
+            .await
     }
 
     /// Get the page title.
     pub async fn title(&self) -> CdpResult<String> {
-        self.ensure_open()?;
-        let result = self
-            .session
-            .runtime_evaluate(pwright_js::page::GET_TITLE)
-            .await?;
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string())
+        self.eval_page_string(pwright_js::page::GET_TITLE).await
     }
 
     /// Get the full page HTML.
     pub async fn content(&self) -> CdpResult<String> {
-        self.ensure_open()?;
-        let result = self
-            .session
-            .runtime_evaluate(pwright_js::page::GET_DOCUMENT_HTML)
-            .await?;
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string())
+        self.eval_page_string(pwright_js::page::GET_DOCUMENT_HTML)
+            .await
     }
 
     /// Check if the page has been closed.
@@ -321,12 +277,7 @@ impl Page {
     pub async fn screenshot(&self, options: Option<ScreenshotOptions>) -> CdpResult<String> {
         self.ensure_open()?;
         let opts = options.unwrap_or_default();
-        let format = match opts.format {
-            ImageFormat::Png => crate::content::ScreenshotFormat::Png,
-            ImageFormat::Jpeg => crate::content::ScreenshotFormat::Jpeg(opts.quality.unwrap_or(80)),
-            ImageFormat::Webp => crate::content::ScreenshotFormat::Webp(opts.quality.unwrap_or(80)),
-        };
-        crate::content::take_screenshot(&*self.session, &format, opts.full_page).await
+        crate::content::take_screenshot(&*self.session, &opts.format, opts.full_page).await
     }
 
     /// Generate a PDF. Returns base64-encoded PDF data.
@@ -447,13 +398,7 @@ impl Page {
 
     /// Double-click an element matched by selector.
     pub async fn dblclick(&self, selector: &str) -> CdpResult<()> {
-        let kind = SelectorKind::Css(selector.to_string());
-        let node = crate::playwright::selectors::resolve_selector(&*self.session, &kind)
-            .await?
-            .ok_or_else(|| pwright_cdp::connection::CdpError::ElementNotFound {
-                selector: selector.to_string(),
-            })?;
-        crate::actions::dblclick_by_node_id(&*self.session, node.node_id).await
+        self.locator(selector).dblclick().await
     }
 
     /// Dispatch a custom event on an element matched by selector.

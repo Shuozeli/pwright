@@ -52,3 +52,10 @@ in `tab_locks`. Very slow growth, only matters for long-running servers.
 | No `pwright script run` CLI command | HIGH | Added `Script` subcommand with `Run`/`Validate` |
 | No `wait`/sleep step in scripts | MEDIUM | Added `wait: <ms>` step type |
 | `with_page` silently ignores tab close errors | HIGH | Removed `with_page`; callers use `Browser::new_tab` / `TabHandle::close` for explicit lifecycle management |
+| Server check/uncheck not idempotent | MEDIUM | Added `is_checked()` guard before clicking |
+| `Mouse::dblclick` wrong event sequence (2 instead of 4) | MEDIUM | Fixed to send correct pressed(1),released(1),pressed(2),released(2) |
+| Server go_back/go_forward uses JS instead of CDP | LOW | Delegates to `Page::go_back()`/`go_forward()` |
+| `unwrap_or_default()` swallows CDP deserialization errors | MEDIUM | Replaced with `map_err(CdpError::Json)?` in network/target/accessibility/runtime |
+| `CdpError::Other` catch-all (40+ uses) | LOW | Added `PageClosed`, `TabNotFound`, `HttpFailed`, `JsException` variants |
+| Duplicate `WaitUntil`/`ImageFormat` enums | LOW | Removed duplicates, unified on `WaitStrategy`/`ScreenshotFormat` |
+| Codegen `writeln!().unwrap()` (30 calls) | LOW | Propagate `fmt::Result` with `?` |

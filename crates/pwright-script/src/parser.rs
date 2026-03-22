@@ -248,7 +248,10 @@ fn parse_step(val: &serde_yaml::Value, index: usize) -> Result<Step, ScriptError
         })
     } else if val["wait_for"].is_string() && val.get("goto").is_none() {
         // Standalone wait_for (not the goto.wait_for field)
-        let selector = val["wait_for"].as_str().unwrap().to_string();
+        let selector = val["wait_for"]
+            .as_str()
+            .ok_or_else(|| ScriptError::Parse("wait_for must be a string".into()))?
+            .to_string();
         let timeout_ms = val["timeout_ms"]
             .as_i64()
             .map(|n| n.max(0) as u64)

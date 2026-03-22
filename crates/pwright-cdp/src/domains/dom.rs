@@ -7,7 +7,6 @@ use crate::generated::dom as cdp_gen;
 use crate::session::CdpSession;
 
 impl CdpSession {
-    /// Focus an element by nodeId.
     pub async fn dom_focus(&self, node_id: i64) -> Result<()> {
         let params = cdp_gen::FocusParams {
             node_id: Some(node_id),
@@ -18,7 +17,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Scroll an element into view by nodeId.
     pub async fn dom_scroll_into_view(&self, node_id: i64) -> Result<()> {
         let params = cdp_gen::ScrollIntoViewIfNeededParams {
             node_id: Some(node_id),
@@ -29,7 +27,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Get the box model for an element by nodeId.
     pub async fn dom_get_box_model(&self, node_id: i64) -> Result<Value> {
         let params = cdp_gen::GetBoxModelParams {
             node_id: Some(node_id),
@@ -39,7 +36,6 @@ impl CdpSession {
             .await
     }
 
-    /// Resolve a DOM node to a JavaScript remote object by nodeId.
     pub async fn dom_resolve_node(&self, node_id: i64) -> Result<Value> {
         let params = cdp_gen::ResolveNodeParams {
             node_id: Some(node_id),
@@ -49,7 +45,6 @@ impl CdpSession {
             .await
     }
 
-    /// Enable the DOM domain.
     pub async fn dom_enable(&self) -> Result<()> {
         self.send(
             "DOM.enable",
@@ -59,7 +54,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Get the document root node.
     pub async fn dom_get_document(&self) -> Result<Value> {
         self.send(
             "DOM.getDocument",
@@ -68,7 +62,6 @@ impl CdpSession {
         .await
     }
 
-    /// Find a single node matching a CSS selector within the given node.
     pub async fn dom_query_selector(&self, node_id: i64, selector: &str) -> Result<i64> {
         let params = cdp_gen::QuerySelectorParams {
             node_id,
@@ -81,7 +74,6 @@ impl CdpSession {
         Ok(returns.node_id)
     }
 
-    /// Find all nodes matching a CSS selector within the given node.
     pub async fn dom_query_selector_all(&self, node_id: i64, selector: &str) -> Result<Vec<i64>> {
         let params = cdp_gen::QuerySelectorAllParams {
             node_id,
@@ -94,7 +86,6 @@ impl CdpSession {
         Ok(returns.node_ids)
     }
 
-    /// Get attributes for a node as key-value pairs.
     pub async fn dom_get_attributes(&self, node_id: i64) -> Result<Vec<String>> {
         let params = cdp_gen::GetAttributesParams { node_id };
         let result = self
@@ -104,7 +95,6 @@ impl CdpSession {
         Ok(returns.attributes)
     }
 
-    /// Get the outer HTML for a node.
     pub async fn dom_get_outer_html(&self, node_id: i64) -> Result<String> {
         let params = cdp_gen::GetOuterHTMLParams {
             node_id: Some(node_id),
@@ -117,7 +107,6 @@ impl CdpSession {
         Ok(returns.outer_html)
     }
 
-    /// Describe a node by backendNodeId, returning its details.
     pub async fn dom_describe_node(&self, backend_node_id: i64) -> Result<Value> {
         let params = cdp_gen::DescribeNodeParams {
             backend_node_id: Some(backend_node_id),
@@ -127,7 +116,6 @@ impl CdpSession {
             .await
     }
 
-    /// Set files for a file input element.
     pub async fn dom_set_file_input_files(&self, node_id: i64, files: &[String]) -> Result<()> {
         let params = cdp_gen::SetFileInputFilesParams {
             files: files.to_vec(),
@@ -139,7 +127,6 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Request a DOM nodeId for a JavaScript remote object.
     pub async fn dom_request_node(&self, object_id: &str) -> Result<i64> {
         let params = cdp_gen::RequestNodeParams {
             object_id: object_id.to_string(),

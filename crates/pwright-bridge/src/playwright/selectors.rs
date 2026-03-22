@@ -159,16 +159,6 @@ async fn resolve_css_selector_all(
         .collect())
 }
 
-/// Get an objectId for a resolved element (needed for callFunctionOn).
-pub async fn resolve_object_id(session: &dyn CdpClient, node_id: i64) -> CdpResult<Option<String>> {
-    let result = session.dom_resolve_node(node_id).await?;
-    Ok(result
-        .get("object")
-        .and_then(|o| o.get("objectId"))
-        .and_then(|id| id.as_str())
-        .map(|s| s.to_string()))
-}
-
 // ── JS-based resolution helpers ──
 
 /// Resolve an element using a JS expression that returns the element or null.

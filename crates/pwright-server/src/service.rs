@@ -27,6 +27,10 @@ fn cdp_to_status(e: CdpError) -> Status {
         CdpError::ElementNotFound { .. } => Status::not_found(e.to_string()),
         CdpError::NavigationFailed { .. } => Status::internal(e.to_string()),
         CdpError::WebSocket(_) => Status::unavailable(e.to_string()),
+        CdpError::PageClosed => Status::failed_precondition(e.to_string()),
+        CdpError::TabNotFound(_) => Status::not_found(e.to_string()),
+        CdpError::HttpFailed(_) => Status::unavailable(e.to_string()),
+        CdpError::JsException(_) => Status::internal(e.to_string()),
         CdpError::Protocol { .. }
         | CdpError::Json(_)
         | CdpError::Compound { .. }
@@ -89,7 +93,6 @@ impl BrowserServiceImpl {
             cdp_url: cdp_url.to_string(),
             max_parallel_tabs: self.max_parallel_tabs,
             navigate_timeout_ms: self.nav_timeout_ms,
-            max_tabs: 0,
         };
 
         let browser = Browser::connect(config).await.map_err(cdp_to_status)?;

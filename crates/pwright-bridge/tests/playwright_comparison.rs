@@ -460,8 +460,11 @@ mod tests {
         let page = Page::new(mock.clone());
         page.mouse().dblclick(300.0, 400.0).await.unwrap();
 
+        // Correct 4-event sequence: pressed(1), released(1), pressed(2), released(2)
         let calls = mock.calls_for("Input.dispatchMouseEvent");
-        assert_eq!(calls[0].args[0]["clickCount"], 2);
+        assert_eq!(calls.len(), 4);
+        assert_eq!(calls[0].args[0]["clickCount"], 1);
+        assert_eq!(calls[2].args[0]["clickCount"], 2);
     }
 
     /// ```typescript
@@ -528,8 +531,7 @@ mod tests {
 
         // pwright — JPEG with quality
         page.screenshot(Some(ScreenshotOptions {
-            format: pwright_bridge::playwright::ImageFormat::Jpeg,
-            quality: Some(50),
+            format: pwright_bridge::playwright::ScreenshotFormat::Jpeg(50),
             full_page: false,
         }))
         .await

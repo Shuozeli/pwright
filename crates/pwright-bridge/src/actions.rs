@@ -8,6 +8,20 @@ use serde_json::json;
 
 use crate::keys;
 
+/// Resolve a nodeId to a Runtime objectId for use with `callFunctionOn`.
+///
+/// This is the shared helper for the repeated pattern:
+///   `dom_resolve_node(id) -> result["object"]["objectId"]`
+pub async fn resolve_to_object_id(session: &dyn CdpClient, node_id: i64) -> CdpResult<String> {
+    let resolved = session.dom_resolve_node(node_id).await?;
+    resolved
+        .get("object")
+        .and_then(|o| o.get("objectId"))
+        .and_then(|id| id.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| CdpError::Other("could not resolve node to objectId".to_string()))
+}
+
 /// Get the center coordinates of an element by backendNodeId.
 async fn get_element_center(
     session: &dyn CdpClient,
@@ -49,17 +63,12 @@ async fn get_element_center_js(
     session: &dyn CdpClient,
     backend_node_id: i64,
 ) -> CdpResult<(f64, f64)> {
-    let resolved = session.dom_resolve_node(backend_node_id).await?;
-    let object_id = resolved
-        .get("object")
-        .and_then(|o| o.get("objectId"))
-        .and_then(|id| id.as_str())
-        .ok_or_else(|| CdpError::Other("could not resolve node".to_string()))?;
+    let object_id = resolve_to_object_id(session, backend_node_id).await?;
 
     let rect_fn = pwright_js::element::GET_BOUNDING_CENTER;
 
     let result = session
-        .runtime_call_function_on(object_id, rect_fn, vec![])
+        .runtime_call_function_on(&object_id, rect_fn, vec![])
         .await?;
 
     let value = result
@@ -78,6 +87,36 @@ async fn get_element_center_js(
     Ok((x, y))
 }
 
+/// Dispatch a single mousePressed + mouseReleased pair at the given coordinates.
+async fn dispatch_click_at(
+    session: &dyn CdpClient,
+    x: f64,
+    y: f64,
+    click_count: i32,
+) -> CdpResult<()> {
+    session
+        .input_dispatch_mouse_event(
+            MouseEventType::Pressed,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(click_count),
+            Some(1),
+        )
+        .await?;
+    session
+        .input_dispatch_mouse_event(
+            MouseEventType::Released,
+            x,
+            y,
+            Some(MouseButton::Left),
+            Some(click_count),
+            Some(0),
+        )
+        .await?;
+    Ok(())
+}
+
 /// Click an element by nodeId.
 ///
 /// Scrolls into view first, then gets viewport-relative coordinates via
@@ -92,80 +131,21 @@ pub async fn click_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResul
     //    (getBoundingClientRect returns viewport coords, not page coords)
     let (x, y) = get_element_center_js(session, node_id).await?;
 
-    // 3. Dispatch at viewport coordinates with buttons field
-    session
-        .input_dispatch_mouse_event(
-            MouseEventType::Pressed,
-            x,
-            y,
-            Some(MouseButton::Left),
-            Some(1),
-            Some(1),
-        )
-        .await?;
-    session
-        .input_dispatch_mouse_event(
-            MouseEventType::Released,
-            x,
-            y,
-            Some(MouseButton::Left),
-            Some(1),
-            Some(0),
-        )
-        .await?;
-
-    Ok(())
+    // 3. Dispatch at viewport coordinates
+    dispatch_click_at(session, x, y, 1).await
 }
 
 /// Double-click an element by nodeId.
+///
+/// Sends the correct 4-event sequence: pressed(1), released(1), pressed(2), released(2).
 pub async fn dblclick_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResult<()> {
     session.dom_scroll_into_view(node_id).await?;
     let (x, y) = get_element_center_js(session, node_id).await?;
 
-    // First click
-    session
-        .input_dispatch_mouse_event(
-            MouseEventType::Pressed,
-            x,
-            y,
-            Some(MouseButton::Left),
-            Some(1),
-            Some(1),
-        )
-        .await?;
-    session
-        .input_dispatch_mouse_event(
-            MouseEventType::Released,
-            x,
-            y,
-            Some(MouseButton::Left),
-            Some(1),
-            Some(0),
-        )
-        .await?;
+    // First click (clickCount=1)
+    dispatch_click_at(session, x, y, 1).await?;
     // Second click (clickCount=2)
-    session
-        .input_dispatch_mouse_event(
-            MouseEventType::Pressed,
-            x,
-            y,
-            Some(MouseButton::Left),
-            Some(2),
-            Some(1),
-        )
-        .await?;
-    session
-        .input_dispatch_mouse_event(
-            MouseEventType::Released,
-            x,
-            y,
-            Some(MouseButton::Left),
-            Some(2),
-            Some(0),
-        )
-        .await?;
-
-    Ok(())
+    dispatch_click_at(session, x, y, 2).await
 }
 
 /// Type text into an element by backendNodeId.
@@ -181,17 +161,12 @@ pub async fn type_by_node_id(session: &dyn CdpClient, node_id: i64, text: &str) 
 pub async fn fill_by_node_id(session: &dyn CdpClient, node_id: i64, value: &str) -> CdpResult<()> {
     session.dom_focus(node_id).await?;
 
-    let resolved = session.dom_resolve_node(node_id).await?;
-    let object_id = resolved
-        .get("object")
-        .and_then(|o| o.get("objectId"))
-        .and_then(|id| id.as_str())
-        .ok_or_else(|| CdpError::Other("could not resolve node for fill".to_string()))?;
+    let object_id = resolve_to_object_id(session, node_id).await?;
 
     let js = pwright_js::element::SET_VALUE;
 
     session
-        .runtime_call_function_on(object_id, js, vec![json!({"value": value})])
+        .runtime_call_function_on(&object_id, js, vec![json!({"value": value})])
         .await?;
 
     Ok(())
@@ -309,6 +284,19 @@ pub async fn press_key(session: &dyn CdpClient, key: &str) -> CdpResult<()> {
     Ok(())
 }
 
+/// Check whether a checkbox/radio element is currently checked.
+pub async fn is_checked(session: &dyn CdpClient, node_id: i64) -> CdpResult<bool> {
+    let object_id = resolve_to_object_id(session, node_id).await?;
+    let result = session
+        .runtime_call_function_on(&object_id, pwright_js::element::IS_CHECKED, vec![])
+        .await?;
+    Ok(result
+        .get("result")
+        .and_then(|r| r.get("value"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
+}
+
 /// Select a value in a `<select>` element.
 ///
 /// Uses `Runtime.callFunctionOn` to properly set `selectedIndex` and
@@ -320,17 +308,12 @@ pub async fn select_by_node_id(
 ) -> CdpResult<()> {
     session.dom_focus(node_id).await?;
 
-    let resolved = session.dom_resolve_node(node_id).await?;
-    let object_id = resolved
-        .get("object")
-        .and_then(|o| o.get("objectId"))
-        .and_then(|id| id.as_str())
-        .ok_or_else(|| CdpError::Other("could not resolve node for select".to_string()))?;
+    let object_id = resolve_to_object_id(session, node_id).await?;
 
     let js = pwright_js::element::SELECT_OPTION;
 
     session
-        .runtime_call_function_on(object_id, js, vec![serde_json::json!({"value": value})])
+        .runtime_call_function_on(&object_id, js, vec![serde_json::json!({"value": value})])
         .await?;
 
     Ok(())

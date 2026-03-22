@@ -92,8 +92,9 @@ pub struct BrowserConfig {
     pub max_parallel_tabs: usize,
     /// Default navigation timeout in milliseconds
     pub navigate_timeout_ms: u64,
-    /// Maximum number of open tabs (0 = unlimited)
-    pub max_tabs: usize,
+    // TODO(feature): max_tabs enforcement was removed because it was never checked.
+    // If tab limits are needed in the future, implement them in the server layer
+    // (pwright-bridge is stateless by design).
 }
 
 impl Default for BrowserConfig {
@@ -102,7 +103,6 @@ impl Default for BrowserConfig {
             cdp_url: String::new(),
             max_parallel_tabs: 4,
             navigate_timeout_ms: 30_000,
-            max_tabs: 0,
         }
     }
 }
@@ -250,19 +250,19 @@ impl Browser {
         let resp: serde_json::Value = reqwest::get(&version_url)
             .await
             .map_err(|e| {
-                pwright_cdp::connection::CdpError::Other(format!("HTTP fetch failed: {e}"))
+                pwright_cdp::connection::CdpError::HttpFailed(format!("HTTP fetch failed: {e}"))
             })?
             .json()
             .await
             .map_err(|e| {
-                pwright_cdp::connection::CdpError::Other(format!("JSON parse failed: {e}"))
+                pwright_cdp::connection::CdpError::HttpFailed(format!("JSON parse failed: {e}"))
             })?;
 
         let ws_url = resp
             .get("webSocketDebuggerUrl")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                pwright_cdp::connection::CdpError::Other(
+                pwright_cdp::connection::CdpError::HttpFailed(
                     "webSocketDebuggerUrl not found in /json/version response".to_string(),
                 )
             })?;
