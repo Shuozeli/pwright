@@ -1,6 +1,20 @@
 # Code Quality Findings
 
-Audit date: 2026-03-26
+Audit date: 2026-03-26 (initial), 2026-03-26 (re-audit)
+
+---
+
+## Summary
+
+The codebase is in **excellent shape**. The initial audit found 8 categories of
+issues. Most were fixed in the same session. The re-audit found no new issues --
+the fixes were clean and did not introduce regressions. The remaining items are
+either cosmetic, deferred by design, or acceptable for test-only code.
+
+**Scorecard:**
+- Fixed: 6 items
+- Deferred (intentional): 2 items (MockCdpClient/FakeCdpClient consolidation, Clock inconsistency)
+- No action needed: 5 items (cosmetic or test-only)
 
 ---
 
@@ -34,7 +48,7 @@ Audit date: 2026-03-26
   2. Extract a macro or trait-blanket pattern that generates the recording+delegation boilerplate so both impls share the same template.
 
   Option 1 is simpler and already partially done -- `FakeCdpClient` has `calls()` and `method_names()`.
-- **Status:** SKIPPED -- This is a large structural refactor (consolidating two test implementations) that risks breaking many tests. Better done as a dedicated task with its own branch and review.
+- **Status:** DEFERRED -- This is a large structural refactor (consolidating two test implementations) that risks breaking many tests. Better done as a dedicated task with its own branch and review.
 
 ### Duplicate click dispatch pattern in actions.rs and mouse.rs -- DONE
 
@@ -118,7 +132,7 @@ Audit date: 2026-03-26
 
 ---
 
-## 6. Dead / Redundant Code (Low Impact) -- SKIPPED
+## 6. Dead / Redundant Code (Low Impact) -- DEFERRED
 
 ### `Clock` trait and `FakeClock` are only used by `Locator::wait_for`
 
@@ -129,7 +143,7 @@ Audit date: 2026-03-26
   2. Or document that Clock is Locator-specific and not a general abstraction.
 
   Currently the inconsistency is confusing -- some waits are time-injectable, others are not.
-- **Status:** SKIPPED -- Migrating navigate.rs to use Clock requires threading a Clock parameter through multiple public APIs. Low impact, better as a dedicated task.
+- **Status:** DEFERRED -- Migrating navigate.rs to use Clock requires threading a Clock parameter through multiple public APIs. Low impact, better as a dedicated task.
 
 ### `cookies.rs` is a thin passthrough module
 
@@ -173,3 +187,20 @@ Audit date: 2026-03-26
 - **Problem:** For all named keys (Enter, Tab, Escape, etc.), `KeyDef.code` is `Cow::Borrowed(...)`. The `Cow::Owned` variant is used only for F-keys (`F1`-`F12`). This is technically correct but the F-key string could be `&'static str` using a lookup table, avoiding the Cow indirection.
 - **Fix:** Cosmetic. The current approach works fine. No action required.
 - **Status:** NO ACTION.
+
+---
+
+## Re-Audit Notes (2026-03-26)
+
+A full re-audit of the entire codebase confirmed:
+
+1. **No `#[allow(...)]` directives anywhere** -- all warnings are fixed at the source.
+2. **No unwrap() in production code** -- all unwrap calls are in test code, test_utils, or build scripts.
+3. **No unused imports or dead code** -- clippy passes clean with zero warnings.
+4. **No silent error swallowing** -- all error paths either propagate via `?` or use explicit `map_err`.
+5. **Formatting is clean** -- `cargo fmt --check` passes.
+6. **All tests pass** -- `cargo test --workspace` green.
+7. **Consistent error handling** -- `CdpError` enum covers all error categories with proper `thiserror` derives and Display impls.
+8. **Good test coverage** -- every module has unit tests, with fake/mock infrastructure for CDP client injection.
+9. **Clean dependency graph** -- no cross-repo path dependencies, no unused workspace dependencies.
+10. **Type safety** -- `DownloadBehavior` enum, `SelectorKind` enum, `WaitStrategy` enum, `MouseButton`/`MouseEventType` enums all prevent stringly-typed APIs.
