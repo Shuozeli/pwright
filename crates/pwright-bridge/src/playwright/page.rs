@@ -187,9 +187,7 @@ impl Page {
     async fn eval_page_string(&self, js: &str) -> CdpResult<String> {
         self.ensure_open()?;
         let result = self.session.runtime_evaluate(js).await?;
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
+        Ok(crate::evaluate::extract_result_value(&result)
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string())
@@ -805,7 +803,11 @@ impl Page {
         // 2. Enable downloads globally to temp dir.
         let temp_dir = std::env::temp_dir().to_string_lossy().to_string();
         self.session
-            .browser_set_download_behavior("allowAndName", Some(&temp_dir), true)
+            .browser_set_download_behavior(
+                pwright_cdp::DownloadBehavior::AllowAndName,
+                Some(&temp_dir),
+                true,
+            )
             .await?;
 
         // 3. Execute the action that triggers the download.

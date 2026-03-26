@@ -237,14 +237,14 @@ impl CdpClient for MockCdpClient {
 
     async fn browser_set_download_behavior(
         &self,
-        behavior: &str,
+        behavior: pwright_cdp::DownloadBehavior,
         download_path: Option<&str>,
         events_enabled: bool,
     ) -> CdpResult<()> {
         self.record(
             "Browser.setDownloadBehavior",
             vec![serde_json::json!({
-                "behavior": behavior,
+                "behavior": format!("{:?}", behavior),
                 "downloadPath": download_path,
                 "eventsEnabled": events_enabled,
             })],

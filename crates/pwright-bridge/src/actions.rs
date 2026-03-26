@@ -88,10 +88,11 @@ async fn get_element_center_js(
 }
 
 /// Dispatch a single mousePressed + mouseReleased pair at the given coordinates.
-async fn dispatch_click_at(
+pub(crate) async fn dispatch_click_at(
     session: &dyn CdpClient,
     x: f64,
     y: f64,
+    button: MouseButton,
     click_count: i32,
 ) -> CdpResult<()> {
     session
@@ -99,7 +100,7 @@ async fn dispatch_click_at(
             MouseEventType::Pressed,
             x,
             y,
-            Some(MouseButton::Left),
+            Some(button),
             Some(click_count),
             Some(1),
         )
@@ -109,7 +110,7 @@ async fn dispatch_click_at(
             MouseEventType::Released,
             x,
             y,
-            Some(MouseButton::Left),
+            Some(button),
             Some(click_count),
             Some(0),
         )
@@ -132,7 +133,7 @@ pub async fn click_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResul
     let (x, y) = get_element_center_js(session, node_id).await?;
 
     // 3. Dispatch at viewport coordinates
-    dispatch_click_at(session, x, y, 1).await
+    dispatch_click_at(session, x, y, MouseButton::Left, 1).await
 }
 
 /// Double-click an element by nodeId.
@@ -143,9 +144,9 @@ pub async fn dblclick_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpRe
     let (x, y) = get_element_center_js(session, node_id).await?;
 
     // First click (clickCount=1)
-    dispatch_click_at(session, x, y, 1).await?;
+    dispatch_click_at(session, x, y, MouseButton::Left, 1).await?;
     // Second click (clickCount=2)
-    dispatch_click_at(session, x, y, 2).await
+    dispatch_click_at(session, x, y, MouseButton::Left, 2).await
 }
 
 /// Type text into an element by backendNodeId.

@@ -364,7 +364,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("pwright=info".parse().unwrap()),
+                .add_directive("pwright=info".parse().expect("hardcoded directive")),
         )
         .with_target(false)
         .without_time()

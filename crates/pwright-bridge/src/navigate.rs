@@ -132,10 +132,8 @@ pub async fn poll_ready_state(session: &dyn CdpClient, timeout: Duration) -> Cdp
         if let Ok(result) = session
             .runtime_evaluate(pwright_js::page::GET_READY_STATE)
             .await
-            && let Some(state) = result
-                .get("result")
-                .and_then(|r| r.get("value"))
-                .and_then(|v| v.as_str())
+            && let Some(state) =
+                crate::evaluate::extract_result_value(&result).and_then(|v| v.as_str())
             && (state == "interactive" || state == "complete")
         {
             return Ok(());
@@ -211,7 +209,7 @@ async fn wait_selector_visible(
 /// Helper: evaluate JS and return the result value as a string.
 async fn eval_string(session: &dyn CdpClient, expr: &str) -> Option<String> {
     session.runtime_evaluate(expr).await.ok().and_then(|r| {
-        r.get("result").and_then(|r| r.get("value")).and_then(|v| {
+        crate::evaluate::extract_result_value(&r).and_then(|v| {
             v.as_str()
                 .map(|s| s.to_string())
                 .or_else(|| Some(v.to_string()))

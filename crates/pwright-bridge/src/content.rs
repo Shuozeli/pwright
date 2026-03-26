@@ -43,9 +43,7 @@ pub async fn get_text(session: &dyn CdpClient) -> CdpResult<String> {
     let result = session
         .runtime_evaluate(pwright_js::dom::GET_INNER_TEXT)
         .await?;
-    let text = result
-        .get("result")
-        .and_then(|r| r.get("value"))
+    let text = crate::evaluate::extract_result_value(&result)
         .and_then(|v| v.as_str())
         .unwrap_or_default();
     Ok(text.to_string())

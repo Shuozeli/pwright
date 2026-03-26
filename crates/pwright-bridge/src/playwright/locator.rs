@@ -225,9 +225,7 @@ impl Locator {
             .session
             .runtime_call_function_on(&obj_id, pwright_js::element::GET_TEXT_CONTENT, vec![])
             .await?;
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
+        Ok(crate::evaluate::extract_result_value(&result)
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()))
     }
@@ -240,9 +238,7 @@ impl Locator {
             .session
             .runtime_call_function_on(&obj_id, pwright_js::element::GET_INNER_TEXT, vec![])
             .await?;
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
+        Ok(crate::evaluate::extract_result_value(&result)
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string())
@@ -280,9 +276,7 @@ impl Locator {
             .session
             .runtime_call_function_on(&obj_id, pwright_js::element::GET_INPUT_VALUE, vec![])
             .await?;
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
+        Ok(crate::evaluate::extract_result_value(&result)
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string())
@@ -316,9 +310,7 @@ impl Locator {
             .session
             .runtime_call_function_on(&obj_id, pwright_js::element::IS_DISABLED, vec![])
             .await?;
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
+        Ok(crate::evaluate::extract_result_value(&result)
             .and_then(|v| v.as_bool())
             .unwrap_or(false))
     }
@@ -331,9 +323,7 @@ impl Locator {
             .session
             .runtime_call_function_on(&obj_id, pwright_js::element::IS_CHECKED, vec![])
             .await?;
-        Ok(result
-            .get("result")
-            .and_then(|r| r.get("value"))
+        Ok(crate::evaluate::extract_result_value(&result)
             .and_then(|v| v.as_bool())
             .unwrap_or(false))
     }

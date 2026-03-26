@@ -14,10 +14,9 @@ pub struct Tab {
     pub session: Arc<dyn CdpClient>,
     pub tab_id: String,
     pub target_id: String,
-    // TODO(refactor): last_used is only set at creation, never updated on use.
-    // It functions as a creation timestamp for current_tab() ordering.
-    // Either rename to `created_at` or update it on each tab operation.
-    pub last_used: Instant,
+    /// Timestamp when this tab was created. Used by `current_tab()` to return
+    /// the most recently created tab.
+    pub created_at: Instant,
 }
 
 impl Browser {
@@ -39,7 +38,7 @@ impl Browser {
             session,
             tab_id: tab_id.clone(),
             target_id,
-            last_used: now,
+            created_at: now,
         };
 
         self.tabs()
@@ -83,7 +82,7 @@ impl Browser {
     /// Get the most recently used tab, or None.
     pub async fn current_tab(&self) -> Option<Tab> {
         let tabs = self.tabs().read().await;
-        tabs.values().max_by_key(|t| t.last_used).cloned()
+        tabs.values().max_by_key(|t| t.created_at).cloned()
     }
 
     /// Resolve a tab — if tab_id is empty, use the current tab.
@@ -109,7 +108,7 @@ impl Browser {
             session,
             tab_id: tab_id.to_string(),
             target_id: target_id.to_string(),
-            last_used: now,
+            created_at: now,
         };
 
         self.tabs()
@@ -131,7 +130,7 @@ mod tests {
             session: Arc::new(MockCdpClient::new()),
             tab_id: tab_id.to_string(),
             target_id: target_id.to_string(),
-            last_used: Instant::now(),
+            created_at: Instant::now(),
         }
     }
 

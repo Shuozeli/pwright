@@ -89,6 +89,20 @@ impl<T: DeserializeOwned> FromEvalResult for FromEvalJson<T> {
     }
 }
 
+// ── CDP result navigation ──
+
+/// Extract the `result.value` field from a raw CDP evaluate/callFunctionOn response.
+///
+/// CDP responses for `Runtime.evaluate` and `Runtime.callFunctionOn` have the shape:
+/// ```json
+/// { "result": { "type": "string", "value": "..." } }
+/// ```
+/// This helper navigates to the inner `value` field, avoiding the repeated
+/// `.get("result").and_then(|r| r.get("value"))` pattern.
+pub fn extract_result_value(result: &Value) -> Option<&Value> {
+    result.get("result").and_then(|r| r.get("value"))
+}
+
 // ── Core evaluate functions ──
 
 /// Evaluate a JavaScript expression and return the result.

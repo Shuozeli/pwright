@@ -39,31 +39,32 @@ impl Mouse {
         let button = opts.button.unwrap_or_default();
         let count = opts.click_count.unwrap_or(1);
 
-        self.session
-            .input_dispatch_mouse_event(
-                MouseEventType::Pressed,
-                x,
-                y,
-                Some(button),
-                Some(count),
-                Some(1),
-            )
-            .await?;
-
         if let Some(delay) = opts.delay_ms {
+            // Delay between press and release -- must inline events.
+            self.session
+                .input_dispatch_mouse_event(
+                    MouseEventType::Pressed,
+                    x,
+                    y,
+                    Some(button),
+                    Some(count),
+                    Some(1),
+                )
+                .await?;
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            self.session
+                .input_dispatch_mouse_event(
+                    MouseEventType::Released,
+                    x,
+                    y,
+                    Some(button),
+                    Some(count),
+                    Some(0),
+                )
+                .await?;
+        } else {
+            crate::actions::dispatch_click_at(&*self.session, x, y, button, count).await?;
         }
-
-        self.session
-            .input_dispatch_mouse_event(
-                MouseEventType::Released,
-                x,
-                y,
-                Some(button),
-                Some(count),
-                Some(0),
-            )
-            .await?;
 
         Ok(())
     }

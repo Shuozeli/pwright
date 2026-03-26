@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::connection::Result;
 use crate::domains::accessibility::RawAXNode;
+use crate::domains::browser::DownloadBehavior;
 use crate::domains::input::{KeyEventType, MouseButton, MouseEventType, TouchEventType};
 use crate::domains::network::{Cookie, ResponseBody};
 use crate::domains::target::TargetInfo;
@@ -30,7 +31,7 @@ pub trait CdpClient: Send + Sync {
     // ── Browser domain ──
     async fn browser_set_download_behavior(
         &self,
-        behavior: &str,
+        behavior: DownloadBehavior,
         download_path: Option<&str>,
         events_enabled: bool,
     ) -> Result<()>;
@@ -162,7 +163,7 @@ macro_rules! cdp_delegate_impl {
 }
 
 cdp_delegate_impl! {
-    async fn browser_set_download_behavior(&self, behavior: &str, download_path: Option<&str>, events_enabled: bool) -> Result<()>;
+    async fn browser_set_download_behavior(&self, behavior: DownloadBehavior, download_path: Option<&str>, events_enabled: bool) -> Result<()>;
     async fn page_navigate(&self, url: &str) -> Result<Value>;
     async fn page_enable(&self) -> Result<()>;
     async fn page_capture_screenshot(&self, format: &str, quality: Option<i32>, full_page: bool) -> Result<String>;

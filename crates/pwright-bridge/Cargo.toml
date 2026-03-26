@@ -13,11 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 dashmap = { workspace = true }
-anyhow = { workspace = true }
-thiserror = { workspace = true }
 url = { workspace = true }
-base64 = { workspace = true }
-rand = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }
 
@@ -27,3 +23,4 @@ test-utils = []
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 pwright-fake = { workspace = true }
+anyhow = { workspace = true }
