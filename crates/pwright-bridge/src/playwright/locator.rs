@@ -93,7 +93,16 @@ impl Locator {
         crate::actions::dblclick_by_node_id(&*self.session, node.node_id).await
     }
 
-    /// Fill an input element with a value (clears existing value first).
+    /// Fill an input or textarea with a value (clears existing value first).
+    ///
+    /// This sets `element.value` and dispatches input/change events. It does
+    /// **not** work on `contenteditable` elements (Quill, ProseMirror, TipTap,
+    /// Slate, etc.) because they lack a `.value` property. For contenteditable,
+    /// focus the element and use [`super::keyboard::Keyboard::type_text`] instead:
+    /// ```rust,ignore
+    /// page.click(".ql-editor").await?;
+    /// page.keyboard().type_text("hello").await?;
+    /// ```
     pub async fn fill(&self, value: &str) -> CdpResult<()> {
         let node = self.resolve_one().await?;
         crate::actions::fill_by_node_id(&*self.session, node.node_id, value).await
@@ -162,7 +171,12 @@ impl Locator {
         self.session.dom_scroll_into_view(node.node_id).await
     }
 
-    /// Set files on a file input element.
+    /// Set files on a file `<input>` element.
+    ///
+    /// Unlike Playwright (Node/Python), this sends file **paths** to Chrome via
+    /// CDP `DOM.setFileInputFiles`. The files must exist on Chrome's filesystem,
+    /// not the machine running this code. For remote Chrome instances, copy files
+    /// to the remote host first (e.g. via `rsync`).
     pub async fn set_input_files(&self, files: &[String]) -> CdpResult<()> {
         let node = self.resolve_one().await?;
         self.session

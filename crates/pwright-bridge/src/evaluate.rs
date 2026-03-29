@@ -105,7 +105,16 @@ pub fn extract_result_value(result: &Value) -> Option<&Value> {
 
 // ── Core evaluate functions ──
 
-/// Evaluate a JavaScript expression and return the result.
+/// Evaluate a JavaScript expression and return the raw CDP `RemoteObject`.
+///
+/// The returned `Value` is the CDP `RemoteObject`, **not** the JS value itself.
+/// For example, `evaluate(s, "document.title")` returns
+/// `{"type":"string","value":"My Page"}`, not `"My Page"`.
+///
+/// For most use cases, prefer [`evaluate_into`] which extracts the typed value:
+/// ```rust,ignore
+/// let title: String = evaluate_into(session, "document.title").await?;
+/// ```
 pub async fn evaluate(session: &dyn CdpClient, expression: &str) -> CdpResult<Value> {
     let result = session.runtime_evaluate(expression).await?;
     Ok(result.get("result").cloned().unwrap_or(Value::Null))

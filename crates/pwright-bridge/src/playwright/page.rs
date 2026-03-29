@@ -309,7 +309,10 @@ impl Page {
         self.locator(selector).click().await
     }
 
-    /// Fill an input element matched by selector.
+    /// Fill an input or textarea matched by selector.
+    ///
+    /// Does **not** work on `contenteditable` elements. See
+    /// [`Locator::fill`] for details and the `keyboard().type_text()` alternative.
     pub async fn fill(&self, selector: &str, value: &str) -> CdpResult<()> {
         self.locator(selector).fill(value).await
     }
@@ -432,7 +435,9 @@ impl Page {
             })
     }
 
-    /// Set files on a file input element matched by CSS selector.
+    /// Set files on a file `<input>` element matched by CSS selector.
+    ///
+    /// See [`Locator::set_input_files`] for important notes about remote Chrome.
     pub async fn set_input_files(&self, selector: &str, files: &[String]) -> CdpResult<()> {
         self.locator(selector).set_input_files(files).await
     }
@@ -740,6 +745,51 @@ impl Page {
                 return Err(pwright_cdp::connection::CdpError::Other(format!(
                     "Timeout waiting for text '{}' ({timeout_ms}ms)",
                     text
+                )));
+            }
+        }
+    }
+
+    /// Wait until an element's text contains the given substring.
+    ///
+    /// Like [`wait_for_text`](Self::wait_for_text) but scoped to the element
+    /// matched by `selector` instead of the full page body.
+    ///
+    /// ```rust,ignore
+    /// page.wait_for_text_in(".response", "complete", 30_000).await?;
+    /// ```
+    pub async fn wait_for_text_in(
+        &self,
+        selector: &str,
+        text: &str,
+        timeout_ms: u64,
+    ) -> CdpResult<()> {
+        self.ensure_open()?;
+        const POLL_MS: u64 = 200;
+        let js = format!(
+            "(function() {{ var el = document.querySelector({}); return el && el.innerText.includes({}); }})()",
+            serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".to_string()),
+            serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string())
+        );
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(POLL_MS)).await;
+
+            if let Ok(result) = self.session.runtime_evaluate(&js).await
+                && result
+                    .get("result")
+                    .and_then(|r| r.get("value"))
+                    .and_then(|v| v.as_bool())
+                    == Some(true)
+            {
+                return Ok(());
+            }
+
+            if tokio::time::Instant::now() > deadline {
+                return Err(pwright_cdp::connection::CdpError::Other(format!(
+                    "Timeout waiting for text '{}' in '{}' ({timeout_ms}ms)",
+                    text, selector
                 )));
             }
         }
