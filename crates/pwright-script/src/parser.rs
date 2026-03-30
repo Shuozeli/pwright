@@ -128,10 +128,10 @@ fn parse_scripts(val: &serde_yaml::Value) -> Result<HashMap<String, JsFunction>,
                 .as_str()
                 .ok_or_else(|| ScriptError::Parse("script key must be string".into()))?;
             // Scripts can be a plain string (body) or an object with body + async flag.
-            //   simple:    my_script: "return document.title"
-            //   explicit:  my_script: { body: "await fetch(...)", async: true }
+            //   simple:    my_script: "return document.title"      (async by default)
+            //   explicit:  my_script: { body: "...", async: false } (opt out)
             let (body, is_async) = if let Some(s) = v.as_str() {
-                (s.to_string(), false)
+                (s.to_string(), true)
             } else if v.is_mapping() {
                 let body = v["body"]
                     .as_str()
@@ -141,7 +141,7 @@ fn parse_scripts(val: &serde_yaml::Value) -> Result<HashMap<String, JsFunction>,
                         ))
                     })?
                     .to_string();
-                let is_async = v["async"].as_bool().unwrap_or(false);
+                let is_async = v["async"].as_bool().unwrap_or(true);
                 (body, is_async)
             } else {
                 return Err(ScriptError::Parse(format!(

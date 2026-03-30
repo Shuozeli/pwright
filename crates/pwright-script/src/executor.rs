@@ -212,7 +212,7 @@ async fn execute_step(
                 let resolved = resolve_template(expr, vars);
                 details.insert("expression".into(), resolved.clone());
                 let result = page
-                    .evaluate_sync(&resolved)
+                    .evaluate_async(&resolved)
                     .await
                     .map_err(ScriptError::Cdp)?;
                 json_value_to_string(&result)
