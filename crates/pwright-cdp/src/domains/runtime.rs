@@ -9,11 +9,14 @@ use crate::session::CdpSession;
 impl CdpSession {
     /// Evaluate a JavaScript expression in the page context.
     ///
+    /// Passes `awaitPromise: true` so Promise-returning expressions resolve
+    /// automatically. This is a no-op for synchronous expressions.
     /// Returns an error if the expression throws a JavaScript exception.
     pub async fn runtime_evaluate(&self, expression: &str) -> Result<Value> {
         let params = cdp_gen::EvaluateParams {
             expression: expression.to_string(),
             return_by_value: Some(true),
+            await_promise: Some(true),
             ..Default::default()
         };
         let result = self
@@ -77,21 +80,10 @@ impl CdpSession {
 
     /// Evaluate a JavaScript expression, awaiting any returned Promise.
     ///
-    /// Like `runtime_evaluate` but passes `awaitPromise: true` to CDP,
-    /// so expressions like `fetch(...).then(r => r.text())` resolve to
-    /// the final string value instead of an opaque Promise object.
+    /// Identical to `runtime_evaluate` — both now pass `awaitPromise: true`.
+    /// Kept for backward compatibility.
     pub async fn runtime_evaluate_async(&self, expression: &str) -> Result<Value> {
-        let params = cdp_gen::EvaluateParams {
-            expression: expression.to_string(),
-            return_by_value: Some(true),
-            await_promise: Some(true),
-            ..Default::default()
-        };
-        let result = self
-            .send("Runtime.evaluate", serde_json::to_value(&params)?)
-            .await?;
-        check_js_exception(&result)?;
-        Ok(result)
+        self.runtime_evaluate(expression).await
     }
 }
 
