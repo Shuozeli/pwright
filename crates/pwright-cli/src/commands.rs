@@ -1051,7 +1051,11 @@ pub async fn script(cdp: &str, action: crate::ScriptAction) -> Result<()> {
     }
 
     // Execute
-    let browser = pwright_bridge::Browser::connect_http(cdp).await?;
+    let config = pwright_bridge::BrowserConfig {
+        cdp_url: cdp.to_string(),
+        ..Default::default()
+    };
+    let browser = pwright_bridge::Browser::connect(config).await?;
     let handle = browser.new_tab("about:blank").await?;
     let page = handle.page();
 

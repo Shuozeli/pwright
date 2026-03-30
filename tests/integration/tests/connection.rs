@@ -3,24 +3,7 @@
 use std::sync::Arc;
 
 use pwright_cdp::{CdpConnection, CdpSession};
-use pwright_integration_tests::connect_and_navigate;
-
-fn chrome_http_url() -> String {
-    let host = std::env::var("CHROME_HOST").unwrap_or_else(|_| "localhost".into());
-    let port = std::env::var("CHROME_PORT").unwrap_or_else(|_| "9222".into());
-    let resolved = if host == "localhost" || host.parse::<std::net::IpAddr>().is_ok() {
-        host
-    } else {
-        use std::net::ToSocketAddrs;
-        format!("{host}:{port}")
-            .to_socket_addrs()
-            .ok()
-            .and_then(|mut addrs| addrs.next())
-            .map(|addr| addr.ip().to_string())
-            .unwrap_or(host)
-    };
-    format!("http://{resolved}:{port}")
-}
+use pwright_integration_tests::{chrome_http_url, connect_and_navigate};
 
 async fn connect() -> Arc<CdpConnection> {
     let chrome_url = chrome_http_url();

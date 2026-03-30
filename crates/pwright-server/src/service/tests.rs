@@ -204,12 +204,12 @@ async fn health_connected_with_tabs() {
 }
 
 #[tokio::test]
-async fn connect_rejects_http_url() {
+async fn connect_rejects_invalid_scheme() {
     let svc = BrowserServiceImpl::new(None, 4, 30000, false);
     let status = lifecycle::connect_browser(
         &svc,
         Request::new(proto::ConnectBrowserRequest {
-            cdp_url: "http://localhost:9222".into(),
+            cdp_url: "ftp://localhost:9222".into(),
         }),
     )
     .await

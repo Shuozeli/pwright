@@ -20,10 +20,11 @@ pub async fn connect_browser(
         req.cdp_url
     };
 
-    if !url.starts_with("ws://") && !url.starts_with("wss://") {
-        return Err(Status::invalid_argument(
-            "cdp_url must start with ws:// or wss://",
-        ));
+    if !pwright_bridge::is_supported_scheme(&url) {
+        return Err(Status::invalid_argument(format!(
+            "cdp_url must use a supported scheme: {}",
+            pwright_bridge::SUPPORTED_SCHEMES.join(", ")
+        )));
     }
 
     debug!(url = url, "connecting to Chrome");

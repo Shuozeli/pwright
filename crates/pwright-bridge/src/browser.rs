@@ -6,13 +6,27 @@ use async_trait::async_trait;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
 use pwright_cdp::{CdpClient, CdpConnection, CdpSession, CdpSessionFactory, SessionFactory};
 use tokio::sync::{Mutex, RwLock, Semaphore};
-use tracing::info;
+use tracing::{debug, info};
 
-use crate::chrome_http::ChromeHttpClient;
 use crate::playwright::Page;
 
-/// Strategy for closing a tab. Implementations choose the transport
-/// (CDP WebSocket or Chrome HTTP debug endpoint).
+/// Supported URL scheme prefixes for CDP connections.
+///
+/// HTTP/HTTPS triggers `/json/version` discovery + URL rewrite.
+/// WS/WSS connects directly.
+pub const SUPPORTED_SCHEMES: &[&str] = &["ws://", "wss://", "http://", "https://"];
+
+/// Returns `true` if the URL uses a supported CDP connection scheme.
+pub fn is_supported_scheme(url: &str) -> bool {
+    SUPPORTED_SCHEMES.iter().any(|s| url.starts_with(s))
+}
+
+/// Returns `true` if the URL uses an HTTP(S) scheme (needs discovery).
+fn is_http_scheme(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+/// Strategy for closing a tab. Implementations choose the transport.
 #[async_trait]
 pub trait TabCloser: Send + Sync {
     async fn close_tab(&self, target_id: &str) -> CdpResult<()>;
@@ -33,24 +47,6 @@ impl CdpTabCloser {
 impl TabCloser for CdpTabCloser {
     async fn close_tab(&self, target_id: &str) -> CdpResult<()> {
         self.client.target_close(target_id).await
-    }
-}
-
-/// Close a tab via Chrome's HTTP debug endpoint (`GET /json/close/{targetId}`).
-pub struct HttpTabCloser {
-    http_client: ChromeHttpClient,
-}
-
-impl HttpTabCloser {
-    pub fn new(http_client: ChromeHttpClient) -> Self {
-        Self { http_client }
-    }
-}
-
-#[async_trait]
-impl TabCloser for HttpTabCloser {
-    async fn close_tab(&self, target_id: &str) -> CdpResult<()> {
-        self.http_client.close_target(target_id).await
     }
 }
 
@@ -83,10 +79,17 @@ pub fn rewrite_ws_url(http_url: &str, ws_url: &str) -> CdpResult<String> {
 use crate::snapshot::RefCache;
 use crate::tab::Tab;
 
-/// Configuration for connecting to Chrome.
+/// Configuration for connecting to a browser via CDP.
+///
+/// The `cdp_url` can be either:
+/// - **HTTP** (e.g. `http://proxy:9222`) — fetches `/json/version` to discover the
+///   WebSocket URL, rewrites host/port to match the caller's endpoint, then connects.
+/// - **WebSocket** (e.g. `ws://127.0.0.1:9333/`) — connects directly.
+///
+/// Tab management always uses CDP WebSocket (`Target.closeTarget`).
 #[derive(Debug, Clone)]
 pub struct BrowserConfig {
-    /// WebSocket URL for Chrome DevTools (e.g. ws://127.0.0.1:9222/devtools/browser/...)
+    /// CDP endpoint URL. HTTP triggers discovery + rewrite; WS connects directly.
     pub cdp_url: String,
     /// Maximum number of concurrent tab operations
     pub max_parallel_tabs: usize,
@@ -118,23 +121,40 @@ pub struct Browser {
     tabs: RwLock<HashMap<String, Tab>>,
     ref_caches: RwLock<HashMap<String, RefCache>>,
     config: BrowserConfig,
-    http_url: Option<String>,
     tab_semaphore: Arc<Semaphore>,
     tab_locks: dashmap::DashMap<String, Arc<Mutex<()>>>,
     tab_counter: std::sync::atomic::AtomicU64,
 }
 
 impl Browser {
-    /// Connect to a running Chrome instance via CDP WebSocket.
+    /// Connect to a running browser via CDP.
+    ///
+    /// If `config.cdp_url` is an HTTP URL, fetches `/json/version` to discover the
+    /// WebSocket URL and rewrites its host/port to match. If it's a WebSocket URL,
+    /// connects directly. Tab management always uses CDP WebSocket.
     pub async fn connect(config: BrowserConfig) -> CdpResult<Arc<Self>> {
-        Self::connect_inner(config, None).await
+        let ws_url = if is_http_scheme(&config.cdp_url) {
+            let discovered = discover_ws_url(&config.cdp_url).await?;
+            let rewritten = rewrite_ws_url(&config.cdp_url, &discovered)?;
+            debug!(
+                http_url = config.cdp_url,
+                raw_ws = discovered,
+                rewritten_ws = rewritten,
+                "discovered WebSocket URL via HTTP"
+            );
+            rewritten
+        } else {
+            config.cdp_url.clone()
+        };
+
+        info!(url = ws_url, "connecting to browser");
+        let connection = CdpConnection::connect(&ws_url).await?;
+        let browser = Arc::new(Self::build(connection, config));
+        info!("connected to browser successfully");
+        Ok(browser)
     }
 
-    fn build(
-        connection: Arc<CdpConnection>,
-        config: BrowserConfig,
-        http_url: Option<String>,
-    ) -> Self {
+    fn build(connection: Arc<CdpConnection>, config: BrowserConfig) -> Self {
         let browser_session: Arc<dyn CdpClient> = Arc::new(CdpSession::browser(connection.clone()));
         let session_factory: Arc<dyn SessionFactory> = Arc::new(CdpSessionFactory::new(connection));
         let max_parallel = config.max_parallel_tabs.max(1);
@@ -144,22 +164,10 @@ impl Browser {
             tabs: RwLock::new(HashMap::new()),
             ref_caches: RwLock::new(HashMap::new()),
             config,
-            http_url,
             tab_semaphore: Arc::new(Semaphore::new(max_parallel)),
             tab_locks: dashmap::DashMap::new(),
             tab_counter: std::sync::atomic::AtomicU64::new(0),
         }
-    }
-
-    async fn connect_inner(
-        config: BrowserConfig,
-        http_url: Option<String>,
-    ) -> CdpResult<Arc<Self>> {
-        info!(url = config.cdp_url, "connecting to Chrome");
-        let connection = CdpConnection::connect(&config.cdp_url).await?;
-        let browser = Arc::new(Self::build(connection, config, http_url));
-        info!("connected to Chrome successfully");
-        Ok(browser)
     }
 
     /// Access the browser-level CDP client (for target management).
@@ -245,54 +253,6 @@ impl Browser {
         self.tab_locks.remove(tab_id);
     }
 
-    /// Connect to Chrome via an HTTP endpoint (e.g. `http://proxy:9222`).
-    ///
-    /// Fetches `/json/version` to discover the WebSocket debugger URL,
-    /// then rewrites its host/port to match the HTTP URL (for proxied setups).
-    pub async fn connect_http(http_url: &str) -> CdpResult<Arc<Self>> {
-        let version_url = format!("{}/json/version", http_url.trim_end_matches('/'));
-        let resp: serde_json::Value = reqwest::get(&version_url)
-            .await
-            .map_err(|e| {
-                pwright_cdp::connection::CdpError::HttpFailed(format!("HTTP fetch failed: {e}"))
-            })?
-            .json()
-            .await
-            .map_err(|e| {
-                pwright_cdp::connection::CdpError::HttpFailed(format!("JSON parse failed: {e}"))
-            })?;
-
-        let ws_url = resp
-            .get("webSocketDebuggerUrl")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                pwright_cdp::connection::CdpError::HttpFailed(
-                    "webSocketDebuggerUrl not found in /json/version response".to_string(),
-                )
-            })?;
-
-        let rewritten = rewrite_ws_url(http_url, ws_url)?;
-
-        let config = BrowserConfig {
-            cdp_url: rewritten,
-            ..BrowserConfig::default()
-        };
-        Self::connect_inner(config, Some(http_url.trim_end_matches('/').to_string())).await
-    }
-
-    /// The Chrome HTTP debug URL, if connected via [`Browser::connect_http`].
-    pub fn http_url(&self) -> Option<&str> {
-        self.http_url.as_deref()
-    }
-
-    /// Get a [`ChromeHttpClient`] for HTTP-based tab management.
-    ///
-    /// Returns `None` if the browser was connected via WebSocket directly
-    /// (no HTTP URL available).
-    pub fn http_client(&self) -> Option<CdpResult<ChromeHttpClient>> {
-        self.http_url.as_ref().map(|url| ChromeHttpClient::new(url))
-    }
-
     /// Open a new browser tab and return a [`TabHandle`] for lifecycle management.
     ///
     /// The caller owns the tab and is responsible for calling [`TabHandle::close`].
@@ -300,12 +260,7 @@ impl Browser {
         let nav_url = if url.is_empty() { "about:blank" } else { url };
         let target_id = self.browser_client().target_create(nav_url).await?;
         let session = self.attach_session(&target_id).await?;
-
-        let closer: Arc<dyn TabCloser> = match &self.http_url {
-            Some(url) => Arc::new(HttpTabCloser::new(ChromeHttpClient::new(url)?)),
-            None => Arc::new(CdpTabCloser::new(self.browser_session.clone())),
-        };
-
+        let closer: Arc<dyn TabCloser> = Arc::new(CdpTabCloser::new(self.browser_session.clone()));
         Ok(TabHandle::new(closer, session, target_id))
     }
 
@@ -321,7 +276,6 @@ impl Browser {
             tabs: RwLock::new(HashMap::new()),
             ref_caches: RwLock::new(HashMap::new()),
             config: BrowserConfig::default(),
-            http_url: None,
             tab_semaphore: Arc::new(Semaphore::new(4)),
             tab_locks: dashmap::DashMap::new(),
             tab_counter: std::sync::atomic::AtomicU64::new(0),
@@ -332,8 +286,8 @@ impl Browser {
 /// Handle for an ephemeral browser tab with explicit lifecycle control.
 ///
 /// Created by [`Browser::new_tab`]. The caller is responsible for closing
-/// the tab via [`TabHandle::close`]. If the browser was connected via HTTP,
-/// close uses the HTTP endpoint; otherwise it uses CDP WebSocket.
+/// the tab via [`TabHandle::close`]. Tabs are always closed via CDP WebSocket
+/// (`Target.closeTarget`).
 pub struct TabHandle {
     closer: Arc<dyn TabCloser>,
     session: Arc<dyn CdpClient>,
@@ -366,7 +320,7 @@ impl TabHandle {
         Page::with_tab(self.session.clone(), self.target_id.clone())
     }
 
-    /// Close the tab. Uses HTTP or CDP depending on how the browser was connected.
+    /// Close the tab via CDP WebSocket (`Target.closeTarget`).
     ///
     /// Idempotent: calling close on an already-closed handle returns `Ok(())`.
     pub async fn close(&self) -> CdpResult<()> {
@@ -386,6 +340,26 @@ impl Drop for TabHandle {
             );
         }
     }
+}
+
+/// Fetch the WebSocket debugger URL from a browser's HTTP `/json/version` endpoint.
+async fn discover_ws_url(http_url: &str) -> CdpResult<String> {
+    let version_url = format!("{}/json/version", http_url.trim_end_matches('/'));
+    let resp: serde_json::Value = reqwest::get(&version_url)
+        .await
+        .map_err(|e| CdpError::HttpFailed(format!("HTTP fetch failed: {e}")))?
+        .json()
+        .await
+        .map_err(|e| CdpError::HttpFailed(format!("JSON parse failed: {e}")))?;
+
+    resp.get("webSocketDebuggerUrl")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            CdpError::HttpFailed(
+                "webSocketDebuggerUrl not found in /json/version response".to_string(),
+            )
+        })
 }
 
 #[cfg(test)]
