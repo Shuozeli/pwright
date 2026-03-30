@@ -7,19 +7,3 @@ COPY . .
 
 # Build integration tests
 RUN cargo test -p pwright-integration-tests --no-run 2>&1 | tail -5
-
-# Wait for Chrome then run tests.
-# Chrome rejects Host headers that aren't localhost or an IP,
-# so we resolve the hostname to IP for the health check.
-CMD sh -c '\
-  CHROME_IP=$(getent hosts "$CHROME_HOST" | awk "{print \$1}") && \
-  echo "Chrome at $CHROME_HOST ($CHROME_IP):$CHROME_PORT" && \
-  for i in $(seq 1 60); do \
-    if curl -sf "http://$CHROME_IP:$CHROME_PORT/json/version" > /dev/null 2>&1; then \
-      echo "Chrome ready!" && \
-      exec cargo test -p pwright-integration-tests -- --ignored --test-threads=1; \
-    fi; \
-    sleep 1; \
-    echo "  waiting... ($i/60)"; \
-  done; \
-  echo "Chrome not available" && exit 1'

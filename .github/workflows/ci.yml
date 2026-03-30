@@ -67,7 +67,7 @@ jobs:
         env:
           RUSTDOCFLAGS: "-D warnings"
 
-  integration:
+  integration-chrome:
     name: Integration Tests (Chrome)
     runs-on: ubuntu-latest
     steps:
@@ -87,3 +87,24 @@ jobs:
         if: always()
         working-directory: tests/integration
         run: docker compose down
+
+  integration-lightpanda:
+    name: Integration Tests (Lightpanda)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run integration tests in Docker
+        working-directory: tests/integration
+        run: docker compose -f docker-compose.lightpanda.yml up --build --abort-on-container-exit --exit-code-from test-runner
+        timeout-minutes: 15
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: tests/integration
+        run: docker compose -f docker-compose.lightpanda.yml logs
+
+      - name: Tear down
+        if: always()
+        working-directory: tests/integration
+        run: docker compose -f docker-compose.lightpanda.yml down

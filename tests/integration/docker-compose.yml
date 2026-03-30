@@ -1,12 +1,9 @@
-# Full Docker setup: Chrome + Lightpanda + test runner in same network.
+# Chrome integration tests.
 # CI: docker compose up --build --abort-on-container-exit --exit-code-from test-runner
 services:
   chrome:
     image: chromedp/headless-shell:latest
     shm_size: "2gb"
-
-  lightpanda:
-    image: lightpanda/browser:nightly
 
   test-runner:
     build:
@@ -14,9 +11,20 @@ services:
       dockerfile: tests/integration/Dockerfile
     depends_on:
       - chrome
-      - lightpanda
     environment:
       CHROME_HOST: chrome
       CHROME_PORT: "9222"
-      LIGHTPANDA_HOST: lightpanda
-      LIGHTPANDA_PORT: "9222"
+    command: >
+      sh -c '
+        CHROME_IP=$$(getent hosts "$$CHROME_HOST" | awk "{print \$$1}") &&
+        echo "Chrome at $$CHROME_HOST ($$CHROME_IP):$$CHROME_PORT" &&
+        for i in $$(seq 1 60); do
+          curl -sf "http://$$CHROME_IP:$$CHROME_PORT/json/version" > /dev/null 2>&1 && break;
+          sleep 1; echo "  waiting for Chrome... ($$i/60)";
+        done &&
+        failed=0;
+        for t in $$(ls tests/integration/tests/*.rs | xargs -I{} basename {} .rs | grep -v lightpanda); do
+          cargo test -p pwright-integration-tests --test "$$t" -- --ignored --test-threads=1 || failed=1;
+        done;
+        exit $$failed
+      '
