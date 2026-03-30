@@ -1,9 +1,12 @@
-# Full Docker setup: Chrome + test runner in same network.
+# Full Docker setup: Chrome + Lightpanda + test runner in same network.
 # CI: docker compose up --build --abort-on-container-exit --exit-code-from test-runner
 services:
   chrome:
     image: chromedp/headless-shell:latest
     shm_size: "2gb"
+
+  lightpanda:
+    image: lightpanda/browser:nightly
 
   test-runner:
     build:
@@ -11,6 +14,9 @@ services:
       dockerfile: tests/integration/Dockerfile
     depends_on:
       - chrome
+      - lightpanda
     environment:
       CHROME_HOST: chrome
       CHROME_PORT: "9222"
+      LIGHTPANDA_HOST: lightpanda
+      LIGHTPANDA_PORT: "9222"

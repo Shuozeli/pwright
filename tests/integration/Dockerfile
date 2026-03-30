@@ -17,11 +17,7 @@ CMD sh -c '\
   for i in $(seq 1 60); do \
     if curl -sf "http://$CHROME_IP:$CHROME_PORT/json/version" > /dev/null 2>&1; then \
       echo "Chrome ready!" && \
-      failed=0; \
-      for t in $(ls tests/integration/tests/*.rs | xargs -I{} basename {} .rs | grep -v lightpanda); do \
-        cargo test -p pwright-integration-tests --test "$t" -- --ignored --test-threads=1 || failed=1; \
-      done; \
-      exit $failed; \
+      exec cargo test -p pwright-integration-tests -- --ignored --test-threads=1; \
     fi; \
     sleep 1; \
     echo "  waiting... ($i/60)"; \
