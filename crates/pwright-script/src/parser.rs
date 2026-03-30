@@ -127,12 +127,27 @@ fn parse_scripts(val: &serde_yaml::Value) -> Result<HashMap<String, JsFunction>,
             let name = k
                 .as_str()
                 .ok_or_else(|| ScriptError::Parse("script key must be string".into()))?;
-            let body = v
-                .as_str()
-                .ok_or_else(|| ScriptError::Parse(format!("script '{name}' body must be string")))?
-                .to_string();
-            // Auto-detect async: if body contains `await` keyword, use awaitPromise
-            let is_async = body.contains("await ");
+            // Scripts can be a plain string (body) or an object with body + async flag.
+            //   simple:    my_script: "return document.title"
+            //   explicit:  my_script: { body: "await fetch(...)", async: true }
+            let (body, is_async) = if let Some(s) = v.as_str() {
+                (s.to_string(), false)
+            } else if v.is_mapping() {
+                let body = v["body"]
+                    .as_str()
+                    .ok_or_else(|| {
+                        ScriptError::Parse(format!(
+                            "script '{name}' object must have 'body' string"
+                        ))
+                    })?
+                    .to_string();
+                let is_async = v["async"].as_bool().unwrap_or(false);
+                (body, is_async)
+            } else {
+                return Err(ScriptError::Parse(format!(
+                    "script '{name}' must be a string or object with 'body'"
+                )));
+            };
             scripts.insert(
                 name.to_string(),
                 JsFunction {

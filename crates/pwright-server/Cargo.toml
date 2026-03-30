@@ -19,5 +19,9 @@ clap = { workspace = true }
 anyhow = { workspace = true }
 base64 = { workspace = true }
 
+[dev-dependencies]
+pwright-bridge = { workspace = true, features = ["test-utils"] }
+pwright-fake = { workspace = true }
+
 [build-dependencies]
 tonic-build = { workspace = true }

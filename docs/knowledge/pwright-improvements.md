@@ -14,17 +14,9 @@ pwright recipe list                    # JSON array of all recipes
 pwright recipe list --category social  # filter by category
 ```
 
-### 2. `page.wait_for_text(text, timeout_ms)`
-Wait until page body contains a text string. Critical for SPAs where
-you can't predict which element holds the content. Zhihu/Weibo recipes
-currently use long `wait: 8000` as a workaround.
-
-```rust
-page.wait_for_text("Results", 30_000).await?;
-page.wait_until("document.readyState === 'complete'", 10_000).await?;
-```
-
-Already in `docs/todo.md` as P1.
+### 2. `page.wait_for_text(text, timeout_ms)` -- DONE
+Implemented in bridge (`Page::wait_for_text`, `Page::wait_until`) and CLI
+(`wait-for-text`, `wait-for`, `wait-until`).
 
 ### 3. Streaming `RunScript` gRPC RPC
 Execute recipes remotely via gRPC without CLI/SSH. Server-side streaming

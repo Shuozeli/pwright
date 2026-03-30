@@ -9,10 +9,9 @@ Pre-built YAML automation scripts for common browser tasks.
 pwright script run examples/recipes/research/search/google-search.yaml \
   --param query="rust browser automation"
 
-# Run a mutation recipe (requires --confirm flag)
+# Run a mutation recipe (has side effects -- review before running)
 pwright script run examples/recipes/communication/gmail-send.yaml \
-  --param to="user@example.com" --param subject="Hello" --param body="Hi there" \
-  --confirm
+  --param to="user@example.com" --param subject="Hello" --param body="Hi there"
 ```
 
 ## Recipe Types
@@ -27,8 +26,8 @@ Marked with `type: query` in the recipe header.
 ### Mutation (modifies state, requires confirmation)
 
 These recipes WRITE data: send emails, post messages, submit forms,
-click buttons that trigger side effects. They require the `--confirm`
-flag to execute.
+click buttons that trigger side effects. Review the recipe parameters
+carefully before running.
 
 Marked with `type: mutation` in the recipe header.
 
@@ -48,12 +47,34 @@ Marked with `type: mutation` in the recipe header.
 | [reddit-search.yaml](research/social/reddit-search.yaml) | Search Reddit with sort options | No |
 | [x-feed.yaml](research/social/x-feed.yaml) | Extract X.com timeline tweets | Yes |
 | [x-search.yaml](research/social/x-search.yaml) | Search X.com with tab selection | Yes |
+| [weibo-feed.yaml](research/social/weibo-feed.yaml) | Weibo home timeline posts | Yes |
+| [weibo-hot.yaml](research/social/weibo-hot.yaml) | Weibo hot search trending | Yes |
 
 ### Research: Search
 
 | Recipe | Description | Auth |
 |--------|-------------|:----:|
 | [google-search.yaml](research/search/google-search.yaml) | Search Google, extract top results | No |
+
+### Research: Knowledge
+
+| Recipe | Description | Auth |
+|--------|-------------|:----:|
+| [github-trending.yaml](research/knowledge/github-trending.yaml) | Trending GitHub repositories | No |
+| [wikipedia-article.yaml](research/knowledge/wikipedia-article.yaml) | Wikipedia article summary | No |
+
+### Research: Forums
+
+| Recipe | Description | Auth |
+|--------|-------------|:----:|
+| [zhihu-hot.yaml](research/forums/zhihu-hot.yaml) | Zhihu hot questions | Yes |
+| [zhihu-feed.yaml](research/forums/zhihu-feed.yaml) | Zhihu recommendation feed | Yes |
+
+### Research: Finance
+
+| Recipe | Description | Auth |
+|--------|-------------|:----:|
+| [xueqiu-quote.yaml](research/finance/xueqiu-quote.yaml) | Xueqiu stock quote + stats | No |
 
 ### Research: Generic
 

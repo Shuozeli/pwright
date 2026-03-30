@@ -75,9 +75,9 @@ examples/recipes/
 
 | Recipe | Site | Auth | Status | Notes |
 |--------|------|:----:|--------|-------|
-| wikipedia-article | wikipedia.org | No | [PROPOSED] | Article summary + sections |
+| wikipedia-article | wikipedia.org | No | [EXISTS] | Article summary + sections |
 | baike-article | baike.baidu.com | No | [PROPOSED] | Chinese encyclopedia article |
-| github-trending | github.com | No | [PROPOSED] | Trending repositories list |
+| github-trending | github.com | No | [EXISTS] | Trending repositories list |
 | github-repo | github.com | No | [PROPOSED] | Repo stars, forks, description, languages, recent activity |
 
 ## Research: Generic

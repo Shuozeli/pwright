@@ -102,6 +102,8 @@ async fn execute_step(
 
     match kind {
         StepKind::Goto(g) => {
+            // SAFETY: URL is from user-authored script + user-supplied params.
+            // No escaping applied; caller is responsible for param values.
             let url = resolve_template(&g.url, vars);
             details.insert("url".into(), url.clone());
 
@@ -115,6 +117,7 @@ async fn execute_step(
             page.goto(&url, opts).await.map_err(ScriptError::Cdp)?;
 
             if let Some(ref sel) = g.wait_for {
+                // SAFETY: CSS selector from user-authored script + params.
                 let selector = resolve_template(sel, vars);
                 let timeout = g.timeout_ms.unwrap_or(30000);
                 page.wait_for_selector(&selector, timeout)
@@ -124,12 +127,14 @@ async fn execute_step(
         }
 
         StepKind::Click(c) => {
+            // SAFETY: CSS selector from user-authored script + params.
             let selector = resolve_template(&c.selector, vars);
             details.insert("selector".into(), selector.clone());
             page.click(&selector).await.map_err(ScriptError::Cdp)?;
         }
 
         StepKind::Fill(f) => {
+            // SAFETY: CSS selector + fill value from user-authored script + params.
             let selector = resolve_template(&f.selector, vars);
             let value = resolve_template(&f.value, vars);
             details.insert("selector".into(), selector.clone());
@@ -148,6 +153,7 @@ async fn execute_step(
         }
 
         StepKind::Extract(e) => {
+            // SAFETY: CSS selector from user-authored script + params.
             let selector = resolve_template(&e.selector, vars);
             details.insert("selector".into(), selector.clone());
             details.insert("field".into(), e.field.clone());
@@ -180,6 +186,9 @@ async fn execute_step(
                     json_value_to_string(&result)
                 } else {
                     // Call with args
+                    // SAFETY: args are resolved from user-authored templates, then
+                    // passed as typed JSON values to callFunctionOn (not string-interpolated
+                    // into JS source). This is the safer path for parameterized JS.
                     let args: Vec<String> =
                         e.args.iter().map(|a| resolve_template(a, vars)).collect();
                     let arg_json = serde_json::Value::Array(
@@ -194,6 +203,10 @@ async fn execute_step(
                     json_value_to_string(&result)
                 }
             } else if let Some(ref expr) = e.expression {
+                // SAFETY: resolved JS expression is passed directly to Runtime.evaluate.
+                // Param values are string-interpolated into the JS source with no escaping.
+                // This is intentional -- see resolve_template doc comment for rationale.
+                // Prefer eval with ref + args over expression + templates for untrusted values.
                 let resolved = resolve_template(expr, vars);
                 details.insert("expression".into(), resolved.clone());
                 let result = page.evaluate(&resolved).await.map_err(ScriptError::Cdp)?;
@@ -293,9 +306,34 @@ async fn extract_field(page: &Page, selector: &str, field: &str) -> Result<Strin
     }
 }
 
-/// Resolve {{ var }} templates in a single pass.
+/// Resolve `{{ var }}` templates in a single pass.
+///
 /// Substituted values are NOT re-processed, preventing injection via
 /// user input containing `{{ other_var }}`.
+///
+/// # Security: template injection in JS contexts
+///
+/// This function performs plain string substitution with no escaping. When the
+/// resolved string is passed to `page.evaluate()` or similar JS execution
+/// methods, a param value can inject arbitrary JavaScript. For example, a param
+/// `name` with value `"; alert(1); "` inserted into `"return '{{ name }}'"` would
+/// produce valid JS that executes the injected code.
+///
+/// This is **by design**. The script runner is a trusted-input tool: the user
+/// authors both the YAML script and the parameters. It is the caller's
+/// responsibility to ensure param values are safe for their intended context.
+/// We deliberately do not apply heuristic escaping here because:
+///
+/// 1. The caller may *intend* to pass JS expressions as param values.
+/// 2. Automatic escaping would silently break legitimate use cases.
+/// 3. Per CLAUDE.md rules: "Do NOT preprocess, inspect, or heuristically analyze
+///    user-supplied input to infer behavior."
+///
+/// If a param value must be treated as a JS string literal, the script author
+/// should use `serde_json::to_string()` or wrap the value in the `scripts`
+/// registry function that accepts arguments via `args` (which passes values
+/// through CDP's typed argument mechanism, avoiding string interpolation
+/// entirely).
 fn resolve_template(template: &str, vars: &HashMap<String, serde_json::Value>) -> String {
     let mut result = String::new();
     let mut rest = template;
@@ -307,7 +345,13 @@ fn resolve_template(template: &str, vars: &HashMap<String, serde_json::Value>) -
             let value = match vars.get(var_name) {
                 Some(serde_json::Value::String(s)) => s.clone(),
                 Some(other) => other.to_string(),
-                None => String::new(), // Validator catches unknown refs; runtime allows empty for optional vars
+                None => {
+                    tracing::warn!(
+                        var = var_name,
+                        "unresolved template variable, substituting empty string"
+                    );
+                    String::new()
+                }
             };
             result.push_str(&value);
             rest = &after[end + 2..];
@@ -325,6 +369,160 @@ fn json_value_to_string(v: &serde_json::Value) -> String {
         Some(serde_json::Value::String(s)) => s.clone(),
         Some(v) => v.to_string(),
         None => v.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── resolve_template ──
+
+    #[test]
+    fn template_basic_substitution() {
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), serde_json::json!("Alice"));
+        assert_eq!(resolve_template("Hello {{ name }}!", &vars), "Hello Alice!");
+    }
+
+    #[test]
+    fn template_multiple_vars() {
+        let mut vars = HashMap::new();
+        vars.insert("a".into(), serde_json::json!("X"));
+        vars.insert("b".into(), serde_json::json!("Y"));
+        assert_eq!(resolve_template("{{ a }}-{{ b }}", &vars), "X-Y");
+    }
+
+    #[test]
+    fn template_adjacent_vars() {
+        let mut vars = HashMap::new();
+        vars.insert("x".into(), serde_json::json!("1"));
+        vars.insert("y".into(), serde_json::json!("2"));
+        assert_eq!(resolve_template("{{ x }}{{ y }}", &vars), "12");
+    }
+
+    #[test]
+    fn template_no_vars() {
+        let vars = HashMap::new();
+        assert_eq!(resolve_template("plain text", &vars), "plain text");
+    }
+
+    #[test]
+    fn template_empty_string() {
+        let vars = HashMap::new();
+        assert_eq!(resolve_template("", &vars), "");
+    }
+
+    #[test]
+    fn template_unknown_var_becomes_empty() {
+        let vars = HashMap::new();
+        assert_eq!(resolve_template("{{ missing }}", &vars), "");
+    }
+
+    #[test]
+    fn template_empty_var_name() {
+        let vars = HashMap::new();
+        // {{ }} has empty var name after trim — not in vars, resolves to empty
+        assert_eq!(resolve_template("a{{ }}b", &vars), "ab");
+    }
+
+    #[test]
+    fn template_unclosed_brace_preserved() {
+        let vars = HashMap::new();
+        // {{ without }} is preserved as literal text
+        assert_eq!(
+            resolve_template("start {{ no close", &vars),
+            "start {{ no close"
+        );
+    }
+
+    #[test]
+    fn template_triple_braces() {
+        let mut vars = HashMap::new();
+        vars.insert("x".into(), serde_json::json!("val"));
+        // {{{ x }}} -> first {{ at pos 0 consumes "{ x " as var name (trimmed to "{ x"),
+        // which is not in vars, so empty. Then remaining is "}".
+        assert_eq!(resolve_template("{{{ x }}}", &vars), "}");
+    }
+
+    #[test]
+    fn template_no_reprocessing() {
+        // Value contains template syntax — must NOT be re-expanded
+        let mut vars = HashMap::new();
+        vars.insert("a".into(), serde_json::json!("{{ b }}"));
+        vars.insert("b".into(), serde_json::json!("LEAKED"));
+        assert_eq!(resolve_template("{{ a }}", &vars), "{{ b }}");
+    }
+
+    #[test]
+    fn template_integer_value() {
+        let mut vars = HashMap::new();
+        vars.insert("count".into(), serde_json::json!(42));
+        assert_eq!(resolve_template("items: {{ count }}", &vars), "items: 42");
+    }
+
+    #[test]
+    fn template_boolean_value() {
+        let mut vars = HashMap::new();
+        vars.insert("flag".into(), serde_json::json!(true));
+        assert_eq!(resolve_template("{{ flag }}", &vars), "true");
+    }
+
+    #[test]
+    fn template_whitespace_around_var_name() {
+        let mut vars = HashMap::new();
+        vars.insert("x".into(), serde_json::json!("ok"));
+        assert_eq!(resolve_template("{{x}}", &vars), "ok");
+        assert_eq!(resolve_template("{{  x  }}", &vars), "ok");
+    }
+
+    // ── json_value_to_string ──
+
+    #[test]
+    fn json_value_string_extracted() {
+        let v = serde_json::json!({"value": "hello"});
+        assert_eq!(json_value_to_string(&v), "hello");
+    }
+
+    #[test]
+    fn json_value_number_to_string() {
+        let v = serde_json::json!({"value": 42});
+        assert_eq!(json_value_to_string(&v), "42");
+    }
+
+    #[test]
+    fn json_value_bool_to_string() {
+        let v = serde_json::json!({"value": true});
+        assert_eq!(json_value_to_string(&v), "true");
+    }
+
+    #[test]
+    fn json_value_null_to_string() {
+        let v = serde_json::json!({"value": null});
+        assert_eq!(json_value_to_string(&v), "null");
+    }
+
+    #[test]
+    fn json_value_missing_uses_whole_value() {
+        let v = serde_json::json!({"type": "number", "result": 5});
+        // No "value" key — falls through to v.to_string()
+        let s = json_value_to_string(&v);
+        assert!(s.contains("number"));
+        assert!(s.contains("5"));
+    }
+
+    // ── ExecutionStatus ──
+
+    #[test]
+    fn execution_status_serializes() {
+        assert_eq!(
+            serde_json::to_string(&ExecutionStatus::Ok).unwrap(),
+            r#""ok""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ExecutionStatus::Error).unwrap(),
+            r#""error""#
+        );
     }
 }
 

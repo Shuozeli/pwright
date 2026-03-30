@@ -124,6 +124,14 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 | `pwright eval "expression"` | Execute JavaScript, print result |
 | `pwright health` | Check Chrome connectivity |
 
+### Waiting
+
+| Command | Description |
+|---------|-------------|
+| `pwright wait-for-text "text"` | Wait until page body contains text |
+| `pwright wait-for "selector"` | Wait until CSS selector appears |
+| `pwright wait-until "expr"` | Wait until JS expression is truthy |
+
 ### Export
 
 | Command | Description |

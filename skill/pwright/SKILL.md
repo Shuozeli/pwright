@@ -188,6 +188,15 @@ steps:
 Scripts support: `goto`, `click`, `fill`, `press`, `extract`, `eval` (with JS registry),
 `output`, `wait` (sleep), and `on_error: continue` for graceful error handling.
 
+### Waiting
+
+```bash
+pwright wait-for-text "Results"           # Wait until page body contains text
+pwright wait-for-text "Ready" --timeout 60000  # Custom timeout (ms)
+pwright wait-for ".data-table"            # Wait until CSS selector appears
+pwright wait-until "document.title !== ''"  # Wait until JS expression is truthy
+```
+
 ### System
 
 ```bash

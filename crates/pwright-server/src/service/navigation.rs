@@ -62,6 +62,9 @@ pub async fn navigate(
         .await
         .map_err(cdp_to_status)?;
 
+    browser.delete_ref_cache(&tab.tab_id).await;
+    tracing::debug!(tab_id = %tab.tab_id, "cleared ref cache after navigation");
+
     Ok(Response::new(proto::NavigateResponse {
         tab_id: result.tab_id,
         url: result.url,

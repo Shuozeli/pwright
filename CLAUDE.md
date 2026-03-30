@@ -26,6 +26,7 @@ and crate map. That file is the authoritative reference for agents.
 - Use `r##"..."##` for raw strings containing `@`, `#` in tests (Rust 2024 edition)
 - Do NOT use `#[allow(...)]` to bypass clippy or rustdoc warnings - fix the root cause instead (escape doc comments, fix the code, etc.)
 - pwright-bridge is a **stateless library** - it does NOT track tabs, manage pools, or do implicit cleanup. Callers own tab lifecycle. Do NOT propose automatic tab leak detection, tab garbage collection, or drop guards that implicitly close tabs. The `with_page` mistake (implicit lifecycle) must not be repeated.
+- Do NOT preprocess, inspect, or heuristically analyze user-supplied input to infer behavior. If a feature depends on properties of user input (e.g., whether JS is async, what language something is in), require the user to declare it explicitly in the schema — never guess by scanning the content. Clever heuristics create subtle bugs that are harder to find than the boilerplate they save.
 
 ## Code Quality Discipline
 

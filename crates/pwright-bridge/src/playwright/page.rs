@@ -58,11 +58,9 @@ pub struct Page {
 impl Drop for Page {
     fn drop(&mut self) {
         // Abort any spawned listener tasks to prevent leaks.
-        // try_lock avoids panic if Mutex is poisoned during unwinding.
-        if let Ok(handles) = self.listener_handles.try_lock() {
-            for handle in handles.iter() {
-                handle.abort();
-            }
+        // get_mut() is safe here: &mut self guarantees no other references exist.
+        for handle in self.listener_handles.get_mut().iter() {
+            handle.abort();
         }
     }
 }
@@ -96,6 +94,10 @@ impl Page {
 
     /// Close the page (tab). If created with `with_tab`, closes the underlying target.
     /// Also aborts any spawned network listener tasks. Thread-safe.
+    ///
+    /// Note: this does NOT clean the Browser ref cache or tab locks. If the page
+    /// was created via `Browser::new_tab`, prefer `Browser::close_tab()` or
+    /// `TabHandle::close()` for full cleanup.
     pub async fn close(&self) -> CdpResult<()> {
         if self.closed.swap(true, Ordering::SeqCst) {
             return Ok(()); // already closed

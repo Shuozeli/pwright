@@ -108,6 +108,10 @@ impl Default for BrowserConfig {
 }
 
 /// High-level browser controller. Wraps a CDP connection and manages tabs.
+///
+/// Note: this struct has many responsibilities (tab lifecycle, ref cache, concurrency
+/// control, session factory). If it grows further, consider extracting ref_caches
+/// into a standalone `RefCacheStore` and tab_locks/tab_semaphore into a `TabPool`.
 pub struct Browser {
     browser_session: Arc<dyn CdpClient>,
     session_factory: Arc<dyn SessionFactory>,
@@ -306,8 +310,8 @@ impl Browser {
     }
 
     /// Test-only constructor using injected fakes.
-    #[cfg(test)]
-    pub(crate) fn new_for_test(
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn new_for_test(
         browser_client: Arc<dyn CdpClient>,
         session_factory: Arc<dyn SessionFactory>,
     ) -> Arc<Self> {

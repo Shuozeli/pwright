@@ -335,4 +335,117 @@ mod tests {
         // Completed class selector
         assert_eq!(page.locator("li.completed").count().await.unwrap(), 1);
     }
+
+    // ═══════════════════════════════════════════════════════════
+    //  Wait methods
+    // ═══════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn wait_for_text_finds_existing_text() {
+        let (fake, page) = page_with_html(r#"<body><p>Hello World</p></body>"#);
+        // Simulate JS `document.body.innerText.includes("Hello")` returning true
+        fake.set_evaluate_response(serde_json::json!({
+            "result": {"value": true}
+        }));
+
+        page.wait_for_text("Hello", 1000).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_for_text_times_out_when_text_absent() {
+        let (_fake, page) = page_with_html(r#"<body><p>Nothing here</p></body>"#);
+        // Default evaluate_response is {"result": {"value": ""}}, which is not true
+
+        let result = page.wait_for_text("Missing text", 250).await;
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(
+            err.contains("Timeout"),
+            "Expected timeout error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_for_text_in_selector_succeeds() {
+        let (fake, page) = page_with_html(r#"<div class="response">Operation complete</div>"#);
+        // Simulate the scoped querySelector + includes check returning true
+        fake.set_evaluate_response(serde_json::json!({
+            "result": {"value": true}
+        }));
+
+        page.wait_for_text_in(".response", "complete", 1000)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_for_text_in_times_out() {
+        let (_fake, page) = page_with_html(r#"<div class="response">Operation complete</div>"#);
+        // Default evaluate_response does not return true
+
+        let result = page.wait_for_text_in(".response", "missing", 250).await;
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(
+            err.contains("Timeout"),
+            "Expected timeout error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_until_true_expression() {
+        let (fake, page) = page_with_html(r#"<div>content</div>"#);
+        fake.set_evaluate_response(serde_json::json!({
+            "result": {"value": true}
+        }));
+
+        page.wait_until("document.title !== ''", 1000)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_until_times_out() {
+        let (fake, page) = page_with_html(r#"<div>content</div>"#);
+        fake.set_evaluate_response(serde_json::json!({
+            "result": {"value": false}
+        }));
+
+        let result = page.wait_until("false", 250).await;
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(
+            err.contains("Timeout"),
+            "Expected timeout error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_for_selector_existing() {
+        let (_fake, page) = page_with_html(r#"<button id="submit">Go</button>"#);
+
+        // The fake DOM has the button, so wait_for_selector should resolve immediately
+        page.wait_for_selector("#submit", 1000).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_for_selector_times_out() {
+        let (_fake, page) = page_with_html(r#"<div>empty</div>"#);
+
+        let result = page.wait_for_selector(".nonexistent", 300).await;
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(
+            err.contains("Timeout") || err.contains("timeout"),
+            "Expected timeout error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_for_timeout_completes() {
+        let (_fake, page) = page_with_html(r#"<div>content</div>"#);
+
+        // Just verify it completes without error
+        page.wait_for_timeout(50).await.unwrap();
+    }
 }

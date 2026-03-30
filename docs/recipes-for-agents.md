@@ -249,15 +249,18 @@ for each specific page.
 
 ## What We Ship
 
-15 YAML recipes across 5 categories, ready to use. See
-[recipe-catalog.md](knowledge/recipe-catalog.md) for the full proposed list
-including Chinese sites (Zhihu, Weibo, Xueqiu, Baidu).
+22 YAML recipes across 7 categories, ready to use. See
+[recipe-catalog.md](knowledge/recipe-catalog.md) for the full list
+including Chinese sites (Zhihu, Weibo, Xueqiu).
 
 | Category | Subcategory | Recipes | Auth |
 |----------|-------------|---------|:----:|
 | Research | News | HN Feed | No |
-| Research | Social | Reddit Feed, Reddit Search, X Feed, X Search | Mixed |
+| Research | Social | Reddit Feed, Reddit Search, X Feed, X Search, Weibo Feed, Weibo Hot | Mixed |
 | Research | Search | Google Search | No |
+| Research | Knowledge | GitHub Trending, Wikipedia Article | No |
+| Research | Forums | Zhihu Hot, Zhihu Feed | Yes |
+| Research | Finance | Xueqiu Quote | No |
 | Research | Generic | Article Extractor, Table Extractor | No |
 | Monitoring | -- | Dashboard Screenshot, Deploy Health Check | No |
 | Communication | -- | Gmail Read, Gmail Send, GitHub Notifications | Yes |

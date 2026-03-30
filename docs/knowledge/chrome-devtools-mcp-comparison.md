@@ -48,7 +48,7 @@ Feature comparison against Google's official Chrome DevTools MCP CLI.
 | list tabs | `tab-list` | `list_pages` | Equivalent |
 | select tab | `tab-select id` | `select_page id` | Equivalent |
 | close tab | `tab-close id` | `close_page id` | Equivalent |
-| wait_for (text) | -- | `wait_for "text1" "text2"` | **CD-MCP only** (planned P1 for pwright) |
+| wait_for (text) | `wait-for-text "text"` | `wait_for "text1" "text2"` | Both (pwright also has `wait-for` selector and `wait-until` JS expression) |
 | initScript | -- | `navigate_page --initScript "..."` | **CD-MCP only**: inject JS before page scripts |
 
 ### Content Extraction
@@ -97,8 +97,8 @@ Feature comparison against Google's official Chrome DevTools MCP CLI.
 
 ### High Priority
 
-1. **`wait_for` (text-based)** - Already planned P1. CD-MCP takes an array of texts
-   and resolves when any appears. Implement similarly.
+1. **`wait_for` (text-based)** - DONE. pwright has `wait-for-text`, `wait-for` (selector),
+   and `wait-until` (JS expression) CLI commands.
 
 2. **`handle_dialog`** - Alert/confirm/prompt handling. CD-MCP uses
    `Page.javascriptDialogOpening` CDP event. Common need for form automation.

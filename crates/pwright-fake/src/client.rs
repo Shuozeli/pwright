@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use pwright_cdp::connection::Result as CdpResult;
-use pwright_cdp::domains::accessibility::RawAXNode;
+use pwright_cdp::domains::accessibility::{AXValue, RawAXNode};
 use pwright_cdp::domains::network::{Cookie, ResponseBody};
 use pwright_cdp::domains::target::TargetInfo;
 use pwright_cdp::{CdpClient, KeyEventType, MouseButton, MouseEventType, TouchEventType};
@@ -99,30 +99,32 @@ impl FakeCdpClient {
         id
     }
 
-    /// Evaluate simple JS property expressions on an element.
-    /// Handles: `this.checked === true`, `this.disabled === true`,
-    /// `this.textContent`, `this.value`, `this.innerText`.
+    /// Evaluate JS property expressions on an element.
+    ///
+    /// Matches on the exact `pwright_js::element` constants rather than
+    /// fragile substring checks, so JS formatting changes don't silently
+    /// break the fake.
     fn eval_property_check(&self, object_id: &str, function_body: &str) -> Option<Value> {
         let node_id = self.object_map.lock().unwrap().get(object_id).copied()?;
         let node = self.find_node(node_id)?;
 
-        if function_body.contains("this.checked === true") {
+        if function_body == pwright_js::element::IS_CHECKED {
             return Some(serde_json::json!({"result": {"value": node.has_property("checked")}}));
         }
-        if function_body.contains("this.disabled === true") {
+        if function_body == pwright_js::element::IS_DISABLED {
             return Some(serde_json::json!({"result": {"value": node.has_property("disabled")}}));
         }
-        if function_body.contains("this.textContent") || function_body.contains("GET_TEXT_CONTENT")
-        {
+        if function_body == pwright_js::element::GET_TEXT_CONTENT {
             return Some(serde_json::json!({"result": {"value": node.text_content()}}));
         }
-        if function_body.contains("this.innerText") || function_body.contains("GET_INNER_TEXT") {
+        if function_body == pwright_js::element::GET_INNER_TEXT {
             return Some(serde_json::json!({"result": {"value": node.text_content()}}));
         }
-        if function_body.contains("this.value") || function_body.contains("GET_INPUT_VALUE") {
+        if function_body == pwright_js::element::GET_INPUT_VALUE {
             let val = node.value.as_deref().unwrap_or("");
             return Some(serde_json::json!({"result": {"value": val}}));
         }
+        // blur/focus are called via various JS patterns — match on keyword
         if function_body.contains("blur()") || function_body.contains("focus()") {
             return Some(serde_json::json!({"result": {"value": null}}));
         }
@@ -179,7 +181,8 @@ impl CdpClient for FakeCdpClient {
 
     async fn page_print_to_pdf(&self, params: Value) -> CdpResult<String> {
         self.record("Page.printToPDF", vec![params]);
-        Ok("JVBER".to_string())
+        // Return valid base64 (decodes to "%PDF-fake")
+        Ok("JVBERi1mYWtl".to_string())
     }
 
     async fn page_add_script_on_new_document(&self, source: &str) -> CdpResult<String> {
@@ -479,7 +482,10 @@ impl CdpClient for FakeCdpClient {
 
     async fn accessibility_get_full_tree(&self) -> CdpResult<Vec<RawAXNode>> {
         self.record("Accessibility.getFullAXTree", vec![]);
-        Ok(vec![])
+        let dom = self.dom.lock().unwrap();
+        let mut nodes = Vec::new();
+        dom_to_ax_nodes(&dom, &mut nodes);
+        Ok(nodes)
     }
 
     // ── Network domain ──
@@ -580,5 +586,110 @@ impl CdpClient for FakeCdpClient {
             vec![Value::String(session_id.to_string())],
         );
         Ok(())
+    }
+}
+
+// ── DOM-to-AX tree conversion for fake accessibility support ──
+
+/// Map an HTML tag to an approximate AX role.
+fn tag_to_ax_role(tag: &str) -> &'static str {
+    match tag {
+        "html" => "document",
+        "body" | "div" | "span" | "section" | "article" | "main" | "header" | "footer" | "nav"
+        | "aside" => "generic",
+        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => "heading",
+        "button" => "button",
+        "a" => "link",
+        "input" => "textbox",
+        "textarea" => "textbox",
+        "select" => "combobox",
+        "option" => "option",
+        "ul" | "ol" => "list",
+        "li" => "listitem",
+        "table" => "table",
+        "tr" => "row",
+        "td" | "th" => "cell",
+        "img" => "image",
+        "form" => "form",
+        "label" => "LabelText",
+        "p" => "paragraph",
+        "#text" => "StaticText",
+        _ => "generic",
+    }
+}
+
+/// Recursively convert a DomNode tree into a flat list of RawAXNodes.
+fn dom_to_ax_nodes(node: &DomNode, out: &mut Vec<RawAXNode>) {
+    let mut ax_node_id_counter: u64 = 1;
+    dom_to_ax_recursive(node, out, &mut ax_node_id_counter);
+}
+
+fn dom_to_ax_recursive(node: &DomNode, out: &mut Vec<RawAXNode>, counter: &mut u64) {
+    let ax_id = format!("ax-{}", *counter);
+    *counter += 1;
+
+    let role = tag_to_ax_role(&node.tag);
+
+    // Compute name from text content or attributes
+    let name = if node.tag == "#text" {
+        node.text.clone().unwrap_or_default()
+    } else {
+        // Use id, aria-label, or first text child as name
+        node.attributes
+            .get("aria-label")
+            .cloned()
+            .or_else(|| {
+                // For simple elements, use direct text content
+                node.children.iter().find_map(|c| {
+                    if c.tag == "#text" {
+                        c.text.clone()
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_default()
+    };
+
+    let value = node
+        .value
+        .clone()
+        .or_else(|| node.attributes.get("value").cloned());
+
+    let child_ids: Vec<String> = node
+        .children
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("ax-{}", *counter + i as u64))
+        .collect();
+
+    let ax_node = RawAXNode {
+        node_id: ax_id,
+        ignored: false,
+        role: Some(AXValue {
+            value_type: "internalRole".to_string(),
+            value: Value::String(role.to_string()),
+        }),
+        name: if name.is_empty() {
+            None
+        } else {
+            Some(AXValue {
+                value_type: "computedString".to_string(),
+                value: Value::String(name),
+            })
+        },
+        value: value.map(|v| AXValue {
+            value_type: "string".to_string(),
+            value: Value::String(v),
+        }),
+        properties: vec![],
+        child_ids,
+        backend_dom_node_id: node.node_id,
+    };
+
+    out.push(ax_node);
+
+    for child in &node.children {
+        dom_to_ax_recursive(child, out, counter);
     }
 }

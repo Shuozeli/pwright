@@ -82,23 +82,61 @@ impl Drop for CdpConnection {
 
 /// Default command timeout (30 seconds).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Default write channel capacity.
+const DEFAULT_WRITE_CHANNEL_CAPACITY: usize = 256;
+/// Default event broadcast channel capacity.
+const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 1024;
+
+/// Configuration for a CDP connection.
+#[derive(Debug, Clone)]
+pub struct ConnectionConfig {
+    /// Timeout for individual CDP commands.
+    pub timeout: Duration,
+    /// Capacity of the write channel (commands queued to send).
+    pub write_channel_capacity: usize,
+    /// Capacity of the event broadcast channel.
+    pub event_channel_capacity: usize,
+}
+
+impl Default for ConnectionConfig {
+    fn default() -> Self {
+        Self {
+            timeout: DEFAULT_TIMEOUT,
+            write_channel_capacity: DEFAULT_WRITE_CHANNEL_CAPACITY,
+            event_channel_capacity: DEFAULT_EVENT_CHANNEL_CAPACITY,
+        }
+    }
+}
 
 impl CdpConnection {
     /// Connect to a Chrome DevTools Protocol endpoint via WebSocket.
     pub async fn connect(ws_url: &str) -> Result<Arc<Self>> {
-        Self::connect_with_timeout(ws_url, DEFAULT_TIMEOUT).await
+        Self::connect_with_config(ws_url, ConnectionConfig::default()).await
     }
 
     /// Connect with a custom command timeout.
     pub async fn connect_with_timeout(ws_url: &str, timeout: Duration) -> Result<Arc<Self>> {
+        Self::connect_with_config(
+            ws_url,
+            ConnectionConfig {
+                timeout,
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    /// Connect with full configuration.
+    pub async fn connect_with_config(ws_url: &str, config: ConnectionConfig) -> Result<Arc<Self>> {
         debug!(url = ws_url, "connecting to CDP WebSocket");
 
         let (ws_stream, _response) = connect_async(ws_url).await?;
         let (ws_write, ws_read) = ws_stream.split();
 
-        let (write_tx, write_rx) = tokio::sync::mpsc::channel::<Message>(256);
+        let (write_tx, write_rx) =
+            tokio::sync::mpsc::channel::<Message>(config.write_channel_capacity);
         let pending: PendingMap = Arc::new(DashMap::new());
-        let (event_tx, _) = broadcast::channel::<CdpEvent>(1024);
+        let (event_tx, _) = broadcast::channel::<CdpEvent>(config.event_channel_capacity);
         let shutdown = tokio_util::sync::CancellationToken::new();
 
         // Writer task: forwards messages from the channel to the WebSocket
@@ -114,11 +152,14 @@ impl CdpConnection {
         let pending_clone = pending.clone();
         let event_tx_clone = event_tx.clone();
         let shutdown_r = shutdown.clone();
+        let shutdown_failsafe = shutdown.clone();
         tokio::spawn(async move {
             tokio::select! {
                 _ = shutdown_r.cancelled() => {}
                 _ = Self::reader_loop(ws_read, pending_clone, event_tx_clone) => {}
             }
+            // Signal shutdown so pending commands fail fast with Closed instead of timing out.
+            shutdown_failsafe.cancel();
         });
 
         let conn = Arc::new(Self {
@@ -126,7 +167,7 @@ impl CdpConnection {
             next_id: AtomicU64::new(1),
             pending,
             event_tx,
-            default_timeout: timeout,
+            default_timeout: config.timeout,
             shutdown,
         });
 
@@ -251,6 +292,8 @@ impl CdpConnection {
                         Ok(value.get("result").cloned().unwrap_or(Value::Null))
                     };
                     let _ = tx.send(result);
+                } else {
+                    warn!(id, "received CDP response for unknown/timed-out command");
                 }
                 continue;
             }
@@ -270,7 +313,12 @@ impl CdpConnection {
                 };
 
                 trace!(method = event.method, "CDP event received");
-                let _ = event_tx.send(event);
+                if let Err(e) = event_tx.send(event) {
+                    warn!(
+                        method = e.0.method,
+                        "CDP event dropped (no active subscribers)"
+                    );
+                }
             }
         }
 
@@ -313,6 +361,134 @@ mod tests {
                 assert!(matches!(*system, CdpError::Closed));
             }
             other => panic!("expected Compound, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_connection_config_default() {
+        let config = ConnectionConfig::default();
+        assert_eq!(config.timeout, Duration::from_secs(30));
+        assert_eq!(config.write_channel_capacity, 256);
+        assert_eq!(config.event_channel_capacity, 1024);
+    }
+
+    #[test]
+    fn test_cdp_error_display_websocket() {
+        let err = CdpError::WebSocket("connection refused".to_string());
+        assert_eq!(format!("{err}"), "WebSocket error: connection refused");
+    }
+
+    #[test]
+    fn test_cdp_error_display_protocol() {
+        let err = CdpError::Protocol {
+            code: -32600,
+            message: "Invalid Request".to_string(),
+        };
+        assert_eq!(format!("{err}"), "CDP error -32600: Invalid Request");
+    }
+
+    #[test]
+    fn test_cdp_error_display_closed() {
+        let err = CdpError::Closed;
+        assert_eq!(format!("{err}"), "Connection closed");
+    }
+
+    #[test]
+    fn test_cdp_error_display_channel_dropped() {
+        let err = CdpError::ChannelDropped;
+        assert_eq!(format!("{err}"), "Response channel dropped");
+    }
+
+    #[test]
+    fn test_cdp_error_display_timeout() {
+        let err = CdpError::Timeout;
+        assert_eq!(format!("{err}"), "Timeout waiting for response");
+    }
+
+    #[test]
+    fn test_cdp_error_display_element_not_found() {
+        let err = CdpError::ElementNotFound {
+            selector: "div.missing".to_string(),
+        };
+        assert_eq!(
+            format!("{err}"),
+            "Element not found for selector: div.missing"
+        );
+    }
+
+    #[test]
+    fn test_cdp_error_display_navigation_failed() {
+        let err = CdpError::NavigationFailed {
+            url: "https://example.com".to_string(),
+            reason: "net::ERR_CONNECTION_REFUSED".to_string(),
+        };
+        assert_eq!(
+            format!("{err}"),
+            "Navigation failed for https://example.com: net::ERR_CONNECTION_REFUSED"
+        );
+    }
+
+    #[test]
+    fn test_cdp_error_display_page_closed() {
+        let err = CdpError::PageClosed;
+        assert_eq!(format!("{err}"), "Page is closed");
+    }
+
+    #[test]
+    fn test_cdp_error_display_tab_not_found() {
+        let err = CdpError::TabNotFound("ABC123".to_string());
+        assert_eq!(format!("{err}"), "Tab not found: ABC123");
+    }
+
+    #[test]
+    fn test_cdp_error_display_http_failed() {
+        let err = CdpError::HttpFailed("404 Not Found".to_string());
+        assert_eq!(format!("{err}"), "HTTP request failed: 404 Not Found");
+    }
+
+    #[test]
+    fn test_cdp_error_display_js_exception() {
+        let err = CdpError::JsException("TypeError: undefined is not a function".to_string());
+        assert_eq!(
+            format!("{err}"),
+            "JavaScript exception: TypeError: undefined is not a function"
+        );
+    }
+
+    #[test]
+    fn test_cdp_error_display_other() {
+        let err = CdpError::Other("something unexpected".to_string());
+        assert_eq!(format!("{err}"), "something unexpected");
+    }
+
+    #[test]
+    fn test_cdp_error_from_serde_json_error() {
+        let json_err = serde_json::from_str::<serde_json::Value>("not valid json").unwrap_err();
+        let expected_msg = format!("{json_err}");
+        let cdp_err: CdpError = json_err.into();
+        match &cdp_err {
+            CdpError::Json(inner) => {
+                assert_eq!(format!("{inner}"), expected_msg);
+            }
+            other => panic!("expected Json variant, got: {other:?}"),
+        }
+        let display = format!("{cdp_err}");
+        assert!(
+            display.starts_with("JSON error:"),
+            "unexpected display: {display}"
+        );
+    }
+
+    #[test]
+    fn test_cdp_error_from_tungstenite_error() {
+        let ws_err = tokio_tungstenite::tungstenite::Error::ConnectionClosed;
+        let expected_msg = format!("{ws_err}");
+        let cdp_err: CdpError = ws_err.into();
+        match &cdp_err {
+            CdpError::WebSocket(msg) => {
+                assert_eq!(msg, &expected_msg);
+            }
+            other => panic!("expected WebSocket variant, got: {other:?}"),
         }
     }
 }

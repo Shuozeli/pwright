@@ -25,6 +25,10 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 - [Script Runner Design](knowledge/script-runner-design.md) — Full design with protobuf schema and phases
 - [Recipes Design](knowledge/recipes-design.md) — Recipe specifications and design principles
 
+## Guides
+
+- [Connecting to Remote Chrome](guides/remote-cdp.md) — Direct bind, Caddy, nginx, SSH tunnel
+
 ## Agent Integration
 
 - [Agent Skill](../skill/pwright/SKILL.md) — Skill definition for AI agent frameworks
@@ -52,4 +56,5 @@ Lightweight Rust CDP bridge exposing Chrome browser control via gRPC.
 - [Testing Strategy](knowledge/testing-strategy.md) — FakeCdpClient + Docker integration tests
 - [Known Issues](known-issues.md) — Bug tracker and fixed issues
 - [Bug Reports](bugs/index.md) — Detailed investigation reports for significant bugs
+- [Code Quality Findings](code-quality-findings.md) — Codebase audit results
 - [TODO](todo.md) — Planned features and roadmap

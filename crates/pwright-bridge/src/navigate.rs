@@ -72,7 +72,12 @@ pub async fn navigate(
     }
 
     // Navigate
-    let nav_result = session.page_navigate(url).await?;
+    // Matches Playwright: HTTP error codes (404, 500) are treated as successful
+    // navigation -- the page loaded, callers check response status separately.
+    // Only network-level failures (DNS, connection refused, etc.) are errors.
+    let nav_result = tokio::time::timeout(opts.timeout, session.page_navigate(url))
+        .await
+        .map_err(|_| CdpError::Timeout)??;
     if let Some(err) = nav_result.get("errorText").and_then(|v| v.as_str())
         && !err.is_empty()
         && err != "net::ERR_HTTP_RESPONSE_CODE_FAILURE"

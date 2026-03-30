@@ -50,14 +50,21 @@ impl Browser {
     }
 
     /// Close a tab by tab ID.
+    ///
+    /// Closes the Chrome target first, then removes from the map on success.
+    /// If `target_close` fails, the tab stays in the map so the caller can
+    /// retry or see it in `list_tabs`.
     pub async fn close_tab(&self, tab_id: &str) -> CdpResult<()> {
-        let tab = {
-            let mut tabs = self.tabs().write().await;
-            tabs.remove(tab_id)
+        let target_id = {
+            let tabs = self.tabs().read().await;
+            tabs.get(tab_id).map(|t| t.target_id.clone())
         };
 
-        if let Some(tab) = tab {
-            self.browser_client().target_close(&tab.target_id).await?;
+        if let Some(target_id) = target_id {
+            // Close the Chrome target first; if this fails, tab stays in the map
+            self.browser_client().target_close(&target_id).await?;
+            // Only remove from map after successful close
+            self.tabs().write().await.remove(tab_id);
             self.delete_ref_cache(tab_id).await;
             self.remove_tab_lock(tab_id);
             info!(tab_id = tab_id, "tab closed");

@@ -140,6 +140,14 @@ Use `pwright eval` to find element coordinates via `getBoundingClientRect()`, th
 
 > Run `network-listen` in a separate terminal while interacting with the site. It uses a second CDP session so it does not interfere with your commands. The `reqid` in listener output can be used with `network-get`.
 
+### Waiting
+
+| Command | Description |
+|---------|-------------|
+| `pwright wait-for-text "text" [--timeout 30000]` | Wait until page body contains text |
+| `pwright wait-for "selector" [--timeout 30000]` | Wait until CSS selector appears in DOM |
+| `pwright wait-until "expr" [--timeout 30000]` | Wait until JS expression returns truthy |
+
 ### Options
 
 | Flag | Env Var | Default | Description |

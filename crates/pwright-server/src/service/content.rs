@@ -52,8 +52,14 @@ pub async fn take_screenshot(
     let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
     let format = match req.format.as_str() {
-        "jpeg" | "jpg" => pwright_bridge::content::ScreenshotFormat::Jpeg(req.quality),
-        "webp" => pwright_bridge::content::ScreenshotFormat::Webp(req.quality),
+        "jpeg" | "jpg" => {
+            let quality = req.quality.clamp(0, 100);
+            pwright_bridge::content::ScreenshotFormat::Jpeg(quality)
+        }
+        "webp" => {
+            let quality = req.quality.clamp(0, 100);
+            pwright_bridge::content::ScreenshotFormat::Webp(quality)
+        }
         _ => pwright_bridge::content::ScreenshotFormat::Png,
     };
 

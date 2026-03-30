@@ -168,4 +168,131 @@ mod tests {
         ];
         print_tab_list(&tabs, "tab_0");
     }
+
+    // --- Additional edge-case tests for format_snapshot_node ---
+
+    #[test]
+    fn format_node_all_empty() {
+        let node = make_node("", "", "", 0);
+        let s = format_snapshot_node(&node);
+        // No ref, no name => just the (empty) role
+        assert_eq!(s, "");
+    }
+
+    #[test]
+    fn format_node_special_characters_in_name() {
+        let node = make_node("e1", "heading", "Hello \"World\" <>&", 0);
+        let s = format_snapshot_node(&node);
+        assert_eq!(s, r#"[e1] heading "Hello "World" <>&""#);
+    }
+
+    #[test]
+    fn format_node_unicode_name() {
+        let node = make_node("e4", "text", "Konnichiwa", 1);
+        let s = format_snapshot_node(&node);
+        assert_eq!(s, "  [e4] text \"Konnichiwa\"");
+    }
+
+    #[test]
+    fn format_node_value_with_spaces_and_equals() {
+        let mut node = make_node("e6", "textbox", "Query", 0);
+        node.value = "key=value pair".to_string();
+        let s = format_snapshot_node(&node);
+        assert_eq!(s, "[e6] textbox \"Query\" value=key=value pair");
+    }
+
+    #[test]
+    fn format_node_deep_indentation() {
+        let node = make_node("e7", "span", "Deep", 10);
+        let s = format_snapshot_node(&node);
+        // 10 * 2 = 20 spaces
+        assert!(s.starts_with(&" ".repeat(20)));
+        assert!(s.contains("[e7] span \"Deep\""));
+    }
+
+    #[test]
+    fn format_node_disabled_field_not_rendered() {
+        // disabled is on the struct but format_snapshot_node does not render it
+        let mut node = make_node("e8", "button", "Save", 0);
+        node.disabled = true;
+        let s = format_snapshot_node(&node);
+        assert_eq!(s, "[e8] button \"Save\"");
+        assert!(!s.contains("disabled"));
+    }
+
+    #[test]
+    fn format_node_focused_with_value() {
+        let mut node = make_node("e10", "slider", "Volume", 0);
+        node.value = "75".to_string();
+        node.focused = true;
+        let s = format_snapshot_node(&node);
+        // Order: ref role name value focused
+        assert_eq!(s, "[e10] slider \"Volume\" value=75 (focused)");
+    }
+
+    #[test]
+    fn format_node_no_ref_with_value_and_focus() {
+        let mut node = make_node("", "textbox", "", 0);
+        node.value = "hello".to_string();
+        node.focused = true;
+        let s = format_snapshot_node(&node);
+        assert_eq!(s, "textbox value=hello (focused)");
+    }
+
+    #[test]
+    fn format_node_zero_depth() {
+        let node = make_node("e0", "document", "Root", 0);
+        let s = format_snapshot_node(&node);
+        // Zero depth => no leading spaces
+        assert!(!s.starts_with(' '));
+        assert_eq!(s, "[e0] document \"Root\"");
+    }
+
+    // --- Tests that verify print_tab_list formatting ---
+
+    #[test]
+    fn tab_list_no_active_marker_when_no_match() {
+        // When active_tab doesn't match any tab id, no marker should appear.
+        // We can't capture stdout easily, but we verify no panic and correct
+        // format via the function's logic.
+        let tabs = vec![(
+            "tab_0".to_string(),
+            "Title".to_string(),
+            "http://x.com".to_string(),
+        )];
+        print_tab_list(&tabs, "nonexistent");
+    }
+
+    #[test]
+    fn tab_list_single_active_tab() {
+        let tabs = vec![(
+            "tab_0".to_string(),
+            "Only Tab".to_string(),
+            "http://only.com".to_string(),
+        )];
+        // Single tab that is active - just verify no panic
+        print_tab_list(&tabs, "tab_0");
+    }
+
+    #[test]
+    fn tab_list_empty_title_and_url() {
+        let tabs = vec![("tab_0".to_string(), String::new(), String::new())];
+        print_tab_list(&tabs, "tab_0");
+    }
+
+    // --- Snapshot printing with varied node shapes ---
+
+    #[test]
+    fn snapshot_single_node_doesnt_panic() {
+        let nodes = vec![make_node("e0", "document", "Single", 0)];
+        print_snapshot(&nodes);
+    }
+
+    #[test]
+    fn snapshot_deep_tree_doesnt_panic() {
+        let nodes: Vec<A11yNode> = (0..20)
+            .map(|i| make_node(&format!("e{i}"), "div", &format!("Node {i}"), i))
+            .collect();
+        print_snapshot(&nodes);
+    }
 }

@@ -53,6 +53,9 @@ mod lifecycle;
 mod navigation;
 mod tabs;
 
+#[cfg(test)]
+mod tests;
+
 pub struct BrowserServiceImpl {
     pub(crate) browser: RwLock<Option<Arc<Browser>>>,
     pub(crate) default_cdp_url: Option<String>,
@@ -105,6 +108,11 @@ impl BrowserServiceImpl {
 
     /// Resolve a tab and acquire the per-tab lock + semaphore permit.
     /// Returns (tab, semaphore_permit, tab_lock_guard) ensuring exclusive access.
+    ///
+    /// **Locking order:** semaphore → per-tab mutex. All code paths that need
+    /// both locks MUST acquire them in this order to prevent deadlocks.
+    /// This is the only function that acquires both — do not duplicate this
+    /// pattern elsewhere.
     pub(crate) async fn resolve_tab_locked(
         &self,
         browser: &Arc<Browser>,

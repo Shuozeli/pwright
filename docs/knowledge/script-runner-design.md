@@ -1044,3 +1044,22 @@ for a flat script with basic steps.
 5. **Param files**: `--param-file secrets.yaml` loads key-value pairs.
    Merged with `--param` flags (flags take precedence). Useful for
    credentials that shouldn't be in command history.
+
+6. **Template substitution is unescaped (by design)**: `resolve_template`
+   performs plain string replacement of `{{ var }}` with param values. No
+   escaping is applied regardless of the destination context (URL, CSS
+   selector, JS expression). This means a param value like
+   `"; alert(1); "` will be interpolated verbatim into a JS `expression`.
+
+   This is intentional:
+   - The script runner is a trusted-input tool. The user writes both the
+     script and the parameters.
+   - Automatic escaping would break legitimate use cases where the user
+     intends to pass JS fragments or complex selectors as params.
+   - Per project rules, we do not heuristically inspect user input.
+
+   **For script authors:** if you need to pass user-controlled strings
+   safely into JS, use `eval` with `ref` + `args` instead of `expression`
+   with `{{ templates }}`. The `args` path passes values through CDP's
+   typed `callFunctionOn` arguments, avoiding string interpolation into
+   JS source entirely.

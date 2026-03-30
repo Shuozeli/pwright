@@ -22,43 +22,12 @@ pub async fn resolve_to_object_id(session: &dyn CdpClient, node_id: i64) -> CdpR
         .ok_or_else(|| CdpError::Other("could not resolve node to objectId".to_string()))
 }
 
-/// Get the center coordinates of an element by backendNodeId.
-async fn get_element_center(
-    session: &dyn CdpClient,
-    backend_node_id: i64,
-) -> CdpResult<(f64, f64)> {
-    let result = session.dom_get_box_model(backend_node_id).await?;
-
-    if let Some(content) = result
-        .get("model")
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_array())
-        && content.len() >= 8
-    {
-        let x = (content[0].as_f64().unwrap_or(0.0)
-            + content[2].as_f64().unwrap_or(0.0)
-            + content[4].as_f64().unwrap_or(0.0)
-            + content[6].as_f64().unwrap_or(0.0))
-            / 4.0;
-        let y = (content[1].as_f64().unwrap_or(0.0)
-            + content[3].as_f64().unwrap_or(0.0)
-            + content[5].as_f64().unwrap_or(0.0)
-            + content[7].as_f64().unwrap_or(0.0))
-            / 4.0;
-
-        // Fallback to getBoundingClientRect if zero
-        if x == 0.0 && y == 0.0 {
-            return get_element_center_js(session, backend_node_id).await;
-        }
-
-        return Ok((x, y));
-    }
-
-    // Fallback to JS
-    get_element_center_js(session, backend_node_id).await
-}
-
-/// Fallback: resolve node and use getBoundingClientRect().
+/// Get the center of an element using `getBoundingClientRect()`.
+///
+/// Returns **viewport-relative** coordinates, which is what
+/// `Input.dispatchMouseEvent` expects. All mouse-action helpers must use
+/// this instead of `DOM.getBoxModel` (which returns page-absolute coords
+/// and breaks on scrolled pages).
 async fn get_element_center_js(
     session: &dyn CdpClient,
     backend_node_id: i64,
@@ -178,7 +147,7 @@ pub async fn fill_by_node_id(session: &dyn CdpClient, node_id: i64, value: &str)
 /// Scrolls into view first, then gets viewport-relative coordinates.
 pub async fn hover_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResult<()> {
     session.dom_scroll_into_view(node_id).await?;
-    let (x, y) = get_element_center(session, node_id).await?;
+    let (x, y) = get_element_center_js(session, node_id).await?;
     session
         .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
         .await?;
@@ -205,7 +174,7 @@ pub async fn drag_by_node_id(
     dy: i32,
 ) -> CdpResult<()> {
     session.dom_scroll_into_view(node_id).await?;
-    let (x, y) = get_element_center(session, node_id).await?;
+    let (x, y) = get_element_center_js(session, node_id).await?;
 
     const DRAG_STEP_PX: f64 = 10.0;
     const DRAG_MIN_STEPS: f64 = 5.0;
@@ -401,16 +370,22 @@ mod tests {
     #[tokio::test]
     async fn test_hover_moves_mouse_to_element_center() {
         let mock = MockCdpClient::new();
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": {"x": 100.0, "y": 200.0}}
+        }));
         hover_by_node_id(&mock, 5).await.unwrap();
 
         let methods = mock.method_names();
-        // scroll FIRST, then get coords, then dispatch
+        // scroll FIRST, then resolve + getBoundingClientRect (viewport coords), then dispatch
         assert_eq!(methods[0], "DOM.scrollIntoViewIfNeeded");
-        assert_eq!(methods[1], "DOM.getBoxModel");
-        assert_eq!(methods[2], "Input.dispatchMouseEvent");
+        assert_eq!(methods[1], "DOM.resolveNode");
+        assert_eq!(methods[2], "Runtime.callFunctionOn");
+        assert_eq!(methods[3], "Input.dispatchMouseEvent");
 
         let mouse = mock.calls_for("Input.dispatchMouseEvent");
         assert_eq!(mouse[0].args[0]["type"], "mouseMoved");
+        assert_eq!(mouse[0].args[0]["x"], 100.0);
+        assert_eq!(mouse[0].args[0]["y"], 200.0);
     }
 
     #[tokio::test]
@@ -458,13 +433,17 @@ mod tests {
     #[tokio::test]
     async fn test_drag_creates_intermediate_steps() {
         let mock = MockCdpClient::new();
+        mock.set_call_function_response(serde_json::json!({
+            "result": {"value": {"x": 50.0, "y": 50.0}}
+        }));
         drag_by_node_id(&mock, 1, 100, 0).await.unwrap();
 
         let methods = mock.method_names();
-        // scrollIntoView + getBoxModel + mouseMoved(start) + mousePressed + N*mouseMoved + mouseReleased
+        // scrollIntoView + resolveNode + callFunctionOn(center) + mouseMoved(start) + mousePressed + N*mouseMoved + mouseReleased
         assert_eq!(methods[0], "DOM.scrollIntoViewIfNeeded");
-        assert_eq!(methods[1], "DOM.getBoxModel");
-        assert_eq!(methods[2], "Input.dispatchMouseEvent"); // mouseMoved to start
+        assert_eq!(methods[1], "DOM.resolveNode");
+        assert_eq!(methods[2], "Runtime.callFunctionOn");
+        assert_eq!(methods[3], "Input.dispatchMouseEvent"); // mouseMoved to start
 
         let mouse_calls = mock.calls_for("Input.dispatchMouseEvent");
         // First=mouseMoved(start), Second=mousePressed, Middle=intermediate moves, Last=mouseReleased
