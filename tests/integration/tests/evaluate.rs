@@ -159,19 +159,14 @@ async fn sync_into_json_deserialize() {
 
 #[tokio::test]
 #[ignore = "requires docker: chrome"]
-async fn sync_promise_returns_object_not_value() {
+async fn evaluate_resolves_promise() {
     let page = connect_and_navigate("/content.html").await;
-    // Sync evaluate on a Promise should return the Promise object, not the resolved value
+    // evaluate always awaits Promises (awaitPromise: true)
     let result = page
         .evaluate("new Promise(resolve => resolve(42))")
         .await
         .unwrap();
-    // The type should be "object" (a Promise), not "number"
-    assert_ne!(
-        result.get("value").and_then(|v| v.as_i64()),
-        Some(42),
-        "sync should NOT resolve the Promise"
-    );
+    assert_eq!(result["value"], 42, "evaluate should resolve the Promise");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -288,36 +283,31 @@ async fn async_into_typed() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Sync vs Async comparison
+//  evaluate — consistent Promise resolution
 // ═══════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 #[ignore = "requires docker: chrome"]
-async fn sync_and_async_agree_on_simple_expression() {
+async fn evaluate_consistent_on_simple_expression() {
     let page = connect_and_navigate("/content.html").await;
 
-    let sync_result = page.evaluate("2 + 2").await.unwrap();
-    let async_result = page.evaluate("2 + 2").await.unwrap();
+    let result1 = page.evaluate("2 + 2").await.unwrap();
+    let result2 = page.evaluate("2 + 2").await.unwrap();
 
-    // Both should return 4
-    assert_eq!(sync_result["value"], 4);
-    assert_eq!(async_result["value"], 4);
+    assert_eq!(result1["value"], 4);
+    assert_eq!(result2["value"], 4);
 }
 
 #[tokio::test]
 #[ignore = "requires docker: chrome"]
-async fn async_resolves_where_sync_would_not() {
+async fn evaluate_always_resolves_promises() {
     let page = connect_and_navigate("/content.html").await;
 
-    // Async resolves the Promise
-    let async_result = page.evaluate("Promise.resolve('resolved')").await.unwrap();
-    assert_eq!(async_result["value"], "resolved");
-
-    // Sync returns the Promise object, not the resolved value
-    let sync_result = page.evaluate("Promise.resolve('resolved')").await.unwrap();
-    assert_ne!(
-        sync_result.get("value").and_then(|v| v.as_str()),
+    // evaluate always awaits Promises (awaitPromise: true)
+    let result = page.evaluate("Promise.resolve('resolved')").await.unwrap();
+    assert_eq!(
+        result.get("value").and_then(|v| v.as_str()),
         Some("resolved"),
-        "sync should NOT resolve Promises"
+        "evaluate should always resolve Promises"
     );
 }
