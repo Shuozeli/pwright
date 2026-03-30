@@ -1,4 +1,4 @@
-# Local development: Chrome on host network, tests run from cargo.
+# Local development: Chrome + Lightpanda on host network, tests run from cargo.
 # Usage: docker compose -f docker-compose.local.yml up -d
 #        cargo test -p pwright-integration-tests -- --ignored --test-threads=1
 #        docker compose -f docker-compose.local.yml down
@@ -7,3 +7,7 @@ services:
     image: chromedp/headless-shell:latest
     network_mode: host
     shm_size: "2gb"
+  lightpanda:
+    image: lightpanda/browser:nightly
+    ports:
+      - "9333:9222"

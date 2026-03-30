@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-03-30T01:00:00Z -->
+<!-- agent-updated: 2026-03-30T06:00:00Z -->
 
 # Lightpanda Browser Compatibility
 
@@ -10,19 +10,15 @@ This doc tracks what works and what doesn't when connecting pwright to Lightpand
 
 ## Connection Design
 
-### The Problem
+### Unified `Browser::connect()`
 
-Chrome exposes two interfaces: HTTP debug endpoints and WebSocket CDP. Lightpanda only implements `/json/version` over HTTP — everything else is WebSocket-only. pwright's `connect_http()` bundles HTTP discovery with HTTP tab management (`HttpTabCloser`), which breaks with Lightpanda since `/json/close/{id}` returns 404.
-
-### The Solution: Unified `Browser::connect()`
-
-**Drop `connect_http` as a separate method. Unify into a single `Browser::connect(config)` that:**
+`Browser::connect(config)` handles both backends:
 
 1. If `cdp_url` is HTTP → fetch `/json/version`, rewrite the returned WS URL to use the caller's host:port, connect WS
 2. If `cdp_url` is WS → connect directly
 3. Always use `CdpTabCloser` (`Target.closeTarget` over WS) — never HTTP for tab management
 
-The URL rewrite is an implementation detail, not a user-facing choice. Chrome returns `ws://127.0.0.1:9225/devtools/browser/...` even when reached through a proxy — we take the path and graft it onto the caller's host:port. Lightpanda returns `ws://0.0.0.0:9222/` — same rewrite, just path is `/`.
+The URL rewrite is an implementation detail. Chrome returns `ws://127.0.0.1:9225/devtools/browser/...` even through a proxy — we graft the caller's host:port onto the path. Lightpanda returns `ws://0.0.0.0:9222/` — same rewrite, path is `/`.
 
 ```rust
 // Chrome behind proxy — HTTP discovery, rewrite, WS tab management
@@ -41,127 +37,188 @@ let config = BrowserConfig {
 let browser = Browser::connect(config).await?;
 ```
 
-### Validated: `Target.closeTarget` Works Through Proxies
-
-Tested 2026-03-30 against Chrome at `chrome-proxy:9225` (reverse proxy):
-
-| Test | Direct (localhost:9222) | Through proxy (chrome-proxy:9225) |
-|------|-------------------------|-------------------------------------|
-| Single tab lifecycle | PASS | PASS |
-| `Target.closeTarget` | PASS | PASS |
-| 10 rapid create/close | 10/10 | 10/10 |
-| 5 concurrent tabs close | 5/5 | — |
-| URL rewrite | N/A | `ws://127.0.0.1:9225/...` → `ws://chrome-proxy:9225/...` PASS |
-
-`HttpTabCloser` can be removed. `CdpTabCloser` is reliable with both Chrome and Lightpanda, through direct connections and reverse proxies.
-
-### Reverse Proxy Support
-
-WebSocket-only works behind Caddy and nginx. All CDP traffic flows over the single WS connection — no HTTP endpoints needed beyond the optional `/json/version` discovery.
-
-Caddy auto-detects WebSocket upgrades. nginx needs `proxy_set_header Upgrade` and `Connection "upgrade"` configured (see `docs/guides/remote-cdp.md`).
+Reverse proxies (Caddy, nginx) work — all CDP traffic flows over the single WS connection.
 
 ## Lightpanda Constraints
 
-- **1 browser context per WebSocket connection** — `Target.createBrowserContext` returns error on second call
-- **1 tab per browser context** — `Target.createTarget` returns error if a tab already exists
-- **For parallel tabs:** open multiple `Browser::connect()` connections, each with its own tab
-- **No HTTP debug endpoints** except `/json/version` — `/json/list`, `/json/new`, `/json/close` all return 404
+- **1 browser context per WebSocket connection** — `Target.createBrowserContext` errors on second call
+- **1 tab per browser context** — `Target.createTarget` errors if a tab exists
+- **For parallel tabs:** open multiple `Browser::connect()` connections
+- **No HTTP debug endpoints** except `/json/version`
+- **No `data:` URL support** — returns `UrlMalformat`
+- **Target IDs are per-connection** — two connections both get `FID-0000000001`
 
-## Test Setup
+## Side-by-Side: pwright Feature Compatibility
 
-- Lightpanda: Docker `lightpanda/browser:nightly` on port 9333
-- Chrome: `chromedp/headless-shell:latest` on port 9222 (local) and `chrome-proxy:9225` (proxy)
-- Test transport: direct WebSocket
-- Test dates: 2026-03-29 to 2026-03-30
+Tested with 32 integration tests (`tests/integration/tests/lightpanda.rs`).
 
-## Compatibility Results
+### Connection & Tab Lifecycle
 
-### Core Protocol
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| Connect via WS URL | PASS | PASS | |
+| Connect via HTTP URL | PASS | N/A | LP has no HTTP discovery except `/json/version` |
+| `Browser.getVersion` | PASS | PASS | |
+| `Target.createTarget` | PASS | PASS | |
+| `Target.closeTarget` | PASS | PASS | |
+| `Target.getTargets` | PASS | PASS | |
+| Tab close idempotent | PASS | PASS | |
+| Multiple tabs, one connection | PASS | FAIL | LP: 1 tab per connection |
+| Multiple tabs, multiple connections | PASS | PASS | |
+| Close via HTTP (`/json/close`) | PASS | FAIL (404) | Not needed — WS close works |
 
-| Operation | CDP Method | Lightpanda | Chrome |
-|-----------|------------|------------|--------|
-| Get browser version | `Browser.getVersion` | PASS | PASS |
-| Create browser context | `Target.createBrowserContext` | PASS | PASS |
-| Create target/tab | `Target.createTarget` | PASS | PASS |
-| Attach to target | `Target.attachToTarget` | PASS | PASS |
-| List targets | `Target.getTargets` | PASS | PASS |
-| Close target/tab | `Target.closeTarget` | PASS | PASS |
-| Navigate | `Page.navigate` | PASS | PASS |
-| Reload | `Page.reload` | PASS | PASS |
-| Page lifecycle events | `Page.setLifecycleEventsEnabled` | PASS | PASS |
-| Get frame tree | `Page.getFrameTree` | PASS | PASS |
-| Screenshot | `Page.captureScreenshot` | PASS (PNG only) | PASS |
-| Create isolated world | `Page.createIsolatedWorld` | PASS | PASS |
+### Navigation
+
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| `page.goto(url)` | PASS | PASS | |
+| `page.title()` | PASS | PASS | |
+| `page.url()` | PASS | PASS | |
+| `page.content()` (outerHTML) | PASS | PASS | |
+| `page.body_text()` | PASS | PASS | |
+| `page.reload()` | PASS | PASS | |
+| `page.go_back()` / `go_forward()` | PASS | Not tested | |
+| Navigate between pages | PASS | PASS | |
+| Click link triggers navigation | PASS | PASS | Full lifecycle events fire |
+| `data:` URLs | PASS | FAIL | LP returns `UrlMalformat` |
+| Page lifecycle events | PASS | PASS | DOMContentLoaded, load, networkIdle |
 
 ### JavaScript Evaluation
 
-| Operation | Lightpanda | Chrome |
-|-----------|------------|--------|
-| Simple math (`1+1`) | PASS | PASS |
-| `document.title` | PASS | PASS |
-| `document.documentElement.outerHTML` | PASS | PASS |
-| `document.documentElement.innerHTML` | PASS | PASS |
-| `Runtime.callFunctionOn` with objectId | PASS | PASS |
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| `evaluate_sync` — numbers | PASS | PASS | |
+| `evaluate_sync` — strings | PASS | PASS | |
+| `evaluate_sync` — booleans | PASS | PASS | |
+| `evaluate_sync` — null | PASS | PASS | |
+| `evaluate_sync` — objects | PASS | PASS | |
+| `evaluate_sync` — arrays | PASS | PASS | |
+| `evaluate_sync_into<T>` typed | PASS | PASS | |
+| DOM queries via JS | PASS | PASS | |
+| DOM create element via JS | PASS | PASS | |
+| `Runtime.callFunctionOn` | PASS | PASS | |
+| `evaluate_async` (Promises) | PASS | Not tested | |
+| `evaluate_with_arg` | PASS | Not tested | |
 
-### DOM
+### DOM & Selectors
 
-| Operation | CDP Method | Lightpanda |
-|-----------|------------|------------|
-| Get document tree | `DOM.getDocument` | PASS |
-| Query selector | `DOM.querySelector` | PASS |
-| Search DOM | `DOM.performSearch` | PASS |
-| Get search results | `DOM.getSearchResults` | PASS |
-| Get box model | `DOM.getBoxModel` | PASS (padding/border/margin are zeros) |
-| Resolve node to JS object | `DOM.resolveNode` | PASS |
-| Get outer HTML | `DOM.getOuterHTML` | PASS |
-| Accessibility tree | `Accessibility.getFullAXTree` | PASS |
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| `DOM.getDocument` | PASS | PASS | |
+| `DOM.querySelector` | PASS | PASS | |
+| `DOM.performSearch` / `getSearchResults` | PASS | PASS | |
+| `DOM.getBoxModel` | PASS | PASS | padding/border/margin are zeros in LP |
+| `DOM.resolveNode` | PASS | PASS | |
+| `DOM.getOuterHTML` | PASS | PASS | |
+| `DOM.describeNode` | PASS | **FAIL** | LP returns `UnknownMethod` |
+| `page.text_content(selector)` | PASS | PASS | |
+| `page.inner_html(selector)` | PASS | PASS | |
+| `page.get_attribute(selector, attr)` | PASS | **FAIL** | Uses `DOM.describeNode` internally |
+| `page.is_visible(selector)` | PASS | PASS | |
 
-### Input & Navigation
+### Locator API
 
-| Operation | CDP Method | Lightpanda | Notes |
-|-----------|------------|------------|-------|
-| Mouse click | `Input.dispatchMouseEvent` (mousePressed) | PASS | |
-| Mouse release | `Input.dispatchMouseEvent` (mouseReleased) | PASS | |
-| Key press | `Input.dispatchKeyEvent` (keyDown) | PASS | |
-| Insert text | `Input.insertText` | PASS | |
-| Click-to-navigate (`<a>` tag) | Input + Page events | PASS | Full navigation lifecycle fires |
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| `locator.text_content()` | PASS | PASS | |
+| `locator.count()` | PASS | PASS | |
+| `locator.click()` | PASS | PASS | |
+| `locator.get_attribute()` | PASS | **FAIL** | Uses `DOM.describeNode` |
+| `locator.fill()` | PASS | **FAIL** | Uses `DOM.describeNode` |
+| `locator.first()` / `last()` / `nth()` | PASS | Not tested | |
+| `get_by_text()` / `get_by_label()` / `get_by_role()` | PASS | Not tested | |
 
-**Input caveat:** Lightpanda only processes `mousePressed` (ignores `mouseMoved`, `mouseWheel`) and `keyDown` (ignores `keyUp`, `rawKeyDown`, `char`). Commands return success for ignored types. End-to-end form interactions (fill + submit) need more testing.
+### Input & Actions
+
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| `Input.dispatchMouseEvent` (click) | PASS | PASS | Only `mousePressed` processed |
+| `Input.dispatchKeyEvent` | PASS | PASS | Only `keyDown` processed |
+| `Input.insertText` | PASS | PASS | |
+| Click button (onclick handler) | PASS | PASS | Tested via JS-created element |
+| `page.fill()` | PASS | **FAIL** | Requires `DOM.describeNode` |
+| `page.type_text()` | PASS | Not tested | |
+| Double-click | PASS | Not tested | |
+| Right-click | PASS | Not tested | |
+| Hover | PASS | Not tested | |
+| Coordinate-based click | PASS | Not tested | |
+
+### Accessibility
+
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| `Accessibility.getFullAXTree` | PASS | PASS* | *`nodeId` is integer (Chrome: string) — pwright's typed deserializer fails, raw CDP works |
+
+### Screenshot & Content
+
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| `Page.captureScreenshot` (PNG) | PASS | PASS | |
+| Screenshot (JPEG) | PASS | FAIL | LP only supports PNG |
+| PDF export | PASS | Not tested | |
 
 ### Cookies & Network
 
-| Operation | CDP Method | Lightpanda |
-|-----------|------------|------------|
-| Get cookies | `Network.getCookies` | PASS |
-| Set cookie | `Network.setCookie` | PASS |
-| Enable network tracking | `Network.enable` | PASS |
-| Set extra HTTP headers | `Network.setExtraHTTPHeaders` | PASS |
-| Ignore certificate errors | `Security.setIgnoreCertificateErrors` | PASS |
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| `Network.getCookies` | PASS | PASS | |
+| `Network.setCookie` | PASS | PASS | |
+| `Network.setExtraHTTPHeaders` | PASS | PASS | |
+| `Security.setIgnoreCertificateErrors` | PASS | PASS | |
+| Network event listeners (`on_response`) | PASS | Not tested | |
+| Request interception (`Fetch` domain) | PASS | Not tested | |
 
-## What Does NOT Work (Lightpanda)
+### Emulation
 
-| Feature | Why |
-|---------|-----|
-| Multiple tabs per connection | 1 context, 1 tab per WS connection |
-| Device/touch emulation | All Emulation domain methods are stubs |
-| CSS inspection | Only `CSS.enable` (no-op) |
-| Screenshot formats besides PNG | Only PNG supported |
+| Feature | Chrome | Lightpanda | Notes |
+|---------|--------|------------|-------|
+| Device metrics override | PASS | FAIL | Stub (no-op) |
+| Touch emulation | PASS | FAIL | Stub (no-op) |
+| Media emulation | PASS | FAIL | Stub (no-op) |
+| User agent override | PASS | FAIL | Stub (no-op) |
 
-## Implementation Plan: Unified `Browser::connect()`
+## Key Gaps Summary
 
-Breaking change to pwright-bridge:
+### Blockers for Full pwright Compatibility
 
-1. **Remove `connect_http()`** — merge its logic into `connect()`
-2. **Detect scheme in `connect()`** — HTTP triggers `/json/version` discovery + URL rewrite; WS connects directly
-3. **Remove `HttpTabCloser`** — always use `CdpTabCloser`
-4. **Remove `ChromeHttpClient`** — no longer needed for tab management (keep `reqwest` for `/json/version` fetch only, or inline the single HTTP call)
-5. **Update callers** — CLI, gRPC server, tests, examples
-6. **Test** — Chrome direct, Chrome through proxy, Lightpanda direct
+| Gap | Impact | Workaround |
+|-----|--------|------------|
+| **`DOM.describeNode` not implemented** | `get_attribute()`, `fill()`, locator attribute queries all fail | Use JS eval: `document.querySelector(sel).getAttribute(name)` |
+| **No `data:` URL support** | Can't use inline HTML for tests | Use real URLs or JS-created DOM |
+| **1 tab per connection** | No multi-tab on single connection | Open separate connections |
+| **AX tree `nodeId` is integer** | pwright's `RawAXNode` deserializer fails | Use raw `session.send()` instead of typed API |
 
-## Remaining Items to Investigate
+### Non-Blockers (Stubs / Partial)
 
-- [ ] End-to-end test: unified `connect()` from pwright Rust code against both backends
-- [ ] Test actual form interactions (fill input + click submit + verify result) on Lightpanda
-- [ ] Test wait-for-selector / wait-for-text patterns on Lightpanda
-- [ ] Evaluate multi-connection pooling for parallel tab support with Lightpanda
+- Emulation domain: all stubs (no-ops)
+- Input events: only `mousePressed` and `keyDown` processed; others return success but are ignored
+- `DOM.getBoxModel`: padding/border/margin always zeros
+- Screenshot: PNG only (no JPEG/WebP)
+- CSS inspection: only `CSS.enable` (no-op)
+
+## Test Infrastructure
+
+Integration tests: `tests/integration/tests/lightpanda.rs` (32 tests)
+
+```bash
+# Start Lightpanda
+docker compose -f tests/integration/docker-compose.local.yml up -d
+
+# Run tests
+cargo test -p pwright-integration-tests --test lightpanda -- --ignored --test-threads=1
+```
+
+Tests use `LIGHTPANDA_HOST` / `LIGHTPANDA_PORT` env vars (default: `127.0.0.1:9333`).
+
+## Remaining Items
+
+- [ ] Test `evaluate_async` (Promise resolution) on Lightpanda
+- [ ] Test `evaluate_with_arg` (Runtime.callFunctionOn with args)
+- [ ] Test `go_back()` / `go_forward()` history navigation
+- [ ] Test advanced locators (`get_by_text`, `get_by_role`, `get_by_label`)
+- [ ] Test network event listeners (`on_response`, `on_request`)
+- [ ] Test `Fetch` domain (request interception)
+- [ ] Evaluate multi-connection pooling for parallel tab support
+- [ ] File upstream issue for `DOM.describeNode` support
+- [ ] File upstream issue for `data:` URL support
+- [ ] File upstream issue for AX tree `nodeId` type (integer vs string)

@@ -13,6 +13,16 @@ use axum::routing::{get, post};
 use pwright_bridge::playwright::Page;
 use pwright_cdp::{CdpConnection, CdpSession};
 
+/// The Lightpanda WebSocket URL, resolved for Docker/local.
+///
+/// Lightpanda has no HTTP debug endpoints beyond `/json/version`,
+/// so we connect directly via WebSocket.
+pub fn lightpanda_ws_url() -> String {
+    let host = std::env::var("LIGHTPANDA_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+    let port = std::env::var("LIGHTPANDA_PORT").unwrap_or_else(|_| "9333".into());
+    format!("ws://{host}:{port}/")
+}
+
 /// The Chrome HTTP debug endpoint URL, resolved for Docker/local.
 pub fn chrome_http_url() -> String {
     let host = std::env::var("CHROME_HOST").unwrap_or_else(|_| "localhost".into());
