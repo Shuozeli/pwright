@@ -40,7 +40,7 @@ async fn verify_battery_api_calls() {
             "addEventListener:levelchange"
         ]}
     }));
-    let result = page.evaluate("window._apiLog").await.unwrap();
+    let result = page.evaluate_sync("window._apiLog").await.unwrap();
     let log = result.get("value").and_then(|v| v.as_array()).unwrap();
     assert_eq!(log.len(), 3);
     assert_eq!(log[0], "getBattery");

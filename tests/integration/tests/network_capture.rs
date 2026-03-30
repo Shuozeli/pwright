@@ -141,7 +141,7 @@ async fn network_list_via_performance_api() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let result: String = page
-        .evaluate_into(
+        .evaluate_sync_into(
             r##"JSON.stringify(performance.getEntriesByType('resource').map(e => e.name))"##,
         )
         .await

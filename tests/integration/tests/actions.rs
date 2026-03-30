@@ -65,7 +65,7 @@ async fn dblclick_triggers_event() {
     // Use JS to dispatch dblclick (CDP mouse dblclick on non-focusable div
     // may fail with "Element is not focusable")
     page.locator("#dblclick-target")
-        .evaluate("function() { this.dispatchEvent(new MouseEvent('dblclick')); }")
+        .evaluate_sync("function() { this.dispatchEvent(new MouseEvent('dblclick')); }")
         .await
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -92,7 +92,7 @@ async fn checkbox_toggle_via_js() {
     assert!(!page.locator("#agree").is_checked().await.unwrap());
 
     page.locator("#agree")
-        .evaluate("function() { this.click(); }")
+        .evaluate_sync("function() { this.click(); }")
         .await
         .unwrap();
 
@@ -100,7 +100,7 @@ async fn checkbox_toggle_via_js() {
 
     // Toggle back
     page.locator("#agree")
-        .evaluate("function() { this.click(); }")
+        .evaluate_sync("function() { this.click(); }")
         .await
         .unwrap();
 
@@ -169,7 +169,7 @@ async fn body_text_extraction() {
     let page = connect_and_navigate("/content.html").await;
 
     let text: String = page
-        .evaluate_into("(document.body?.innerText || '')")
+        .evaluate_sync_into("(document.body?.innerText || '')")
         .await
         .unwrap();
 

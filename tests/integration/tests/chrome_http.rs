@@ -128,7 +128,7 @@ async fn new_tab_page_interaction_then_http_close() {
         .await
         .unwrap();
     let title: String = page
-        .evaluate_into("document.querySelector('h1').textContent")
+        .evaluate_sync_into("document.querySelector('h1').textContent")
         .await
         .unwrap();
     assert_eq!(title, "Hello");

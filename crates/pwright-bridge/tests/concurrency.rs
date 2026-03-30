@@ -132,7 +132,7 @@ async fn concurrent_close() {
     assert!(page.is_closed());
 
     // Page-level operations after close should fail
-    let result = page.evaluate("1+1").await;
+    let result = page.evaluate_sync("1+1").await;
     assert!(result.is_err());
 }
 

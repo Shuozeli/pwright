@@ -24,7 +24,7 @@ async fn element_center(page: &pwright_bridge::playwright::Page, selector: &str)
         r##"JSON.stringify((() => {{ var r = document.querySelector('{}').getBoundingClientRect(); return {{ x: r.x, y: r.y, width: r.width, height: r.height }}; }})())"##,
         selector
     );
-    let rect: FromEvalJson<Rect> = page.evaluate_into(&js).await.unwrap();
+    let rect: FromEvalJson<Rect> = page.evaluate_sync_into(&js).await.unwrap();
     let r = rect.0;
     (r.x + r.width / 2.0, r.y + r.height / 2.0)
 }
@@ -40,7 +40,7 @@ async fn click_at_triggers_click_event() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let result: String = page
-        .evaluate_into("document.getElementById('click-result').textContent")
+        .evaluate_sync_into("document.getElementById('click-result').textContent")
         .await
         .unwrap();
     assert_eq!(result, "Clicked!");
@@ -57,7 +57,7 @@ async fn hover_at_triggers_mouseenter() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let result: String = page
-        .evaluate_into("document.getElementById('hover-result').textContent")
+        .evaluate_sync_into("document.getElementById('hover-result').textContent")
         .await
         .unwrap();
     assert_eq!(result, "Hovered!");
@@ -74,7 +74,7 @@ async fn dblclick_at_triggers_dblclick_event() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let result: String = page
-        .evaluate_into("document.getElementById('dblclick-result').textContent")
+        .evaluate_sync_into("document.getElementById('dblclick-result').textContent")
         .await
         .unwrap();
     assert_eq!(result, "Double-clicked!");
@@ -101,7 +101,7 @@ async fn right_click_at_triggers_contextmenu() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let result: String = page
-        .evaluate_into("document.getElementById('rightclick-result').textContent")
+        .evaluate_sync_into("document.getElementById('rightclick-result').textContent")
         .await
         .unwrap();
     assert_eq!(result, "Right-clicked!");
@@ -118,7 +118,7 @@ async fn dblclick_on_interactive_button() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let text: String = page
-        .evaluate_into("document.getElementById('dblclick').textContent")
+        .evaluate_sync_into("document.getElementById('dblclick').textContent")
         .await
         .unwrap();
     assert_eq!(text, "Double clicked!");
@@ -135,7 +135,7 @@ async fn hover_on_interactive_div() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let text: String = page
-        .evaluate_into("document.getElementById('hover').textContent")
+        .evaluate_sync_into("document.getElementById('hover').textContent")
         .await
         .unwrap();
     assert_eq!(text, "Hovered!");

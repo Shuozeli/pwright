@@ -42,7 +42,7 @@ async fn should_create_bug_report() {
     let page = Page::new(mock.clone());
 
     // Create repo via fetch
-    page.evaluate(
+    page.evaluate_sync(
         r#"fetch('https://api.github.com/user/repos', {
             method: 'POST',
             headers: { 'Authorization': 'token test' },
@@ -53,7 +53,7 @@ async fn should_create_bug_report() {
     .unwrap();
 
     // Create bug report
-    page.evaluate(
+    page.evaluate_sync(
         r#"fetch('https://api.github.com/repos/user/Test-Repo-1/issues', {
             method: 'POST',
             headers: { 'Authorization': 'token test' },
@@ -83,7 +83,7 @@ async fn should_create_feature_request() {
     let mock = mock_with_navigation();
     let page = Page::new(mock.clone());
 
-    page.evaluate(
+    page.evaluate_sync(
         r#"fetch('https://api.github.com/repos/user/Test-Repo-1/issues', {
             method: 'POST',
             body: JSON.stringify({ title: '[Feature] request 1', body: 'Feature description' })

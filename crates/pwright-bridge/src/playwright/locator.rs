@@ -187,11 +187,12 @@ impl Locator {
     /// Evaluate a JavaScript function on the element.
     ///
     /// The function receives the element as `this`. Returns the raw CDP result value.
+    /// This does NOT await Promises.
     ///
     /// ```rust,ignore
-    /// let result = locator.evaluate("function() { return this.offsetHeight; }").await?;
+    /// let result = locator.evaluate_sync("function() { return this.offsetHeight; }").await?;
     /// ```
-    pub async fn evaluate(&self, function_body: &str) -> CdpResult<Value> {
+    pub async fn evaluate_sync(&self, function_body: &str) -> CdpResult<Value> {
         let node = self.resolve_one().await?;
         let obj_id = self.resolve_object_id(node.node_id).await?;
         let result = self
@@ -203,15 +204,17 @@ impl Locator {
 
     /// Evaluate a JavaScript function on the element and convert to a typed value.
     ///
+    /// This does NOT await Promises.
+    ///
     /// ```rust,ignore
-    /// let height: i64 = locator.evaluate_into("function() { return this.offsetHeight; }").await?;
-    /// let visible: bool = locator.evaluate_into("function() { return this.checkVisibility(); }").await?;
+    /// let height: i64 = locator.evaluate_sync_into("function() { return this.offsetHeight; }").await?;
+    /// let visible: bool = locator.evaluate_sync_into("function() { return this.checkVisibility(); }").await?;
     /// ```
-    pub async fn evaluate_into<T: crate::evaluate::FromEvalResult>(
+    pub async fn evaluate_sync_into<T: crate::evaluate::FromEvalResult>(
         &self,
         function_body: &str,
     ) -> CdpResult<T> {
-        let remote_object = self.evaluate(function_body).await?;
+        let remote_object = self.evaluate_sync(function_body).await?;
         T::from_eval_result(&remote_object)
     }
 
@@ -767,7 +770,7 @@ mod tests {
 
         let loc = Locator::new(mock.clone(), "div");
         let result = loc
-            .evaluate("function() { return this.offsetHeight; }")
+            .evaluate_sync("function() { return this.offsetHeight; }")
             .await
             .unwrap();
         assert_eq!(result.get("value").and_then(|v| v.as_i64()), Some(42));
