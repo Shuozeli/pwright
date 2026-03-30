@@ -32,12 +32,12 @@ async fn should_update_ui_when_battery_status_changes() {
     page.goto("/", None).await.unwrap();
 
     // Update level
-    page.evaluate_sync("window.mockBattery._setLevel(0.275)")
+    page.evaluate("window.mockBattery._setLevel(0.275)")
         .await
         .unwrap();
 
     // Update charging
-    page.evaluate_sync("window.mockBattery._setCharging(true)")
+    page.evaluate("window.mockBattery._setCharging(true)")
         .await
         .unwrap();
 
@@ -69,7 +69,7 @@ async fn verify_api_calls_after_update() {
     page.goto("/", None).await.unwrap();
 
     // Update level — getBattery should not be called again (cached)
-    page.evaluate_sync("window.mockBattery._setLevel(0.275)")
+    page.evaluate("window.mockBattery._setLevel(0.275)")
         .await
         .unwrap();
 

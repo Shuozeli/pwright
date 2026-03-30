@@ -43,7 +43,7 @@ async fn show_battery_status() {
         "result": {"value": "90%"}
     }));
     let result = page
-        .evaluate_sync("document.querySelector('.battery-percentage')?.textContent")
+        .evaluate("document.querySelector('.battery-percentage')?.textContent")
         .await
         .unwrap();
     assert_eq!(result.get("value").and_then(|v| v.as_str()), Some("90%"));

@@ -175,16 +175,8 @@ async fn execute_step(
                 details.insert("ref".into(), js_ref.clone());
 
                 if e.args.is_empty() {
-                    // Simple eval (use evaluate_async if script contains await)
-                    let result = if func.is_async {
-                        page.evaluate_async(&func.body)
-                            .await
-                            .map_err(ScriptError::Cdp)?
-                    } else {
-                        page.evaluate_sync(&func.body)
-                            .await
-                            .map_err(ScriptError::Cdp)?
-                    };
+                    // Simple eval — evaluate handles both sync and async expressions
+                    let result = page.evaluate(&func.body).await.map_err(ScriptError::Cdp)?;
                     json_value_to_string(&result)
                 } else {
                     // Call with args
@@ -211,10 +203,7 @@ async fn execute_step(
                 // Prefer eval with ref + args over expression + templates for untrusted values.
                 let resolved = resolve_template(expr, vars);
                 details.insert("expression".into(), resolved.clone());
-                let result = page
-                    .evaluate_async(&resolved)
-                    .await
-                    .map_err(ScriptError::Cdp)?;
+                let result = page.evaluate(&resolved).await.map_err(ScriptError::Cdp)?;
                 json_value_to_string(&result)
             } else {
                 return Err(ScriptError::Validation(
@@ -319,7 +308,7 @@ async fn extract_field(page: &Page, selector: &str, field: &str) -> Result<Strin
 /// # Security: template injection in JS contexts
 ///
 /// This function performs plain string substitution with no escaping. When the
-/// resolved string is passed to `page.evaluate_sync()` or similar JS execution
+/// resolved string is passed to `page.evaluate()` or similar JS execution
 /// methods, a param value can inject arbitrary JavaScript. For example, a param
 /// `name` with value `"; alert(1); "` inserted into `"return '{{ name }}'"` would
 /// produce valid JS that executes the injected code.

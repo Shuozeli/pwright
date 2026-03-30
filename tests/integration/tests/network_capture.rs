@@ -141,7 +141,7 @@ async fn network_list_via_performance_api() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let result: String = page
-        .evaluate_sync_into(
+        .evaluate_into(
             r##"JSON.stringify(performance.getEntriesByType('resource').map(e => e.name))"##,
         )
         .await
@@ -168,7 +168,7 @@ async fn listener_captures_fetch_from_evaluate() {
     // Trigger a fetch via JS evaluate (simulates agent interaction)
     let base = server_base_url();
     let _ = page
-        .evaluate_async(&format!(
+        .evaluate(&format!(
             "fetch('{base}/api/items?count=3').then(r => r.json())"
         ))
         .await
@@ -201,7 +201,7 @@ async fn listener_captures_post_data() {
 
     let base = server_base_url();
     let _ = page
-        .evaluate_async(&format!(
+        .evaluate(&format!(
             r##"fetch('{base}/api/search', {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},

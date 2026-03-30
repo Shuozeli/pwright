@@ -225,56 +225,32 @@ impl Page {
 
     // ── Evaluation ──
 
-    /// Evaluate a **synchronous** JavaScript expression and return the result.
+    /// Evaluate a JavaScript expression and return the result.
     ///
-    /// **The expression must not contain `await` or return a Promise.** If it does,
-    /// the result will be a serialized Promise object, not the resolved value.
-    /// Use [`evaluate_async`](Self::evaluate_async) for Promise-returning expressions.
-    pub async fn evaluate_sync(&self, expression: &str) -> CdpResult<Value> {
+    /// The underlying CDP call uses `awaitPromise: true`, so both synchronous
+    /// expressions and Promise-returning expressions work correctly.
+    pub async fn evaluate(&self, expression: &str) -> CdpResult<Value> {
         self.ensure_open()?;
-        crate::evaluate::evaluate_sync(&*self.session, expression).await
+        crate::evaluate::evaluate(&*self.session, expression).await
     }
 
     /// Evaluate a JavaScript expression and convert the result to a typed value.
     ///
-    /// This does NOT await Promises. For async JS, use [`evaluate_async_into`](Self::evaluate_async_into).
-    ///
     /// ```rust,ignore
-    /// let title: String = page.evaluate_sync_into("document.title").await?;
-    /// let count: i64 = page.evaluate_sync_into("document.querySelectorAll('a').length").await?;
-    /// let ready: bool = page.evaluate_sync_into("!!document.querySelector('.loaded')").await?;
+    /// let title: String = page.evaluate_into("document.title").await?;
+    /// let count: i64 = page.evaluate_into("document.querySelectorAll('a').length").await?;
+    /// let ready: bool = page.evaluate_into("!!document.querySelector('.loaded')").await?;
     ///
     /// // For JSON.stringify results into arbitrary types:
     /// use pwright_bridge::evaluate::FromEvalJson;
-    /// let items: FromEvalJson<Vec<Item>> = page.evaluate_sync_into("JSON.stringify([...])").await?;
+    /// let items: FromEvalJson<Vec<Item>> = page.evaluate_into("JSON.stringify([...])").await?;
     /// ```
-    pub async fn evaluate_sync_into<T: crate::evaluate::FromEvalResult>(
+    pub async fn evaluate_into<T: crate::evaluate::FromEvalResult>(
         &self,
         expression: &str,
     ) -> CdpResult<T> {
         self.ensure_open()?;
-        crate::evaluate::evaluate_sync_into(&*self.session, expression).await
-    }
-
-    /// Evaluate a JS expression, awaiting any returned Promise.
-    ///
-    /// Use this for async JS like `fetch(...).then(r => r.text())`.
-    pub async fn evaluate_async(&self, expression: &str) -> CdpResult<Value> {
-        self.ensure_open()?;
-        crate::evaluate::evaluate_async(&*self.session, expression).await
-    }
-
-    /// Evaluate a JS expression (Promise-aware) and convert to a typed value.
-    ///
-    /// ```rust,ignore
-    /// let text: String = page.evaluate_async_into("fetch('/api').then(r => r.text())").await?;
-    /// ```
-    pub async fn evaluate_async_into<T: crate::evaluate::FromEvalResult>(
-        &self,
-        expression: &str,
-    ) -> CdpResult<T> {
-        self.ensure_open()?;
-        crate::evaluate::evaluate_async_into(&*self.session, expression).await
+        crate::evaluate::evaluate_into(&*self.session, expression).await
     }
 
     // ── Screenshots & PDF ──
@@ -1119,7 +1095,7 @@ mod tests {
         assert!(page.goto("https://example.com", None).await.is_err());
         assert!(page.reload().await.is_err());
         assert!(page.url().await.is_err());
-        assert!(page.evaluate_sync("1+1").await.is_err());
+        assert!(page.evaluate("1+1").await.is_err());
         assert!(page.screenshot(None).await.is_err());
 
         // No CDP calls should have been made

@@ -10,7 +10,7 @@ use serde_json::Value;
 /// Convert a CDP `RemoteObject` (the `{"type": "...", "value": ...}` shape)
 /// into a typed Rust value.
 ///
-/// Used by `Page::evaluate_sync_into` and `Locator::evaluate_sync_into` to provide
+/// Used by `Page::evaluate_into` and `Locator::evaluate_into` to provide
 /// typed evaluation without per-type method proliferation.
 ///
 /// Implemented for: `String`, `bool`, `i64`, `f64`, `Value` (passthrough),
@@ -70,7 +70,7 @@ impl FromEvalResult for Value {
 /// Use when the JS expression returns a JSON string (e.g. `JSON.stringify(...)`):
 ///
 /// ```rust,ignore
-/// let items: FromEvalJson<Vec<Item>> = page.evaluate_sync_into("JSON.stringify([...])").await?;
+/// let items: FromEvalJson<Vec<Item>> = page.evaluate_into("JSON.stringify([...])").await?;
 /// let data = items.0;
 /// ```
 pub struct FromEvalJson<T>(pub T);
@@ -105,64 +105,30 @@ pub fn extract_result_value(result: &Value) -> Option<&Value> {
 
 // ── Core evaluate functions ──
 
-/// Evaluate a **synchronous** JavaScript expression and return the raw CDP `RemoteObject`.
+/// Evaluate a JavaScript expression and return the raw CDP `RemoteObject`.
 ///
 /// The returned `Value` is the CDP `RemoteObject`, **not** the JS value itself.
-/// For example, `evaluate_sync(s, "document.title")` returns
+/// For example, `evaluate(s, "document.title")` returns
 /// `{"type":"string","value":"My Page"}`, not `"My Page"`.
 ///
-/// # Important: no `await` in the expression
-///
-/// This function uses `returnByValue: true` and does **not** set `awaitPromise`.
-/// If the expression returns a Promise (e.g. contains `await`, `fetch()`, or
-/// `.then()`), the result will be a serialized Promise object, **not** the
-/// resolved value. Use [`evaluate_async`] instead for Promise-returning expressions.
+/// The underlying CDP call uses `awaitPromise: true`, so both synchronous
+/// expressions and Promise-returning expressions (e.g. `fetch(...)`) work.
 ///
 /// ```rust,ignore
-/// // Correct: synchronous expression
-/// let title: String = evaluate_sync_into(session, "document.title").await?;
-///
-/// // WRONG: this returns a Promise object, not the fetched text
-/// let bad = evaluate_sync(session, "fetch('/api').then(r => r.text())").await?;
-///
-/// // Correct: use evaluate_async for Promises
-/// let good = evaluate_async(session, "fetch('/api').then(r => r.text())").await?;
+/// let title: String = evaluate_into(session, "document.title").await?;
+/// let text = evaluate(session, "fetch('/api').then(r => r.text())").await?;
 /// ```
-// TODO(refactor): Consider adding a lightweight JS keyword scan (e.g. check for
-// `await`, `fetch(`, `.then(`) at the bridge or server layer to warn callers
-// who accidentally pass async expressions to evaluate_sync. A proper solution
-// would use a JS parser crate (e.g. `oxc_parser` or `swc_ecma_parser`) to detect
-// async syntax, but per CLAUDE.md rules we must not silently change behavior
-// based on input inspection — only warn or error explicitly.
-pub async fn evaluate_sync(session: &dyn CdpClient, expression: &str) -> CdpResult<Value> {
+pub async fn evaluate(session: &dyn CdpClient, expression: &str) -> CdpResult<Value> {
     let result = session.runtime_evaluate(expression).await?;
     Ok(result.get("result").cloned().unwrap_or(Value::Null))
 }
 
-/// Evaluate a JavaScript expression, awaiting any returned Promise.
-///
-/// Like `evaluate` but uses `awaitPromise: true`, so expressions returning
-/// Promises (e.g. `fetch(...).then(r => r.text())`) resolve to the final value.
-pub async fn evaluate_async(session: &dyn CdpClient, expression: &str) -> CdpResult<Value> {
-    let result = session.runtime_evaluate_async(expression).await?;
-    Ok(result.get("result").cloned().unwrap_or(Value::Null))
-}
-
 /// Evaluate and convert the result to a typed value.
-pub async fn evaluate_sync_into<T: FromEvalResult>(
+pub async fn evaluate_into<T: FromEvalResult>(
     session: &dyn CdpClient,
     expression: &str,
 ) -> CdpResult<T> {
-    let remote_object = evaluate_sync(session, expression).await?;
-    T::from_eval_result(&remote_object)
-}
-
-/// Evaluate (async/Promise-aware) and convert the result to a typed value.
-pub async fn evaluate_async_into<T: FromEvalResult>(
-    session: &dyn CdpClient,
-    expression: &str,
-) -> CdpResult<T> {
-    let remote_object = evaluate_async(session, expression).await?;
+    let remote_object = evaluate(session, expression).await?;
     T::from_eval_result(&remote_object)
 }
 
@@ -178,7 +144,7 @@ mod tests {
             "result": {"type": "number", "value": 42}
         }));
 
-        let result = evaluate_sync(&mock, "1 + 1").await.unwrap();
+        let result = evaluate(&mock, "1 + 1").await.unwrap();
         assert_eq!(result["type"], "number");
         assert_eq!(result["value"], 42);
 
@@ -191,34 +157,7 @@ mod tests {
         let mock = MockCdpClient::new();
         mock.set_evaluate_response(serde_json::json!({}));
 
-        let result = evaluate_sync(&mock, "void 0").await.unwrap();
-        assert!(result.is_null());
-    }
-
-    #[tokio::test]
-    async fn test_evaluate_async_returns_result_value() {
-        let mock = MockCdpClient::new();
-        mock.set_evaluate_response(serde_json::json!({
-            "result": {"type": "string", "value": "fetched data"}
-        }));
-
-        let result = evaluate_async(&mock, "fetch('/api').then(r => r.text())")
-            .await
-            .unwrap();
-        assert_eq!(result["type"], "string");
-        assert_eq!(result["value"], "fetched data");
-
-        let calls = mock.calls_for("Runtime.evaluate(async)");
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].args[0], "fetch('/api').then(r => r.text())");
-    }
-
-    #[tokio::test]
-    async fn test_evaluate_async_missing_result_returns_null() {
-        let mock = MockCdpClient::new();
-        mock.set_evaluate_response(serde_json::json!({}));
-
-        let result = evaluate_async(&mock, "void 0").await.unwrap();
+        let result = evaluate(&mock, "void 0").await.unwrap();
         assert!(result.is_null());
     }
 
@@ -229,7 +168,7 @@ mod tests {
             "result": {"type": "string", "value": "hello"}
         }));
 
-        let result: String = evaluate_sync_into(&mock, "document.title").await.unwrap();
+        let result: String = evaluate_into(&mock, "document.title").await.unwrap();
         assert_eq!(result, "hello");
     }
 
@@ -240,7 +179,7 @@ mod tests {
             "result": {"type": "boolean", "value": true}
         }));
 
-        let result: bool = evaluate_sync_into(&mock, "true").await.unwrap();
+        let result: bool = evaluate_into(&mock, "true").await.unwrap();
         assert!(result);
     }
 
@@ -251,7 +190,7 @@ mod tests {
             "result": {"type": "number", "value": 42}
         }));
 
-        let result: i64 = evaluate_sync_into(&mock, "1 + 1").await.unwrap();
+        let result: i64 = evaluate_into(&mock, "1 + 1").await.unwrap();
         assert_eq!(result, 42);
     }
 
@@ -262,7 +201,7 @@ mod tests {
             "result": {"type": "number", "value": 1.5}
         }));
 
-        let result: f64 = evaluate_sync_into(&mock, "1.0 + 0.5").await.unwrap();
+        let result: f64 = evaluate_into(&mock, "1.0 + 0.5").await.unwrap();
         assert!((result - 1.5).abs() < f64::EPSILON);
     }
 
@@ -278,9 +217,8 @@ mod tests {
             name: String,
         }
 
-        let result: FromEvalJson<Vec<Item>> = evaluate_sync_into(&mock, "JSON.stringify([...])")
-            .await
-            .unwrap();
+        let result: FromEvalJson<Vec<Item>> =
+            evaluate_into(&mock, "JSON.stringify([...])").await.unwrap();
         assert_eq!(
             result.0,
             vec![Item { name: "a".into() }, Item { name: "b".into() }]
@@ -294,7 +232,7 @@ mod tests {
             "result": {"type": "number", "value": 42}
         }));
 
-        let result: CdpResult<String> = evaluate_sync_into(&mock, "1 + 1").await;
+        let result: CdpResult<String> = evaluate_into(&mock, "1 + 1").await;
         assert!(result.is_err());
     }
 
@@ -305,7 +243,7 @@ mod tests {
             "result": {"type": "object", "value": {"key": "val"}}
         }));
 
-        let result: Value = evaluate_sync_into(&mock, "({key: 'val'})").await.unwrap();
+        let result: Value = evaluate_into(&mock, "({key: 'val'})").await.unwrap();
         assert_eq!(result["value"]["key"], "val");
     }
 }

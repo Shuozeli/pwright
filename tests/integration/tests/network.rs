@@ -62,7 +62,7 @@ async fn evaluate_fetch_from_page() {
 
     let base = server_base_url();
     let result = page
-        .evaluate_async(&format!(
+        .evaluate(&format!(
             "fetch('{base}/api/items?count=5').then(r => r.json())"
         ))
         .await

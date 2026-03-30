@@ -457,17 +457,6 @@ impl CdpClient for FakeCdpClient {
         Ok(serde_json::json!({"result": {"value": null}}))
     }
 
-    async fn runtime_evaluate_async(&self, expression: &str) -> CdpResult<Value> {
-        self.record(
-            "Runtime.evaluate(async)",
-            vec![Value::String(expression.to_string())],
-        );
-        if let Some(configured) = self.evaluate_response.lock().unwrap().clone() {
-            return Ok(configured);
-        }
-        Ok(serde_json::json!({"result": {"value": ""}}))
-    }
-
     async fn runtime_enable(&self) -> CdpResult<()> {
         self.record("Runtime.enable", vec![]);
         Ok(())

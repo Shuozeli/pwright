@@ -42,7 +42,7 @@ async fn connect_new_tab_page_interaction() {
         .await
         .unwrap();
     let title: String = page
-        .evaluate_sync_into("document.querySelector('h1').textContent")
+        .evaluate_into("document.querySelector('h1').textContent")
         .await
         .unwrap();
     assert_eq!(title, "Hello");

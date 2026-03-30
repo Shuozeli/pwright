@@ -102,7 +102,6 @@ pub trait CdpClient: Send + Sync {
         function_declaration: &str,
         arguments: Vec<Value>,
     ) -> Result<Value>;
-    async fn runtime_evaluate_async(&self, expression: &str) -> Result<Value>;
     async fn runtime_enable(&self) -> Result<()>;
 
     // ── Accessibility domain ──
@@ -194,7 +193,6 @@ cdp_delegate_impl! {
     async fn runtime_evaluate(&self, expression: &str) -> Result<Value>;
     async fn runtime_evaluate_as_object(&self, expression: &str) -> Result<Value>;
     async fn runtime_call_function_on(&self, object_id: &str, function_declaration: &str, arguments: Vec<Value>) -> Result<Value>;
-    async fn runtime_evaluate_async(&self, expression: &str) -> Result<Value>;
     async fn runtime_enable(&self) -> Result<()>;
     async fn accessibility_enable(&self) -> Result<()>;
     async fn accessibility_get_full_tree(&self) -> Result<Vec<RawAXNode>>;

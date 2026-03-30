@@ -99,18 +99,18 @@ async fn inner_html_returns_markup() {
 async fn evaluate_returns_result() {
     let page = connect_and_navigate("/content.html").await;
 
-    // Raw evaluate_sync still works
-    let result = page.evaluate_sync("1 + 2 + 3").await.unwrap();
+    // Raw evaluate still works
+    let result = page.evaluate("1 + 2 + 3").await.unwrap();
     assert_eq!(result["value"], 6);
 
-    // Typed evaluate_sync_into
-    let sum: i64 = page.evaluate_sync_into("1 + 2 + 3").await.unwrap();
+    // Typed evaluate_into
+    let sum: i64 = page.evaluate_into("1 + 2 + 3").await.unwrap();
     assert_eq!(sum, 6);
 
-    let title: String = page.evaluate_sync_into("document.title").await.unwrap();
+    let title: String = page.evaluate_into("document.title").await.unwrap();
     assert!(!title.is_empty());
 
-    let has_body: bool = page.evaluate_sync_into("!!document.body").await.unwrap();
+    let has_body: bool = page.evaluate_into("!!document.body").await.unwrap();
     assert!(has_body);
 
     // FromEvalJson for structured data
@@ -120,7 +120,7 @@ async fn evaluate_returns_result() {
         href: String,
     }
     let links: FromEvalJson<Vec<LinkInfo>> = page
-        .evaluate_sync_into(
+        .evaluate_into(
             r##"JSON.stringify([...document.querySelectorAll('a[href]')].map(a => ({text: a.textContent.trim(), href: a.href})))"##,
         )
         .await

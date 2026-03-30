@@ -89,7 +89,7 @@ pub async fn open(state: &mut CliState, cdp_url: &str, url: Option<&str>) -> Res
     output::info(&format!("Connected to Chrome ({})", cdp_url));
     output::info(&format!("Tab: {}", tab.tab_id));
     if let Ok(u) =
-        pwright_bridge::evaluate::evaluate_sync(tab.session.as_ref(), "window.location.href").await
+        pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "window.location.href").await
     {
         let url_str = u.get("value").and_then(|v| v.as_str()).unwrap_or("unknown");
         output::info(&format!("URL: {}", url_str));
@@ -194,7 +194,7 @@ pub async fn eval(state: &mut CliState, expression: &str) -> Result<()> {
         .await
         .context("no active tab")?;
 
-    let result = pwright_bridge::evaluate::evaluate_sync(tab.session.as_ref(), expression)
+    let result = pwright_bridge::evaluate::evaluate(tab.session.as_ref(), expression)
         .await
         .context("evaluation failed")?;
 
@@ -422,7 +422,7 @@ pub async fn go_back(state: &mut CliState) -> Result<()> {
         .await
         .context("no active tab")?;
 
-    pwright_bridge::evaluate::evaluate_sync(tab.session.as_ref(), "history.back()")
+    pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "history.back()")
         .await
         .context("go-back failed")?;
 
@@ -438,7 +438,7 @@ pub async fn go_forward(state: &mut CliState) -> Result<()> {
         .await
         .context("no active tab")?;
 
-    pwright_bridge::evaluate::evaluate_sync(tab.session.as_ref(), "history.forward()")
+    pwright_bridge::evaluate::evaluate(tab.session.as_ref(), "history.forward()")
         .await
         .context("go-forward failed")?;
 
@@ -655,7 +655,7 @@ pub async fn network_list(state: &mut CliState, filter: Option<&str>) -> Result<
         status: e.responseStatus || 0
     })))"##;
 
-    let result = pwright_bridge::evaluate::evaluate_sync(tab.session.as_ref(), js)
+    let result = pwright_bridge::evaluate::evaluate(tab.session.as_ref(), js)
         .await
         .context("failed to query performance entries")?;
 
@@ -901,7 +901,7 @@ pub async fn text(state: &mut CliState) -> Result<()> {
         .await
         .context("no active tab")?;
 
-    let result = pwright_bridge::evaluate::evaluate_sync(
+    let result = pwright_bridge::evaluate::evaluate(
         tab.session.as_ref(),
         "(document.body?.innerText || '')",
     )

@@ -77,14 +77,6 @@ impl CdpSession {
         self.send("Runtime.enable", serde_json::json!({})).await?;
         Ok(())
     }
-
-    /// Evaluate a JavaScript expression, awaiting any returned Promise.
-    ///
-    /// Identical to `runtime_evaluate` — both now pass `awaitPromise: true`.
-    /// Kept for backward compatibility.
-    pub async fn runtime_evaluate_async(&self, expression: &str) -> Result<Value> {
-        self.runtime_evaluate(expression).await
-    }
 }
 
 /// Check for a JavaScript exception in a CDP result and return an error if present.

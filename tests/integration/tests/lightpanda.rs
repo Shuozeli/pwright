@@ -103,7 +103,7 @@ async fn navigate_and_get_content() {
 async fn evaluate_simple_expression() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
 
-    let result: i64 = page.evaluate_sync_into("1 + 1").await.unwrap();
+    let result: i64 = page.evaluate_into("1 + 1").await.unwrap();
     assert_eq!(result, 2);
 
     handle.close().await.unwrap();
@@ -114,7 +114,7 @@ async fn evaluate_simple_expression() {
 async fn evaluate_document_title() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
 
-    let title: String = page.evaluate_sync_into("document.title").await.unwrap();
+    let title: String = page.evaluate_into("document.title").await.unwrap();
     assert_eq!(title, "Example Domain");
 
     handle.close().await.unwrap();
@@ -288,8 +288,8 @@ async fn multiple_connections_for_parallel_tabs() {
     page2.goto("https://example.com", None).await.unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    let title1: String = page1.evaluate_sync_into("document.title").await.unwrap();
-    let title2: String = page2.evaluate_sync_into("document.title").await.unwrap();
+    let title1: String = page1.evaluate_into("document.title").await.unwrap();
+    let title2: String = page2.evaluate_into("document.title").await.unwrap();
     assert_eq!(title1, "Example Domain");
     assert_eq!(title2, "Example Domain");
 
@@ -332,7 +332,7 @@ async fn navigate_body_text() {
 #[ignore = "requires docker: lightpanda"]
 async fn eval_returns_string() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
-    let result = page.evaluate_sync("'hello' + ' ' + 'world'").await.unwrap();
+    let result = page.evaluate("'hello' + ' ' + 'world'").await.unwrap();
     assert_eq!(result["value"], "hello world");
     handle.close().await.unwrap();
 }
@@ -341,7 +341,7 @@ async fn eval_returns_string() {
 #[ignore = "requires docker: lightpanda"]
 async fn eval_returns_boolean() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
-    let result = page.evaluate_sync("3 > 2").await.unwrap();
+    let result = page.evaluate("3 > 2").await.unwrap();
     assert_eq!(result["value"], true);
     handle.close().await.unwrap();
 }
@@ -350,7 +350,7 @@ async fn eval_returns_boolean() {
 #[ignore = "requires docker: lightpanda"]
 async fn eval_returns_null() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
-    let result = page.evaluate_sync("null").await.unwrap();
+    let result = page.evaluate("null").await.unwrap();
     assert!(result["value"].is_null());
     handle.close().await.unwrap();
 }
@@ -359,7 +359,7 @@ async fn eval_returns_null() {
 #[ignore = "requires docker: lightpanda"]
 async fn eval_returns_object() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
-    let result = page.evaluate_sync("({a: 1, b: 'two'})").await.unwrap();
+    let result = page.evaluate("({a: 1, b: 'two'})").await.unwrap();
     assert_eq!(result["value"]["a"], 1);
     assert_eq!(result["value"]["b"], "two");
     handle.close().await.unwrap();
@@ -369,7 +369,7 @@ async fn eval_returns_object() {
 #[ignore = "requires docker: lightpanda"]
 async fn eval_returns_array() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
-    let result = page.evaluate_sync("[1, 2, 3]").await.unwrap();
+    let result = page.evaluate("[1, 2, 3]").await.unwrap();
     let arr = result["value"].as_array().unwrap();
     assert_eq!(arr.len(), 3);
     handle.close().await.unwrap();
@@ -381,7 +381,7 @@ async fn eval_dom_element_count() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
     // example.com has exactly 1 <p> with the "More information..." link inside
     let count: i64 = page
-        .evaluate_sync_into("document.querySelectorAll('p').length")
+        .evaluate_into("document.querySelectorAll('p').length")
         .await
         .unwrap();
     assert!(count >= 1, "expected at least 1 <p>, got {count}");
@@ -392,13 +392,13 @@ async fn eval_dom_element_count() {
 #[ignore = "requires docker: lightpanda"]
 async fn eval_dom_create_element() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
-    page.evaluate_sync(
+    page.evaluate(
         "const el = document.createElement('div'); el.id = 'new'; el.textContent = 'created'; document.body.appendChild(el); true",
     )
     .await
     .unwrap();
     let text: String = page
-        .evaluate_sync_into("document.getElementById('new').textContent")
+        .evaluate_into("document.getElementById('new').textContent")
         .await
         .unwrap();
     assert_eq!(text, "created");
@@ -461,7 +461,7 @@ async fn is_visible_check() {
 async fn fill_input() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
     // Create an input element via JS since example.com has no forms
-    page.evaluate_sync(
+    page.evaluate(
         "const inp = document.createElement('input'); inp.id = 'test-input'; document.body.appendChild(inp); true",
     )
     .await
@@ -487,7 +487,7 @@ async fn fill_input() {
 async fn click_button_via_js() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
     // Create a button with onclick handler
-    page.evaluate_sync(
+    page.evaluate(
         "const btn = document.createElement('button'); btn.id = 'btn'; btn.textContent = '0'; \
          btn.onclick = function() { this.textContent = String(Number(this.textContent) + 1); }; \
          document.body.appendChild(btn); true",
@@ -497,7 +497,7 @@ async fn click_button_via_js() {
     page.click("#btn").await.unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let text: String = page
-        .evaluate_sync_into("document.getElementById('btn').textContent")
+        .evaluate_into("document.getElementById('btn').textContent")
         .await
         .unwrap();
     assert_eq!(text, "1");
@@ -548,7 +548,7 @@ async fn locator_get_attribute() {
 async fn locator_click() {
     let (_browser, handle, page) = lightpanda_page("https://example.com").await;
     // Create a clickable element
-    page.evaluate_sync(
+    page.evaluate(
         "const d = document.createElement('div'); d.id = 'click-target'; d.textContent = 'before'; \
          d.onclick = function() { this.textContent = 'after'; }; \
          document.body.appendChild(d); true",

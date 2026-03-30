@@ -560,7 +560,7 @@ mod tests {
 
         // pwright
         let page = Page::new(mock.clone());
-        let result = page.evaluate_sync("document.title").await.unwrap();
+        let result = page.evaluate("document.title").await.unwrap();
         assert_eq!(
             result.get("value").and_then(|v| v.as_str()),
             Some("My Title")
@@ -691,7 +691,7 @@ mod tests {
         let page = Page::new(mock.clone());
         let result = page
             .locator("div")
-            .evaluate_sync("function(el) { return el.offsetHeight; }")
+            .evaluate("function(el) { return el.offsetHeight; }")
             .await
             .unwrap();
 

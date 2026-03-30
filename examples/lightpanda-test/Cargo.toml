@@ -1,0 +1,12 @@
+[package]
+name = "example-lightpanda-test"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+pwright-bridge = { path = "../../crates/pwright-bridge" }
+pwright-cdp = { path = "../../crates/pwright-cdp" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -20,7 +20,7 @@ pub async fn evaluate(
 
     let (tab, _permit, _lock) = svc.resolve_tab_locked(&browser, &req.tab_id).await?;
 
-    let result = pwright_bridge::evaluate::evaluate_sync(&*tab.session, &req.expression)
+    let result = pwright_bridge::evaluate::evaluate(&*tab.session, &req.expression)
         .await
         .map_err(cdp_to_status)?;
 

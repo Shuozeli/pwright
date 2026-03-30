@@ -125,7 +125,7 @@ async fn check_and_verify_checkbox() {
     // Use JS click for reliable checkbox toggling (CDP mouse events
     // don't always toggle checkboxes depending on element position)
     page.locator("#checkbox")
-        .evaluate_sync("function() { this.click(); }")
+        .evaluate("function() { this.click(); }")
         .await
         .unwrap();
     assert!(page.locator("#checkbox").is_checked().await.unwrap());

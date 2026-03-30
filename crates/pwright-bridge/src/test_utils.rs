@@ -606,20 +606,6 @@ impl CdpClient for MockCdpClient {
         }
     }
 
-    async fn runtime_evaluate_async(&self, expression: &str) -> CdpResult<Value> {
-        self.record(
-            "Runtime.evaluate(async)",
-            vec![Value::String(expression.to_string())],
-        );
-        match self.runtime_evaluate_response.lock().unwrap().clone() {
-            Some(v) => Ok(v),
-            None => {
-                self.check_strict("Runtime.evaluate(async)")?;
-                Ok(serde_json::json!({"result": {"value": ""}}))
-            }
-        }
-    }
-
     async fn runtime_enable(&self) -> CdpResult<()> {
         self.record("Runtime.enable", vec![]);
         Ok(())
