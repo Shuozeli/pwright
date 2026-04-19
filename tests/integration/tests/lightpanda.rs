@@ -606,3 +606,113 @@ async fn click_link_navigates() {
 
     handle.close().await.unwrap();
 }
+
+// ── Tab lifecycle ──
+
+/// Lightpanda: open multiple tabs (separate connections), close sequentially.
+#[tokio::test]
+#[ignore = "requires docker: lightpanda"]
+async fn tab_lifecycle_multiple_tabs_close_sequentially() {
+    let (_browser1, tab1, page1) = lightpanda_page("https://example.com").await;
+    let (_browser2, tab2, page2) = lightpanda_page("https://example.com").await;
+    let (_browser3, tab3, page3) = lightpanda_page("https://example.com").await;
+
+    // Verify each page loaded
+    let text1: String = page1
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text1, "Example Domain");
+
+    let text2: String = page2
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text2, "Example Domain");
+
+    let text3: String = page3
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text3, "Example Domain");
+
+    // Close tabs one by one, verifying remaining tabs still work
+    tab1.close().await.unwrap();
+    let text2_recheck: String = page2
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text2_recheck, "Example Domain");
+
+    tab2.close().await.unwrap();
+    let text3_recheck: String = page3
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text3_recheck, "Example Domain");
+
+    tab3.close().await.unwrap();
+}
+
+/// Lightpanda: navigate to google.com, verify page title.
+#[tokio::test]
+#[ignore = "requires docker: lightpanda"]
+async fn tab_lifecycle_navigate_to_google_com() {
+    let (_browser, tab, page) = lightpanda_page("https://www.google.com").await;
+
+    let title = page.title().await.unwrap();
+    assert!(
+        title.to_lowercase().contains("google"),
+        "expected title to contain 'google', got: {title}"
+    );
+
+    tab.close().await.unwrap();
+}
+
+/// Lightpanda: open multiple tabs, close in mixed order.
+#[tokio::test]
+#[ignore = "requires docker: lightpanda"]
+async fn tab_lifecycle_multiple_tabs_close_mixed_order() {
+    let (_browser1, tab1, page1) = lightpanda_page("https://example.com").await;
+    let (_browser2, tab2, page2) = lightpanda_page("https://example.com").await;
+    let (_browser3, tab3, page3) = lightpanda_page("https://example.com").await;
+
+    // Verify all tabs loaded
+    let text1: String = page1
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text1, "Example Domain");
+
+    let text2: String = page2
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text2, "Example Domain");
+
+    let text3: String = page3
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text3, "Example Domain");
+
+    // Close in mixed order: middle, last, first
+    tab2.close().await.unwrap();
+
+    // Tab1 and Tab3 should still be accessible
+    let text1_recheck: String = page1
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text1_recheck, "Example Domain");
+
+    tab3.close().await.unwrap();
+
+    let text1_final: String = page1
+        .evaluate_into("document.querySelector('h1').textContent")
+        .await
+        .unwrap();
+    assert_eq!(text1_final, "Example Domain");
+
+    tab1.close().await.unwrap();
+}
