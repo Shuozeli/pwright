@@ -96,6 +96,7 @@ impl BrowserServiceImpl {
             cdp_url: cdp_url.to_string(),
             max_parallel_tabs: self.max_parallel_tabs,
             navigate_timeout_ms: self.nav_timeout_ms,
+            ..Default::default()
         };
 
         let browser = Browser::connect(config).await.map_err(cdp_to_status)?;

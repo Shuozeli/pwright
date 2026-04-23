@@ -50,6 +50,43 @@ impl TabCloser for CdpTabCloser {
     }
 }
 
+/// Close a tab via Chrome's HTTP DevTools API (`GET /json/close/<target_id>`).
+///
+/// Unlike [`CdpTabCloser`] which sends `Target.closeTarget` over the shared
+/// CDP WebSocket, this uses Chrome's separate HTTP server thread. This makes
+/// it immune to head-of-line blocking when Chrome's renderer is busy (e.g.,
+/// heavy SPA pages flooding the WebSocket with DOM/Runtime events).
+pub struct HttpTabCloser {
+    cdp_http_url: String,
+    timeout: std::time::Duration,
+}
+
+impl HttpTabCloser {
+    pub fn new(cdp_http_url: String, timeout: std::time::Duration) -> Self {
+        Self {
+            cdp_http_url,
+            timeout,
+        }
+    }
+}
+
+#[async_trait]
+impl TabCloser for HttpTabCloser {
+    async fn close_tab(&self, target_id: &str) -> CdpResult<()> {
+        let url = format!("{}/json/close/{}", self.cdp_http_url, target_id);
+        let client = reqwest::Client::builder()
+            .timeout(self.timeout)
+            .build()
+            .map_err(|e| CdpError::HttpFailed(format!("build HTTP client: {e}")))?;
+        client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP close failed: {e}")))?;
+        Ok(())
+    }
+}
+
 /// Rewrite a WebSocket debugger URL to use the host/port from an HTTP URL.
 ///
 /// Chrome returns `ws://127.0.0.1:9222/devtools/browser/...` but when connecting
@@ -86,7 +123,9 @@ use crate::tab::Tab;
 ///   WebSocket URL, rewrites host/port to match the caller's endpoint, then connects.
 /// - **WebSocket** (e.g. `ws://127.0.0.1:9333/`) — connects directly.
 ///
-/// Tab management always uses CDP WebSocket (`Target.closeTarget`).
+/// Tab close defaults to CDP WebSocket (`Target.closeTarget`). Set
+/// `tab_close_via_http` to use the HTTP DevTools API instead, which is
+/// more reliable when Chrome's renderer is under heavy load.
 #[derive(Debug, Clone)]
 pub struct BrowserConfig {
     /// CDP endpoint URL. HTTP triggers discovery + rewrite; WS connects directly.
@@ -95,9 +134,12 @@ pub struct BrowserConfig {
     pub max_parallel_tabs: usize,
     /// Default navigation timeout in milliseconds
     pub navigate_timeout_ms: u64,
-    // TODO(feature): max_tabs enforcement was removed because it was never checked.
-    // If tab limits are needed in the future, implement them in the server layer
-    // (pwright-bridge is stateless by design).
+    /// When true, `TabHandle::close()` uses HTTP `GET /json/close/<id>` instead
+    /// of CDP WebSocket `Target.closeTarget`. HTTP close runs on Chrome's
+    /// separate IO thread and avoids head-of-line blocking from event-heavy pages.
+    pub tab_close_via_http: bool,
+    /// Timeout for HTTP tab close requests. Only used when `tab_close_via_http` is true.
+    pub tab_close_http_timeout_ms: u64,
 }
 
 impl Default for BrowserConfig {
@@ -106,6 +148,8 @@ impl Default for BrowserConfig {
             cdp_url: String::new(),
             max_parallel_tabs: 4,
             navigate_timeout_ms: 30_000,
+            tab_close_via_http: false,
+            tab_close_http_timeout_ms: 5_000,
         }
     }
 }
@@ -171,7 +215,7 @@ impl Browser {
     }
 
     /// Access the browser-level CDP client (for target management).
-    pub(crate) fn browser_client(&self) -> &dyn CdpClient {
+    pub fn browser_client(&self) -> &dyn CdpClient {
         &*self.browser_session
     }
 
@@ -260,7 +304,27 @@ impl Browser {
         let nav_url = if url.is_empty() { "about:blank" } else { url };
         let target_id = self.browser_client().target_create(nav_url).await?;
         let session = self.attach_session(&target_id).await?;
-        let closer: Arc<dyn TabCloser> = Arc::new(CdpTabCloser::new(self.browser_session.clone()));
+
+        let closer: Arc<dyn TabCloser> = if self.config.tab_close_via_http {
+            let http_url = if is_http_scheme(&self.config.cdp_url) {
+                self.config.cdp_url.clone()
+            } else {
+                // WS URL -- can't derive HTTP URL, fall back to CDP close
+                tracing::debug!(
+                    "tab_close_via_http is set but cdp_url is WS; falling back to CDP close"
+                );
+                return Ok(TabHandle::new(
+                    Arc::new(CdpTabCloser::new(self.browser_session.clone())),
+                    session,
+                    target_id,
+                ));
+            };
+            let timeout = std::time::Duration::from_millis(self.config.tab_close_http_timeout_ms);
+            Arc::new(HttpTabCloser::new(http_url, timeout))
+        } else {
+            Arc::new(CdpTabCloser::new(self.browser_session.clone()))
+        };
+
         Ok(TabHandle::new(closer, session, target_id))
     }
 

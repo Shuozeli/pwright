@@ -1429,6 +1429,7 @@ dependencies = [
  "pwright-bridge",
  "pwright-cdp",
  "pwright-fake",
+ "regex",
  "serde",
  "serde_json",
  "tokio",

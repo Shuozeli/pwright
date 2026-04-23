@@ -14,7 +14,7 @@ pub mod tab;
 pub mod test_utils;
 
 pub use browser::{
-    Browser, BrowserConfig, CdpTabCloser, SUPPORTED_SCHEMES, TabCloser, TabHandle,
+    Browser, BrowserConfig, CdpTabCloser, HttpTabCloser, SUPPORTED_SCHEMES, TabCloser, TabHandle,
     is_supported_scheme, rewrite_ws_url,
 };
 pub use evaluate::{FromEvalJson, FromEvalResult};
