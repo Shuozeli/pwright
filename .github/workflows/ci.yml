@@ -108,3 +108,24 @@ jobs:
         if: always()
         working-directory: tests/integration
         run: docker compose -f docker-compose.lightpanda.yml down
+
+  integration-firefox:
+    name: Integration Tests (Firefox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run integration tests in Docker
+        working-directory: tests/integration
+        run: docker compose -f docker-compose.firefox.yml up --build --abort-on-container-exit --exit-code-from test-runner
+        timeout-minutes: 15
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: tests/integration
+        run: docker compose -f docker-compose.firefox.yml logs
+
+      - name: Tear down
+        if: always()
+        working-directory: tests/integration
+        run: docker compose -f docker-compose.firefox.yml down
