@@ -1,0 +1,43 @@
+# Firefox CDP integration tests.
+# CI: docker compose -f docker-compose.firefox.yml up --build --abort-on-container-exit --exit-code-from test-runner
+#
+# Firefox's CDP only accepts Host header 127.0.0.1:<port>, so both containers
+# share the host network. The test-runner connects to 127.0.0.1:9222.
+services:
+  firefox:
+    build:
+      context: .
+      dockerfile: firefox.Dockerfile
+    network_mode: host
+    shm_size: "2gb"
+    volumes:
+      - firefox-cdp:/tmp/firefox-cdp
+
+  test-runner:
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+    network_mode: host
+    depends_on:
+      - firefox
+    volumes:
+      - firefox-cdp:/tmp/firefox-cdp:ro
+    environment:
+      FIREFOX_HOST: "127.0.0.1"
+      FIREFOX_PORT: "9222"
+      FIREFOX_CDP_PATH_FILE: /tmp/firefox-cdp/ws-path
+    command: >
+      sh -c '
+        echo "Waiting for Firefox CDP..." &&
+        for i in $$(seq 1 60); do
+          test -f "$$FIREFOX_CDP_PATH_FILE" && break;
+          sleep 1; echo "  waiting for Firefox WS path... ($$i/60)";
+        done &&
+        ws_path=$$(cat "$$FIREFOX_CDP_PATH_FILE") &&
+        echo "Firefox CDP WS path: $$ws_path" &&
+        export FIREFOX_WS_PATH="$$ws_path" &&
+        exec cargo test -p pwright-integration-tests --test firefox -- --ignored --test-threads=1
+      '
+
+volumes:
+  firefox-cdp:

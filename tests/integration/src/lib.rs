@@ -23,6 +23,51 @@ pub fn lightpanda_ws_url() -> String {
     format!("ws://{host}:{port}/")
 }
 
+/// The Firefox CDP WebSocket URL, resolved for Docker/local.
+///
+/// Firefox does NOT expose Chrome-style `/json/version` HTTP discovery.
+/// Instead, the WS path (`/devtools/browser/<uuid>`) is captured from
+/// Firefox's stderr and written to a file by the Docker entrypoint.
+///
+/// Discovery order:
+/// 1. `FIREFOX_WS_URL` env var (full ws:// URL, for manual override)
+/// 2. `FIREFOX_WS_PATH` env var (path only, combined with host:port)
+/// 3. `FIREFOX_CDP_PATH_FILE` env var (file containing the path)
+/// 4. Fallback: read `/tmp/firefox-cdp/ws-path` (shared volume in Docker)
+pub fn firefox_ws_url() -> String {
+    // Full URL override
+    if let Ok(url) = std::env::var("FIREFOX_WS_URL") {
+        return url;
+    }
+
+    let host = std::env::var("FIREFOX_HOST").unwrap_or_else(|_| "localhost".into());
+    let port = std::env::var("FIREFOX_PORT").unwrap_or_else(|_| "9222".into());
+
+    let resolved = if host == "localhost" || host.parse::<std::net::IpAddr>().is_ok() {
+        host
+    } else {
+        use std::net::ToSocketAddrs;
+        format!("{host}:{port}")
+            .to_socket_addrs()
+            .ok()
+            .and_then(|mut addrs| addrs.next())
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or(host)
+    };
+
+    // Path from env or file
+    let ws_path = std::env::var("FIREFOX_WS_PATH").unwrap_or_else(|_| {
+        let path_file = std::env::var("FIREFOX_CDP_PATH_FILE")
+            .unwrap_or_else(|_| "/tmp/firefox-cdp/ws-path".into());
+        std::fs::read_to_string(&path_file)
+            .unwrap_or_else(|_| panic!("Cannot read Firefox WS path from {path_file}"))
+            .trim()
+            .to_string()
+    });
+
+    format!("ws://{resolved}:{port}{ws_path}")
+}
+
 /// The Chrome HTTP debug endpoint URL, resolved for Docker/local.
 pub fn chrome_http_url() -> String {
     let host = std::env::var("CHROME_HOST").unwrap_or_else(|_| "localhost".into());
