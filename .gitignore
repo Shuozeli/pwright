@@ -7,6 +7,8 @@
 # IDE / editor
 .idea/
 .vscode/
+# Per-user Claude Code permission allowlist
+.claude/settings.local.json
 *.swp
 *.swo
 *~

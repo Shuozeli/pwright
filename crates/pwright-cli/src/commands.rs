@@ -522,6 +522,7 @@ pub async fn network_listen(
     duration: Option<u64>,
     filter: Option<&str>,
     resource_type: Option<&str>,
+    include_body: bool,
 ) -> Result<()> {
     if state.ws_url.is_empty() || state.target_id.is_empty() {
         anyhow::bail!("No active tab. Run `pwright open` first.");
@@ -549,10 +550,25 @@ pub async fn network_listen(
 
     let mut event_rx = listener_session.subscribe_events();
 
-    output::info("Listening for network traffic (Ctrl+C to stop)...");
+    eprintln!("Listening for network traffic (Ctrl+C to stop)...");
 
     let deadline =
         duration.map(|d| tokio::time::Instant::now() + std::time::Duration::from_secs(d));
+
+    // When --include-body is set, defer response emission until
+    // Network.loadingFinished so the body is fetchable. Each pending entry
+    // tracks the matched response that's waiting for its body.
+    //
+    // TODO(refactor): factor this loop out so the event-handling logic is
+    // unit-testable with synthetic CDP params (only covered by integration
+    // test today).
+    let mut pending: std::collections::HashMap<
+        String,
+        pwright_bridge::playwright::network::NetworkResponse,
+    > = std::collections::HashMap::new();
+    // Track resource_type per reqid so response/loadingFinished can honor
+    // the --type filter (CDP only emits type on requestWillBeSent).
+    let mut req_types: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
     loop {
         let event = if let Some(dl) = deadline {
@@ -575,6 +591,7 @@ pub async fn network_listen(
                     && matches_filter(&req.url, filter)
                     && matches_type(&req.resource_type, resource_type)
                 {
+                    req_types.insert(req.request_id.clone(), req.resource_type.clone());
                     let json = serde_json::json!({
                         "event": "request",
                         "reqid": req.request_id,
@@ -588,15 +605,35 @@ pub async fn network_listen(
                     && let Some(resp) =
                         pwright_bridge::playwright::network::parse_network_response(params)
                     && matches_filter(&resp.url, filter)
+                    && req_types
+                        .get(&resp.request_id)
+                        .is_none_or(|t| matches_type(t, resource_type))
                 {
-                    let json = serde_json::json!({
-                        "event": "response",
-                        "reqid": resp.request_id,
-                        "status": resp.status,
-                        "mime": resp.mime_type,
-                        "url": resp.url,
-                    });
-                    println!("{json}");
+                    if include_body {
+                        pending.insert(resp.request_id.clone(), resp);
+                    } else {
+                        emit_response_event(&resp, None);
+                    }
+                } else if method == "Network.loadingFinished"
+                    && let Some(reqid) = params.get("requestId").and_then(|v| v.as_str())
+                {
+                    if let Some(resp) = pending.remove(reqid) {
+                        let body_result = listener_session.network_get_response_body(reqid).await;
+                        let body_field = match body_result {
+                            Ok(b) => Some(BodyField {
+                                body: b.body,
+                                base64_encoded: b.base64_encoded,
+                                error: None,
+                            }),
+                            Err(e) => Some(BodyField {
+                                body: String::new(),
+                                base64_encoded: false,
+                                error: Some(e.to_string()),
+                            }),
+                        };
+                        emit_response_event(&resp, body_field);
+                    }
+                    req_types.remove(reqid);
                 } else if method == "Network.loadingFailed"
                     && let Some(reqid) = params.get("requestId").and_then(|v| v.as_str())
                 {
@@ -610,6 +647,8 @@ pub async fn network_listen(
                         "error": error_text,
                     });
                     println!("{json}");
+                    pending.remove(reqid);
+                    req_types.remove(reqid);
                 }
             }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
@@ -619,8 +658,40 @@ pub async fn network_listen(
         }
     }
 
-    output::info("Listener stopped.");
+    eprintln!("Listener stopped.");
     Ok(())
+}
+
+struct BodyField {
+    body: String,
+    base64_encoded: bool,
+    error: Option<String>,
+}
+
+fn emit_response_event(
+    resp: &pwright_bridge::playwright::network::NetworkResponse,
+    body: Option<BodyField>,
+) {
+    let mut json = serde_json::json!({
+        "event": "response",
+        "reqid": resp.request_id,
+        "status": resp.status,
+        "mime": resp.mime_type,
+        "url": resp.url,
+    });
+    if let Some(b) = body {
+        let obj = json.as_object_mut().expect("response event is an object");
+        if let Some(err) = b.error {
+            obj.insert("body_error".into(), serde_json::Value::String(err));
+        } else {
+            obj.insert("body".into(), serde_json::Value::String(b.body));
+            obj.insert(
+                "base64_encoded".into(),
+                serde_json::Value::Bool(b.base64_encoded),
+            );
+        }
+    }
+    println!("{json}");
 }
 
 fn matches_filter(url: &str, filter: Option<&str>) -> bool {

@@ -1,3 +1,5 @@
+<!-- agent-updated: 2026-05-25T02:30:00Z -->
+
 # Design: Network Capture CLI
 
 ## Problem
@@ -38,19 +40,33 @@ enables Network domain, prints request/response events as JSONL to stdout.
 ```bash
 # Terminal 1: start listener
 pwright network-listen
-pwright network-listen --duration 60          # stop after 60s
-pwright network-listen --filter "/api/"       # only URLs containing /api/
-pwright network-listen --type XHR             # only XHR requests
-pwright network-listen --type Fetch,XHR       # XHR and Fetch
+pwright network-listen --duration 60               # stop after 60s
+pwright network-listen --filter "/api/"            # only URLs containing /api/
+pwright network-listen --resource-type XHR         # only XHR requests
+pwright network-listen --resource-type Fetch,XHR   # XHR and Fetch
+pwright network-listen --filter "/api/" --include-body  # inline response bodies
 ```
 
-Output (one JSON object per line):
+Output (one JSON object per line; tracing logs and the start/stop banner
+go to stderr so stdout is pure JSONL):
 ```jsonl
-{"event":"request","reqid":"1001.2","method":"GET","url":"https://example.com/api/items","type":"XHR","timestamp":1710000000.123}
-{"event":"response","reqid":"1001.2","status":200,"mime":"application/json","size":1234,"url":"https://example.com/api/items","timestamp":1710000000.456}
-{"event":"request","reqid":"1001.3","method":"POST","url":"https://example.com/api/search","type":"Fetch","post_data":"{\"q\":\"test\"}","timestamp":1710000001.789}
-{"event":"response","reqid":"1001.3","status":200,"mime":"application/json","size":567,"url":"https://example.com/api/search","timestamp":1710000002.012}
+{"event":"request","reqid":"1001.2","method":"GET","url":"https://example.com/api/items","type":"XHR","post_data":null}
+{"event":"response","reqid":"1001.2","status":200,"mime":"application/json","url":"https://example.com/api/items"}
+{"event":"request","reqid":"1001.3","method":"POST","url":"https://example.com/api/search","type":"Fetch","post_data":"{\"q\":\"test\"}"}
+{"event":"response","reqid":"1001.3","status":200,"mime":"application/json","url":"https://example.com/api/search"}
 ```
+
+With `--include-body`, response events are deferred until
+`Network.loadingFinished` for the same request, and the body is fetched
+on the **same listener session** (the only session Chrome will release
+the body to, see "Edge Cases" below) and inlined:
+
+```jsonl
+{"event":"response","reqid":"1001.2","status":200,"mime":"application/json","url":"...","body":"{\"results\":[...]}","base64_encoded":false}
+```
+
+If the body fetch fails (page navigated away, request canceled, etc.),
+the event is emitted with a `body_error` field instead of `body`.
 
 Exits on:
 - Ctrl+C (SIGINT)
@@ -60,9 +76,14 @@ Exits on:
 
 ### `pwright network-get <reqid>`
 
-Fetches the response body for a request ID from the LIVE Chrome session.
-Chrome keeps response bodies in memory for the current page load. Works
-as long as the page hasn't navigated away.
+Fetches the response body for a request ID **using a fresh CDP session**.
+This only works in narrow cases (e.g., when the body was captured by a
+prior call on the same primary tab session and is still in this session's
+cache). In modern Chrome (M110+), `Network.getResponseBody` is scoped to
+the session that observed the response — so `network-get` from a separate
+process generally cannot retrieve a body captured by a separate
+`network-listen` process. Prefer `network-listen --include-body` for the
+listen-and-fetch case.
 
 ```bash
 pwright network-get 1001.2                   # print body to stdout
@@ -125,9 +146,33 @@ This avoids interfering with the user's primary session.
 5. If base64Encoded, decode before saving
 ```
 
-Note: `Network.getResponseBody` works on the primary session even if
-Network was enabled on the listener session, because Chrome stores
-response bodies per-target, not per-session.
+Note: in modern Chrome (M110+), `Network.getResponseBody` is scoped to
+the CDP session that captured the request — bodies seen by the
+`network-listen` listener session are **not** retrievable from a fresh
+`network-get` session, even on the same target. The `--include-body`
+flag on `network-listen` is the supported way to retrieve those bodies.
+
+### `network-listen --include-body` internals
+
+```
+1. Same setup as network-listen above (attach listener session,
+   Network.enable, subscribe to events).
+2. Maintain a `pending: HashMap<requestId, NetworkResponse>` of matched
+   responses awaiting their body.
+3. On Network.requestWillBeSent (matches filter/type):
+   - Record requestId -> resource_type so later events can re-check the
+     --resource-type filter (CDP only emits type on the request event).
+   - Emit "request" JSONL.
+4. On Network.responseReceived (matches filter/type):
+   - Insert into `pending` (do NOT emit yet — body isn't fetchable until
+     loadingFinished).
+5. On Network.loadingFinished:
+   - If requestId is in `pending`, call
+     Network.getResponseBody on the listener session, then emit
+     "response" JSONL with `body` + `base64_encoded` (or `body_error`).
+6. On Network.loadingFailed:
+   - Emit "failed" JSONL. Drop any pending entry.
+```
 
 ### `network-list` internals
 
@@ -188,7 +233,19 @@ kill %1
 - **Multiple listeners** — Multiple `network-listen` processes can run
   simultaneously (each gets its own session). No conflict.
 - **Large response bodies** — `network-get` returns the full body. For
-  binary content (images, etc.), use `--output` to save to file.
+  binary content (images, etc.), use `--output` to save to file. With
+  `network-listen --include-body`, binary bodies are emitted as
+  base64-encoded strings (`base64_encoded: true`); the consumer is
+  expected to decode them. There is no size cap — extremely large bodies
+  will inflate the JSONL line and the listener's memory footprint.
+
+- **Per-session getResponseBody scoping (Chrome M110+)** —
+  `Network.getResponseBody` only returns bodies that were observed by
+  the calling session. The listener session sees responses via its own
+  `Network.enable`; another session attached to the same target does not
+  inherit that cache. This is why `network-get` from a fresh process is
+  unreliable for retrieving listener-captured bodies, and why
+  `--include-body` exists.
 - **Session cleanup on crash** — If `network-listen` crashes, the second
   session stays attached in Chrome. It will be garbage collected when the
   tab closes. No leak risk for typical usage.
