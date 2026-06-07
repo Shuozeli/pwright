@@ -1,122 +1,72 @@
-<!-- BEGIN SHUOZELI SHARED CODEX RULES -->
-# Shuozeli Codex Rules
+# pwright
 
-This file is generated from the central Shuozeli rules repo.
-Do not edit downstream copies by hand; update the source rule files here and regenerate.
+Lightweight Rust CDP bridge for browser automation. Connects to Chrome via
+WebSocket, exposes Playwright-compatible Rust API + gRPC + CLI.
 
-## Common Rules
+## Quick Orientation
 
-### common/ci-verification.md
+Read `docs/index.md` for the full project guide, architecture decisions,
+and crate map. That file is the authoritative reference for agents.
 
-Full rule file: `.codex/rules/shared/common/ci-verification.md`
+## Git Rules
 
-- After every push to a public GitHub repo, verify GitHub Actions with `gh run list --limit 1` and `gh run watch <id> --exit-status`.
-- Use the `gh` CLI for CI status, logs, and job results; do not ask the user to check a browser URL manually.
-- For complex launches, validate through phased rollout such as dark launch and small-percentage rollout before full scale.
-- Avoid circular dependencies.
+- Do NOT commit or push unless the user explicitly asks you to
+- Do NOT amend commits unless the user explicitly asks you to
+- Do NOT force push unless the user explicitly asks you to
 
-### common/code-standards.md
+## Key Rules
 
-Full rule file: `.codex/rules/shared/common/code-standards.md`
+- Do NOT propose adding browser launch/install - pwright is attach-only by design
+- Do NOT propose adding gRPC authentication - documented design choice
+- `with_page` was removed - callers manage tab lifecycle via `Browser::new_tab` / `TabHandle::close`
+- Do NOT change `Page::close()` to `&mut self` - uses AtomicBool for Arc sharing
+- Do NOT revert CancellationToken to `drop(writer_handle)` in CdpConnection
+- Do NOT change `nodeId` back to `backendNodeId` in DOM methods
+- Use `serde_json::to_string()` for JS string escaping (not manual `replace`)
+- Use `r##"..."##` for raw strings containing `@`, `#` in tests (Rust 2024 edition)
+- Do NOT use `#[allow(...)]` to bypass clippy or rustdoc warnings - fix the root cause instead (escape doc comments, fix the code, etc.)
+- pwright-bridge is a **stateless library** - it does NOT track tabs, manage pools, or do implicit cleanup. Callers own tab lifecycle. Do NOT propose automatic tab leak detection, tab garbage collection, or drop guards that implicitly close tabs. The `with_page` mistake (implicit lifecycle) must not be repeated.
+- Do NOT preprocess, inspect, or heuristically analyze user-supplied input to infer behavior. If a feature depends on properties of user input (e.g., whether JS is async, what language something is in), require the user to declare it explicitly in the schema — never guess by scanning the content. Clever heuristics create subtle bugs that are harder to find than the boilerplate they save.
 
-- Keep controllers/services isolated in their own modules. REST APIs must follow Google AIP standard methods and generate OpenAPI docs.
-- Use exhaustive enum handling, avoid `any`, avoid vague `util` names, prefer composition, and fail fast instead of swallowing errors.
-- Do not use emoji in code, comments, or commits. Encode invariants in types when possible.
-- Test public behavior with real implementations or fakes; avoid mocks when practical.
-- Wrap all database reads and writes in transactions. Prefer typed schema/protobuf structs over free-form JSON payloads.
-- Use `pnpm` for Node, `uv` for Python, `@google/genai` for GenAI, generic `BullMQ Job<Data, Return, Name>`, no default config fallbacks, Guice-style constructor DI, `npx tsx` for TypeScript execution, strict typed async Python, Playwright exploration notes before crawler implementation, and structured event logs.
-- Do not commit unless explicitly instructed. Ask concise clarification when ambiguity would make implementation risky.
+## Code Quality Discipline
 
-### common/dependency-management.md
+Shortcuts during exploration are fine — getting things working is the
+priority. But tech debt must be visible, not silent.
 
-Full rule file: `.codex/rules/shared/common/dependency-management.md`
+- **Always leave `// TODO(refactor):` comments** when you take a shortcut.
+  `.clone()` that should be `.take()`, duplicated patterns, swallowed
+  errors, O(n^2) loops — any of these are OK to ship, but leave the TODO
+  so we can track the debt. Silent shortcuts are invisible and accumulate
+  until someone does a full code review to discover them.
+- **Self-review pass:** After getting the feature working and tests passing,
+  re-read the diff once. You don't have to fix everything — just leave
+  `// TODO(refactor):` markers on anything you'd flag in a code review.
 
-- Never use cross-repo Cargo `path` dependencies; they break CI and couple repos to local layout.
-- Use Git dependencies with `branch` or pinned `rev` for cross-repo references.
-- Path dependencies are acceptable only inside the same workspace.
+## Build & Test
 
-### common/di-non-deterministic.md
+```bash
+cargo test --workspace                    # unit + fake tests
+cargo doc --workspace --no-deps           # docs (must pass -D warnings)
 
-Full rule file: `.codex/rules/shared/common/di-non-deterministic.md`
+# Integration tests (local)
+docker compose -f tests/integration/docker-compose.local.yml up -d
+cargo test -p pwright-integration-tests -- --ignored --test-threads=1
 
-- Do not call non-deterministic operations directly in core business logic.
-- Inject traits for time, ID generation, randomness, environment, and process identity so tests can control them.
-- Provide production implementations and deterministic test implementations, then inject through constructors.
-- Avoid globals and optional fallbacks that still call `Utc::now()`, `Uuid::new_v4()`, random, env, or process APIs internally.
-- Database/audit timestamps and file mtimes can remain external-system truth where appropriate.
+# Integration tests (Docker, matches CI)
+cd tests/integration && docker compose up --build --abort-on-container-exit --exit-code-from test-runner
+```
 
-### common/large-refactor.md
+## CI
 
-Full rule file: `.codex/rules/shared/common/large-refactor.md`
+After pushing, check GitHub Actions status:
+```bash
+gh run list --limit 3
+gh run view <run-id>        # if a run fails
+```
 
-- For broad edits in one file, read the full file, rewrite it coherently, then verify it compiles.
-- Avoid fragile `sed` hacks or many line-by-line edits for large structural changes.
+## Key Docs
 
-### common/rust-quality.md
-
-Full rule file: `.codex/rules/shared/common/rust-quality.md`
-
-- Do not suppress Clippy warnings; fix the code. The only allowed exception is `#[allow(dead_code, unused_imports)]` on `mod common;` in integration tests.
-- Avoid redundant casts, implement standard traits instead of lookalike inherent methods, remove unused imports, and remove dead code instead of allowing it.
-
-### common/spanner-schemas.md
-
-Full rule file: `.codex/rules/shared/common/spanner-schemas.md`
-
-- Use primary keys for every GoogleSQL table and avoid hotspotting from monotonically increasing keys.
-- Use interleaving for parent-child locality when the child primary key begins with the parent key; use foreign keys for logical integrity without co-location.
-- Use named schemas to organize objects and support fine-grained access control.
-
-### common/testing-patterns.md
-
-Full rule file: `.codex/rules/shared/common/testing-patterns.md`
-
-- Use Arrange, Act, Assert structure in tests.
-- Keep one Act per test, use minimal setup, write behavior-focused names, mark phases with comments, keep tests isolated and deterministic, and always assert outcomes.
-
-## API Rules
-
-### api/aipdev.md
-
-Full rule file: `.codex/rules/shared/api/aipdev.md`
-
-- Design APIs as resource hierarchies with plural collections and `name` string resource identifiers.
-- Implement standard Get/List/Create/Update/Delete methods with AIP request and response shapes.
-- Use field masks for PATCH updates, opaque pagination tokens, CEL-style filters, stable sorting, and long-running operations for work over roughly 10 seconds.
-- Use singleton resources where appropriate, version APIs with `v1`/`v1beta`/`v2`, avoid breaking changes inside a major version, and deprecate before removal.
-
-### api/docsguide.md
-
-Full rule file: `.codex/rules/shared/api/docsguide.md`
-
-- After any code change, check `docs/MANIFEST.md` when a project has `docs/` and update docs whose triggers match.
-- Every agent-created or updated markdown doc needs `<!-- agent-updated: YYYY-MM-DDTHH:MM:SSZ -->` immediately after frontmatter.
-- Maintain `MANIFEST.md` when adding or removing docs. Common docs include README, tasks, API, CHANGELOG, architecture, and ADRs.
-
-## Workflow Rules
-
-### workflows/agent-driven-learning.md
-
-Full rule file: `.codex/rules/shared/workflows/agent-driven-learning.md`
-
-- For learning a project, use a structured pipeline: explore, plan, set up or reuse persistent tracking, execute tasks, and capture knowledge.
-- Prefer persistent SQLite-backed task tracking such as `beu`, with goals, milestones, tasks, progress dashboard, and resumable lessons.
-- Avoid shallow summaries, human-driven sequencing, excessive task granularity, and marking work done without teaching a distilled lesson.
-
-### workflows/beu-workflow.md
-
-Full rule file: `.codex/rules/shared/workflows/beu-workflow.md`
-
-- When a project has beu memory configured, use the resume command at start and the pause command with a checkpoint before stopping.
-- Use `beu task`, `state`, `debug`, `artifact`, `journal`, `progress`, `events`, `health`, and `check` to track work, decisions, blockers, investigations, deliverables, and compliance.
-- Use `-p <project>` for project scoping inside shared `.beu` databases.
-
-### workflows/session-management.md
-
-Full rule file: `.codex/rules/shared/workflows/session-management.md`
-
-- Treat each Codex conversation as a session that should be resumable and attributable.
-- At session start, check recent session files if present, inspect `git status`, and attribute existing changes to prior sessions when possible.
-- During work, track changed files and deployments. On explicit wrap-up/save, write a concise `.codex/sessions/YYYY-MM-DDTHH-MM-<slug>.md` summary.
-- Session summaries are append-only and do not replace commits.
-<!-- END SHUOZELI SHARED CODEX RULES -->
+- `docs/index.md` - Full project guide for agents
+- `docs/known-issues.md` - Prioritized bug/improvement list
+- `docs/knowledge/script-runner-design.md` - Script runner phases
+- `docs/knowledge/testing-strategy.md` - Test architecture

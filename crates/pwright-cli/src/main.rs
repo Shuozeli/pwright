@@ -240,10 +240,8 @@ enum Command {
         /// Filter by resource type (XHR, Fetch, Document, Script, etc.)
         #[arg(long, name = "type")]
         resource_type: Option<String>,
-        /// Fetch each matched response body in the same listener session
-        /// and inline it on the response event. Defers emission until
-        /// `Network.loadingFinished`. Required to retrieve bodies, since
-        /// Chrome scopes `Network.getResponseBody` to the capturing session.
+        /// Inline each response's body (fetched on loadingFinished via
+        /// Network.getResponseBody) as a "body" field on the response event.
         #[arg(long)]
         include_body: bool,
     },
@@ -374,7 +372,6 @@ async fn main() {
         )
         .with_target(false)
         .without_time()
-        .with_writer(std::io::stderr)
         .init();
 
     let cli = Cli::parse();
