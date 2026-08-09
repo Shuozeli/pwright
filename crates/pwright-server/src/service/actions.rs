@@ -1,10 +1,36 @@
 //! Action handler — ExecuteAction.
 
+use std::path::{Component, Path, PathBuf};
+
 use pwright_cdp::TouchEventType;
 use tonic::{Request, Response, Status};
 
 use super::{BrowserServiceImpl, cdp_to_status};
 use crate::proto;
+
+/// Normalize a path lexically: resolve `.` and `..` components WITHOUT touching the
+/// filesystem (so it works for paths that do not exist on this host, e.g. a file on a
+/// remote CDP host). A leading `..` that would escape the root is kept as-is, which the
+/// caller's `starts_with(allowed_dir)` check then rejects. Does NOT resolve symlinks.
+fn normalize_lexically(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // Pop a preceding normal segment; otherwise keep the `..` so an
+                // escaping path can never be contained by the allow-list.
+                if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+                    out.pop();
+                } else {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
 
 pub async fn execute_action(
     svc: &BrowserServiceImpl,
@@ -164,14 +190,23 @@ pub async fn set_input_files(
         return Err(Status::invalid_argument("ref or selector required"));
     };
 
-    // Validate file paths to prevent directory traversal.
-    // If upload_dir is configured, restrict to that directory.
+    // If upload_dir is configured, restrict uploads to that directory.
+    //
+    // Use a LEXICAL containment check (normalize `.`/`..` without touching the
+    // filesystem) rather than `std::fs::canonicalize`. Canonicalize requires the file
+    // to EXIST on the pwright-server host — but the file is read by CHROME, which is
+    // frequently a REMOTE CDP host (e.g. a Windows box at `--cdp .../9402`). There the
+    // path (`C:\Users\...\video.mp4`) is not on the server's disk, so canonicalize
+    // failed with a misleading "file not found" for a perfectly valid remote upload
+    // (2026-08-09). Lexical normalization still blocks `..` traversal out of the
+    // allow-list without requiring server-local existence. (Tradeoff: it does not
+    // resolve symlinks; symlink resolution on the server is meaningless for a remote
+    // Chrome anyway, and upload_dir is an opt-in feature intended for local Chrome.)
     if let Some(ref allowed_dir) = svc.upload_dir {
+        let allowed = normalize_lexically(allowed_dir);
         for path_str in &req.files {
-            let path = std::path::Path::new(path_str);
-            let canonical = std::fs::canonicalize(path)
-                .map_err(|_| Status::invalid_argument(format!("file not found: {path_str}")))?;
-            if !canonical.starts_with(allowed_dir) {
+            let candidate = normalize_lexically(std::path::Path::new(path_str));
+            if !candidate.starts_with(&allowed) {
                 return Err(Status::permission_denied(format!(
                     "file path outside allowed directory: {path_str}"
                 )));

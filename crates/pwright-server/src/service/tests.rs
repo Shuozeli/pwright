@@ -973,6 +973,64 @@ async fn set_input_files_with_selector() {
     assert!(resp.success);
 }
 
+#[tokio::test]
+async fn set_input_files_upload_dir_allows_contained_nonexistent_path() {
+    // upload_dir set; the file is UNDER it but does NOT exist on this host (the remote-
+    // CDP case). Must succeed — the old canonicalize() wrongly failed with "file not
+    // found" here (2026-08-09 regression this fix addresses).
+    let (svc, _, tab_id) =
+        make_svc_opts(false, Some(std::path::PathBuf::from("/allowed"))).await;
+    let resp = actions::set_input_files(
+        &svc,
+        Request::new(proto::SetInputFilesRequest {
+            tab_id,
+            r#ref: String::new(),
+            selector: "#name".into(),
+            files: vec!["/allowed/sub/does-not-exist.mp4".into()],
+        }),
+    )
+    .await
+    .unwrap()
+    .into_inner();
+    assert!(resp.success);
+}
+
+#[tokio::test]
+async fn set_input_files_upload_dir_blocks_parent_traversal() {
+    let (svc, _, tab_id) =
+        make_svc_opts(false, Some(std::path::PathBuf::from("/allowed"))).await;
+    let status = actions::set_input_files(
+        &svc,
+        Request::new(proto::SetInputFilesRequest {
+            tab_id,
+            r#ref: String::new(),
+            selector: "#name".into(),
+            files: vec!["/allowed/../etc/passwd".into()],
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(status.code(), Code::PermissionDenied);
+}
+
+#[tokio::test]
+async fn set_input_files_upload_dir_blocks_outside_path() {
+    let (svc, _, tab_id) =
+        make_svc_opts(false, Some(std::path::PathBuf::from("/allowed"))).await;
+    let status = actions::set_input_files(
+        &svc,
+        Request::new(proto::SetInputFilesRequest {
+            tab_id,
+            r#ref: String::new(),
+            selector: "#name".into(),
+            files: vec!["/other/secret.txt".into()],
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(status.code(), Code::PermissionDenied);
+}
+
 // ── Content handlers ──
 
 #[tokio::test]

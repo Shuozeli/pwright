@@ -460,7 +460,7 @@ async fn main() {
             expression,
             timeout,
         } => commands::wait_until(&mut state, &expression, timeout).await,
-        Command::Health => commands::health(&state).await,
+        Command::Health => commands::health(&cdp).await,
         Command::Script { action } => commands::script(&cdp, action).await,
     };
 

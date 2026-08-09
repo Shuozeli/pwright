@@ -984,19 +984,27 @@ pub async fn pdf(state: &mut CliState, filename: Option<&str>) -> Result<()> {
 }
 
 /// `pwright health`
-pub async fn health(state: &CliState) -> Result<()> {
-    if state.cdp_url.is_empty() {
-        output::info("Not connected. Run `pwright open` first.");
+///
+/// Checks connectivity to the CDP endpoint passed via `--cdp` (default
+/// `http://localhost:9222`). Unlike stateful commands, `health` does NOT read the
+/// persisted `state.cdp_url` from a prior `pwright open` — otherwise `--cdp` would be
+/// silently ignored and health would probe a stale host. (2026-08-09 bug: a stale
+/// `armwinroot-yuacx:9222` in `.pwright/state.json` made
+/// `pwright --cdp http://alienware-win-yuacx:9402 health` report "cannot connect"
+/// even though that endpoint was reachable.)
+pub async fn health(cdp_url: &str) -> Result<()> {
+    if cdp_url.is_empty() {
+        output::info("No --cdp endpoint given.");
         return Ok(());
     }
 
-    match CliState::fetch_ws_url(&state.cdp_url).await {
+    match CliState::fetch_ws_url(cdp_url).await {
         Ok(ws) => {
-            output::ok(&format!("Chrome reachable at {}", state.cdp_url));
-            output::info(&format!("  WS: {}", ws));
+            output::ok(&format!("Chrome reachable at {cdp_url}"));
+            output::info(&format!("  WS: {ws}"));
         }
         Err(e) => {
-            output::error(&format!("Chrome unreachable: {}", e));
+            output::error(&format!("Chrome unreachable: {e}"));
         }
     }
     Ok(())
