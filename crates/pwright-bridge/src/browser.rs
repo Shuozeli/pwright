@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
@@ -82,7 +82,9 @@ impl TabCloser for HttpTabCloser {
             .get(&url)
             .send()
             .await
-            .map_err(|e| CdpError::HttpFailed(format!("HTTP close failed: {e}")))?;
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP close failed: {e}")))?
+            .error_for_status()
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP close rejected: {e}")))?;
         Ok(())
     }
 }
@@ -312,28 +314,35 @@ impl Browser {
             .await
             .map_err(|_| CdpError::Other("browser tab semaphore closed".to_string()))?;
         let nav_url = if url.is_empty() { "about:blank" } else { url };
-        let target_id = self.browser_client().target_create(nav_url).await?;
-        let session = self.attach_session(&target_id).await?;
-
-        let closer: Arc<dyn TabCloser> = if self.config.tab_close_via_http {
-            let http_url = if is_http_scheme(&self.config.cdp_url) {
-                self.config.cdp_url.clone()
-            } else {
-                // WS URL -- can't derive HTTP URL, fall back to CDP close
-                tracing::debug!(
-                    "tab_close_via_http is set but cdp_url is WS; falling back to CDP close"
-                );
-                return Ok(TabHandle::new_with_permit(
-                    Arc::new(CdpTabCloser::new(self.browser_session.clone())),
-                    session,
-                    target_id,
-                    permit,
-                ));
-            };
+        let closer: Arc<dyn TabCloser> = if self.config.tab_close_via_http
+            && is_http_scheme(&self.config.cdp_url)
+        {
+            let http_url = self.config.cdp_url.clone();
             let timeout = std::time::Duration::from_millis(self.config.tab_close_http_timeout_ms);
             Arc::new(HttpTabCloser::new(http_url, timeout))
         } else {
+            if self.config.tab_close_via_http {
+                tracing::debug!(
+                    "tab_close_via_http is set but cdp_url is WS; falling back to CDP close"
+                );
+            }
             Arc::new(CdpTabCloser::new(self.browser_session.clone()))
+        };
+
+        let target_id = self.browser_client().target_create(nav_url).await?;
+        let session = match self.attach_session(&target_id).await {
+            Ok(session) => session,
+            Err(setup_error) => {
+                if let Err(close_error) = closer.close_tab(&target_id).await {
+                    tracing::warn!(
+                        %target_id,
+                        %setup_error,
+                        %close_error,
+                        "failed to roll back partially-created tab"
+                    );
+                }
+                return Err(setup_error);
+            }
         };
 
         Ok(TabHandle::new_with_permit(
@@ -427,6 +436,10 @@ impl TabHandle {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .take();
+        } else {
+            // A transient HTTP/CDP failure must not make the handle permanently
+            // look closed. Callers such as cancellation-safe guards can retry.
+            self.closed.store(false, Ordering::SeqCst);
         }
         result
     }
@@ -467,6 +480,22 @@ async fn discover_ws_url(http_url: &str) -> CdpResult<String> {
 mod tests {
     use super::*;
     use crate::test_utils::{FakeSessionFactory, MockCdpClient};
+    use std::sync::atomic::AtomicUsize;
+
+    struct FailOnceCloser {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl TabCloser for FailOnceCloser {
+        async fn close_tab(&self, _target_id: &str) -> CdpResult<()> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                Err(CdpError::HttpFailed("transient close failure".into()))
+            } else {
+                Ok(())
+            }
+        }
+    }
 
     fn browser_with_parallel_limit(max_parallel_tabs: usize) -> Arc<Browser> {
         Arc::new(Browser {
@@ -528,6 +557,24 @@ mod tests {
 
         let calls = mock.calls_for("Target.closeTarget");
         assert_eq!(calls.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn tab_handle_close_can_retry_after_transient_failure() {
+        let closer = Arc::new(FailOnceCloser {
+            calls: AtomicUsize::new(0),
+        });
+        let session = Arc::new(MockCdpClient::new());
+        let handle = TabHandle::new(
+            closer.clone(),
+            session as Arc<dyn CdpClient>,
+            "target-retry".into(),
+        );
+
+        assert!(handle.close().await.is_err());
+        handle.close().await.unwrap();
+
+        assert_eq!(closer.calls.load(Ordering::SeqCst), 2);
     }
 
     #[test]
