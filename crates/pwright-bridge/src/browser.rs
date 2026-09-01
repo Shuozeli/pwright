@@ -78,11 +78,17 @@ impl TabCloser for HttpTabCloser {
             .timeout(self.timeout)
             .build()
             .map_err(|e| CdpError::HttpFailed(format!("build HTTP client: {e}")))?;
-        client
+        let response = client
             .get(&url)
             .send()
             .await
-            .map_err(|e| CdpError::HttpFailed(format!("HTTP close failed: {e}")))?
+            .map_err(|e| CdpError::HttpFailed(format!("HTTP close failed: {e}")))?;
+        // Chrome returns 404 when a concurrent close or browser restart already
+        // removed the target. Treat that as idempotent success.
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+        response
             .error_for_status()
             .map_err(|e| CdpError::HttpFailed(format!("HTTP close rejected: {e}")))?;
         Ok(())
