@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
 use pwright_cdp::{CdpClient, CdpConnection, CdpSession, CdpSessionFactory, SessionFactory};
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use tokio::sync::{Mutex, OwnedSemaphorePermit, RwLock, Semaphore};
 use tracing::{debug, info};
 
 use crate::playwright::Page;
@@ -301,6 +301,16 @@ impl Browser {
     ///
     /// The caller owns the tab and is responsible for calling [`TabHandle::close`].
     pub async fn new_tab(self: &Arc<Self>, url: &str) -> CdpResult<TabHandle> {
+        // The configured tab ceiling used to be dead state: Browser owned a
+        // semaphore, but new_tab never acquired it. Keep the permit on the
+        // handle so every caller (including dragbv2-browser) shares one real
+        // per-endpoint concurrency limit.
+        let permit = self
+            .tab_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| CdpError::Other("browser tab semaphore closed".to_string()))?;
         let nav_url = if url.is_empty() { "about:blank" } else { url };
         let target_id = self.browser_client().target_create(nav_url).await?;
         let session = self.attach_session(&target_id).await?;
@@ -313,10 +323,11 @@ impl Browser {
                 tracing::debug!(
                     "tab_close_via_http is set but cdp_url is WS; falling back to CDP close"
                 );
-                return Ok(TabHandle::new(
+                return Ok(TabHandle::new_with_permit(
                     Arc::new(CdpTabCloser::new(self.browser_session.clone())),
                     session,
                     target_id,
+                    permit,
                 ));
             };
             let timeout = std::time::Duration::from_millis(self.config.tab_close_http_timeout_ms);
@@ -325,7 +336,9 @@ impl Browser {
             Arc::new(CdpTabCloser::new(self.browser_session.clone()))
         };
 
-        Ok(TabHandle::new(closer, session, target_id))
+        Ok(TabHandle::new_with_permit(
+            closer, session, target_id, permit,
+        ))
     }
 
     /// Test-only constructor using injected fakes.
@@ -357,6 +370,7 @@ pub struct TabHandle {
     session: Arc<dyn CdpClient>,
     target_id: String,
     closed: AtomicBool,
+    permit: std::sync::Mutex<Option<OwnedSemaphorePermit>>,
 }
 
 impl TabHandle {
@@ -371,6 +385,22 @@ impl TabHandle {
             session,
             target_id,
             closed: AtomicBool::new(false),
+            permit: std::sync::Mutex::new(None),
+        }
+    }
+
+    fn new_with_permit(
+        closer: Arc<dyn TabCloser>,
+        session: Arc<dyn CdpClient>,
+        target_id: String,
+        permit: OwnedSemaphorePermit,
+    ) -> Self {
+        Self {
+            closer,
+            session,
+            target_id,
+            closed: AtomicBool::new(false),
+            permit: std::sync::Mutex::new(Some(permit)),
         }
     }
 
@@ -391,7 +421,14 @@ impl TabHandle {
         if self.closed.swap(true, Ordering::SeqCst) {
             return Ok(());
         }
-        self.closer.close_tab(&self.target_id).await
+        let result = self.closer.close_tab(&self.target_id).await;
+        if result.is_ok() {
+            self.permit
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+        }
+        result
     }
 }
 
@@ -429,7 +466,41 @@ async fn discover_ws_url(http_url: &str) -> CdpResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::MockCdpClient;
+    use crate::test_utils::{FakeSessionFactory, MockCdpClient};
+
+    fn browser_with_parallel_limit(max_parallel_tabs: usize) -> Arc<Browser> {
+        Arc::new(Browser {
+            browser_session: Arc::new(MockCdpClient::new()),
+            session_factory: Arc::new(FakeSessionFactory),
+            tabs: RwLock::new(HashMap::new()),
+            ref_caches: RwLock::new(HashMap::new()),
+            config: BrowserConfig::default(),
+            tab_semaphore: Arc::new(Semaphore::new(max_parallel_tabs)),
+            tab_locks: dashmap::DashMap::new(),
+            tab_counter: std::sync::atomic::AtomicU64::new(0),
+        })
+    }
+
+    #[tokio::test]
+    async fn new_tab_holds_parallel_permit_until_close() {
+        let browser = browser_with_parallel_limit(1);
+        let first = browser.new_tab("about:blank").await.unwrap();
+
+        let second = browser.new_tab("about:blank");
+        tokio::pin!(second);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(25), &mut second)
+                .await
+                .is_err()
+        );
+
+        first.close().await.unwrap();
+        let second = tokio::time::timeout(std::time::Duration::from_secs(1), second)
+            .await
+            .expect("second tab should acquire released permit")
+            .unwrap();
+        second.close().await.unwrap();
+    }
 
     #[tokio::test]
     async fn test_tab_handle_close_calls_target_close() {

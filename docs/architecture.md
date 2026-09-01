@@ -1,3 +1,5 @@
+<!-- agent-updated: 2026-09-01T21:55:00Z -->
+
 # Architecture
 
 ## Overview
@@ -91,7 +93,10 @@ Test-only crate providing `FakeCdpClient` with an in-memory DOM tree.
 ## Concurrency Model
 
 - **Per-tab sequential**: Each tab has a `tokio::sync::Mutex` ensuring only one CDP command sequence runs at a time per tab.
-- **Cross-tab parallel**: A `tokio::sync::Semaphore` bounds concurrent tab operations (default: 4).
+- **Cross-tab parallel**: A `tokio::sync::Semaphore` bounds concurrent
+  `Browser::new_tab` handles (default: 4). Each `TabHandle` owns one permit;
+  explicit `close()` releases it immediately, and dropping the handle releases
+  it without implicitly closing the caller-owned Chrome target.
 - gRPC requests flow through this executor so concurrent clients don't corrupt tab state.
 
 ## Design Principles
