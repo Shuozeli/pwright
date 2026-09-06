@@ -25,7 +25,12 @@ pub async fn take_screenshot(
         ScreenshotFormat::Webp(q) => ("webp", Some(*q)),
     };
     session
-        .page_capture_screenshot(fmt, quality, full_page)
+        .page_capture_screenshot(pwright_cdp::generated::page::CaptureScreenshotParams {
+            format: Some(fmt.to_owned()),
+            quality: quality.map(i64::from),
+            capture_beyond_viewport: full_page.then_some(true),
+            ..Default::default()
+        })
         .await
 }
 
@@ -67,7 +72,10 @@ mod tests {
         let calls = mock.calls_for("Page.captureScreenshot");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].args[0]["format"], "png");
-        assert_eq!(calls[0].args[0]["fullPage"], false);
+        assert_eq!(
+            calls[0].args[0]["captureBeyondViewport"],
+            serde_json::Value::Null
+        );
     }
 
     #[tokio::test]
@@ -80,7 +88,7 @@ mod tests {
         let calls = mock.calls_for("Page.captureScreenshot");
         assert_eq!(calls[0].args[0]["format"], "jpeg");
         assert_eq!(calls[0].args[0]["quality"], 80);
-        assert_eq!(calls[0].args[0]["fullPage"], true);
+        assert_eq!(calls[0].args[0]["captureBeyondViewport"], true);
     }
 
     #[tokio::test]

@@ -1,0 +1,43 @@
+format: 1
+protocol: pwright.control
+version: { major: 1, minor: 0 }
+root: pwright.control
+types:
+  - kind: tagged_union
+    id: pwright.control
+    variants:
+      - tag: 0
+        name: create
+        fields:
+          - { name: object_id, type: u64 }
+          - { name: parent_present, type: bool }
+          - { name: parent_id, type: u64 }
+          - { name: object_kind, type: u32 }
+      - tag: 1
+        name: adopt
+        fields:
+          - { name: object_id, type: u64 }
+          - { name: new_parent_id, type: u64 }
+      - tag: 2
+        name: dispose
+        fields:
+          - { name: object_id, type: u64 }
+      - tag: 3
+        name: cancel
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: cancellation_id, type: u64 }
+          - { name: reason, type: enum, target: pwright.control.cancellation_reason }
+      - tag: 4
+        name: set_subscription
+        fields:
+          - { name: object_id, type: u64 }
+          - { name: event, type: u32 }
+          - { name: enabled, type: bool }
+  - kind: enum
+    id: pwright.control.cancellation_reason
+    variants:
+      - { tag: 0, name: caller }
+      - { tag: 1, name: deadline_exceeded }
+      - { tag: 2, name: parent_closed }
+      - { tag: 3, name: transport_closed }

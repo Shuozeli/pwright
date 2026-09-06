@@ -1,0 +1,16 @@
+[package]
+name = "pwright-client-page-lifecycle"
+description = "Opt-in Page lifecycle methods for Pwright clients"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-page-lifecycle = { workspace = true }
+pwright-client = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

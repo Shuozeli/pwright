@@ -1,0 +1,27 @@
+[package]
+name = "pwright-composition-chromium-context-lifecycle"
+description = "Minimal pluggable Chromium CDP BrowserContext lifecycle server composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-context-lifecycle = { workspace = true }
+pwright-backend-cdp-topology = { workspace = true }
+pwright-cap-context-lifecycle = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-context-lifecycle = { workspace = true }
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-server-context-lifecycle = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-browser-provider = { workspace = true }
+pwright-fake = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

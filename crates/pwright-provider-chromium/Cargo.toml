@@ -1,0 +1,17 @@
+[package]
+name = "pwright-provider-chromium"
+description = "Optional explicit-path and system Chromium process provider for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-browser-provider = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+tokio = { workspace = true, features = ["fs", "process", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

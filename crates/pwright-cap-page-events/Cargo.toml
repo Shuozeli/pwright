@@ -1,0 +1,12 @@
+[package]
+name = "pwright-cap-page-events"
+description = "Portable Playwright-aligned Page event contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-browser-model = { workspace = true }

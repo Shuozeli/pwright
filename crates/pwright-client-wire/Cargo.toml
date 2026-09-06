@@ -1,0 +1,17 @@
+[package]
+name = "pwright-client-wire"
+description = "Executor-neutral encoded channel adapter for pwright-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-connection-control = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-client = { workspace = true }
+pwright-codec-handshake = { workspace = true }

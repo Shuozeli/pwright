@@ -1,0 +1,14 @@
+[package]
+name = "pwright-transport-tokio"
+description = "Optional Tokio byte-stream transport for bounded Pwright wire frames"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }
+pwright-transport-stream = { workspace = true }
+tokio = { workspace = true }

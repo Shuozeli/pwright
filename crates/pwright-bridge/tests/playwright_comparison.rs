@@ -409,12 +409,16 @@ mod tests {
         let page = Page::new(mock.clone());
         page.keyboard().type_text("abc").await.unwrap();
 
-        // Both should: insertText("a") → insertText("b") → insertText("c")
-        let calls = mock.calls_for("Input.insertText");
-        assert_eq!(calls.len(), 3);
-        assert_eq!(calls[0].args[0], "a");
-        assert_eq!(calls[1].args[0], "b");
-        assert_eq!(calls[2].args[0], "c");
+        // Both should dispatch one text-bearing keyDown and one keyUp per key.
+        assert!(mock.calls_for("Input.insertText").is_empty());
+        let calls = mock.calls_for("Input.dispatchKeyEvent");
+        assert_eq!(calls.len(), 6);
+        assert_eq!(calls[0].args[0]["type"], "keyDown");
+        assert_eq!(calls[0].args[0]["text"], "a");
+        assert_eq!(calls[1].args[0]["type"], "keyUp");
+        assert_eq!(calls[2].args[0]["text"], "b");
+        assert_eq!(calls[4].args[0]["text"], "c");
+        assert_eq!(calls[5].args[0]["type"], "keyUp");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -785,9 +789,9 @@ mod tests {
         let mock2 = mock.clone();
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            mock2.send_event(pwright_cdp::CdpEvent {
-                method: "Network.responseReceived".to_string(),
-                params: serde_json::json!({
+            mock2.send_event(pwright_cdp::CdpEvent::new(
+                "Network.responseReceived".to_string(),
+                serde_json::json!({
                     "requestId": "req-api",
                     "response": {
                         "url": "https://example.com/api/data",
@@ -797,8 +801,8 @@ mod tests {
                         "mimeType": "application/json"
                     }
                 }),
-                session_id: None,
-            });
+                None,
+            ));
         });
 
         let resp = page
@@ -826,9 +830,9 @@ mod tests {
         let mock2 = mock.clone();
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            mock2.send_event(pwright_cdp::CdpEvent {
-                method: "Network.requestWillBeSent".to_string(),
-                params: serde_json::json!({
+            mock2.send_event(pwright_cdp::CdpEvent::new(
+                "Network.requestWillBeSent".to_string(),
+                serde_json::json!({
                     "requestId": "req-post",
                     "request": {
                         "url": "https://example.com/api/submit",
@@ -838,8 +842,8 @@ mod tests {
                     },
                     "type": "XHR"
                 }),
-                session_id: None,
-            });
+                None,
+            ));
         });
 
         let req = page

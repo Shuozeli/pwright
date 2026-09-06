@@ -1,0 +1,10 @@
+[package]
+name = "pwright-selector-model"
+description = "Portable command-free lazy selector value model for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]

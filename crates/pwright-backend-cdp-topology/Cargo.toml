@@ -1,0 +1,17 @@
+[package]
+name = "pwright-backend-cdp-topology"
+description = "Command-free bounded Chromium CDP topology state for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-browser-model = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-runtime = { workspace = true }
+serde_json = { workspace = true }

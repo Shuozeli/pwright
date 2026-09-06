@@ -1,0 +1,26 @@
+[package]
+name = "pwright-composition-chromium-tokio"
+description = "Optional authenticated Tokio endpoint adapter for Pwright Chromium composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-composition-chromium = { workspace = true }
+pwright-core = { workspace = true }
+pwright-endpoint-tokio = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+pwright-transport-tokio = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "net"] }
+
+[dev-dependencies]
+pwright-backend-cdp = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-handshake = { workspace = true }
+pwright-codec-navigation = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-transport-stream = { workspace = true }

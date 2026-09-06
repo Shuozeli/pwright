@@ -1,0 +1,25 @@
+[package]
+name = "pwright-artifact-service"
+description = "Task-free bounded Artifact and Stream registry services"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-artifact-model = { workspace = true }
+pwright-browser-model = { workspace = true }
+pwright-cap-artifact = { workspace = true }
+pwright-core = { workspace = true }
+pwright-server-artifact = { workspace = true }
+
+[dev-dependencies]
+pwright-client = { workspace = true }
+pwright-client-artifact = { workspace = true }
+pwright-client-wire = { workspace = true }
+pwright-codec-artifact = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+pwright-transport-memory = { workspace = true }
+tokio = { workspace = true }

@@ -1,0 +1,81 @@
+format: 1
+capability: pwright.handle_lifecycle
+version: { major: 1, minor: 0 }
+root: pwright.handle_lifecycle
+imports:
+  - pwright.common
+commands:
+  - id: handle.dispose
+    name: handle_dispose
+    method: 524289
+    targets: [pwright.browser.element_handle, pwright.browser.js_handle]
+    command: handle_dispose_command
+    result: handle_dispose_result
+    params_type: pwright.handle_lifecycle.handle_dispose_options
+    result_type: pwright.handle_lifecycle.handle_dispose_success
+    error_details_type: pwright.handle_lifecycle.error_details
+types:
+  - kind: tagged_union
+    id: pwright.handle_lifecycle
+    variants:
+      - tag: 1
+        name: handle_dispose_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.handle_lifecycle.handle_dispose_options }
+      - tag: 2
+        name: handle_dispose_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.handle_lifecycle.outcome }
+
+  - kind: record
+    id: pwright.handle_lifecycle.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - name: details
+        type: message
+        target: pwright.handle_lifecycle.error_details
+        cardinality: optional
+
+  - kind: tagged_union
+    id: pwright.handle_lifecycle.error_details
+    public_name: handle_lifecycle_error_details
+    variants:
+      - tag: 0
+        name: not_owned
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: cleanup
+        fields:
+          - { name: primary, type: utf8 }
+          - { name: cleanup, type: utf8 }
+
+  - kind: record
+    id: pwright.handle_lifecycle.handle_dispose_options
+    public_name: handle_dispose_options
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.handle_lifecycle.handle_dispose_success
+    public_name: handle_dispose_result
+    public_external: true
+    fields: []
+
+  - kind: tagged_union
+    id: pwright.handle_lifecycle.outcome
+    variants:
+      - { tag: 0, name: success, fields: [] }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.handle_lifecycle.error }

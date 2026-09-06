@@ -1,0 +1,11 @@
+[package]
+name = "pwright-trace-model"
+description = "Core-only bounded trace chunk state and retained payload model for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }

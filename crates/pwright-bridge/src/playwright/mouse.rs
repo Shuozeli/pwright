@@ -15,6 +15,8 @@ pub struct ClickOptions {
     pub click_count: Option<i32>,
     /// Delay between mousedown and mouseup in milliseconds.
     pub delay_ms: Option<u64>,
+    /// CDP modifier bit field: Alt=1, Control=2, Meta=4, Shift=8.
+    pub modifiers: Option<i32>,
 }
 
 /// Playwright-compatible Mouse.
@@ -38,6 +40,7 @@ impl Mouse {
         let opts = options.unwrap_or_default();
         let button = opts.button.unwrap_or_default();
         let count = opts.click_count.unwrap_or(1);
+        let modifiers = opts.modifiers;
 
         if let Some(delay) = opts.delay_ms {
             // Delay between press and release -- must inline events.
@@ -49,6 +52,7 @@ impl Mouse {
                     Some(button),
                     Some(count),
                     Some(1),
+                    modifiers,
                 )
                 .await?;
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
@@ -60,10 +64,19 @@ impl Mouse {
                     Some(button),
                     Some(count),
                     Some(0),
+                    modifiers,
                 )
                 .await?;
         } else {
-            crate::actions::dispatch_click_at(&*self.session, x, y, button, count).await?;
+            crate::actions::dispatch_click_at_with_modifiers(
+                &*self.session,
+                x,
+                y,
+                button,
+                count,
+                modifiers,
+            )
+            .await?;
         }
 
         Ok(())
@@ -91,7 +104,7 @@ impl Mouse {
     /// Move mouse to (x, y).
     pub async fn move_to(&self, x: f64, y: f64) -> CdpResult<()> {
         self.session
-            .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
+            .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None, None)
             .await
     }
 
@@ -106,6 +119,7 @@ impl Mouse {
                 Some(btn),
                 Some(1),
                 Some(1),
+                None,
             )
             .await
     }
@@ -121,6 +135,7 @@ impl Mouse {
                 Some(btn),
                 Some(1),
                 Some(0),
+                None,
             )
             .await
     }
@@ -157,6 +172,32 @@ mod tests {
 
         // Second call is mouseReleased
         assert_eq!(calls[1].args[0]["type"], "mouseReleased");
+    }
+
+    #[tokio::test]
+    async fn click_keeps_control_modifier_on_press_and_release() {
+        // Arrange
+        let mock = Arc::new(MockCdpClient::new());
+        let mouse = Mouse::new(mock.clone());
+
+        // Act
+        mouse
+            .click(
+                150.0,
+                250.0,
+                Some(ClickOptions {
+                    modifiers: Some(2),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .unwrap();
+
+        // Assert
+        let calls = mock.calls_for("Input.dispatchMouseEvent");
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].args[0]["modifiers"], 2);
+        assert_eq!(calls[1].args[0]["modifiers"], 2);
     }
 
     #[tokio::test]

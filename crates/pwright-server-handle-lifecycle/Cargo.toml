@@ -1,0 +1,18 @@
+[package]
+name = "pwright-server-handle-lifecycle"
+description = "Generated opt-in typed server handlers for handle lifecycle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-handle-lifecycle = { workspace = true }
+pwright-codec-handle-lifecycle = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-core = { workspace = true }

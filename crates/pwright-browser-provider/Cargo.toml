@@ -1,0 +1,10 @@
+[package]
+name = "pwright-browser-provider"
+description = "Executor-independent browser acquisition and ownership contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]

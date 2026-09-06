@@ -1,0 +1,11 @@
+[package]
+name = "pwright-artifact-model"
+description = "Core-only bounded Artifact and Stream state for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }

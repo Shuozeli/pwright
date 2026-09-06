@@ -1,0 +1,15 @@
+[package]
+name = "pwright-codec-page-lifecycle"
+description = "Canonical binary codec for the optional Pwright Page lifecycle capability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-page-lifecycle = { workspace = true }
+pwright-codec-binary = { workspace = true }
+pwright-codec-common = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }

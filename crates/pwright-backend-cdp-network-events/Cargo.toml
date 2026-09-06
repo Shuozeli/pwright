@@ -1,0 +1,16 @@
+[package]
+name = "pwright-backend-cdp-network-events"
+description = "Isolated Chromium CDP HTTP lifecycle event adapter for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-browser-model = { workspace = true }
+pwright-cap-network-events = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+pwright-network-model = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,18 @@
+[package]
+name = "pwright-server-locator-screenshot"
+description = "Generated composable server binding for the Pwright Locator screenshot capability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-locator-screenshot = { workspace = true }
+pwright-codec-locator-screenshot = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-core = { workspace = true }

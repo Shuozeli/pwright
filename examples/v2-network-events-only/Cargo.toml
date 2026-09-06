@@ -1,0 +1,10 @@
+[package]
+name = "pwright-v2-network-events-only-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+pwright-backend-cdp-network-events = { path = "../../crates/pwright-backend-cdp-network-events" }

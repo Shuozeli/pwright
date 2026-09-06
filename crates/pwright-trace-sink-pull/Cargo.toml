@@ -1,0 +1,17 @@
+[package]
+name = "pwright-trace-sink-pull"
+description = "Optional bounded task-free pull sink for Pwright trace chunks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-trace-model = { workspace = true }
+pwright-tracing-service = { workspace = true }
+
+[dev-dependencies]
+pwright-cap-tracing = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

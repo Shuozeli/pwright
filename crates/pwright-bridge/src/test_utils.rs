@@ -11,6 +11,7 @@ use pwright_cdp::connection::Result as CdpResult;
 use pwright_cdp::domains::accessibility::RawAXNode;
 use pwright_cdp::domains::network::{Cookie, ResponseBody};
 use pwright_cdp::domains::target::TargetInfo;
+use pwright_cdp::generated::{page as cdp_page, target as cdp_target};
 use pwright_cdp::{KeyEventType, MouseButton, MouseEventType, TouchEventType};
 use serde_json::Value;
 
@@ -48,6 +49,8 @@ pub struct MockCdpClient {
     cookies_response: Mutex<Option<Vec<Cookie>>>,
     ax_tree_response: Mutex<Option<Vec<RawAXNode>>>,
     targets_response: Mutex<Option<Vec<TargetInfo>>>,
+    target_attach_error: Mutex<Option<String>>,
+    target_close_error: Mutex<Option<String>>,
     query_selector_response: Mutex<Option<i64>>,
     query_selector_all_response: Mutex<Option<Vec<i64>>>,
     get_attributes_response: Mutex<Option<Vec<String>>>,
@@ -80,6 +83,8 @@ impl MockCdpClient {
             cookies_response: Mutex::new(None),
             ax_tree_response: Mutex::new(None),
             targets_response: Mutex::new(None),
+            target_attach_error: Mutex::new(None),
+            target_close_error: Mutex::new(None),
             query_selector_response: Mutex::new(None),
             query_selector_all_response: Mutex::new(None),
             get_attributes_response: Mutex::new(None),
@@ -208,6 +213,14 @@ impl MockCdpClient {
         *self.targets_response.lock().unwrap() = Some(targets);
     }
 
+    pub fn set_target_attach_error(&self, message: impl Into<String>) {
+        *self.target_attach_error.lock().unwrap() = Some(message.into());
+    }
+
+    pub fn set_target_close_error(&self, message: impl Into<String>) {
+        *self.target_close_error.lock().unwrap() = Some(message.into());
+    }
+
     pub fn set_describe_node_response(&self, response: Value) {
         *self.describe_node_response.lock().unwrap() = Some(response);
     }
@@ -231,6 +244,10 @@ impl MockCdpClient {
 
 #[async_trait]
 impl CdpClient for MockCdpClient {
+    fn event_session_id(&self) -> Option<&str> {
+        None
+    }
+
     fn subscribe_events(&self) -> tokio::sync::broadcast::Receiver<pwright_cdp::CdpEvent> {
         self.event_tx.subscribe()
     }
@@ -262,24 +279,45 @@ impl CdpClient for MockCdpClient {
             .unwrap_or_else(|| serde_json::json!({"frameId": "mock"})))
     }
 
+    async fn page_navigate_with_referrer(
+        &self,
+        url: &str,
+        referrer: Option<&str>,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Page.navigate",
+            vec![serde_json::json!({"url": url, "referrer": referrer})],
+        );
+        Ok(self
+            .navigate_response
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({"frameId": "mock"})))
+    }
+
+    async fn page_stop_loading(&self) -> CdpResult<()> {
+        self.record("Page.stopLoading", vec![]);
+        Ok(())
+    }
+
     async fn page_enable(&self) -> CdpResult<()> {
         self.record("Page.enable", vec![]);
         Ok(())
     }
 
+    async fn page_set_lifecycle_events_enabled(&self, enabled: bool) -> CdpResult<()> {
+        self.record("Page.setLifecycleEventsEnabled", vec![Value::Bool(enabled)]);
+        Ok(())
+    }
+
     async fn page_capture_screenshot(
         &self,
-        format: &str,
-        quality: Option<i32>,
-        full_page: bool,
+        params: pwright_cdp::generated::page::CaptureScreenshotParams,
     ) -> CdpResult<String> {
         self.record(
             "Page.captureScreenshot",
-            vec![serde_json::json!({
-                "format": format,
-                "quality": quality,
-                "fullPage": full_page,
-            })],
+            vec![serde_json::to_value(params).expect("screenshot params should serialize")],
         );
         Ok(self
             .screenshot_response
@@ -287,6 +325,21 @@ impl CdpClient for MockCdpClient {
             .unwrap()
             .clone()
             .unwrap_or_else(|| "bW9jaw==".to_string()))
+    }
+
+    async fn page_get_layout_metrics(
+        &self,
+    ) -> CdpResult<pwright_cdp::generated::page::GetLayoutMetricsReturns> {
+        self.record("Page.getLayoutMetrics", vec![]);
+        serde_json::from_value(serde_json::json!({
+            "layoutViewport": {"pageX": 0, "pageY": 0, "clientWidth": 800, "clientHeight": 600},
+            "visualViewport": {"offsetX": 0, "offsetY": 0, "pageX": 0, "pageY": 0, "clientWidth": 800, "clientHeight": 600, "scale": 1},
+            "contentSize": {"x": 0, "y": 0, "width": 800, "height": 1200},
+            "cssLayoutViewport": {"pageX": 0, "pageY": 0, "clientWidth": 800, "clientHeight": 600},
+            "cssVisualViewport": {"offsetX": 0, "offsetY": 0, "pageX": 0, "pageY": 0, "clientWidth": 800, "clientHeight": 600, "scale": 1},
+            "cssContentSize": {"x": 0, "y": 0, "width": 800, "height": 1200}
+        }))
+        .map_err(Into::into)
     }
 
     async fn page_print_to_pdf(&self, params: Value) -> CdpResult<String> {
@@ -346,6 +399,29 @@ impl CdpClient for MockCdpClient {
             vec![serde_json::json!({"frameId": frame_id, "html": html})],
         );
         Ok(())
+    }
+
+    async fn page_close(&self) -> CdpResult<()> {
+        self.record("Page.close", vec![]);
+        Ok(())
+    }
+
+    async fn page_get_frame_tree(&self) -> CdpResult<cdp_page::FrameTree> {
+        self.record("Page.getFrameTree", vec![]);
+        Ok(serde_json::from_value(serde_json::json!({
+            "frame": {
+                "id": "mock-frame-1",
+                "loaderId": "mock-loader",
+                "url": "about:blank",
+                "domainAndRegistry": "",
+                "securityOrigin": "://",
+                "mimeType": "text/html",
+                "secureContextType": "InsecureScheme",
+                "crossOriginIsolatedContextType": "NotIsolated",
+                "gatedAPIFeatures": []
+            }
+        }))
+        .expect("built-in mock Page.frameTree must match generated CDP types"))
     }
 
     async fn dom_focus(&self, node_id: i64) -> CdpResult<()> {
@@ -503,6 +579,7 @@ impl CdpClient for MockCdpClient {
         button: Option<MouseButton>,
         click_count: Option<i32>,
         buttons: Option<i32>,
+        modifiers: Option<i32>,
     ) -> CdpResult<()> {
         self.record(
             "Input.dispatchMouseEvent",
@@ -513,6 +590,7 @@ impl CdpClient for MockCdpClient {
                 "button": button.map(|b| b.as_str()),
                 "clickCount": click_count,
                 "buttons": buttons,
+                "modifiers": modifiers,
             })],
         );
         Ok(())
@@ -532,6 +610,27 @@ impl CdpClient for MockCdpClient {
                 "key": key,
                 "code": code,
                 "windowsVirtualKeyCode": windows_virtual_key_code,
+            })],
+        );
+        Ok(())
+    }
+
+    async fn input_dispatch_text_key_event(
+        &self,
+        key: &str,
+        code: &str,
+        windows_virtual_key_code: Option<i64>,
+        text: &str,
+    ) -> CdpResult<()> {
+        self.record(
+            "Input.dispatchKeyEvent",
+            vec![serde_json::json!({
+                "type": "keyDown",
+                "key": key,
+                "code": code,
+                "windowsVirtualKeyCode": windows_virtual_key_code,
+                "text": text,
+                "unmodifiedText": text,
             })],
         );
         Ok(())
@@ -569,6 +668,27 @@ impl CdpClient for MockCdpClient {
         }
     }
 
+    async fn runtime_evaluate_in_unique_context(
+        &self,
+        expression: &str,
+        unique_context_id: &str,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Runtime.evaluate",
+            vec![serde_json::json!({
+                "expression": expression,
+                "uniqueContextId": unique_context_id,
+            })],
+        );
+        match self.runtime_evaluate_response.lock().unwrap().clone() {
+            Some(value) => Ok(value),
+            None => {
+                self.check_strict("Runtime.evaluate")?;
+                Ok(serde_json::json!({"result": {"value": ""}}))
+            }
+        }
+    }
+
     async fn runtime_evaluate_as_object(&self, expression: &str) -> CdpResult<Value> {
         self.record(
             "Runtime.evaluate(object)",
@@ -576,6 +696,27 @@ impl CdpClient for MockCdpClient {
         );
         match self.runtime_evaluate_response.lock().unwrap().clone() {
             Some(v) => Ok(v),
+            None => {
+                self.check_strict("Runtime.evaluate(object)")?;
+                Ok(serde_json::json!({"result": {"value": ""}}))
+            }
+        }
+    }
+
+    async fn runtime_evaluate_as_object_in_unique_context(
+        &self,
+        expression: &str,
+        unique_context_id: &str,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Runtime.evaluate(object)",
+            vec![serde_json::json!({
+                "expression": expression,
+                "uniqueContextId": unique_context_id,
+            })],
+        );
+        match self.runtime_evaluate_response.lock().unwrap().clone() {
+            Some(value) => Ok(value),
             None => {
                 self.check_strict("Runtime.evaluate(object)")?;
                 Ok(serde_json::json!({"result": {"value": ""}}))
@@ -611,6 +752,11 @@ impl CdpClient for MockCdpClient {
         Ok(())
     }
 
+    async fn runtime_run_if_waiting_for_debugger(&self) -> CdpResult<()> {
+        self.record("Runtime.runIfWaitingForDebugger", vec![]);
+        self.check_strict("Runtime.runIfWaitingForDebugger")
+    }
+
     async fn accessibility_enable(&self) -> CdpResult<()> {
         self.record("Accessibility.enable", vec![]);
         Ok(())
@@ -628,6 +774,11 @@ impl CdpClient for MockCdpClient {
 
     async fn network_enable(&self) -> CdpResult<()> {
         self.record("Network.enable", vec![]);
+        Ok(())
+    }
+
+    async fn network_disable(&self) -> CdpResult<()> {
+        self.record("Network.disable", vec![]);
         Ok(())
     }
 
@@ -667,6 +818,11 @@ impl CdpClient for MockCdpClient {
         Ok(())
     }
 
+    async fn fetch_enable_response_stage(&self) -> CdpResult<()> {
+        self.record("Fetch.enableResponseStage", vec![]);
+        Ok(())
+    }
+
     async fn fetch_disable(&self) -> CdpResult<()> {
         self.record("Fetch.disable", vec![]);
         Ok(())
@@ -678,6 +834,17 @@ impl CdpClient for MockCdpClient {
             vec![Value::String(request_id.to_string())],
         );
         Ok(())
+    }
+
+    async fn fetch_get_response_body(&self, request_id: &str) -> CdpResult<ResponseBody> {
+        self.record(
+            "Fetch.getResponseBody",
+            vec![Value::String(request_id.to_string())],
+        );
+        Ok(ResponseBody {
+            body: String::new(),
+            base64_encoded: false,
+        })
     }
 
     async fn fetch_fail_request(&self, request_id: &str, reason: &str) -> CdpResult<()> {
@@ -696,11 +863,53 @@ impl CdpClient for MockCdpClient {
         Ok("target-1".to_string())
     }
 
+    async fn target_create_browser_context(
+        &self,
+        proxy_server: Option<&str>,
+        proxy_bypass_list: Option<&str>,
+    ) -> CdpResult<String> {
+        self.record(
+            "Target.createBrowserContext",
+            vec![serde_json::json!({
+                "disposeOnDetach": true,
+                "proxyServer": proxy_server,
+                "proxyBypassList": proxy_bypass_list,
+            })],
+        );
+        Ok("browser-context-1".to_string())
+    }
+
+    async fn target_create_in_context(
+        &self,
+        url: &str,
+        browser_context_id: &str,
+    ) -> CdpResult<String> {
+        self.record(
+            "Target.createTarget",
+            vec![serde_json::json!({
+                "url": url,
+                "browserContextId": browser_context_id,
+            })],
+        );
+        Ok("target-1".to_string())
+    }
+
+    async fn target_dispose_browser_context(&self, browser_context_id: &str) -> CdpResult<()> {
+        self.record(
+            "Target.disposeBrowserContext",
+            vec![Value::String(browser_context_id.to_string())],
+        );
+        Ok(())
+    }
+
     async fn target_close(&self, target_id: &str) -> CdpResult<()> {
         self.record(
             "Target.closeTarget",
             vec![Value::String(target_id.to_string())],
         );
+        if let Some(message) = self.target_close_error.lock().unwrap().clone() {
+            return Err(pwright_cdp::connection::CdpError::Other(message));
+        }
         Ok(())
     }
 
@@ -714,11 +923,34 @@ impl CdpClient for MockCdpClient {
             .unwrap_or_default())
     }
 
+    async fn target_get_browser_contexts(&self) -> CdpResult<Vec<String>> {
+        self.record("Target.getBrowserContexts", vec![]);
+        self.check_strict("Target.getBrowserContexts")?;
+        Ok(Vec::new())
+    }
+
+    async fn target_get_target_info(&self) -> CdpResult<cdp_target::TargetInfo> {
+        self.record("Target.getTargetInfo", vec![]);
+        self.check_strict("Target.getTargetInfo")?;
+        Ok(serde_json::from_value(serde_json::json!({
+            "targetId": "mock-browser",
+            "type": "browser",
+            "title": "",
+            "url": "",
+            "attached": true,
+            "canAccessOpener": false
+        }))
+        .expect("built-in mock Target.targetInfo must match generated CDP types"))
+    }
+
     async fn target_attach(&self, target_id: &str) -> CdpResult<String> {
         self.record(
             "Target.attachToTarget",
             vec![Value::String(target_id.to_string())],
         );
+        if let Some(message) = self.target_attach_error.lock().unwrap().clone() {
+            return Err(pwright_cdp::connection::CdpError::Other(message));
+        }
         Ok("session-1".to_string())
     }
 
@@ -728,5 +960,22 @@ impl CdpClient for MockCdpClient {
             vec![Value::String(session_id.to_string())],
         );
         Ok(())
+    }
+
+    async fn target_set_auto_attach(
+        &self,
+        auto_attach: bool,
+        wait_for_debugger_on_start: bool,
+        flatten: bool,
+    ) -> CdpResult<()> {
+        self.record(
+            "Target.setAutoAttach",
+            vec![serde_json::json!({
+                "autoAttach": auto_attach,
+                "waitForDebuggerOnStart": wait_for_debugger_on_start,
+                "flatten": flatten,
+            })],
+        );
+        self.check_strict("Target.setAutoAttach")
     }
 }

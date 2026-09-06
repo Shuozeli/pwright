@@ -1,0 +1,20 @@
+[package]
+name = "pwright-codec-locator-screenshot"
+description = "Bounded binary codec for the optional Pwright Locator screenshot capability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-locator-screenshot = { workspace = true }
+pwright-codec-binary = { workspace = true }
+pwright-codec-common = { workspace = true }
+pwright-codec-selector = { workspace = true }
+pwright-codec-screenshot = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-selector-model = { workspace = true }

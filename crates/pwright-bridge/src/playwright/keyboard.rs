@@ -53,10 +53,13 @@ impl Keyboard {
         }
     }
 
-    /// Type text character by character with `Input.insertText`.
+    /// Type text character by character with real key-down/key-up events.
+    ///
+    /// The text insertion between those events keeps DOM text fields working,
+    /// while the key events also reach canvas applications and game engines.
     pub async fn type_text(&self, text: &str) -> CdpResult<()> {
         for ch in text.chars() {
-            self.session.input_insert_text(&ch.to_string()).await?;
+            crate::actions::press_key(&*self.session, &ch.to_string()).await?;
         }
         Ok(())
     }
@@ -86,12 +89,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_keyboard_type_text() {
+        // Arrange
         let mock = Arc::new(MockCdpClient::new());
         let kb = Keyboard::new(mock.clone());
+
+        // Act
         kb.type_text("hi").await.unwrap();
 
-        let calls = mock.calls_for("Input.insertText");
-        assert_eq!(calls.len(), 2);
+        // Assert
+        assert!(mock.calls_for("Input.insertText").is_empty());
+        let key_events = mock.calls_for("Input.dispatchKeyEvent");
+        assert_eq!(key_events.len(), 4);
+        assert_eq!(key_events[0].args[0]["type"], "keyDown");
+        assert_eq!(key_events[1].args[0]["type"], "keyUp");
+        assert_eq!(key_events[2].args[0]["type"], "keyDown");
+        assert_eq!(key_events[3].args[0]["type"], "keyUp");
     }
 
     #[tokio::test]

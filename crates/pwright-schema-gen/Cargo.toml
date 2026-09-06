@@ -1,0 +1,20 @@
+[package]
+name = "pwright-schema-gen"
+description = "Development-only generator for composable Pwright capability schemas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "pwright-schema-gen"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+
+[dev-dependencies]
+pwright-codec-binary = { path = "../pwright-codec-binary" }
+pwright-core = { path = "../pwright-core" }

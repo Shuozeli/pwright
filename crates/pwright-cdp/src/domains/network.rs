@@ -33,6 +33,11 @@ impl CdpSession {
         Ok(())
     }
 
+    pub async fn network_disable(&self) -> Result<()> {
+        self.send("Network.disable", serde_json::json!({})).await?;
+        Ok(())
+    }
+
     pub async fn network_set_blocked_urls(&self, patterns: &[String]) -> Result<()> {
         let params = cdp_gen::SetBlockedURLsParams {
             urls: Some(patterns.to_vec()),

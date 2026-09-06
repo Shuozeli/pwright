@@ -1,0 +1,197 @@
+format: 1
+capability: pwright.handle_evaluation
+display_name: Handle evaluation
+version: { major: 1, minor: 1 }
+root: pwright.handle_evaluation
+imports:
+  - pwright.common
+dependencies:
+  - id: pwright.handle_lifecycle
+    minimum_version: { major: 1, minor: 0 }
+commands:
+  - id: evaluation.evaluate_handle
+    name: evaluate_handle
+    method: 524290
+    targets: [pwright.browser.frame]
+    command: evaluate_handle_command
+    result: evaluate_handle_result
+    params_type: pwright.handle_evaluation.params
+    result_type: pwright.handle_evaluation.result
+    error_details_type: pwright.handle_evaluation.error_details
+types:
+  - kind: tagged_union
+    id: pwright.handle_evaluation
+    variants:
+      - tag: 1
+        name: evaluate_handle_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.handle_evaluation.params }
+      - tag: 2
+        name: evaluate_handle_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.handle_evaluation.outcome }
+
+  - kind: record
+    id: pwright.handle_evaluation.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - { name: details, type: message, target: pwright.handle_evaluation.error_details, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.handle_evaluation.error_details
+    public_name: handle_evaluation_error_details
+    variants:
+      - tag: 0
+        name: javascript
+        fields:
+          - { name: name, type: utf8 }
+          - { name: message, type: utf8 }
+          - { name: stack, type: utf8, cardinality: optional }
+      - tag: 1
+        name: invalid_value
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: invalid_backend_response
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 3
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 4
+        name: cleanup
+        fields:
+          - { name: primary, type: utf8 }
+          - { name: cleanup, type: utf8 }
+
+  - kind: enum
+    id: pwright.handle_evaluation.mode
+    variants:
+      - { tag: 0, name: expression }
+      - { tag: 1, name: function }
+
+  - kind: tagged_union
+    id: pwright.handle_evaluation.outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.handle_evaluation.result }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.handle_evaluation.error }
+
+  - kind: record
+    id: pwright.handle_evaluation.params
+    public_name: evaluate_handle_params
+    public_external: true
+    fields:
+      - { name: source, type: utf8 }
+      - { name: mode, type: enum, target: pwright.handle_evaluation.mode }
+      - { name: argument, type: message, target: pwright.handle_evaluation.value, cardinality: optional }
+
+  - kind: record
+    id: pwright.handle_evaluation.property
+    fields:
+      - { name: key, type: utf8 }
+      - { name: value, type: message, target: pwright.handle_evaluation.value }
+
+  - kind: record
+    id: pwright.handle_evaluation.result
+    public_name: handle_initializer
+    public_external: true
+    fields:
+      - { name: object_id, type: u64 }
+      - { name: parent_id, type: u64 }
+      - { name: object_kind, type: u32 }
+      - { name: preview, type: utf8 }
+
+  - kind: enum
+    id: pwright.handle_evaluation.typed_array_kind
+    variants:
+      - { tag: 0, name: int8 }
+      - { tag: 1, name: uint8 }
+      - { tag: 2, name: uint8_clamped }
+      - { tag: 3, name: int16 }
+      - { tag: 4, name: uint16 }
+      - { tag: 5, name: int32 }
+      - { tag: 6, name: uint32 }
+      - { tag: 7, name: float32 }
+      - { tag: 8, name: float64 }
+      - { tag: 9, name: bigint64 }
+      - { tag: 10, name: biguint64 }
+
+  - kind: tagged_union
+    id: pwright.handle_evaluation.value
+    variants:
+      - { tag: 0, name: undefined, fields: [] }
+      - { tag: 1, name: "null", fields: [] }
+      - tag: 2
+        name: bool
+        fields:
+          - { name: value, type: bool }
+      - tag: 3
+        name: number
+        fields:
+          - { name: bits, type: u64 }
+      - { tag: 4, name: nan, fields: [] }
+      - { tag: 5, name: infinity, fields: [] }
+      - { tag: 6, name: negative_infinity, fields: [] }
+      - { tag: 7, name: negative_zero, fields: [] }
+      - tag: 8
+        name: string
+        fields:
+          - { name: value, type: utf8 }
+      - tag: 9
+        name: bigint
+        fields:
+          - { name: value, type: utf8 }
+      - tag: 10
+        name: date
+        fields:
+          - { name: value, type: utf8 }
+      - tag: 11
+        name: url
+        fields:
+          - { name: value, type: utf8 }
+      - tag: 12
+        name: regexp
+        fields:
+          - { name: pattern, type: utf8 }
+          - { name: flags, type: utf8 }
+      - tag: 13
+        name: error
+        fields:
+          - { name: name, type: utf8 }
+          - { name: message, type: utf8 }
+          - { name: stack, type: utf8, cardinality: optional }
+      - tag: 14
+        name: typed_array
+        fields:
+          - { name: kind, type: enum, target: pwright.handle_evaluation.typed_array_kind }
+          - { name: bytes, type: bytes }
+      - tag: 15
+        name: array
+        fields:
+          - { name: id, type: u32, cardinality: optional, constraints: { minimum: 1 } }
+          - { name: items, type: message, target: pwright.handle_evaluation.value, cardinality: repeated }
+      - tag: 16
+        name: object
+        fields:
+          - { name: id, type: u32, cardinality: optional, constraints: { minimum: 1 } }
+          - { name: properties, type: message, target: pwright.handle_evaluation.property, cardinality: repeated }
+      - tag: 17
+        name: ref
+        fields:
+          - { name: id, type: u32, constraints: { minimum: 1 } }
+      - tag: 18
+        name: handle
+        fields:
+          - { name: object_id, type: u64, constraints: { minimum: 1 } }

@@ -1,0 +1,11 @@
+[package]
+name = "pwright-screenshot-model"
+description = "Portable screenshot value and retained-byte model for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }

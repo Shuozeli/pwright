@@ -1,0 +1,15 @@
+[package]
+name = "pwright-cap-tracing-artifact"
+description = "Portable opt-in tracing-to-Artifact capability contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-cap-artifact = { workspace = true }
+pwright-cap-tracing = { workspace = true }

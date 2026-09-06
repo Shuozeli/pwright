@@ -1,0 +1,22 @@
+[package]
+name = "pwright-composition-chromium-locator-screenshot"
+description = "Minimal pluggable Chromium CDP Locator screenshot server composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-content = { workspace = true }
+pwright-backend-cdp-locator-screenshot = { workspace = true }
+pwright-cap-locator-screenshot = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-locator-screenshot = { workspace = true }
+pwright-core = { workspace = true }
+pwright-server-locator-screenshot = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

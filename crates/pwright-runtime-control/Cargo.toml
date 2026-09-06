@@ -1,0 +1,23 @@
+[package]
+name = "pwright-runtime-control"
+description = "Caller-driven bidirectional control-frame handling for Pwright runtimes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-client = { workspace = true }
+pwright-client-control = { workspace = true }
+pwright-client-wire = { workspace = true }
+pwright-codec-control = { workspace = true }
+pwright-transport-stream = { workspace = true }
+pwright-transport-tokio = { workspace = true }
+tokio = { workspace = true }

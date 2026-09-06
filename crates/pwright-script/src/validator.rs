@@ -43,6 +43,38 @@ pub fn validate(
                     errors.push(format!("step {i}: click.selector is empty"));
                 }
             }
+            StepKind::ClickAt(c) => {
+                if c.js_ref.is_none() && (c.x.is_none() || c.y.is_none()) {
+                    errors.push(format!(
+                        "step {i}: click_at needs either ref or numeric x and y"
+                    ));
+                }
+                if let Some(ref js_ref) = c.js_ref
+                    && !script.scripts.contains_key(js_ref)
+                {
+                    errors.push(format!(
+                        "step {i}: click_at.ref '{js_ref}' not found in scripts registry"
+                    ));
+                }
+                if !matches!(c.button.as_str(), "left" | "right" | "middle") {
+                    errors.push(format!(
+                        "step {i}: click_at.button must be left, right, or middle"
+                    ));
+                }
+                if c.click_count < 1 {
+                    errors.push(format!("step {i}: click_at.click_count must be positive"));
+                }
+                if c.modifier.as_deref().is_some_and(|modifier| {
+                    !matches!(
+                        modifier.to_ascii_lowercase().as_str(),
+                        "alt" | "control" | "ctrl" | "meta" | "command" | "cmd" | "shift"
+                    )
+                }) {
+                    errors.push(format!(
+                        "step {i}: click_at.modifier must be Alt, Control, Meta, or Shift"
+                    ));
+                }
+            }
             StepKind::Fill(f) => {
                 if f.selector.is_empty() {
                     errors.push(format!("step {i}: fill.selector is empty"));
@@ -53,6 +85,9 @@ pub fn validate(
                 if p.key.is_empty() {
                     errors.push(format!("step {i}: press.key is empty"));
                 }
+            }
+            StepKind::TypeText(t) => {
+                check_template_refs(&t.text, &known_vars, i, "type_text", &mut errors);
             }
             StepKind::Extract(e) => {
                 if e.selector.is_empty() {
@@ -89,7 +124,18 @@ pub fn validate(
                     check_template_refs(val, &known_vars, i, &format!("output.{key}"), &mut errors);
                 }
             }
-            StepKind::Wait(_) => {} // no validation needed
+            StepKind::Wait(w) => match &w.kind {
+                crate::model::WaitKind::Duration(_) => {}
+                crate::model::WaitKind::Text { text, .. } => {
+                    check_template_refs(text, &known_vars, i, "wait_for_text", &mut errors);
+                }
+                crate::model::WaitKind::Selector { selector, .. } => {
+                    check_template_refs(selector, &known_vars, i, "wait_for", &mut errors);
+                }
+                crate::model::WaitKind::Expression { js, .. } => {
+                    check_template_refs(js, &known_vars, i, "wait_until", &mut errors);
+                }
+            },
         }
 
         // on_error is now an enum -- all values are valid by construction.
@@ -265,5 +311,26 @@ steps:
         .unwrap();
 
         assert!(validate(&script, &HashMap::new()).is_ok());
+    }
+
+    #[test]
+    fn wait_templates_are_validated() {
+        // Arrange
+        let script = parse_yaml(
+            r#"
+name: test
+steps:
+  - wait_until: "window.name === '{{ missing }}'"
+"#,
+        )
+        .unwrap();
+
+        // Act
+        let errors = validate(&script, &HashMap::new()).unwrap_err();
+
+        // Assert
+        assert!(errors.iter().any(|error| {
+            error.contains("wait_until") && error.contains("unknown variable 'missing'")
+        }));
     }
 }

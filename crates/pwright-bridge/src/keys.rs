@@ -81,6 +81,26 @@ pub fn get_key_def(name: &str) -> Option<KeyDef> {
             virtual_key: 45,
             insert_text: "",
         }),
+        "Control" => Some(KeyDef {
+            code: Cow::Borrowed("ControlLeft"),
+            virtual_key: 17,
+            insert_text: "",
+        }),
+        "Shift" => Some(KeyDef {
+            code: Cow::Borrowed("ShiftLeft"),
+            virtual_key: 16,
+            insert_text: "",
+        }),
+        "Alt" => Some(KeyDef {
+            code: Cow::Borrowed("AltLeft"),
+            virtual_key: 18,
+            insert_text: "",
+        }),
+        "Meta" => Some(KeyDef {
+            code: Cow::Borrowed("MetaLeft"),
+            virtual_key: 91,
+            insert_text: "",
+        }),
         k if k.starts_with('F') && k.len() >= 2 => {
             let num: u32 = k[1..].parse().ok()?;
             if (1..=12).contains(&num) {
@@ -88,6 +108,90 @@ pub fn get_key_def(name: &str) -> Option<KeyDef> {
                     code: Cow::Owned(k.to_string()),
                     // Windows VK_F1 = 0x70 = 112; F1 maps to 112, F2 to 113, etc.
                     virtual_key: 111 + num as i64,
+                    insert_text: "",
+                })
+            } else {
+                None
+            }
+        }
+        "Space" => Some(KeyDef {
+            code: Cow::Borrowed("Space"),
+            virtual_key: 32,
+            insert_text: "",
+        }),
+        " " => Some(KeyDef {
+            code: Cow::Borrowed("Space"),
+            virtual_key: 32,
+            insert_text: "",
+        }),
+        "-" | "_" => Some(KeyDef {
+            code: Cow::Borrowed("Minus"),
+            virtual_key: 189,
+            insert_text: "",
+        }),
+        "=" | "+" => Some(KeyDef {
+            code: Cow::Borrowed("Equal"),
+            virtual_key: 187,
+            insert_text: "",
+        }),
+        "[" | "{" => Some(KeyDef {
+            code: Cow::Borrowed("BracketLeft"),
+            virtual_key: 219,
+            insert_text: "",
+        }),
+        "]" | "}" => Some(KeyDef {
+            code: Cow::Borrowed("BracketRight"),
+            virtual_key: 221,
+            insert_text: "",
+        }),
+        "\\" | "|" => Some(KeyDef {
+            code: Cow::Borrowed("Backslash"),
+            virtual_key: 220,
+            insert_text: "",
+        }),
+        ";" | ":" => Some(KeyDef {
+            code: Cow::Borrowed("Semicolon"),
+            virtual_key: 186,
+            insert_text: "",
+        }),
+        "'" | "\"" => Some(KeyDef {
+            code: Cow::Borrowed("Quote"),
+            virtual_key: 222,
+            insert_text: "",
+        }),
+        "," | "<" => Some(KeyDef {
+            code: Cow::Borrowed("Comma"),
+            virtual_key: 188,
+            insert_text: "",
+        }),
+        "." | ">" => Some(KeyDef {
+            code: Cow::Borrowed("Period"),
+            virtual_key: 190,
+            insert_text: "",
+        }),
+        "/" | "?" => Some(KeyDef {
+            code: Cow::Borrowed("Slash"),
+            virtual_key: 191,
+            insert_text: "",
+        }),
+        "`" | "~" => Some(KeyDef {
+            code: Cow::Borrowed("Backquote"),
+            virtual_key: 192,
+            insert_text: "",
+        }),
+        k if k.chars().count() == 1 => {
+            let character = k.chars().next()?;
+            if character.is_ascii_alphabetic() {
+                let upper = character.to_ascii_uppercase();
+                Some(KeyDef {
+                    code: Cow::Owned(format!("Key{upper}")),
+                    virtual_key: i64::from(upper as u8),
+                    insert_text: "",
+                })
+            } else if character.is_ascii_digit() {
+                Some(KeyDef {
+                    code: Cow::Owned(format!("Digit{character}")),
+                    virtual_key: i64::from(character as u8),
                     insert_text: "",
                 })
             } else {
@@ -149,6 +253,67 @@ mod tests {
     #[test]
     fn test_f13_returns_none() {
         assert!(get_key_def("F13").is_none());
+    }
+
+    #[test]
+    fn ascii_letters_and_digits_resolve_to_physical_key_codes() {
+        // Arrange
+        let inputs = ["a", "R", "1"];
+
+        // Act
+        let definitions = inputs.map(|input| get_key_def(input).unwrap());
+
+        // Assert
+        assert_eq!(definitions[0].code, "KeyA");
+        assert_eq!(definitions[0].virtual_key, 65);
+        assert_eq!(definitions[1].code, "KeyR");
+        assert_eq!(definitions[1].virtual_key, 82);
+        assert_eq!(definitions[2].code, "Digit1");
+        assert_eq!(definitions[2].virtual_key, 49);
+    }
+
+    #[test]
+    fn space_resolves_to_a_physical_space_key() {
+        // Arrange
+        let input = "Space";
+
+        // Act
+        let definition = get_key_def(input).unwrap();
+
+        // Assert
+        assert_eq!(definition.code, "Space");
+        assert_eq!(definition.virtual_key, 32);
+    }
+
+    #[test]
+    fn printable_ascii_punctuation_resolves_to_physical_key_codes() {
+        // Arrange
+        let inputs = ["-", "_", "/", "?", " "];
+
+        // Act
+        let definitions = inputs.map(|input| get_key_def(input).unwrap());
+
+        // Assert
+        assert_eq!(definitions[0].code, "Minus");
+        assert_eq!(definitions[1].code, "Minus");
+        assert_eq!(definitions[2].code, "Slash");
+        assert_eq!(definitions[3].code, "Slash");
+        assert_eq!(definitions[4].code, "Space");
+    }
+
+    #[test]
+    fn modifier_names_resolve_to_left_physical_keys() {
+        // Arrange
+        let inputs = ["Control", "Shift", "Alt", "Meta"];
+
+        // Act
+        let definitions = inputs.map(|input| get_key_def(input).unwrap());
+
+        // Assert
+        assert_eq!(definitions[0].code, "ControlLeft");
+        assert_eq!(definitions[1].code, "ShiftLeft");
+        assert_eq!(definitions[2].code, "AltLeft");
+        assert_eq!(definitions[3].code, "MetaLeft");
     }
 
     #[test]

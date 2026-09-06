@@ -29,7 +29,7 @@ impl Browser {
         debug!(target_id = target_id, url = nav_url, "created target");
 
         // Attach and create a per-tab session
-        let session = self.attach_session(&target_id).await?;
+        let session = self.attach_created_target(&target_id).await?;
 
         let tab_id = self.next_tab_id();
         let now = Instant::now();

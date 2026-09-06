@@ -1,0 +1,24 @@
+[package]
+name = "pwright-endpoint-tokio"
+description = "Optional authenticated Tokio endpoint adapters for Pwright transports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+pwright-transport-stream = { workspace = true }
+pwright-transport-tokio = { workspace = true }
+ring = { workspace = true }
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+pwright-client-wire = { workspace = true }
+pwright-codec-handshake = { workspace = true }
+pwright-core = { workspace = true }
+rcgen = "0.13.2"

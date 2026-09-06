@@ -1,0 +1,10 @@
+[package]
+name = "pwright-core"
+description = "Dependency-free composition and capability contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]

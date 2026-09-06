@@ -1,0 +1,21 @@
+[package]
+name = "pwright-backend-cdp-locator-screenshot"
+description = "Composable Chromium CDP Locator screenshot orchestration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-common = { workspace = true }
+pwright-backend-cdp-content = { workspace = true }
+pwright-cap-content = { workspace = true }
+pwright-cap-locator-screenshot = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

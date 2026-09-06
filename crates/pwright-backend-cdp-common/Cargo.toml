@@ -1,0 +1,12 @@
+[package]
+name = "pwright-backend-cdp-common"
+description = "Shared command-free primitives for composable Pwright CDP backend leaves"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }

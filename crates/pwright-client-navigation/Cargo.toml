@@ -1,0 +1,17 @@
+[package]
+name = "pwright-client-navigation"
+description = "Opt-in typed navigation extensions for pwright-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-client = { workspace = true }
+pwright-cap-navigation = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-runtime = { workspace = true }

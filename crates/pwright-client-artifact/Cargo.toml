@@ -1,0 +1,17 @@
+[package]
+name = "pwright-client-artifact"
+description = "Opt-in Playwright-shaped Artifact and Stream client methods"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-artifact = { workspace = true }
+pwright-client = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+tokio = { workspace = true }

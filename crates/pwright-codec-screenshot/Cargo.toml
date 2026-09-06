@@ -1,0 +1,13 @@
+[package]
+name = "pwright-codec-screenshot"
+description = "Command-free screenshot attachment validation for Pwright codecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-screenshot-model = { workspace = true }
+pwright-transport = { workspace = true }

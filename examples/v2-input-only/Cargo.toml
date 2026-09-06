@@ -1,0 +1,10 @@
+[package]
+name = "pwright-v2-input-only-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+pwright-backend-cdp-input = { path = "../../crates/pwright-backend-cdp-input" }

@@ -1,0 +1,11 @@
+[package]
+name = "pwright-cap-page-creation"
+description = "Portable Page creation capability contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }

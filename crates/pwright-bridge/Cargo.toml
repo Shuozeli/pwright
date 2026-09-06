@@ -24,3 +24,8 @@ test-utils = []
 tokio = { workspace = true, features = ["test-util", "macros"] }
 pwright-fake = { workspace = true }
 anyhow = { workspace = true }
+
+[[test]]
+name = "playwright_comparison"
+path = "tests/playwright_comparison.rs"
+required-features = ["test-utils"]

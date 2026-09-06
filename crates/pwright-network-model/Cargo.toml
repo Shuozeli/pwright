@@ -1,0 +1,11 @@
+[package]
+name = "pwright-network-model"
+description = "Backend-neutral bounded HTTP lifecycle values for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }

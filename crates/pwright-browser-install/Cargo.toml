@@ -1,0 +1,10 @@
+[package]
+name = "pwright-browser-install"
+description = "Opt-in composable managed-browser installation contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]

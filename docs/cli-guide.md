@@ -1,3 +1,5 @@
+<!-- agent-updated: 2026-09-03T21:46:51Z -->
+
 # CLI Guide
 
 pwright provides a command-line interface for browser automation. It connects to a running Chrome via CDP and persists session state so you can chain commands across terminal invocations.
@@ -80,9 +82,13 @@ For pages with empty accessibility trees (Gmail, Google Docs, heavy SPAs), use c
 | `pwright click-at <x> <y>` | Click at viewport coordinates |
 | `pwright click-at <x> <y> --button right` | Right-click at coordinates |
 | `pwright click-at <x> <y> --click-count 2` | Double-click at coordinates |
+| `pwright click-at <x> <y> --button right --modifier Control` | Hold a real keyboard modifier during the click |
 | `pwright hover-at <x> <y>` | Hover at viewport coordinates |
 
 Use `pwright eval` to find element coordinates via `getBoundingClientRect()`, then `click-at` to interact.
+`--modifier` accepts `Alt`, `Control`, `Meta`, or `Shift`; Pwright sends a real
+key-down, modified mouse sequence, and key-up so canvas applications also see
+the modifier in their keyboard state.
 
 ### Inspection
 
@@ -129,6 +135,8 @@ Use `pwright eval` to find element coordinates via `getBoundingClientRect()`, th
 
 | Command | Description |
 |---------|-------------|
+| `pwright capture-url <url> --dest file` | Navigate in Chrome and save the raw response body |
+| `pwright capture-url <url> --context-url <url> --dest file --max-bytes N --json` | Load context first, enforce a decoded-byte limit, and emit response metadata |
 | `pwright network-listen` | Stream network traffic as JSONL |
 | `pwright network-listen --filter "/api/"` | Filter by URL substring |
 | `pwright network-listen --type XHR` | Filter by resource type |
@@ -139,6 +147,47 @@ Use `pwright eval` to find element coordinates via `getBoundingClientRect()`, th
 | `pwright network-get <reqid> --output data.json` | Save body to file |
 
 > Run `network-listen` in a separate terminal while interacting with the site. It uses a second CDP session so it does not interfere with your commands. The `reqid` in listener output can be used with `network-get`.
+
+`capture-url` is a self-contained acquisition command. It creates a leased
+ephemeral tab, optionally loads the context URL, pauses the target response
+before Chrome transforms it, writes the exact response bytes, and closes the
+exact tab. This is the appropriate command for cross-origin PDFs: page-level
+`fetch()` is subject to CORS, while `Network.getResponseBody` can return the
+built-in PDF viewer wrapper instead of the PDF. The command accepts only
+HTTP(S), never overwrites an existing destination, and defaults to a 50 MiB
+decoded-body limit.
+
+The destination write is the acquisition commit point. If the exact response
+bytes and result metadata are already durable, a later Fetch-disable or
+leased-tab-close failure is reported on stderr as a structured warning and
+the command still returns the successful result. When tab closure cannot be
+verified, Pwright keeps the exact target lease for recovery by the next
+same-endpoint invocation; it never broadens cleanup to unrelated tabs.
+
+```bash
+pwright --cdp "$PWRIGHT_CDP" capture-url \
+  https://cdn.example.com/q2-results.pdf \
+  --context-url https://investors.example.com/results \
+  --dest ./q2-results.pdf \
+  --max-bytes 10485760 \
+  --json
+```
+
+The JSON result includes requested/context/final URLs, HTTP status, response
+headers, MIME type, redirect history, bytes written, destination, and the CDP
+transport name. URL authorization remains the caller's responsibility;
+`capture-url` is an acquisition primitive, not a provenance policy.
+Chrome returns captured binary bodies as base64 CDP messages. Pwright uses a
+bounded 128 MiB incoming WebSocket frame/message limit so the default 50 MiB
+decoded-body allowance is usable in practice; `--max-bytes` remains the
+artifact-size policy gate.
+
+When the shared Chrome process has a process-wide proxy that should not be
+used for acquisition, set `PWRIGHT_EPHEMERAL_PROXY_SERVER` (and optionally
+`PWRIGHT_EPHEMERAL_PROXY_BYPASS_LIST`). `script run` and `capture-url` create
+their tab in a separate CDP browser context with that override. Closing the
+leased tab also disposes the context; persistent CLI tabs and the Chrome
+process remain untouched.
 
 ### Waiting
 
@@ -153,6 +202,8 @@ Use `pwright eval` to find element coordinates via `getBoundingClientRect()`, th
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
 | `--cdp <url>` | `PWRIGHT_CDP` | `http://localhost:9222` | Chrome CDP HTTP endpoint |
+| `--ephemeral-proxy-server <url>` | `PWRIGHT_EPHEMERAL_PROXY_SERVER` | unset | Proxy override for isolated script/capture tabs |
+| `--ephemeral-proxy-bypass-list <list>` | `PWRIGHT_EPHEMERAL_PROXY_BYPASS_LIST` | unset | Chromium-format bypass list for the isolated proxy |
 
 ---
 
@@ -304,6 +355,10 @@ scripts:
     [...document.querySelectorAll('.price')]
       .map(el => el.textContent.trim())
 
+config:
+  default_timeout_ms: 120000
+  connection_timeout_ms: 60000
+
 steps:
   - goto: "{{ url }}"
     wait_for: ".price"
@@ -329,6 +384,30 @@ Output (JSONL):
 Scripts support:
 - **Parameters**: `--param key=val` or `--param-file secrets.yaml`
 - **JS registry**: Complex JS defined once in `scripts:`, referenced by `eval.ref`
+- **Async evaluation**: `eval.ref` functions may return promises; Pwright waits
+  for resolution and returns the resolved value.
+- **Step timeout**: `config.default_timeout_ms` supplies the default for recipe
+  steps. Step-specific `timeout_ms` values override it.
+- **Connection and CDP command timeout**:
+  `config.connection_timeout_ms` controls initial HTTP endpoint discovery, the
+  WebSocket handshake, and individual CDP commands, including large returned
+  values over a busy remote browser connection. It defaults to 30 seconds and
+  can be raised independently without lengthening page-readiness waits.
+- **Ephemeral cleanup**: Script-owned tabs close through Chrome's HTTP DevTools
+  endpoint when `--cdp` is HTTP(S), then fall back to `Target.closeTarget` on
+  the shared WebSocket. The exact target lease is persisted immediately after
+  `createTarget`, before attach or page setup, so even an attach failure has
+  durable ownership. Pwright verifies that the exact target is absent from
+  `/json/list` before removing its lease. Cleanup failures are warnings and do
+  not replay an otherwise successful recipe; the retained exact-target lease
+  lets the next invocation retry recovery without touching unleased tabs. A
+  new script tab is refused while any same-endpoint lease remains unresolved,
+  preventing cleanup pressure from creating a target backlog. Set
+  `PWRIGHT_EPHEMERAL_LEASE_ROOT` to a shared state root when multiple recipe
+  working directories use the same browser endpoint. Active leases owned by a
+  still-running sibling Pwright process are preserved rather than recovered;
+  only orphaned leases are eligible for cleanup. Removing an orphaned lease is
+  idempotent when concurrent processes race to recover the same stale target.
 - **Error handling**: Per-step `on_error: fail | continue`
 - **Validation**: `--validate` checks params, template refs, JS refs without executing
 

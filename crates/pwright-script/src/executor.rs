@@ -133,6 +133,104 @@ async fn execute_step(
             page.click(&selector).await.map_err(ScriptError::Cdp)?;
         }
 
+        StepKind::ClickAt(c) => {
+            page.bring_to_front().await.map_err(ScriptError::Cdp)?;
+            page.evaluate(
+                "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+            )
+            .await
+            .map_err(ScriptError::Cdp)?;
+            let (x, y) = if let Some(ref js_ref) = c.js_ref {
+                let func = scripts.get(js_ref).ok_or_else(|| {
+                    ScriptError::Validation(format!("script '{js_ref}' not found"))
+                })?;
+                let args: Vec<String> = c
+                    .args
+                    .iter()
+                    .map(|arg| resolve_template(arg, vars))
+                    .collect();
+                let arg_json = serde_json::Value::Array(
+                    args.into_iter().map(serde_json::Value::String).collect(),
+                );
+                let result = page
+                    .evaluate_with_arg(&func.body, &arg_json)
+                    .await
+                    .map_err(ScriptError::Cdp)?;
+                click_position(&result)?
+            } else {
+                match (c.x, c.y) {
+                    (Some(x), Some(y)) => (x, y),
+                    _ => {
+                        return Err(ScriptError::Validation(
+                            "click_at needs either ref or numeric x and y".into(),
+                        ));
+                    }
+                }
+            };
+            let button = match c.button.as_str() {
+                "left" => pwright_cdp::MouseButton::Left,
+                "right" => pwright_cdp::MouseButton::Right,
+                "middle" => pwright_cdp::MouseButton::Middle,
+                value => {
+                    return Err(ScriptError::Validation(format!(
+                        "click_at.button must be left, right, or middle, got '{value}'"
+                    )));
+                }
+            };
+            let (modifiers, modifier_key) = match c
+                .modifier
+                .as_deref()
+                .map(str::to_ascii_lowercase)
+                .as_deref()
+            {
+                None => (None, None),
+                Some("alt") => (Some(1), Some("Alt")),
+                Some("control" | "ctrl") => (Some(2), Some("Control")),
+                Some("meta" | "command" | "cmd") => (Some(4), Some("Meta")),
+                Some("shift") => (Some(8), Some("Shift")),
+                Some(value) => {
+                    return Err(ScriptError::Validation(format!(
+                        "click_at.modifier must be Alt, Control, Meta, or Shift, got '{value}'"
+                    )));
+                }
+            };
+            details.insert("x".into(), x.to_string());
+            details.insert("y".into(), y.to_string());
+            details.insert("button".into(), c.button.clone());
+            if let Some(modifier) = c.modifier.as_ref() {
+                details.insert("modifier".into(), modifier.clone());
+            }
+            page.mouse().move_to(x, y).await.map_err(ScriptError::Cdp)?;
+            if let Some(key) = modifier_key {
+                page.keyboard().down(key).await.map_err(ScriptError::Cdp)?;
+            }
+            let click_result = page
+                .mouse()
+                .click(
+                    x,
+                    y,
+                    Some(pwright_bridge::playwright::ClickOptions {
+                        button: Some(button),
+                        click_count: Some(c.click_count),
+                        // Canvas/egui applications sample pointer-down state on
+                        // animation frames. Keep the button down long enough to
+                        // model a real click instead of collapsing down/up into
+                        // the same render sample.
+                        delay_ms: Some(500),
+                        modifiers,
+                    }),
+                )
+                .await
+                .map_err(ScriptError::Cdp);
+            let release_result = if let Some(key) = modifier_key {
+                page.keyboard().up(key).await.map_err(ScriptError::Cdp)
+            } else {
+                Ok(())
+            };
+            click_result?;
+            release_result?;
+        }
+
         StepKind::Fill(f) => {
             // SAFETY: CSS selector + fill value from user-authored script + params.
             let selector = resolve_template(&f.selector, vars);
@@ -146,8 +244,29 @@ async fn execute_step(
         StepKind::Press(p) => {
             let key = resolve_template(&p.key, vars);
             details.insert("key".into(), key.clone());
+            page.bring_to_front().await.map_err(ScriptError::Cdp)?;
+            page.evaluate(
+                "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+            )
+            .await
+            .map_err(ScriptError::Cdp)?;
             page.keyboard()
                 .press(&key)
+                .await
+                .map_err(ScriptError::Cdp)?;
+        }
+
+        StepKind::TypeText(t) => {
+            let text = resolve_template(&t.text, vars);
+            details.insert("text".into(), text.clone());
+            page.bring_to_front().await.map_err(ScriptError::Cdp)?;
+            page.evaluate(
+                "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+            )
+            .await
+            .map_err(ScriptError::Cdp)?;
+            page.keyboard()
+                .type_text(&text)
                 .await
                 .map_err(ScriptError::Cdp)?;
         }
@@ -223,9 +342,10 @@ async fn execute_step(
                 tokio::time::sleep(std::time::Duration::from_millis(*ms)).await;
             }
             crate::model::WaitKind::Text { text, timeout_ms } => {
+                let text = resolve_template(text, vars);
                 details.insert("text".into(), text.clone());
                 details.insert("timeout_ms".into(), timeout_ms.to_string());
-                page.wait_for_text(text, *timeout_ms)
+                page.wait_for_text(&text, *timeout_ms)
                     .await
                     .map_err(ScriptError::Cdp)?;
             }
@@ -233,16 +353,18 @@ async fn execute_step(
                 selector,
                 timeout_ms,
             } => {
+                let selector = resolve_template(selector, vars);
                 details.insert("selector".into(), selector.clone());
                 details.insert("timeout_ms".into(), timeout_ms.to_string());
-                page.wait_for_selector(selector, *timeout_ms)
+                page.wait_for_selector(&selector, *timeout_ms)
                     .await
                     .map_err(ScriptError::Cdp)?;
             }
             crate::model::WaitKind::Expression { js, timeout_ms } => {
+                let js = resolve_template(js, vars);
                 details.insert("expression".into(), js.clone());
                 details.insert("timeout_ms".into(), timeout_ms.to_string());
-                page.wait_until(js, *timeout_ms)
+                page.wait_until(&js, *timeout_ms)
                     .await
                     .map_err(ScriptError::Cdp)?;
             }
@@ -364,6 +486,25 @@ fn json_value_to_string(v: &serde_json::Value) -> String {
         Some(v) => v.to_string(),
         None => v.to_string(),
     }
+}
+
+fn click_position(result: &serde_json::Value) -> Result<(f64, f64), ScriptError> {
+    let value = result.get("value").unwrap_or(result);
+    let coords = value.as_array().ok_or_else(|| {
+        ScriptError::Validation("click_at ref must return a two-number array".into())
+    })?;
+    if coords.len() != 2 {
+        return Err(ScriptError::Validation(
+            "click_at ref must return exactly two numbers".into(),
+        ));
+    }
+    let x = coords[0]
+        .as_f64()
+        .ok_or_else(|| ScriptError::Validation("click_at x must be numeric".into()))?;
+    let y = coords[1]
+        .as_f64()
+        .ok_or_else(|| ScriptError::Validation("click_at y must be numeric".into()))?;
+    Ok((x, y))
 }
 
 #[cfg(test)]
@@ -503,6 +644,18 @@ mod tests {
         let s = json_value_to_string(&v);
         assert!(s.contains("number"));
         assert!(s.contains("5"));
+    }
+
+    #[test]
+    fn click_position_reads_runtime_value_array() {
+        // Arrange
+        let result = serde_json::json!({"value": [123.5, 456.25]});
+
+        // Act
+        let position = click_position(&result).unwrap();
+
+        // Assert
+        assert_eq!(position, (123.5, 456.25));
     }
 
     // ── ExecutionStatus ──

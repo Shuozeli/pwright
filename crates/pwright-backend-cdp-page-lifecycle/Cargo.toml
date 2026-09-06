@@ -1,0 +1,18 @@
+[package]
+name = "pwright-backend-cdp-page-lifecycle"
+description = "Isolated Chromium CDP Page lifecycle adapter for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-common = { workspace = true }
+pwright-cap-page-lifecycle = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

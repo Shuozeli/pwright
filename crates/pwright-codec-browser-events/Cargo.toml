@@ -1,0 +1,13 @@
+[package]
+name = "pwright-codec-browser-events"
+description = "Canonical bounded binary codec for Pwright Browser events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-browser-events = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }

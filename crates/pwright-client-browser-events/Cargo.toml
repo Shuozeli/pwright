@@ -1,0 +1,19 @@
+[package]
+name = "pwright-client-browser-events"
+description = "Opt-in Playwright-shaped Browser event helpers for Pwright clients"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-browser-events = { workspace = true }
+pwright-client = { workspace = true }
+pwright-client-events = { workspace = true }
+pwright-codec-browser-events = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }

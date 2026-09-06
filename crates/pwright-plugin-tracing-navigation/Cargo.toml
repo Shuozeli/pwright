@@ -1,0 +1,24 @@
+[package]
+name = "pwright-plugin-tracing-navigation"
+description = "Optional navigation API-call contributor for Pwright tracing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-navigation = { workspace = true }
+pwright-cap-tracing = { workspace = true }
+pwright-core = { workspace = true }
+pwright-trace-model = { workspace = true }
+pwright-tracing-service = { workspace = true }
+
+[dev-dependencies]
+pwright-backend-cdp = { workspace = true }
+pwright-browser-provider = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+pwright-process-metrics = { workspace = true, features = ["ledger"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

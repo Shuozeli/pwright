@@ -1,0 +1,16 @@
+[package]
+name = "pwright-codec-content"
+description = "Bounded binary codec for Pwright content capture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-content = { workspace = true }
+pwright-codec-binary = { workspace = true }
+pwright-codec-common = { workspace = true }
+pwright-codec-screenshot = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }

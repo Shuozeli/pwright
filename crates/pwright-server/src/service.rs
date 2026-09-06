@@ -31,9 +31,14 @@ fn cdp_to_status(e: CdpError) -> Status {
         CdpError::TabNotFound(_) => Status::not_found(e.to_string()),
         CdpError::HttpFailed(_) => Status::unavailable(e.to_string()),
         CdpError::JsException(_) => Status::internal(e.to_string()),
+        CdpError::LimitExceeded { .. } | CdpError::Resource(_) => {
+            Status::resource_exhausted(e.to_string())
+        }
         CdpError::Protocol { .. }
         | CdpError::Json(_)
         | CdpError::Compound { .. }
+        | CdpError::InvalidConfiguration(_)
+        | CdpError::IdentifierExhausted
         | CdpError::Other(_) => Status::internal(e.to_string()),
     }
 }

@@ -1,0 +1,22 @@
+[package]
+name = "pwright-server-wire"
+description = "Caller-driven composable typed command server for Pwright wire transports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-connection-control = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-client = { workspace = true }
+pwright-client-wire = { workspace = true }
+pwright-codec-handshake = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-transport-stream = { workspace = true }
+pwright-transport-tokio = { workspace = true }
+tokio = { workspace = true }

@@ -1,0 +1,8 @@
+[package]
+name = "pwright-v2-umbrella-chromium-content"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+pwright = { workspace = true, features = ["chromium-content"] }

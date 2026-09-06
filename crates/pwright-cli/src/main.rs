@@ -7,6 +7,7 @@
 //!   pwright screenshot
 //!   pwright close
 
+mod capture_url;
 mod commands;
 mod output;
 mod state;
@@ -25,6 +26,14 @@ struct Cli {
         global = true
     )]
     cdp: String,
+
+    /// Proxy override for isolated tabs created by script and capture-url
+    #[arg(long, env = "PWRIGHT_EPHEMERAL_PROXY_SERVER", global = true)]
+    ephemeral_proxy_server: Option<String>,
+
+    /// Chromium-format bypass list for the isolated-tab proxy override
+    #[arg(long, env = "PWRIGHT_EPHEMERAL_PROXY_BYPASS_LIST", global = true)]
+    ephemeral_proxy_bypass_list: Option<String>,
 
     #[command(subcommand)]
     command: Command,
@@ -66,6 +75,9 @@ enum Command {
         /// Click count (2 for double-click)
         #[arg(long, default_value = "1")]
         click_count: i32,
+        /// Keyboard modifier held during the click: Alt, Control, Meta, or Shift
+        #[arg(long)]
+        modifier: Option<String>,
     },
 
     /// Double-click element by ref
@@ -320,6 +332,27 @@ enum Command {
     /// Check Chrome connectivity
     Health,
 
+    /// Capture the exact response body produced by browser navigation
+    CaptureUrl {
+        /// HTTP(S) URL to navigate to and capture
+        url: String,
+        /// Optional page to load first for issuer cookies and referrer context
+        #[arg(long)]
+        context_url: Option<String>,
+        /// Destination file; existing files are never overwritten
+        #[arg(long)]
+        dest: std::path::PathBuf,
+        /// Maximum decoded response size in bytes
+        #[arg(long, default_value = "52428800")]
+        max_bytes: u64,
+        /// Capture timeout in milliseconds
+        #[arg(long, default_value = "60000")]
+        timeout: u64,
+        /// Emit one machine-readable JSON result
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Run or validate YAML automation scripts
     Script {
         #[command(subcommand)]
@@ -383,6 +416,8 @@ async fn main() {
     // For `open` and `health`, use --cdp flag
     // For other commands, reuse stored cdp_url
     let cdp = cli.cdp.clone();
+    let ephemeral_proxy_server = cli.ephemeral_proxy_server.clone();
+    let ephemeral_proxy_bypass_list = cli.ephemeral_proxy_bypass_list.clone();
 
     let result = match cli.command {
         Command::Open { url } => commands::open(&mut state, &cdp, url.as_deref()).await,
@@ -394,7 +429,8 @@ async fn main() {
             y,
             button,
             click_count,
-        } => commands::click_at(&mut state, x, y, &button, click_count).await,
+            modifier,
+        } => commands::click_at(&mut state, x, y, &button, click_count, modifier.as_deref()).await,
         Command::Dblclick { ref_str } => commands::dblclick(&mut state, &ref_str).await,
         Command::HoverAt { x, y } => commands::hover_at(&mut state, x, y).await,
         Command::Type { text } => commands::type_text(&mut state, &text).await,
@@ -464,7 +500,36 @@ async fn main() {
             timeout,
         } => commands::wait_until(&mut state, &expression, timeout).await,
         Command::Health => commands::health(&state).await,
-        Command::Script { action } => commands::script(&cdp, action).await,
+        Command::CaptureUrl {
+            url,
+            context_url,
+            dest,
+            max_bytes,
+            timeout,
+            json,
+        } => {
+            capture_url::capture_url(capture_url::CaptureUrlOptions {
+                cdp_url: cdp,
+                ephemeral_proxy_server,
+                ephemeral_proxy_bypass_list,
+                url,
+                context_url,
+                dest,
+                max_bytes,
+                timeout_ms: timeout,
+                json,
+            })
+            .await
+        }
+        Command::Script { action } => {
+            commands::script(
+                &cdp,
+                ephemeral_proxy_server.as_deref(),
+                ephemeral_proxy_bypass_list.as_deref(),
+                action,
+            )
+            .await
+        }
     };
 
     if let Err(e) = result {

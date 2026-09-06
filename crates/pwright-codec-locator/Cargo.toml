@@ -1,0 +1,28 @@
+[package]
+name = "pwright-codec-locator"
+description = "Canonical bounded binary codec for Pwright locator actions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-locator = { workspace = true }
+pwright-codec-binary = { workspace = true }
+pwright-codec-common = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-client = { workspace = true }
+pwright-client-locator = { workspace = true }
+pwright-client-wire = { workspace = true }
+pwright-codec-control = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-runtime-control = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport-stream = { workspace = true }
+pwright-transport-tokio = { workspace = true }
+tokio = { workspace = true }

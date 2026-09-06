@@ -1,0 +1,100 @@
+format: 1
+capability: pwright.tracing_artifact
+display_name: Tracing Artifact producer
+version: { major: 1, minor: 0 }
+root: pwright.tracing_artifact
+imports:
+  - pwright.common
+dependencies:
+  - id: pwright.artifact
+    minimum_version: { major: 1, minor: 0 }
+  - id: pwright.tracing
+    minimum_version: { major: 1, minor: 0 }
+commands:
+  - id: tracing.stop_chunk_artifact
+    name: trace_stop_chunk_artifact
+    method: 786433
+    targets: [pwright.browser.browser_context]
+    command: trace_stop_chunk_artifact_command
+    result: trace_stop_chunk_artifact_result
+    params_type: pwright.tracing_artifact.stop_options
+    result_type: pwright.tracing_artifact.artifact_result
+    error_details_type: pwright.tracing_artifact.error_details
+types:
+  - kind: tagged_union
+    id: pwright.tracing_artifact
+    variants:
+      - tag: 1
+        name: trace_stop_chunk_artifact_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.tracing_artifact.stop_options }
+      - tag: 2
+        name: trace_stop_chunk_artifact_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.tracing_artifact.outcome }
+
+  - kind: record
+    id: pwright.tracing_artifact.artifact_result
+    public_name: trace_artifact_result
+    public_external: true
+    fields:
+      - { name: artifact_id, type: u64 }
+      - { name: parent_id, type: u64 }
+      - { name: object_kind, type: u32 }
+      - { name: chunk_id, type: u64 }
+      - { name: entry_count, type: u64 }
+      - { name: payload_bytes, type: u64 }
+      - { name: encoded_bytes, type: u64 }
+
+  - kind: record
+    id: pwright.tracing_artifact.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - name: details
+        type: message
+        target: pwright.tracing_artifact.error_details
+        cardinality: optional
+
+  - kind: tagged_union
+    id: pwright.tracing_artifact.error_details
+    public_name: tracing_artifact_error_details
+    variants:
+      - tag: 0
+        name: invalid_state
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: resource
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: lifecycle
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 3
+        name: cleanup
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: tagged_union
+    id: pwright.tracing_artifact.outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.tracing_artifact.artifact_result }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.tracing_artifact.error }
+
+  - kind: record
+    id: pwright.tracing_artifact.stop_options
+    public_name: trace_stop_chunk_artifact_options
+    public_external: true
+    fields: []

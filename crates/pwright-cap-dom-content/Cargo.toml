@@ -1,0 +1,11 @@
+[package]
+name = "pwright-cap-dom-content"
+description = "Portable opt-in Frame DOM serialization contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }

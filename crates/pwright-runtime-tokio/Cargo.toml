@@ -1,0 +1,16 @@
+[package]
+name = "pwright-runtime-tokio"
+description = "Optional Tokio deadline and cleanup adapters for the executor-independent Pwright runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-runtime = { workspace = true }
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+
+[dev-dependencies]
+pwright-core = { workspace = true }
+tokio = { version = "1", features = ["macros", "rt", "test-util", "time"] }

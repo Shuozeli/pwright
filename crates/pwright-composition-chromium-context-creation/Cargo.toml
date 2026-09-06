@@ -1,0 +1,29 @@
+[package]
+name = "pwright-composition-chromium-context-creation"
+description = "Minimal pluggable Chromium CDP BrowserContext creation and lifecycle composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-context-creation = { workspace = true }
+pwright-backend-cdp-topology = { workspace = true }
+pwright-browser-model = { workspace = true }
+pwright-cap-context-creation = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-context-creation = { workspace = true }
+pwright-composition-chromium-context-lifecycle = { workspace = true }
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-server-context-creation = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-provider = { workspace = true }
+pwright-cap-context-lifecycle = { workspace = true }
+pwright-fake = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

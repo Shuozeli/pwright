@@ -1,0 +1,174 @@
+format: 1
+capability: pwright.navigation
+version: { major: 1, minor: 0 }
+root: pwright.navigation
+imports:
+  - pwright.common
+commands:
+  - id: navigation.begin-document-navigation
+    name: begin_navigation
+    method: 65537
+    targets: [pwright.browser.page]
+    command: begin_command
+    result: begin_result
+    params_type: pwright.navigation.begin_navigation_params
+    result_type: pwright.navigation.begin_navigation_result
+    error_details_type: pwright.navigation.error_details
+  - id: navigation.goto
+    name: goto
+    method: 65538
+    targets: [pwright.browser.page]
+    command: goto_command
+    result: goto_result
+    params_type: pwright.navigation.goto_params
+    result_type: pwright.navigation.goto_result
+    error_details_type: pwright.navigation.error_details
+types:
+  - kind: tagged_union
+    id: pwright.navigation
+    variants:
+      - tag: 1
+        name: begin_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.navigation.begin_navigation_params }
+      - tag: 2
+        name: begin_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.navigation.begin_outcome }
+      - tag: 3
+        name: goto_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.navigation.goto_params }
+      - tag: 4
+        name: goto_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.navigation.goto_outcome }
+
+  - kind: record
+    id: pwright.navigation.begin_navigation_params
+    public_name: begin_navigation_params
+    fields:
+      - { name: url, type: utf8 }
+      - { name: referrer, type: utf8, cardinality: optional }
+
+  - kind: record
+    id: pwright.navigation.begin_navigation_result
+    public_name: begin_navigation_result
+    fields:
+      - { name: frame_id, type: utf8 }
+      - { name: loader_id, type: utf8, cardinality: optional }
+      - { name: same_document, type: bool }
+      - { name: is_download, type: bool }
+
+  - kind: tagged_union
+    id: pwright.navigation.begin_outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.navigation.begin_navigation_result }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.navigation.error }
+
+  - kind: record
+    id: pwright.navigation.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - name: details
+        type: message
+        target: pwright.navigation.error_details
+        cardinality: optional
+
+  - kind: tagged_union
+    id: pwright.navigation.error_details
+    public_name: navigation_error_details
+    variants:
+      - tag: 0
+        name: network
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: invalid_backend_response
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: unsupported_option
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 3
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: tagged_union
+    id: pwright.navigation.goto_outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.navigation.goto_result }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.navigation.error }
+
+  - kind: record
+    id: pwright.navigation.goto_params
+    public_name: goto_params
+    fields:
+      - { name: url, type: utf8 }
+      - { name: referrer, type: utf8, cardinality: optional }
+      - { name: wait_until, type: enum, target: pwright.navigation.wait_until }
+
+  - kind: record
+    id: pwright.navigation.goto_result
+    public_name: goto_result
+    fields:
+      - { name: frame_id, type: utf8 }
+      - { name: loader_id, type: utf8, cardinality: optional }
+      - { name: url, type: utf8 }
+      - { name: same_document, type: bool }
+      - name: response
+        type: message
+        target: pwright.navigation.response
+        cardinality: optional
+
+  - kind: record
+    id: pwright.navigation.header
+    public_name: header
+    fields:
+      - { name: name, type: utf8 }
+      - { name: value, type: utf8 }
+
+  - kind: record
+    id: pwright.navigation.response
+    public_name: navigation_response
+    fields:
+      - { name: url, type: utf8 }
+      - { name: status, type: i64 }
+      - { name: status_text, type: utf8 }
+      - name: headers
+        type: message
+        target: pwright.navigation.header
+        cardinality: repeated
+
+  - kind: enum
+    id: pwright.navigation.wait_until
+    public_name: wait_until
+    default: load
+    variants:
+      - { tag: 0, name: commit }
+      - { tag: 1, name: dom_content_loaded }
+      - { tag: 2, name: load }
+      - { tag: 3, name: network_idle }

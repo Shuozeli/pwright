@@ -1,0 +1,25 @@
+[package]
+name = "pwright-plugin-ordered-handle-delivery"
+description = "Optional ordered remote delivery fence for retained Pwright Handles"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-handle-evaluation = { workspace = true }
+pwright-cap-handle-lifecycle = { workspace = true }
+pwright-codec-handle-evaluation = { workspace = true }
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-runtime-control = { workspace = true }
+pwright-server-handle-evaluation = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-codec-control = { workspace = true }
+pwright-transport-memory = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

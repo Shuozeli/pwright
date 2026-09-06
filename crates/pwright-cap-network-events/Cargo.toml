@@ -1,0 +1,13 @@
+[package]
+name = "pwright-cap-network-events"
+description = "Portable Playwright-aligned HTTP lifecycle event contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-browser-model = { workspace = true }
+pwright-core = { workspace = true }
+pwright-network-model = { workspace = true }

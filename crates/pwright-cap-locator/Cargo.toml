@@ -1,0 +1,13 @@
+[package]
+name = "pwright-cap-locator"
+description = "Portable selector and locator-action contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-input-model = { workspace = true }
+pwright-selector-model = { workspace = true }

@@ -1,0 +1,21 @@
+[package]
+name = "pwright-backend-cdp-navigation"
+description = "Isolated bounded Chromium CDP adapter for Pwright navigation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-common = { workspace = true }
+pwright-browser-backend = { workspace = true }
+pwright-cap-navigation = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }

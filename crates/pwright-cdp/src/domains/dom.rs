@@ -36,9 +36,55 @@ impl CdpSession {
             .await
     }
 
+    pub async fn dom_get_box_model_by_backend_node(&self, backend_node_id: i64) -> Result<Value> {
+        let params = cdp_gen::GetBoxModelParams {
+            backend_node_id: Some(backend_node_id),
+            ..Default::default()
+        };
+        self.send("DOM.getBoxModel", serde_json::to_value(&params)?)
+            .await
+    }
+
+    pub async fn dom_get_frame_owner(&self, frame_id: &str) -> Result<i64> {
+        let params = cdp_gen::GetFrameOwnerParams {
+            frame_id: frame_id.to_owned(),
+        };
+        let result = self
+            .send("DOM.getFrameOwner", serde_json::to_value(&params)?)
+            .await?;
+        let returns: cdp_gen::GetFrameOwnerReturns = serde_json::from_value(result)?;
+        Ok(returns.backend_node_id)
+    }
+
     pub async fn dom_resolve_node(&self, node_id: i64) -> Result<Value> {
         let params = cdp_gen::ResolveNodeParams {
             node_id: Some(node_id),
+            ..Default::default()
+        };
+        self.send("DOM.resolveNode", serde_json::to_value(&params)?)
+            .await
+    }
+
+    pub async fn dom_describe_node_by_object_id(&self, object_id: &str) -> Result<i64> {
+        let params = cdp_gen::DescribeNodeParams {
+            object_id: Some(object_id.to_owned()),
+            ..Default::default()
+        };
+        let result = self
+            .send("DOM.describeNode", serde_json::to_value(&params)?)
+            .await?;
+        let returns: cdp_gen::DescribeNodeReturns = serde_json::from_value(result)?;
+        Ok(returns.node.backend_node_id)
+    }
+
+    pub async fn dom_resolve_backend_node_in_execution_context(
+        &self,
+        backend_node_id: i64,
+        execution_context_id: i64,
+    ) -> Result<Value> {
+        let params = cdp_gen::ResolveNodeParams {
+            backend_node_id: Some(backend_node_id),
+            execution_context_id: Some(execution_context_id),
             ..Default::default()
         };
         self.send("DOM.resolveNode", serde_json::to_value(&params)?)

@@ -1,0 +1,128 @@
+format: 1
+capability: pwright.locator_screenshot
+display_name: Locator screenshot
+version: { major: 1, minor: 0 }
+root: pwright.locator_screenshot
+imports:
+  - pwright.common
+  - pwright.selector
+commands:
+  - id: locator.screenshot
+    name: locator_screenshot
+    method: 589825
+    targets: [pwright.browser.frame, pwright.browser.page]
+    command: locator_screenshot_command
+    result: locator_screenshot_result
+    params_type: pwright.locator_screenshot.params
+    result_type: pwright.locator_screenshot.screenshot_data
+    error_details_type: pwright.locator_screenshot.error_details
+types:
+  - kind: tagged_union
+    id: pwright.locator_screenshot
+    variants:
+      - tag: 1
+        name: locator_screenshot_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.locator_screenshot.params }
+      - tag: 2
+        name: locator_screenshot_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.locator_screenshot.outcome }
+
+  - kind: record
+    id: pwright.locator_screenshot.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - { name: details, type: message, target: pwright.locator_screenshot.error_details, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.locator_screenshot.error_details
+    public_name: locator_screenshot_error_details
+    variants:
+      - tag: 0
+        name: invalid_options
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: invalid_selector
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: strict_violation
+        fields:
+          - { name: selector, type: utf8 }
+          - { name: matches, type: u32 }
+      - tag: 3
+        name: invalid_backend_response
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 4
+        name: resource
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 5
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: tagged_union
+    id: pwright.locator_screenshot.outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.locator_screenshot.screenshot_data }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.locator_screenshot.error }
+
+  - kind: record
+    id: pwright.locator_screenshot.params
+    public_name: locator_screenshot_params
+    public_external: true
+    fields:
+      - { name: selector, type: message, target: pwright.locator.selector }
+      - { name: options, type: message, target: pwright.locator_screenshot.screenshot_options }
+
+  - kind: record
+    id: pwright.locator_screenshot.screenshot_data
+    public_name: screenshot_data
+    public_external: true
+    fields:
+      - { name: attachment_index, type: u32 }
+      - { name: byte_length, type: u64 }
+      - { name: format, type: enum, target: pwright.locator_screenshot.screenshot_format }
+
+  - kind: enum
+    id: pwright.locator_screenshot.screenshot_format
+    public_name: screenshot_format
+    public_external: true
+    variants:
+      - { tag: 0, name: png }
+      - { tag: 1, name: jpeg }
+      - { tag: 2, name: webp }
+
+  - kind: record
+    id: pwright.locator_screenshot.screenshot_options
+    public_name: screenshot_options
+    public_external: true
+    encoding: extensible
+    encoded_size: { minimum: 0, maximum: 64 }
+    fields:
+      - { tag: 1, name: format, type: enum, target: pwright.locator_screenshot.screenshot_format, cardinality: optional }
+      - { tag: 2, name: quality, type: u8, cardinality: optional, constraints: { maximum: 100 } }
+      - { tag: 3, name: scale, type: enum, target: pwright.locator_screenshot.screenshot_scale, cardinality: optional }
+
+  - kind: enum
+    id: pwright.locator_screenshot.screenshot_scale
+    public_name: screenshot_scale
+    public_external: true
+    variants:
+      - { tag: 0, name: css }
+      - { tag: 1, name: device }

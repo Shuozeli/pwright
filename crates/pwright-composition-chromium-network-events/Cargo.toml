@@ -1,0 +1,29 @@
+[package]
+name = "pwright-composition-chromium-network-events"
+description = "Caller-polled Chromium network lifecycle composition for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-network-events = { workspace = true }
+pwright-cap-network-events = { workspace = true }
+pwright-codec-network-events = { workspace = true }
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-runtime-control = { workspace = true }
+pwright-server-events = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-control = { workspace = true }
+pwright-network-model = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport-memory = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

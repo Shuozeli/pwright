@@ -1,0 +1,10 @@
+[package]
+name = "pwright-v2-topology-only-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+pwright-backend-cdp-topology = { path = "../../crates/pwright-backend-cdp-topology" }

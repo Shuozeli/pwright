@@ -1,0 +1,248 @@
+format: 1
+capability: pwright.artifact
+display_name: Artifact streaming
+version: { major: 1, minor: 0 }
+root: pwright.artifact
+imports:
+  - pwright.common
+commands:
+  - id: artifact.delete
+    name: artifact_delete
+    method: 720899
+    targets: [pwright.browser.artifact]
+    command: artifact_delete_command
+    result: artifact_delete_result
+    params_type: pwright.artifact.artifact_delete_options
+    result_type: pwright.artifact.unit
+    error_details_type: pwright.artifact.error_details
+  - id: artifact.failure
+    name: artifact_failure
+    method: 720898
+    targets: [pwright.browser.artifact]
+    command: artifact_failure_command
+    result: artifact_failure_result
+    params_type: pwright.artifact.artifact_failure_options
+    result_type: pwright.artifact.artifact_failure_data
+    error_details_type: pwright.artifact.error_details
+  - id: artifact.open_stream
+    name: artifact_open_stream
+    method: 720897
+    targets: [pwright.browser.artifact]
+    command: artifact_open_stream_command
+    result: artifact_open_stream_result
+    params_type: pwright.artifact.artifact_open_stream_options
+    result_type: pwright.artifact.stream_initializer
+    error_details_type: pwright.artifact.error_details
+  - id: stream.close
+    name: stream_close
+    method: 720901
+    targets: [pwright.browser.stream]
+    command: stream_close_command
+    result: stream_close_result
+    params_type: pwright.artifact.stream_close_options
+    result_type: pwright.artifact.unit
+    error_details_type: pwright.artifact.error_details
+  - id: stream.read
+    name: stream_read
+    method: 720900
+    targets: [pwright.browser.stream]
+    command: stream_read_command
+    result: stream_read_result
+    params_type: pwright.artifact.stream_read_options
+    result_type: pwright.artifact.stream_read_data
+    error_details_type: pwright.artifact.error_details
+types:
+  - kind: tagged_union
+    id: pwright.artifact
+    variants:
+      - tag: 1
+        name: artifact_open_stream_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.artifact.artifact_open_stream_options }
+      - tag: 2
+        name: artifact_open_stream_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.artifact.stream_outcome }
+      - tag: 3
+        name: artifact_failure_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.artifact.artifact_failure_options }
+      - tag: 4
+        name: artifact_failure_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.artifact.failure_outcome }
+      - tag: 5
+        name: artifact_delete_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.artifact.artifact_delete_options }
+      - tag: 6
+        name: artifact_delete_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.artifact.unit_outcome }
+      - tag: 7
+        name: stream_read_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.artifact.stream_read_options }
+      - tag: 8
+        name: stream_read_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.artifact.read_outcome }
+      - tag: 9
+        name: stream_close_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.artifact.stream_close_options }
+      - tag: 10
+        name: stream_close_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.artifact.unit_outcome }
+
+  - kind: record
+    id: pwright.artifact.artifact_delete_options
+    public_name: artifact_delete_options
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.artifact.artifact_failure_data
+    public_name: artifact_failure_result
+    public_external: true
+    fields:
+      - { name: error, type: utf8, cardinality: optional }
+
+  - kind: record
+    id: pwright.artifact.artifact_failure_options
+    public_name: artifact_failure_options
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.artifact.artifact_open_stream_options
+    public_name: artifact_open_stream_options
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.artifact.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - { name: details, type: message, target: pwright.artifact.error_details, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.artifact.error_details
+    public_name: artifact_error_details
+    variants:
+      - tag: 0
+        name: invalid_options
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: resource
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: tagged_union
+    id: pwright.artifact.failure_outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.artifact.artifact_failure_data }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.artifact.error }
+
+  - kind: tagged_union
+    id: pwright.artifact.read_outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.artifact.stream_read_data }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.artifact.error }
+
+  - kind: record
+    id: pwright.artifact.stream_close_options
+    public_name: stream_close_options
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.artifact.stream_initializer
+    public_name: stream_initializer
+    public_external: true
+    fields:
+      - { name: object_id, type: u64 }
+      - { name: parent_id, type: u64 }
+      - { name: object_kind, type: u32 }
+
+  - kind: tagged_union
+    id: pwright.artifact.stream_outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.artifact.stream_initializer }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.artifact.error }
+
+  - kind: record
+    id: pwright.artifact.stream_read_data
+    public_name: artifact_read_result
+    public_external: true
+    fields:
+      - { name: attachment_index, type: u32 }
+      - { name: byte_length, type: u64 }
+      - { name: eof, type: bool }
+
+  - kind: record
+    id: pwright.artifact.stream_read_options
+    public_name: stream_read_options
+    public_external: true
+    fields:
+      - { name: max_bytes, type: u32, constraints: { minimum: 1 } }
+
+  - kind: record
+    id: pwright.artifact.unit
+    public_name: artifact_unit
+    public_external: true
+    fields: []
+
+  - kind: tagged_union
+    id: pwright.artifact.unit_outcome
+    variants:
+      - { tag: 0, name: success, fields: [] }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.artifact.error }

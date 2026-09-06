@@ -1,0 +1,16 @@
+[package]
+name = "pwright-client-locator"
+description = "Opt-in typed locator actions for pwright-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-locator = { workspace = true }
+pwright-client = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-runtime = { workspace = true }

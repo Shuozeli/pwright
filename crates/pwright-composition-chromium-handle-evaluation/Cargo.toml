@@ -1,0 +1,34 @@
+[package]
+name = "pwright-composition-chromium-handle-evaluation"
+description = "Pluggable Chromium retained-Handle evaluation composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-evaluation = { workspace = true }
+pwright-backend-cdp-handle-evaluation = { workspace = true }
+pwright-cap-handle-evaluation = { workspace = true }
+pwright-cap-handle-lifecycle = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-handle-evaluation = { workspace = true }
+pwright-composition-chromium-handle-lifecycle = { workspace = true }
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-server-handle-evaluation = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-browser-provider = { workspace = true }
+pwright-codec-control = { workspace = true }
+pwright-fake = { workspace = true }
+pwright-plugin-ordered-handle-delivery = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+pwright-runtime-control = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport-memory = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

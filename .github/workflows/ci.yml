@@ -28,6 +28,60 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets
+      - name: Verify navigation-only dependency boundary
+        run: bash scripts/check-v2-navigation-dependencies.sh
+      - name: Verify topology-only dependency boundary
+        run: bash scripts/check-v2-topology-dependencies.sh
+      - name: Verify context-lifecycle-only dependency boundary
+        run: bash scripts/check-v2-context-lifecycle-dependencies.sh
+      - name: Verify Context-lifecycle composition dependency boundary
+        run: bash scripts/check-v2-context-lifecycle-composition-dependencies.sh
+      - name: Verify Context-creation composition dependency boundary
+        run: bash scripts/check-v2-context-creation-composition-dependencies.sh
+      - name: Verify Page-creation composition dependency boundary
+        run: bash scripts/check-v2-page-creation-composition-dependencies.sh
+      - name: Verify page-lifecycle-only dependency boundary
+        run: bash scripts/check-v2-page-lifecycle-dependencies.sh
+      - name: Verify Page-lifecycle composition dependency boundary
+        run: bash scripts/check-v2-page-lifecycle-composition-dependencies.sh
+      - name: Verify context-creation-only dependency boundary
+        run: bash scripts/check-v2-context-creation-dependencies.sh
+      - name: Verify page-creation-only dependency boundary
+        run: bash scripts/check-v2-page-creation-dependencies.sh
+      - name: Verify handle-lifecycle-only dependency boundary
+        run: bash scripts/check-v2-handle-lifecycle-dependencies.sh
+      - name: Verify Handle-lifecycle composition dependency boundary
+        run: bash scripts/check-v2-handle-lifecycle-composition-dependencies.sh
+      - name: Verify Handle-evaluation composition dependency boundary
+        run: bash scripts/check-v2-handle-evaluation-composition-dependencies.sh
+      - name: Verify ordered Handle delivery plugin dependency boundary
+        run: bash scripts/check-v2-ordered-handle-delivery-dependencies.sh
+      - name: Verify handle-evaluation-only dependency boundary
+        run: bash scripts/check-v2-handle-evaluation-dependencies.sh
+      - name: Verify input-only dependency boundary
+        run: bash scripts/check-v2-input-dependencies.sh
+      - name: Verify Locator-only dependency boundary
+        run: bash scripts/check-v2-locator-dependencies.sh
+      - name: Verify Locator-composition dependency boundary
+        run: bash scripts/check-v2-locator-composition-dependencies.sh
+      - name: Verify page-events-only dependency boundary
+        run: bash scripts/check-v2-page-events-dependencies.sh
+      - name: Verify page-events composition dependency boundary
+        run: bash scripts/check-v2-page-events-composition-dependencies.sh
+      - name: Verify network-events-only dependency boundary
+        run: bash scripts/check-v2-network-events-dependencies.sh
+      - name: Verify network-events composition dependency boundary
+        run: bash scripts/check-v2-network-events-composition-dependencies.sh
+      - name: Verify evaluation-only dependency boundary
+        run: bash scripts/check-v2-evaluation-dependencies.sh
+      - name: Verify content-only dependency boundary
+        run: bash scripts/check-v2-content-dependencies.sh
+      - name: Verify Locator-screenshot dependency boundary
+        run: bash scripts/check-v2-locator-screenshot-dependencies.sh
+      - name: Verify DOM-content-only dependency boundary
+        run: bash scripts/check-v2-dom-content-dependencies.sh
+      - name: Verify v2 umbrella feature boundaries
+        run: bash scripts/check-v2-umbrella-dependencies.sh
 
   fmt:
     name: Format

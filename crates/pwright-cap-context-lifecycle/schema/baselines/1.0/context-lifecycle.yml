@@ -1,0 +1,75 @@
+format: 1
+capability: pwright.context_lifecycle
+version: { major: 1, minor: 0 }
+root: pwright.context_lifecycle
+imports:
+  - pwright.common
+commands:
+  - id: browser-context.close
+    name: browser_context_close
+    method: 196609
+    targets: [pwright.browser.browser_context]
+    command: browser_context_close_command
+    result: browser_context_close_result
+    params_type: pwright.context_lifecycle.browser_context_close_options
+    result_type: pwright.context_lifecycle.browser_context_close_success
+    error_details_type: pwright.context_lifecycle.error_details
+types:
+  - kind: tagged_union
+    id: pwright.context_lifecycle
+    variants:
+      - tag: 1
+        name: browser_context_close_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.context_lifecycle.browser_context_close_options }
+      - tag: 2
+        name: browser_context_close_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.context_lifecycle.outcome }
+  - kind: record
+    id: pwright.context_lifecycle.browser_context_close_options
+    public_name: browser_context_close_options
+    public_external: true
+    fields: []
+  - kind: record
+    id: pwright.context_lifecycle.browser_context_close_success
+    public_name: browser_context_close_result
+    public_external: true
+    fields: []
+  - kind: record
+    id: pwright.context_lifecycle.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - name: details
+        type: message
+        target: pwright.context_lifecycle.error_details
+        cardinality: optional
+  - kind: tagged_union
+    id: pwright.context_lifecycle.error_details
+    public_name: context_lifecycle_error_details
+    variants:
+      - tag: 0
+        name: not_owned
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: invalid_backend_response
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+  - kind: tagged_union
+    id: pwright.context_lifecycle.outcome
+    variants:
+      - { tag: 0, name: success, fields: [] }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.context_lifecycle.error }

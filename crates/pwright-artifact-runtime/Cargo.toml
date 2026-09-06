@@ -1,0 +1,25 @@
+[package]
+name = "pwright-artifact-runtime"
+description = "Atomic runtime lifecycle and ordered-control composition for Artifact services"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-artifact-service = { workspace = true }
+pwright-browser-model = { workspace = true }
+pwright-cap-artifact = { workspace = true }
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-runtime-control = { workspace = true }
+pwright-server-artifact = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-codec-control = { workspace = true }
+pwright-trace-format = { workspace = true }
+pwright-trace-model = { workspace = true }
+pwright-transport-memory = { workspace = true }
+tokio = { workspace = true }

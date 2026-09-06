@@ -1,0 +1,81 @@
+format: 1
+capability: pwright.browser_lifecycle
+version: { major: 1, minor: 0 }
+root: pwright.browser_lifecycle
+imports:
+  - pwright.common
+commands:
+  - id: browser.close
+    name: browser_close
+    method: 458753
+    targets: [pwright.browser.browser]
+    command: browser_close_command
+    result: browser_close_result
+    params_type: pwright.browser_lifecycle.browser_close_options
+    result_type: pwright.browser_lifecycle.browser_close_success
+    error_details_type: pwright.browser_lifecycle.error_details
+types:
+  - kind: tagged_union
+    id: pwright.browser_lifecycle
+    variants:
+      - tag: 1
+        name: browser_close_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.browser_lifecycle.browser_close_options }
+      - tag: 2
+        name: browser_close_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.browser_lifecycle.outcome }
+
+  - kind: record
+    id: pwright.browser_lifecycle.browser_close_options
+    public_name: browser_close_options
+    public_external: true
+    fields:
+      - { name: reason, type: utf8, cardinality: optional }
+
+  - kind: record
+    id: pwright.browser_lifecycle.browser_close_success
+    public_name: browser_close_result
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.browser_lifecycle.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - name: details
+        type: message
+        target: pwright.browser_lifecycle.error_details
+        cardinality: optional
+
+  - kind: tagged_union
+    id: pwright.browser_lifecycle.error_details
+    public_name: browser_lifecycle_error_details
+    variants:
+      - tag: 0
+        name: not_authorized
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: shutdown
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: cleanup
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: tagged_union
+    id: pwright.browser_lifecycle.outcome
+    variants:
+      - { tag: 0, name: success, fields: [] }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.browser_lifecycle.error }

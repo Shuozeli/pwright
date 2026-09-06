@@ -1,0 +1,16 @@
+[package]
+name = "pwright-backend-cdp-selector-runtime"
+description = "Command-free bounded Chromium selector compiler and page runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-selector-model = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pwright-selector-model = { workspace = true }

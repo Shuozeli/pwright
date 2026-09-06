@@ -1,0 +1,8 @@
+[package]
+name = "pwright-v2-umbrella-client-network-events"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+pwright = { workspace = true, features = ["client-network-events"] }

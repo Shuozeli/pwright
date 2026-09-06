@@ -1,0 +1,22 @@
+[package]
+name = "pwright-composition-chromium-dom-content"
+description = "Minimal Chromium CDP server composition for Pwright read-only DOM content"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-dom-content = { workspace = true }
+pwright-cap-dom-content = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-dom-content = { workspace = true }
+pwright-core = { workspace = true }
+pwright-server-dom-content = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

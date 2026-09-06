@@ -1,0 +1,34 @@
+[package]
+name = "pwright-plugin-tracing-artifact"
+description = "Opt-in bounded tracing-to-Artifact producer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-artifact-runtime = { workspace = true }
+pwright-browser-model = { workspace = true }
+pwright-cap-artifact = { workspace = true }
+pwright-cap-tracing = { workspace = true }
+pwright-cap-tracing-artifact = { workspace = true }
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-runtime-control = { workspace = true }
+pwright-server-tracing-artifact = { workspace = true }
+pwright-trace-format = { workspace = true }
+pwright-tracing-service = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-artifact-service = { workspace = true }
+pwright-client = { workspace = true }
+pwright-client-tracing-artifact = { workspace = true }
+pwright-client-wire = { workspace = true }
+pwright-codec-control = { workspace = true }
+pwright-codec-tracing-artifact = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-trace-model = { workspace = true }
+pwright-transport-memory = { workspace = true }
+tokio = { workspace = true }

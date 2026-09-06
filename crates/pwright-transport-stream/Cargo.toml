@@ -1,0 +1,12 @@
+[package]
+name = "pwright-transport-stream"
+description = "Canonical bounded binary stream envelopes for Pwright wire frames"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }

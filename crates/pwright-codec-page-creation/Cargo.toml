@@ -1,0 +1,15 @@
+[package]
+name = "pwright-codec-page-creation"
+description = "Bounded binary codec for Pwright Page creation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-page-creation = { workspace = true }
+pwright-codec-binary = { workspace = true }
+pwright-codec-common = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }

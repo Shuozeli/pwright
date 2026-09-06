@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+    "empty",
+    "client-content",
+    "client-context-lifecycle",
+    "client-page-lifecycle",
+    "client-page-creation",
+    "client-page-events",
+    "client-network-events",
+    "client-handle-lifecycle",
+    "client-handle-evaluation",
+    "client-context-creation",
+    "ordered-handle-delivery",
+    "client-locator",
+    "client-locator-screenshot",
+    "client-dom-content",
+    "client-evaluation",
+    "client-navigation",
+    "chromium-content",
+    "chromium-context-lifecycle",
+    "chromium-page-lifecycle",
+    "chromium-page-creation",
+    "chromium-page-events",
+    "chromium-network-events",
+    "chromium-handle-lifecycle",
+    "chromium-handle-evaluation",
+    "chromium-context-creation",
+    "chromium-locator",
+    "chromium-locator-screenshot",
+    "chromium-dom-content",
+    "chromium-evaluation",
+    "chromium-navigation",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+pwright = { path = "../../crates/pwright", default-features = false }

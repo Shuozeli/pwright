@@ -1,0 +1,122 @@
+format: 1
+capability: pwright.content
+display_name: Content capture
+version: { major: 1, minor: 0 }
+root: pwright.content
+imports:
+  - pwright.common
+commands:
+  - id: page.screenshot
+    name: page_screenshot
+    method: 327681
+    targets: [pwright.browser.page]
+    command: page_screenshot_command
+    result: page_screenshot_result
+    params_type: pwright.content.screenshot_options
+    result_type: pwright.content.screenshot_data
+    error_details_type: pwright.content.error_details
+types:
+  - kind: tagged_union
+    id: pwright.content
+    variants:
+      - tag: 1
+        name: page_screenshot_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.content.screenshot_options }
+      - tag: 2
+        name: page_screenshot_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.content.outcome }
+
+  - kind: record
+    id: pwright.content.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - { name: details, type: message, target: pwright.content.error_details, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.content.error_details
+    public_name: content_error_details
+    variants:
+      - tag: 0
+        name: invalid_options
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: invalid_backend_response
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: resource
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 3
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: tagged_union
+    id: pwright.content.outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.content.screenshot_data }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.content.error }
+
+  - kind: record
+    id: pwright.content.screenshot_clip
+    public_name: screenshot_clip
+    public_external: true
+    fields:
+      - { name: x, type: f64 }
+      - { name: y, type: f64 }
+      - { name: width, type: f64 }
+      - { name: height, type: f64 }
+
+  - kind: record
+    id: pwright.content.screenshot_data
+    public_name: screenshot_data
+    public_external: true
+    fields:
+      - { name: attachment_index, type: u32 }
+      - { name: byte_length, type: u64 }
+      - { name: format, type: enum, target: pwright.content.screenshot_format }
+
+  - kind: enum
+    id: pwright.content.screenshot_format
+    public_name: screenshot_format
+    public_external: true
+    variants:
+      - { tag: 0, name: png }
+      - { tag: 1, name: jpeg }
+      - { tag: 2, name: webp }
+
+  - kind: record
+    id: pwright.content.screenshot_options
+    public_name: screenshot_options
+    public_external: true
+    encoding: extensible
+    encoded_size: { minimum: 0, maximum: 128 }
+    fields:
+      - { tag: 1, name: format, type: enum, target: pwright.content.screenshot_format, cardinality: optional }
+      - { tag: 2, name: quality, type: u8, cardinality: optional, constraints: { maximum: 100 } }
+      - { tag: 3, name: full_page, type: bool, cardinality: optional }
+      - { tag: 4, name: clip, type: message, target: pwright.content.screenshot_clip, cardinality: optional }
+      - { tag: 5, name: scale, type: enum, target: pwright.content.screenshot_scale, cardinality: optional }
+
+  - kind: enum
+    id: pwright.content.screenshot_scale
+    public_name: screenshot_scale
+    public_external: true
+    variants:
+      - { tag: 0, name: css }
+      - { tag: 1, name: device }

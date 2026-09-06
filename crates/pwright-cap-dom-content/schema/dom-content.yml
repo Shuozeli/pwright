@@ -1,0 +1,87 @@
+format: 1
+capability: pwright.dom_content
+display_name: Read-only DOM content
+version: { major: 1, minor: 0 }
+root: pwright.dom_content
+imports:
+  - pwright.common
+commands:
+  - id: frame.content
+    name: frame_content
+    method: 393217
+    targets: [pwright.browser.frame]
+    command: frame_content_command
+    result: frame_content_result
+    params_type: pwright.dom_content.params
+    result_type: pwright.dom_content.data
+    error_details_type: pwright.dom_content.error_details
+types:
+  - kind: tagged_union
+    id: pwright.dom_content
+    variants:
+      - tag: 1
+        name: frame_content_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.dom_content.params }
+      - tag: 2
+        name: frame_content_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.dom_content.outcome }
+
+  - kind: record
+    id: pwright.dom_content.data
+    public_name: dom_content_data
+    public_external: true
+    fields:
+      - { name: attachment_index, type: u32 }
+      - { name: byte_length, type: u64 }
+
+  - kind: record
+    id: pwright.dom_content.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - { name: details, type: message, target: pwright.dom_content.error_details, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.dom_content.error_details
+    public_name: dom_content_error_details
+    variants:
+      - tag: 0
+        name: content_changed_during_navigation
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: invalid_backend_response
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: resource
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 3
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: tagged_union
+    id: pwright.dom_content.outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.dom_content.data }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.dom_content.error }
+
+  - kind: record
+    id: pwright.dom_content.params
+    public_name: dom_content_params
+    public_external: true
+    fields: []

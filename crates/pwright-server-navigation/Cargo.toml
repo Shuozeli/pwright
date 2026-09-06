@@ -1,0 +1,18 @@
+[package]
+name = "pwright-server-navigation"
+description = "Generated composable server bindings for the Pwright navigation capability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-navigation = { workspace = true }
+pwright-codec-navigation = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-core = { workspace = true }

@@ -24,3 +24,7 @@ tracing-subscriber = { workspace = true }
 chrono = "0.4"
 reqwest = { workspace = true }
 pwright-script = { workspace = true }
+
+[dev-dependencies]
+pwright-bridge = { workspace = true, features = ["test-utils"] }
+tempfile = "3.24"

@@ -1,0 +1,12 @@
+[package]
+name = "pwright-codec-common"
+description = "Generated common wire values shared by composable Pwright capability codecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-codec-binary = { workspace = true }
+pwright-core = { workspace = true }

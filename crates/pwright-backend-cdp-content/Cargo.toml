@@ -1,0 +1,20 @@
+[package]
+name = "pwright-backend-cdp-content"
+description = "Isolated Chromium CDP adapter for Pwright Page screenshots"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+pwright-backend-cdp-common = { workspace = true }
+pwright-browser-backend = { workspace = true }
+pwright-cap-content = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }

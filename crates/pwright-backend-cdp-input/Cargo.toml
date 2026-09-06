@@ -1,0 +1,17 @@
+[package]
+name = "pwright-backend-cdp-input"
+description = "Isolated Chromium CDP Page input transaction foundation for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cdp = { workspace = true }
+pwright-input-model = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

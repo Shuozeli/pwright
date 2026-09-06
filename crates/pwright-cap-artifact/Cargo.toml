@@ -1,0 +1,12 @@
+[package]
+name = "pwright-cap-artifact"
+description = "Portable opt-in Artifact and Stream capability contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-artifact-model = { workspace = true }
+pwright-core = { workspace = true }

@@ -1,3 +1,5 @@
+<!-- agent-updated: 2026-09-05T13:26:15Z -->
+
 # pwright
 
 A lightweight Rust CLI for browser automation via Chrome DevTools Protocol.
@@ -58,6 +60,63 @@ pwright open https://example.com
 This auto-discovers Chrome's WebSocket URL, creates a tab, navigates, and
 saves session state to `.pwright/state.json`. All subsequent commands reuse
 this session -- no need to re-specify connection details.
+
+## Experimental composable Rust v2
+
+The existing CLI above remains the supported v1 path. The parallel Rust v2
+library now has a no-default-features umbrella and never downloads or launches
+a browser unless a separate explicit component is selected and invoked:
+
+```toml
+# Portable navigation types only
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["navigation"] }
+
+# Portable by-value evaluation types only
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["evaluation"] }
+
+# Portable Page screenshot types only
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["content"] }
+
+# Portable Locator screenshot types only
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["locator-screenshot"] }
+
+# Portable read-only Frame DOM-content types only
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["dom-content"] }
+
+# Client-side Page navigation without CDP/server code
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["client-navigation"] }
+
+# Client-side Frame/Page evaluation without CDP/server code
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["client-evaluation"] }
+
+# Client-side Page screenshot without CDP/server code
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["client-content"] }
+
+# Client-side Locator screenshot without CDP/server code
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["client-locator-screenshot"] }
+
+# Client-side Frame/Page content without CDP/server code
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["client-dom-content"] }
+
+# Attach-only Chromium navigation server without client/provider/installer code
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["chromium-navigation"] }
+
+# Attach-only one-Frame Chromium evaluation server
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["chromium-evaluation"] }
+
+# Attach-only one-Page Chromium screenshot server
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["chromium-content"] }
+
+# Attach-only Chromium Locator screenshot composition with the first-party
+# selector-geometry plugin; the underlying composition still accepts alternatives
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["chromium-locator-screenshot"] }
+
+# Attach-only one-Frame Chromium DOM-content server
+pwright = { git = "https://github.com/Shuozeli/pwright", features = ["chromium-dom-content"] }
+```
+
+See [the v2 dependency topology](docs/knowledge/pwright-dependency-topology.md)
+for the exact compile-time dependency proofs and current limitations.
 
 ## The Snapshot Workflow
 
@@ -138,6 +197,24 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 |---------|-------------|
 | `pwright screenshot [--filename name]` | Capture page as PNG |
 | `pwright pdf [--filename name]` | Export page as PDF |
+| `pwright capture-url <url> --dest path` | Save raw browser response bytes with status, headers, redirects, and a byte cap |
+
+`capture-url` is intended for documents and endpoints that must pass through
+Chrome but cannot be read with page JavaScript because of CORS or Chrome's PDF
+viewer. Add `--context-url <issuer-page>` to establish cookies and referrer
+context first, `--max-bytes N` to bound the decoded body, and `--json` for a
+machine-readable result. Existing destination files are never overwritten.
+Once the exact body and metadata are durably written, a transient
+post-capture Fetch-disable or exact-tab-close failure is emitted as a
+structured warning rather than changing the acquisition to failure. A failed
+tab close retains its exact lease so the next same-endpoint invocation can
+recover only that tab.
+
+For shared Chrome processes with an unhealthy or unsuitable process-wide
+proxy, set `PWRIGHT_EPHEMERAL_PROXY_SERVER`. `script run` and `capture-url`
+then create their transient tab in an isolated browser context using that
+proxy and dispose the context during exact-tab cleanup. Persistent
+`open`/`goto` sessions and other profiles are unchanged.
 
 ### Tabs
 
@@ -160,6 +237,8 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
 | `--cdp <url>` | `PWRIGHT_CDP` | `http://localhost:9222` | Chrome CDP endpoint |
+| `--ephemeral-proxy-server <url>` | `PWRIGHT_EPHEMERAL_PROXY_SERVER` | unset | Proxy override for isolated `script run` and `capture-url` tabs |
+| `--ephemeral-proxy-bypass-list <list>` | `PWRIGHT_EPHEMERAL_PROXY_BYPASS_LIST` | unset | Chromium-format bypass list for the isolated proxy |
 
 ## Examples
 
@@ -285,6 +364,8 @@ See [deploy/README.md](deploy/README.md) for details.
 ## Documentation
 
 - [Architecture](docs/architecture.md) -- crate structure, layer design, concurrency model
+- [Composable Architecture v2](docs/architecture-v2.md) -- isolated pluggable rewrite foundation, implementation boundaries, and attach-versus-launch ownership
+- [Pwright Rust v2 Design Tasks](docs/design-tasks-v2.md) -- design gates and verified implementation checkpoints
 - [Getting Started](docs/getting-started.md) -- prerequisites, Chrome setup, first use
 - [CLI Guide](docs/cli-guide.md) -- full command reference
 - [gRPC API Reference](docs/grpc-api.md) -- all RPCs with request/response schemas

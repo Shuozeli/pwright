@@ -1,0 +1,72 @@
+format: 1
+protocol: pwright.handshake
+version: { major: 1, minor: 0 }
+root: pwright.handshake
+types:
+  - kind: tagged_union
+    id: pwright.handshake
+    variants:
+      - tag: 1
+        name: legacy_client_hello
+        fields:
+          - { name: versions, type: message, target: pwright.handshake.version_policy }
+          - { name: receive_limits, type: message, target: pwright.handshake.frame_limits }
+          - { name: required_count, type: u32 }
+          - { name: optional_count, type: u32 }
+          - { name: required_capabilities, type: message, target: pwright.handshake.legacy_requirement, cardinality: repeated, counted_by: required_count }
+          - { name: optional_capabilities, type: message, target: pwright.handshake.legacy_requirement, cardinality: repeated, counted_by: optional_count }
+      - tag: 2
+        name: server_hello
+        fields:
+          - { name: selected_version, type: message, target: pwright.handshake.version }
+          - { name: client_receive_limits, type: message, target: pwright.handshake.frame_limits }
+          - { name: server_receive_limits, type: message, target: pwright.handshake.frame_limits }
+          - { name: enabled_count, type: u32 }
+          - { name: enabled_capabilities, type: message, target: pwright.handshake.enabled_capability, cardinality: repeated, counted_by: enabled_count }
+      - tag: 3
+        name: ranged_client_hello
+        fields:
+          - { name: versions, type: message, target: pwright.handshake.version_policy }
+          - { name: receive_limits, type: message, target: pwright.handshake.frame_limits }
+          - { name: required_count, type: u32 }
+          - { name: optional_count, type: u32 }
+          - { name: required_capabilities, type: message, target: pwright.handshake.ranged_requirement, cardinality: repeated, counted_by: required_count }
+          - { name: optional_capabilities, type: message, target: pwright.handshake.ranged_requirement, cardinality: repeated, counted_by: optional_count }
+
+  - kind: record
+    id: pwright.handshake.enabled_capability
+    fields:
+      - { name: id, type: utf8 }
+      - { name: version, type: message, target: pwright.handshake.version }
+
+  - kind: record
+    id: pwright.handshake.frame_limits
+    fields:
+      - { name: payload_bytes, type: u64 }
+      - { name: attachments, type: u64 }
+      - { name: attachment_bytes, type: u64 }
+      - { name: total_bytes, type: u64 }
+
+  - kind: record
+    id: pwright.handshake.legacy_requirement
+    fields:
+      - { name: id, type: utf8 }
+      - { name: version, type: message, target: pwright.handshake.version }
+
+  - kind: record
+    id: pwright.handshake.ranged_requirement
+    fields:
+      - { name: id, type: utf8 }
+      - { name: versions, type: message, target: pwright.handshake.version_policy }
+
+  - kind: record
+    id: pwright.handshake.version
+    fields:
+      - { name: major, type: u16 }
+      - { name: minor, type: u16 }
+
+  - kind: record
+    id: pwright.handshake.version_policy
+    fields:
+      - { name: minimum, type: message, target: pwright.handshake.version }
+      - { name: maximum, type: message, target: pwright.handshake.version }

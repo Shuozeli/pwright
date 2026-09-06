@@ -5,8 +5,9 @@ use std::path::Path;
 
 use crate::error::ScriptError;
 use crate::model::{
-    ClickStep, EvalStep, ExtractStep, FillStep, GotoStep, JsFunction, OnError, OutputStep,
-    ParamDef, ParamType, PressStep, Script, ScriptConfig, Step, StepKind, WaitKind, WaitStep,
+    ClickAtStep, ClickStep, EvalStep, ExtractStep, FillStep, GotoStep, JsFunction, OnError,
+    OutputStep, ParamDef, ParamType, PressStep, Script, ScriptConfig, Step, StepKind, TypeTextStep,
+    WaitKind, WaitStep,
 };
 
 /// Parse a YAML string into a Script.
@@ -116,6 +117,10 @@ fn parse_config(val: &serde_yaml::Value) -> ScriptConfig {
     };
     ScriptConfig {
         default_timeout_ms: val["default_timeout_ms"].as_i64().unwrap_or(30000).max(0) as u64,
+        connection_timeout_ms: val["connection_timeout_ms"]
+            .as_i64()
+            .unwrap_or(30000)
+            .max(0) as u64,
         default_on_error,
     }
 }
@@ -189,6 +194,23 @@ fn parse_step(val: &serde_yaml::Value, index: usize) -> Result<Step, ScriptError
             selector: selector.to_string(),
             wait_for: val["wait_for"].as_str().map(|s| s.to_string()),
         })
+    } else if val["click_at"].is_mapping() {
+        let m = &val["click_at"];
+        StepKind::ClickAt(ClickAtStep {
+            x: m["x"].as_f64(),
+            y: m["y"].as_f64(),
+            js_ref: m["ref"].as_str().map(|s| s.to_string()),
+            args: m["args"]
+                .as_sequence()
+                .map(|arr| arr.iter().map(yaml_value_to_string).collect())
+                .unwrap_or_default(),
+            button: m["button"].as_str().unwrap_or("left").to_string(),
+            click_count: m["click_count"]
+                .as_i64()
+                .and_then(|value| i32::try_from(value).ok())
+                .unwrap_or(1),
+            modifier: m["modifier"].as_str().map(str::to_string),
+        })
     } else if val["fill"].is_mapping() {
         let m = &val["fill"];
         StepKind::Fill(FillStep {
@@ -204,6 +226,10 @@ fn parse_step(val: &serde_yaml::Value, index: usize) -> Result<Step, ScriptError
     } else if let Some(key) = val["press"].as_str() {
         StepKind::Press(PressStep {
             key: key.to_string(),
+        })
+    } else if let Some(text) = val["type_text"].as_str() {
+        StepKind::TypeText(TypeTextStep {
+            text: text.to_string(),
         })
     } else if val["extract"].is_mapping() {
         let m = &val["extract"];
@@ -376,10 +402,15 @@ steps:
   - goto: "https://example.com"
     wait_for: "h1"
   - click: "button"
+  - click_at:
+      x: 10
+      y: 20
+      button: right
   - fill:
       selector: "#email"
       value: "user@test.example"
   - press: "Enter"
+  - type_text: "hello"
   - extract:
       selector: "h1"
       field: text_content
@@ -391,7 +422,39 @@ steps:
       title: "{{ title }}"
 "##;
         let script = parse_yaml(yaml).unwrap();
-        assert_eq!(script.steps.len(), 7);
+        assert_eq!(script.steps.len(), 9);
+        assert!(matches!(&script.steps[2].kind, StepKind::ClickAt(_)));
+        assert!(matches!(&script.steps[5].kind, StepKind::TypeText(_)));
+    }
+
+    #[test]
+    fn parse_click_at_from_script_result() {
+        // Arrange
+        let yaml = r#"
+name: "Semantic click"
+scripts:
+  semantic_position: "return [10, 20]"
+steps:
+  - click_at:
+      ref: semantic_position
+      args: ["hud.chat.input"]
+      button: right
+      click_count: 2
+      modifier: Control
+"#;
+
+        // Act
+        let script = parse_yaml(yaml).unwrap();
+
+        // Assert
+        let StepKind::ClickAt(step) = &script.steps[0].kind else {
+            panic!("expected click_at step");
+        };
+        assert_eq!(step.js_ref.as_deref(), Some("semantic_position"));
+        assert_eq!(step.args, ["hud.chat.input"]);
+        assert_eq!(step.button, "right");
+        assert_eq!(step.click_count, 2);
+        assert_eq!(step.modifier.as_deref(), Some("Control"));
     }
 
     #[test]
@@ -407,17 +470,24 @@ steps:
     }
 
     #[test]
-    fn parse_config() {
+    fn connection_timeout_is_configured_independently_from_step_timeout() {
+        // Arrange
         let yaml = r#"
 name: "Config test"
 config:
   default_timeout_ms: 5000
+  connection_timeout_ms: 45000
   default_on_error: continue
 steps:
   - goto: "https://example.com"
 "#;
+
+        // Act
         let script = parse_yaml(yaml).unwrap();
+
+        // Assert
         assert_eq!(script.config.default_timeout_ms, 5000);
+        assert_eq!(script.config.connection_timeout_ms, 45000);
         assert_eq!(script.config.default_on_error, OnError::Continue);
     }
 }

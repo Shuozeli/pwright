@@ -1031,9 +1031,9 @@ mod tests {
         assert!(mock.method_names().contains(&"Network.enable".to_string()));
 
         // Inject a response event
-        mock.send_event(pwright_cdp::CdpEvent {
-            method: "Network.responseReceived".to_string(),
-            params: serde_json::json!({
+        mock.send_event(pwright_cdp::CdpEvent::new(
+            "Network.responseReceived".to_string(),
+            serde_json::json!({
                 "requestId": "req-1",
                 "response": {
                     "url": "https://example.com/api",
@@ -1043,8 +1043,8 @@ mod tests {
                     "mimeType": "text/html"
                 }
             }),
-            session_id: None,
-        });
+            None,
+        ));
 
         let resp = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
             .await
@@ -1062,9 +1062,9 @@ mod tests {
         let page = Page::new(mock.clone());
         let mut rx = page.on_request().await.unwrap();
 
-        mock.send_event(pwright_cdp::CdpEvent {
-            method: "Network.requestWillBeSent".to_string(),
-            params: serde_json::json!({
+        mock.send_event(pwright_cdp::CdpEvent::new(
+            "Network.requestWillBeSent".to_string(),
+            serde_json::json!({
                 "requestId": "req-3",
                 "request": {
                     "url": "https://example.com/submit",
@@ -1073,8 +1073,8 @@ mod tests {
                 },
                 "type": "Fetch"
             }),
-            session_id: None,
-        });
+            None,
+        ));
 
         let req = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
             .await
@@ -1125,9 +1125,9 @@ mod tests {
         let mock2 = mock.clone();
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            mock2.send_event(pwright_cdp::CdpEvent {
-                method: "Network.responseReceived".to_string(),
-                params: serde_json::json!({
+            mock2.send_event(pwright_cdp::CdpEvent::new(
+                "Network.responseReceived".to_string(),
+                serde_json::json!({
                     "requestId": "req-api",
                     "response": {
                         "url": "https://example.com/api/search",
@@ -1137,8 +1137,8 @@ mod tests {
                         "mimeType": "application/json"
                     }
                 }),
-                session_id: None,
-            });
+                None,
+            ));
         });
 
         let resp = page
@@ -1159,9 +1159,9 @@ mod tests {
         tokio::spawn(async move {
             tokio::task::yield_now().await;
             // First: non-matching
-            mock2.send_event(pwright_cdp::CdpEvent {
-                method: "Network.responseReceived".to_string(),
-                params: serde_json::json!({
+            mock2.send_event(pwright_cdp::CdpEvent::new(
+                "Network.responseReceived".to_string(),
+                serde_json::json!({
                     "requestId": "req-css",
                     "response": {
                         "url": "https://example.com/style.css",
@@ -1171,12 +1171,12 @@ mod tests {
                         "mimeType": "text/css"
                     }
                 }),
-                session_id: None,
-            });
+                None,
+            ));
             // Second: matching
-            mock2.send_event(pwright_cdp::CdpEvent {
-                method: "Network.responseReceived".to_string(),
-                params: serde_json::json!({
+            mock2.send_event(pwright_cdp::CdpEvent::new(
+                "Network.responseReceived".to_string(),
+                serde_json::json!({
                     "requestId": "req-api",
                     "response": {
                         "url": "https://example.com/api/data",
@@ -1186,8 +1186,8 @@ mod tests {
                         "mimeType": "application/json"
                     }
                 }),
-                session_id: None,
-            });
+                None,
+            ));
         });
 
         let resp = page
@@ -1222,9 +1222,9 @@ mod tests {
         let mock2 = mock.clone();
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            mock2.send_event(pwright_cdp::CdpEvent {
-                method: "Network.requestWillBeSent".to_string(),
-                params: serde_json::json!({
+            mock2.send_event(pwright_cdp::CdpEvent::new(
+                "Network.requestWillBeSent".to_string(),
+                serde_json::json!({
                     "requestId": "req-post",
                     "request": {
                         "url": "https://example.com/api/submit",
@@ -1233,8 +1233,8 @@ mod tests {
                     },
                     "type": "XHR"
                 }),
-                session_id: None,
-            });
+                None,
+            ));
         });
 
         let req = page

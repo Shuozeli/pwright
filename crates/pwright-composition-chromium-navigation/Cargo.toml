@@ -1,0 +1,22 @@
+[package]
+name = "pwright-composition-chromium-navigation"
+description = "Minimal Chromium CDP server composition for the Pwright navigation capability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-navigation = { workspace = true }
+pwright-cap-navigation = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-navigation = { workspace = true }
+pwright-core = { workspace = true }
+pwright-server-navigation = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

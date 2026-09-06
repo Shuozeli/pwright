@@ -1,0 +1,10 @@
+[package]
+name = "pwright-v2-handle-evaluation-composition-only-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+pwright-composition-chromium-handle-evaluation = { path = "../../crates/pwright-composition-chromium-handle-evaluation" }

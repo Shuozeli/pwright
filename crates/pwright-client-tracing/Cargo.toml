@@ -1,0 +1,16 @@
+[package]
+name = "pwright-client-tracing"
+description = "Opt-in BrowserContext tracing methods for Pwright clients"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-tracing = { workspace = true }
+pwright-client = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

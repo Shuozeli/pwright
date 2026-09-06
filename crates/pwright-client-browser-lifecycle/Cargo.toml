@@ -1,0 +1,16 @@
+[package]
+name = "pwright-client-browser-lifecycle"
+description = "Opt-in owned Browser lifecycle extensions for pwright-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-browser-lifecycle = { workspace = true }
+pwright-client = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

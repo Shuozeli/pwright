@@ -1,5 +1,8 @@
-# Build artifacts
-/target/
+# Build artifacts (workspace and standalone example crates)
+target/
+
+# Local validation scratch data
+/.work/
 
 # Session state (created by pwright CLI)
 .pwright/

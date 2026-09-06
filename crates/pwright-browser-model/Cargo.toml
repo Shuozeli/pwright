@@ -1,0 +1,11 @@
+[package]
+name = "pwright-browser-model"
+description = "Canonical core-only browser object identities for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }

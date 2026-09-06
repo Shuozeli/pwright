@@ -38,6 +38,7 @@ pub struct Script {
 #[derive(Debug, Clone)]
 pub struct ScriptConfig {
     pub default_timeout_ms: u64,
+    pub connection_timeout_ms: u64,
     pub default_on_error: OnError,
 }
 
@@ -45,6 +46,7 @@ impl Default for ScriptConfig {
     fn default() -> Self {
         Self {
             default_timeout_ms: 30000,
+            connection_timeout_ms: 30000,
             default_on_error: OnError::Fail,
         }
     }
@@ -75,8 +77,10 @@ pub struct Step {
 pub enum StepKind {
     Goto(GotoStep),
     Click(ClickStep),
+    ClickAt(ClickAtStep),
     Fill(FillStep),
     Press(PressStep),
+    TypeText(TypeTextStep),
     Extract(ExtractStep),
     Eval(EvalStep),
     Output(OutputStep),
@@ -88,8 +92,10 @@ impl StepKind {
         match self {
             Self::Goto(_) => "goto",
             Self::Click(_) => "click",
+            Self::ClickAt(_) => "click_at",
             Self::Fill(_) => "fill",
             Self::Press(_) => "press",
+            Self::TypeText(_) => "type_text",
             Self::Extract(_) => "extract",
             Self::Eval(_) => "eval",
             Self::Output(_) => "output",
@@ -135,6 +141,17 @@ pub struct ClickStep {
 }
 
 #[derive(Debug, Clone)]
+pub struct ClickAtStep {
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub js_ref: Option<String>,
+    pub args: Vec<String>,
+    pub button: String,
+    pub click_count: i32,
+    pub modifier: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct FillStep {
     pub selector: String,
     pub value: String,
@@ -143,6 +160,11 @@ pub struct FillStep {
 #[derive(Debug, Clone)]
 pub struct PressStep {
     pub key: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeTextStep {
+    pub text: String,
 }
 
 #[derive(Debug, Clone)]

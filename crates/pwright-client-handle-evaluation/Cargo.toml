@@ -1,0 +1,18 @@
+[package]
+name = "pwright-client-handle-evaluation"
+description = "Opt-in handle evaluation methods for Pwright clients"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-handle-evaluation = { workspace = true }
+pwright-client = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-cap-evaluation = { workspace = true }
+tokio = { workspace = true }

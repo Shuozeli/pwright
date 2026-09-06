@@ -32,6 +32,17 @@ impl DownloadBehavior {
 }
 
 impl CdpSession {
+    /// Requests graceful shutdown through CDP `Browser.close`.
+    ///
+    /// The browser may close the transport before the command response is
+    /// observed. Callers that own the browser process must therefore observe
+    /// that process independently rather than treating acknowledgement as
+    /// proof of termination.
+    pub async fn browser_close(&self) -> Result<()> {
+        self.send("Browser.close", serde_json::json!({})).await?;
+        Ok(())
+    }
+
     pub async fn browser_set_download_behavior(
         &self,
         behavior: DownloadBehavior,

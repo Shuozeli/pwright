@@ -1,0 +1,19 @@
+[package]
+name = "pwright-backend-cdp-page-events"
+description = "Isolated Chromium CDP Page event adapter for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-topology = { workspace = true }
+pwright-cap-page-events = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

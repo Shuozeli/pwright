@@ -1,5 +1,8 @@
 /// Command handlers — each maps a CLI subcommand to pwright-bridge calls.
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::{Context, Result};
 use base64::Engine;
@@ -9,10 +12,138 @@ use pwright_bridge::content::ScreenshotFormat;
 use pwright_bridge::navigate::{NavigateOptions, WaitStrategy};
 use pwright_bridge::snapshot::{self, SnapshotFilter};
 use pwright_bridge::{Browser, BrowserConfig};
-use pwright_cdp::{CdpClient, MouseButton, MouseEventType};
+use pwright_cdp::connection::CdpError;
+use pwright_cdp::{CdpClient, KeyEventType, MouseButton, MouseEventType};
 
 use crate::output;
 use crate::state::CliState;
+
+pub(crate) fn ephemeral_lease_root() -> PathBuf {
+    std::env::var_os("PWRIGHT_EPHEMERAL_LEASE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+trait ProcessInspector {
+    fn is_running(&self, process_id: u32) -> bool;
+}
+
+struct HostProcessInspector;
+
+impl ProcessInspector for HostProcessInspector {
+    fn is_running(&self, process_id: u32) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            Path::new("/proc").join(process_id.to_string()).exists()
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            process_id == std::process::id()
+        }
+    }
+}
+
+pub(crate) async fn recover_ephemeral_script_tabs(
+    browser: &Browser,
+    cdp_url: &str,
+    lease_root: &Path,
+) -> Result<()> {
+    recover_ephemeral_script_tabs_with_inspector(
+        browser,
+        cdp_url,
+        lease_root,
+        &HostProcessInspector,
+    )
+    .await
+}
+
+async fn recover_ephemeral_script_tabs_with_inspector(
+    browser: &Browser,
+    cdp_url: &str,
+    lease_root: &Path,
+    process_inspector: &dyn ProcessInspector,
+) -> Result<()> {
+    let paths = crate::state::ephemeral_tab_lease_paths(lease_root)
+        .context("cannot enumerate ephemeral tab leases")?;
+    tracing::debug!(
+        event = "ephemeral_tab_lease_scan",
+        lease_root = %lease_root.display(),
+        lease_count = paths.len(),
+        "ephemeral tab lease scan completed"
+    );
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let targets = browser
+        .browser_client()
+        .target_get_targets()
+        .await
+        .context("cannot inspect leased browser targets")?;
+    let mut unresolved_targets = Vec::new();
+    for path in paths {
+        let lease = match crate::state::load_ephemeral_tab_lease(&path) {
+            Ok(lease) => lease,
+            Err(_) if !path.exists() => continue,
+            Err(error) => return Err(error),
+        };
+        if lease.cdp_url != cdp_url {
+            eprintln!(
+                "[warning] preserving tab lease {} for a different CDP endpoint",
+                path.display()
+            );
+            continue;
+        }
+        let target_exists = targets
+            .iter()
+            .any(|target| target.target_id == lease.target_id);
+        let owner_running = process_inspector.is_running(lease.owner_pid);
+        tracing::debug!(
+            event = "ephemeral_tab_lease_inspected",
+            target_id = lease.target_id,
+            owner_pid = lease.owner_pid,
+            target_exists,
+            owner_running,
+            lease = %path.display(),
+            "ephemeral tab lease inspected"
+        );
+        if target_exists && owner_running {
+            tracing::info!(
+                event = "active_ephemeral_tab_lease_preserved",
+                target_id = lease.target_id,
+                owner_pid = lease.owner_pid,
+                lease = %path.display(),
+                "active sibling tab lease preserved"
+            );
+            continue;
+        }
+        let closed = if target_exists {
+            match browser.close_target(&lease.target_id).await {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!(
+                        "[warning] cannot recover leased tab {}: {}",
+                        lease.target_id, error
+                    );
+                    unresolved_targets.push(lease.target_id.clone());
+                    false
+                }
+            }
+        } else {
+            true
+        };
+        if closed {
+            crate::state::remove_ephemeral_tab_lease(&path)?;
+        }
+    }
+    if !unresolved_targets.is_empty() {
+        anyhow::bail!(
+            "cannot start a new script tab while {} exact leased target(s) remain open: {}",
+            unresolved_targets.len(),
+            unresolved_targets.join(",")
+        );
+    }
+    Ok(())
+}
 
 /// Resolve a ref to a (session, node_id) pair. Used by ref-based action commands.
 async fn resolve_ref_to_session(
@@ -222,13 +353,14 @@ pub async fn click(state: &mut CliState, ref_str: &str) -> Result<()> {
     Ok(())
 }
 
-/// `pwright click-at <x> <y> [--button] [--click-count]`
+/// `pwright click-at <x> <y> [--button] [--click-count] [--modifier]`
 pub async fn click_at(
     state: &mut CliState,
     x: f64,
     y: f64,
     button: &str,
     click_count: i32,
+    modifier: Option<&str>,
 ) -> Result<()> {
     let browser = connect(state).await?;
     let tab = browser
@@ -237,37 +369,82 @@ pub async fn click_at(
         .context("no active tab")?;
 
     let session = tab.session.as_ref();
+    session
+        .page_bring_to_front()
+        .await
+        .context("bring page to front failed")?;
+    session
+        .runtime_evaluate(
+            "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+        )
+        .await
+        .context("wait for foreground frames failed")?;
     let mouse_button = match button {
         "right" => MouseButton::Right,
         "middle" => MouseButton::Middle,
         _ => MouseButton::Left,
     };
-    session
-        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
-        .await
-        .context("mouseMoved failed")?;
-    session
-        .input_dispatch_mouse_event(
-            MouseEventType::Pressed,
-            x,
-            y,
-            Some(mouse_button),
-            Some(click_count),
-            Some(1),
-        )
-        .await
-        .context("mousePressed failed")?;
-    session
-        .input_dispatch_mouse_event(
-            MouseEventType::Released,
-            x,
-            y,
-            Some(mouse_button),
-            Some(click_count),
-            Some(0),
-        )
-        .await
-        .context("mouseReleased failed")?;
+    let (modifiers, modifier_key) = match modifier.map(str::to_ascii_lowercase).as_deref() {
+        None => (None, None),
+        Some("alt") => (Some(1), Some(("Alt", "AltLeft", 18))),
+        Some("control" | "ctrl") => (Some(2), Some(("Control", "ControlLeft", 17))),
+        Some("meta" | "command" | "cmd") => (Some(4), Some(("Meta", "MetaLeft", 91))),
+        Some("shift") => (Some(8), Some(("Shift", "ShiftLeft", 16))),
+        Some(value) => anyhow::bail!(
+            "unsupported click modifier '{value}'; expected Alt, Control, Meta, or Shift"
+        ),
+    };
+    if let Some((key, code, virtual_key)) = modifier_key {
+        session
+            .input_dispatch_key_event(KeyEventType::RawKeyDown, key, code, Some(virtual_key))
+            .await
+            .context("modifier keyDown failed")?;
+    }
+    let click_result: Result<()> = async {
+        session
+            .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None, modifiers)
+            .await
+            .context("mouseMoved failed")?;
+        session
+            .input_dispatch_mouse_event(
+                MouseEventType::Pressed,
+                x,
+                y,
+                Some(mouse_button),
+                Some(click_count),
+                Some(1),
+                modifiers,
+            )
+            .await
+            .context("mousePressed failed")?;
+        // Give frame-driven canvas applications one render sample with the pointer
+        // held down, matching a physical click and Playwright's delayed click path.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        session
+            .input_dispatch_mouse_event(
+                MouseEventType::Released,
+                x,
+                y,
+                Some(mouse_button),
+                Some(click_count),
+                Some(0),
+                modifiers,
+            )
+            .await
+            .context("mouseReleased failed")?;
+        Ok(())
+    }
+    .await;
+    let release_result = if let Some((key, code, virtual_key)) = modifier_key {
+        session
+            .input_dispatch_key_event(KeyEventType::KeyUp, key, code, Some(virtual_key))
+            .await
+            .context("modifier keyUp failed")
+    } else {
+        Ok(())
+    };
+    click_result?;
+    release_result?;
 
     output::ok(&format!("Clicked at ({}, {})", x, y));
     Ok(())
@@ -293,7 +470,7 @@ pub async fn hover_at(state: &mut CliState, x: f64, y: f64) -> Result<()> {
 
     tab.session
         .as_ref()
-        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
+        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None, None)
         .await
         .context("hover-at failed")?;
 
@@ -319,10 +496,20 @@ pub async fn type_text(state: &mut CliState, text: &str) -> Result<()> {
         .await
         .context("no active tab")?;
 
-    // Use insertText (1 CDP call per char) instead of press_key (3 CDP calls per char)
+    tab.session
+        .page_bring_to_front()
+        .await
+        .context("bring page to front failed")?;
+    tab.session
+        .runtime_evaluate(
+            "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+        )
+        .await
+        .context("wait for foreground frames failed")?;
+    // Send real key events as well as text insertion so canvas applications
+    // receive the same keyboard path as DOM inputs.
     for ch in text.chars() {
-        tab.session
-            .input_insert_text(&ch.to_string())
+        pwright_bridge::actions::press_key(tab.session.as_ref(), &ch.to_string())
             .await
             .context("type failed")?;
     }
@@ -339,6 +526,16 @@ pub async fn press(state: &mut CliState, key: &str) -> Result<()> {
         .await
         .context("no active tab")?;
 
+    tab.session
+        .page_bring_to_front()
+        .await
+        .context("bring page to front failed")?;
+    tab.session
+        .runtime_evaluate(
+            "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+        )
+        .await
+        .context("wait for foreground frames failed")?;
     pwright_bridge::actions::press_key(tab.session.as_ref(), key)
         .await
         .context("press failed")?;
@@ -1072,7 +1269,12 @@ pub async fn wait_until(state: &mut CliState, expression: &str, timeout_ms: u64)
     Ok(())
 }
 
-pub async fn script(cdp: &str, action: crate::ScriptAction) -> Result<()> {
+pub async fn script(
+    cdp: &str,
+    ephemeral_proxy_server: Option<&str>,
+    ephemeral_proxy_bypass_list: Option<&str>,
+    action: crate::ScriptAction,
+) -> Result<()> {
     use pwright_script::{executor, output::JsonlSink, parser, validator};
     use std::collections::HashMap;
 
@@ -1124,21 +1326,47 @@ pub async fn script(cdp: &str, action: crate::ScriptAction) -> Result<()> {
     // Execute
     let config = pwright_bridge::BrowserConfig {
         cdp_url: cdp.to_string(),
+        command_timeout_ms: script.config.connection_timeout_ms,
+        tab_close_via_http: cdp.starts_with("http://") || cdp.starts_with("https://"),
+        ephemeral_proxy_server: ephemeral_proxy_server.map(str::to_owned),
+        ephemeral_proxy_bypass_list: ephemeral_proxy_bypass_list.map(str::to_owned),
         ..Default::default()
     };
     let browser = pwright_bridge::Browser::connect(config).await?;
-    let handle = browser.new_tab("about:blank").await?;
+    let lease_root = ephemeral_lease_root();
+    recover_ephemeral_script_tabs(&browser, cdp, &lease_root).await?;
+    let (handle, lease_path) = browser
+        .new_tab_with_created_target("about:blank", |target_id| {
+            crate::state::save_ephemeral_tab_lease(&lease_root, cdp, target_id).map_err(|error| {
+                CdpError::Other(format!("cannot persist ephemeral tab lease: {error}"))
+            })
+        })
+        .await?;
     let page = handle.page();
 
     let mut stdout = std::io::stdout();
     let mut sink = JsonlSink::new(&mut stdout);
-    let result = executor::execute(&script, &page, &params, &mut sink)
-        .await
-        .map_err(|e| pwright_cdp::connection::CdpError::Other(e.to_string()))?;
-    sink.write_summary(&script.name, &result)
-        .map_err(|e| pwright_cdp::connection::CdpError::Other(e.to_string()))?;
-
-    handle.close().await?;
+    let execution = executor::execute(&script, &page, &params, &mut sink).await;
+    let summary_error = execution.as_ref().ok().and_then(|result| {
+        sink.write_summary(&script.name, result)
+            .map_err(|error| pwright_cdp::connection::CdpError::Other(error.to_string()))
+            .err()
+    });
+    let cleanup_error = handle.close().await.err();
+    if let Some(error) = &cleanup_error {
+        eprintln!(
+            "[warning] ephemeral tab cleanup failed for {}: {}",
+            handle.target_id(),
+            error
+        );
+    } else if let Err(error) = crate::state::remove_ephemeral_tab_lease(&lease_path) {
+        eprintln!("[warning] {error}");
+    }
+    let result =
+        execution.map_err(|error| pwright_cdp::connection::CdpError::Other(error.to_string()))?;
+    if let Some(error) = summary_error {
+        return Err(error.into());
+    }
 
     if result.status != pwright_script::executor::ExecutionStatus::Ok {
         return Err(pwright_cdp::connection::CdpError::Other(
@@ -1148,4 +1376,132 @@ pub async fn script(cdp: &str, action: crate::ScriptAction) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    use pwright_bridge::test_utils::{FakeSessionFactory, MockCdpClient};
+    use pwright_cdp::domains::target::TargetInfo;
+
+    use super::*;
+
+    struct FakeProcessInspector {
+        running_processes: HashSet<u32>,
+    }
+
+    impl FakeProcessInspector {
+        fn with_running_processes(running_processes: impl IntoIterator<Item = u32>) -> Self {
+            Self {
+                running_processes: running_processes.into_iter().collect(),
+            }
+        }
+    }
+
+    impl ProcessInspector for FakeProcessInspector {
+        fn is_running(&self, process_id: u32) -> bool {
+            self.running_processes.contains(&process_id)
+        }
+    }
+
+    fn leased_target(target_id: &str) -> TargetInfo {
+        TargetInfo {
+            target_id: target_id.to_owned(),
+            target_type: "page".to_owned(),
+            title: String::new(),
+            url: "about:blank".to_owned(),
+            attached: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn recovery_closes_an_exact_owned_target_before_new_work() -> Result<()> {
+        // Arrange
+        let directory = tempfile::tempdir()?;
+        let cdp_url = "http://browser.example:9222";
+        let target_id = "target-owned";
+        let lease_path =
+            crate::state::save_ephemeral_tab_lease(directory.path(), cdp_url, target_id)?;
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_targets_response(vec![leased_target(target_id)]);
+        let browser = Browser::new_for_test(mock.clone(), Arc::new(FakeSessionFactory));
+        let process_inspector = FakeProcessInspector::with_running_processes([]);
+
+        // Act
+        let result = recover_ephemeral_script_tabs_with_inspector(
+            &browser,
+            cdp_url,
+            directory.path(),
+            &process_inspector,
+        )
+        .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(!lease_path.exists());
+        assert_eq!(mock.calls_for("Target.closeTarget").len(), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn recovery_blocks_new_work_while_an_owned_target_cannot_close() -> Result<()> {
+        // Arrange
+        let directory = tempfile::tempdir()?;
+        let cdp_url = "http://browser.example:9222";
+        let target_id = "target-owned";
+        let lease_path =
+            crate::state::save_ephemeral_tab_lease(directory.path(), cdp_url, target_id)?;
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_targets_response(vec![leased_target(target_id)]);
+        mock.set_target_close_error("injected close failure");
+        let browser = Browser::new_for_test(mock.clone(), Arc::new(FakeSessionFactory));
+        let process_inspector = FakeProcessInspector::with_running_processes([]);
+
+        // Act
+        let result = recover_ephemeral_script_tabs_with_inspector(
+            &browser,
+            cdp_url,
+            directory.path(),
+            &process_inspector,
+        )
+        .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert!(lease_path.exists());
+        assert_eq!(mock.calls_for("Target.closeTarget").len(), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn recovery_preserves_a_tab_leased_by_an_active_sibling_process() -> Result<()> {
+        // Arrange
+        let directory = tempfile::tempdir()?;
+        let cdp_url = "http://browser.example:9222";
+        let target_id = "target-active";
+        let lease_path =
+            crate::state::save_ephemeral_tab_lease(directory.path(), cdp_url, target_id)?;
+        let lease = crate::state::load_ephemeral_tab_lease(&lease_path)?;
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_targets_response(vec![leased_target(target_id)]);
+        let browser = Browser::new_for_test(mock.clone(), Arc::new(FakeSessionFactory));
+        let process_inspector = FakeProcessInspector::with_running_processes([lease.owner_pid]);
+
+        // Act
+        let result = recover_ephemeral_script_tabs_with_inspector(
+            &browser,
+            cdp_url,
+            directory.path(),
+            &process_inspector,
+        )
+        .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(lease_path.exists());
+        assert!(mock.calls_for("Target.closeTarget").is_empty());
+        Ok(())
+    }
 }

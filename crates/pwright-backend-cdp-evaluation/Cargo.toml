@@ -1,0 +1,21 @@
+[package]
+name = "pwright-backend-cdp-evaluation"
+description = "Chromium CDP adapter for the optional Pwright value-evaluation capability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+pwright-backend-cdp-common = { workspace = true }
+pwright-browser-backend = { workspace = true }
+pwright-cap-evaluation = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

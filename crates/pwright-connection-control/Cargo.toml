@@ -1,0 +1,11 @@
+[package]
+name = "pwright-connection-control"
+description = "Executor-neutral graceful connection shutdown state machines for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }

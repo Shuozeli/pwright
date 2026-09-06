@@ -1,0 +1,298 @@
+format: 1
+capability: pwright.tracing
+display_name: Tracing
+version: { major: 1, minor: 0 }
+root: pwright.tracing
+imports:
+  - pwright.common
+commands:
+  - id: tracing.group
+    name: trace_group
+    method: 655363
+    targets: [pwright.browser.browser_context]
+    command: trace_group_command
+    result: trace_group_result
+    params_type: pwright.tracing.trace_group_options
+    result_type: pwright.tracing.trace_group_success
+    error_details_type: pwright.tracing.error_details
+  - id: tracing.group_end
+    name: trace_group_end
+    method: 655364
+    targets: [pwright.browser.browser_context]
+    command: trace_group_end_command
+    result: trace_group_end_result
+    params_type: pwright.tracing.trace_group_end_options
+    result_type: pwright.tracing.trace_group_end_success
+    error_details_type: pwright.tracing.error_details
+  - id: tracing.start
+    name: trace_start
+    method: 655361
+    targets: [pwright.browser.browser_context]
+    command: trace_start_command
+    result: trace_start_result
+    params_type: pwright.tracing.trace_start_options
+    result_type: pwright.tracing.trace_start_success
+    error_details_type: pwright.tracing.error_details
+  - id: tracing.start_chunk
+    name: trace_start_chunk
+    method: 655362
+    targets: [pwright.browser.browser_context]
+    command: trace_start_chunk_command
+    result: trace_start_chunk_result
+    params_type: pwright.tracing.trace_start_chunk_options
+    result_type: pwright.tracing.trace_start_chunk_success
+    error_details_type: pwright.tracing.error_details
+  - id: tracing.stop
+    name: trace_stop
+    method: 655366
+    targets: [pwright.browser.browser_context]
+    command: trace_stop_command
+    result: trace_stop_result
+    params_type: pwright.tracing.trace_stop_options
+    result_type: pwright.tracing.trace_stop_success
+    error_details_type: pwright.tracing.error_details
+  - id: tracing.stop_chunk
+    name: trace_stop_chunk
+    method: 655365
+    targets: [pwright.browser.browser_context]
+    command: trace_stop_chunk_command
+    result: trace_stop_chunk_result
+    params_type: pwright.tracing.trace_stop_chunk_options
+    result_type: pwright.tracing.trace_stop_chunk_success
+    error_details_type: pwright.tracing.error_details
+types:
+  - kind: tagged_union
+    id: pwright.tracing
+    variants:
+      - tag: 1
+        name: trace_start_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.tracing.trace_start_options }
+      - tag: 2
+        name: trace_start_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.tracing.outcome }
+      - tag: 3
+        name: trace_start_chunk_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.tracing.trace_start_chunk_options }
+      - tag: 4
+        name: trace_start_chunk_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.tracing.trace_start_chunk_outcome }
+      - tag: 5
+        name: trace_group_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.tracing.trace_group_options }
+      - tag: 6
+        name: trace_group_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.tracing.outcome }
+      - tag: 7
+        name: trace_group_end_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.tracing.trace_group_end_options }
+      - tag: 8
+        name: trace_group_end_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.tracing.outcome }
+      - tag: 9
+        name: trace_stop_chunk_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.tracing.trace_stop_chunk_options }
+      - tag: 10
+        name: trace_stop_chunk_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.tracing.trace_stop_chunk_outcome }
+      - tag: 11
+        name: trace_stop_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: options, type: message, target: pwright.tracing.trace_stop_options }
+      - tag: 12
+        name: trace_stop_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.tracing.outcome }
+
+  - kind: record
+    id: pwright.tracing.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - { name: details, type: message, target: pwright.tracing.error_details, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.tracing.error_details
+    public_name: tracing_error_details
+    variants:
+      - tag: 0
+        name: invalid_state
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: invalid_options
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 2
+        name: resource
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 3
+        name: sink
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: tagged_union
+    id: pwright.tracing.outcome
+    variants:
+      - { tag: 0, name: success, fields: [] }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.tracing.error }
+
+  - kind: record
+    id: pwright.tracing.trace_group_end_options
+    public_name: trace_group_end_options
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.tracing.trace_group_end_success
+    public_name: trace_group_end_result
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.tracing.trace_group_options
+    public_name: trace_group_options
+    public_external: true
+    fields:
+      - { name: name, type: utf8 }
+      - { name: location, type: message, target: pwright.tracing.trace_location, cardinality: optional }
+
+  - kind: record
+    id: pwright.tracing.trace_group_success
+    public_name: trace_group_result
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.tracing.trace_location
+    public_name: trace_location
+    public_external: true
+    fields:
+      - { name: file, type: utf8 }
+      - { name: line, type: u32, cardinality: optional }
+      - { name: column, type: u32, cardinality: optional }
+
+  - kind: record
+    id: pwright.tracing.trace_start_chunk_options
+    public_name: trace_start_chunk_options
+    public_external: true
+    fields:
+      - { name: name, type: utf8, cardinality: optional }
+      - { name: title, type: utf8, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.tracing.trace_start_chunk_outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.tracing.trace_start_chunk_success }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.tracing.error }
+
+  - kind: record
+    id: pwright.tracing.trace_start_chunk_success
+    public_name: trace_start_chunk_result
+    public_external: true
+    fields:
+      - { name: chunk_id, type: u64 }
+
+  - kind: record
+    id: pwright.tracing.trace_start_options
+    public_name: trace_start_options
+    public_external: true
+    fields:
+      - { name: name, type: utf8, cardinality: optional }
+
+  - kind: record
+    id: pwright.tracing.trace_start_success
+    public_name: trace_start_result
+    public_external: true
+    fields: []
+
+  - kind: enum
+    id: pwright.tracing.trace_stop_chunk_mode
+    public_name: trace_stop_chunk_mode
+    public_external: true
+    variants:
+      - { tag: 0, name: discard }
+      - { tag: 1, name: sink }
+
+  - kind: record
+    id: pwright.tracing.trace_stop_chunk_options
+    public_name: trace_stop_chunk_options
+    public_external: true
+    fields:
+      - { name: mode, type: enum, target: pwright.tracing.trace_stop_chunk_mode }
+
+  - kind: tagged_union
+    id: pwright.tracing.trace_stop_chunk_outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.tracing.trace_stop_chunk_success }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.tracing.error }
+
+  - kind: record
+    id: pwright.tracing.trace_stop_chunk_success
+    public_name: trace_stop_chunk_result
+    public_external: true
+    fields:
+      - { name: chunk_id, type: u64 }
+      - { name: entry_count, type: u64 }
+      - { name: payload_bytes, type: u64 }
+
+  - kind: record
+    id: pwright.tracing.trace_stop_options
+    public_name: trace_stop_options
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.tracing.trace_stop_success
+    public_name: trace_stop_result
+    public_external: true
+    fields: []

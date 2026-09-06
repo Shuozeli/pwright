@@ -1,11 +1,12 @@
 /// CLI state persistence — `.pwright/state.json`
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 const STATE_DIR: &str = ".pwright";
 const STATE_FILE: &str = "state.json";
+const EPHEMERAL_TAB_PREFIX: &str = "ephemeral-tab-";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CliState {
@@ -17,6 +18,80 @@ pub struct CliState {
     pub active_tab: String,
     /// CDP target ID for re-attaching
     pub target_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EphemeralTabLease {
+    pub cdp_url: String,
+    pub target_id: String,
+    pub owner_pid: u32,
+}
+
+pub fn save_ephemeral_tab_lease(
+    base_dir: &Path,
+    cdp_url: &str,
+    target_id: &str,
+) -> Result<PathBuf> {
+    let state_dir = base_dir.join(STATE_DIR);
+    std::fs::create_dir_all(&state_dir)?;
+    let filename = format!("{EPHEMERAL_TAB_PREFIX}{}.json", std::process::id());
+    let path = state_dir.join(&filename);
+    let temporary = state_dir.join(format!(".{filename}.tmp"));
+    let lease = EphemeralTabLease {
+        cdp_url: cdp_url.to_owned(),
+        target_id: target_id.to_owned(),
+        owner_pid: std::process::id(),
+    };
+    std::fs::write(&temporary, serde_json::to_vec_pretty(&lease)?)?;
+    restrict_permissions(&temporary);
+    std::fs::rename(&temporary, &path)?;
+    Ok(path)
+}
+
+pub fn ephemeral_tab_lease_paths(base_dir: &Path) -> Result<Vec<PathBuf>> {
+    let state_dir = base_dir.join(STATE_DIR);
+    if !state_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut paths = std::fs::read_dir(state_dir)?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.starts_with(EPHEMERAL_TAB_PREFIX) && name.ends_with(".json")
+                })
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    Ok(paths)
+}
+
+pub fn load_ephemeral_tab_lease(path: &Path) -> Result<EphemeralTabLease> {
+    let bytes = std::fs::read(path)
+        .with_context(|| format!("failed to read tab lease {}", path.display()))?;
+    serde_json::from_slice(&bytes)
+        .with_context(|| format!("failed to parse tab lease {}", path.display()))
+}
+
+pub fn remove_ephemeral_tab_lease(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => {
+            Err(error).with_context(|| format!("failed to remove tab lease {}", path.display()))
+        }
+    }
+}
+
+fn restrict_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(error) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+            tracing::debug!("failed to set state file permissions: {error}");
+        }
+    }
 }
 
 impl CliState {
@@ -69,14 +144,7 @@ impl CliState {
         std::fs::write(&path, data).context("failed to write state file")?;
 
         // Restrict permissions: state contains WS URL granting browser control
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-            {
-                tracing::debug!("failed to set state file permissions: {e}");
-            }
-        }
+        restrict_permissions(&path);
 
         Ok(())
     }
@@ -175,5 +243,49 @@ mod tests {
         // This is fine — in CI/test env there's no .pwright/state.json
         // so it returns default
         let _ = state;
+    }
+
+    #[test]
+    fn ephemeral_tab_lease_roundtrips_and_is_removed() -> Result<()> {
+        // Arrange
+        let test_root = std::env::temp_dir().join(format!(
+            "pwright-tab-lease-test-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("unnamed")
+        ));
+        if test_root.exists() {
+            std::fs::remove_dir_all(&test_root)?;
+        }
+        std::fs::create_dir_all(&test_root)?;
+
+        // Act
+        let path = save_ephemeral_tab_lease(&test_root, "http://browser:9222", "target-abc")?;
+        let paths = ephemeral_tab_lease_paths(&test_root)?;
+        let lease = load_ephemeral_tab_lease(&path)?;
+        remove_ephemeral_tab_lease(&path)?;
+
+        // Assert
+        assert_eq!(paths, vec![path.clone()]);
+        assert_eq!(lease.cdp_url, "http://browser:9222");
+        assert_eq!(lease.target_id, "target-abc");
+        assert!(!path.exists());
+        std::fs::remove_dir_all(test_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn removing_an_already_removed_tab_lease_is_idempotent() -> Result<()> {
+        // Arrange
+        let directory = tempfile::tempdir()?;
+        let path = save_ephemeral_tab_lease(directory.path(), "http://browser:9222", "target-abc")?;
+        remove_ephemeral_tab_lease(&path)?;
+
+        // Act
+        let result = remove_ephemeral_tab_lease(&path);
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(!path.exists());
+        Ok(())
     }
 }

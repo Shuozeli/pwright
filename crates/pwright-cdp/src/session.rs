@@ -4,8 +4,8 @@ use serde_json::Value;
 
 use crate::CdpClient;
 use crate::client_trait::SessionFactory;
-use crate::connection::{CdpConnection, Result};
-use crate::events::CdpEvent;
+use crate::connection::{CdpConnection, CdpEventSubscriptionError, Result};
+use crate::events::{CdpEvent, CdpEventReceiver};
 
 /// A per-target session for tab-scoped CDP commands.
 ///
@@ -56,6 +56,13 @@ impl CdpSession {
     /// Subscribe to CDP events. Caller should filter by session_id if desired.
     pub fn subscribe_events(&self) -> tokio::sync::broadcast::Receiver<CdpEvent> {
         self.conn.subscribe_events()
+    }
+
+    /// Subscribe using the delivery mode selected by a production profile.
+    pub fn subscribe_composable_events(
+        &self,
+    ) -> std::result::Result<CdpEventReceiver, CdpEventSubscriptionError> {
+        self.conn.subscribe_composable_events()
     }
 
     /// The underlying connection.

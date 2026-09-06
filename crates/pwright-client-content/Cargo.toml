@@ -1,0 +1,16 @@
+[package]
+name = "pwright-client-content"
+description = "Opt-in typed content capture extensions for pwright-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-content = { workspace = true }
+pwright-client = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -1,0 +1,15 @@
+[package]
+name = "pwright-codec-artifact"
+description = "Bounded binary codec for optional Artifact and Stream commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-artifact = { workspace = true }
+pwright-codec-binary = { workspace = true }
+pwright-codec-common = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }

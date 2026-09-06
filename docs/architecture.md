@@ -1,3 +1,5 @@
+<!-- agent-updated: 2026-07-29T18:36:00Z -->
+
 # Architecture
 
 ## Overview
@@ -14,6 +16,30 @@ pwright is a thin Rust bridge between downstream services and Chrome. It connect
 CDP WebSocket handles DOM, Runtime, Input, and all page interactions.
 Chrome HTTP endpoints (`/json/close`, `/json/list`) handle tab lifecycle
 and are used as a reliable fallback when the WebSocket is under pressure.
+Pwright does not consider an HTTP close complete until `/json/list` confirms
+that the exact leased target disappeared.
+`PWRIGHT_EPHEMERAL_LEASE_ROOT` lets sibling recipe working directories share
+the exact-target recovery ledger for one browser endpoint.
+Script runs persist that exact target immediately after `createTarget`, before
+`attachToTarget` or page-domain setup. If attach fails, Pwright closes the
+created target; if cleanup also fails, the already-persisted lease makes the
+target recoverable by the next invocation. Recovery is fail-closed: a script
+does not create another tab while any same-endpoint leased target cannot be
+closed and verified. A lease whose owner process is still running represents
+active sibling work and is preserved, allowing bounded concurrent recipe
+processes without one invocation closing another invocation's tab. Lease
+removal is idempotent because concurrent stale-lease recovery may observe that
+another process has already removed the same file.
+Script recipes configure endpoint discovery, WebSocket connection, and CDP
+command latency separately from page-readiness waits through
+`config.connection_timeout_ms`; raising it for a remote browser does not
+lengthen explicit page challenge or selector waits.
+When `PWRIGHT_EPHEMERAL_PROXY_SERVER` or its bypass-list companion is set,
+recipe and raw-capture tabs are created inside a CDP browser context with
+`disposeOnDetach`. `TabHandle::close` closes the exact target and disposes
+that context. This overrides a process-wide Chrome proxy for transient work
+without changing persistent tabs or other profiles, while process failure
+also tears down the isolated context.
 
 ## Crate Structure
 
@@ -21,28 +47,28 @@ and are used as a reliable fallback when the WebSocket is under pressure.
 
 Async WebSocket client for Chrome DevTools Protocol.
 
-- **`connection.rs`** — WebSocket transport with JSON-RPC framing. Each outbound command gets a unique `id`; responses are routed back via `oneshot` channels. Events are broadcast to all subscribers.
+- **`connection.rs`** — WebSocket transport with JSON-RPC framing. Each outbound command gets a unique `id`; responses are routed back via `oneshot` channels. Events are broadcast to all subscribers. Incoming frames/messages are bounded at 128 MiB so a 50 MiB raw response can survive CDP's base64 and JSON expansion without hitting Tungstenite's smaller defaults.
 - **`session.rs`** — Wraps a connection with an optional `sessionId` for tab-scoped commands. Browser-level commands use `sessionId = None`.
 - **`events.rs`** — `CdpEvent` type for event dispatch.
 - **`domains/`** — Typed wrappers for 9 CDP domains:
 
 | Domain | Key Methods |
 |--------|-------------|
-| `target` | `createTarget`, `closeTarget`, `getTargets`, `attachToTarget` |
+| `target` | `createBrowserContext`, `createTarget`, `disposeBrowserContext`, `closeTarget`, `getTargets`, `attachToTarget` |
 | `page` | `navigate`, `captureScreenshot`, `printToPDF`, `addScriptToEvaluateOnNewDocument` |
 | `dom` | `focus`, `scrollIntoViewIfNeeded`, `getBoxModel`, `resolveNode`, `setFileInputFiles` |
 | `input` | `dispatchMouseEvent`, `dispatchKeyEvent`, `insertText`, `dispatchTouchEvent` |
 | `runtime` | `evaluate`, `callFunctionOn` |
 | `accessibility` | `getFullAXTree` |
 | `network` | `setBlockedURLs`, `getCookies`, `setCookies` |
-| `fetch` | `enable`, `disable`, `continueRequest`, `failRequest` |
+| `fetch` | `enable`, response-stage interception, `getResponseBody`, `continueRequest`, `failRequest` |
 | `browser` | `getVersion`, `downloadProgress` |
 
 ### `pwright-bridge` — High-Level Operations
 
 Translates user-intent into CDP command sequences.
 
-- **`browser.rs`** — Central controller. Manages the CDP connection, tab map, ref caches, and concurrency (per-tab `Mutex` + cross-tab `Semaphore`). `TabHandle` provides explicit ephemeral tab lifecycle (`new_tab` / `close`). `TabCloser` trait abstracts the close transport: `CdpTabCloser` (WebSocket) or `HttpTabCloser` (Chrome HTTP endpoint). `Browser::connect_http` auto-selects HTTP closer for reliability under Chrome memory pressure.
+- **`browser.rs`** — Central controller. Manages the CDP connection, tab map, ref caches, and concurrency (per-tab `Mutex` + cross-tab `Semaphore`). `TabHandle` provides explicit ephemeral tab lifecycle (`new_tab` / `close`), and `new_tab_with_created_target` lets callers persist ownership before attach. Any attach failure attempts exact-target cleanup. `TabCloser` abstracts the close transport: `CdpTabCloser` (WebSocket), `HttpTabCloser` (Chrome HTTP endpoint), or a context-aware closer for isolated proxy overrides. HTTP-configured close verifies exact target removal and preserves failure state if neither transport can prove that the target disappeared.
 - **`chrome_http.rs`** — HTTP client for Chrome's debug endpoints (`/json/list`, `/json/close`, `/json/new`, `/json/version`). More reliable than CDP WebSocket under memory pressure.
 - **`tab.rs`** — Tab lifecycle: create (via `Target.createTarget` + `attachToTarget`), close, list, resolve.
 - **`navigate.rs`** — Navigation with 4 wait strategies: None, DOM ready, NetworkIdle, Selector.
@@ -60,7 +86,23 @@ Translates user-intent into CDP command sequences.
   - **`mouse.rs`** — `Mouse` struct: `click()`, `dblclick()`, `move_to()`, `wheel()`, `down()`, `up()`.
   - **`touchscreen.rs`** — `Touchscreen` struct: `tap(x, y)` via `Input.dispatchTouchEvent`.
   - **`selectors.rs`** — Selector resolution engine. Uses `SelectorKind` enum (Css, Text, TextExact, Label, Role, Nth, FilterText) dispatching to CSS queries or JS-based element finding.
-  - **`network.rs`** — Network event types (`NetworkRequest`, `NetworkResponse`) and CDP event parsing helpers for `Page::on_request()`/`on_response()`.
+- **`network.rs`** — Network event types (`NetworkRequest`, `NetworkResponse`) and CDP event parsing helpers for `Page::on_request()`/`on_response()`.
+
+The CLI's `capture-url` path combines these layers: a durably leased
+`TabHandle`, optional context navigation, `Fetch.requestPaused` at the
+response stage, and `Fetch.getResponseBody`. Interception happens before
+Chrome's PDF viewer substitutes its HTML embedder, so binary documents retain
+their original bytes. The caller receives HTTP metadata and redirects, while
+destination non-overwrite and decoded-byte limits are enforced locally.
+The CDP transport limit is deliberately larger than the decoded capture limit:
+Chrome may place the complete base64 response in one WebSocket frame. A live
+15,084,952-byte issuer deck validated this boundary end to end.
+The durable destination write is the capture commit point. Fetch-disable and
+tab-close operations run afterward. If either teardown operation fails after
+that commit, the CLI emits a structured warning without invalidating the
+captured bytes. An unverified tab close keeps its exact persisted target lease,
+allowing the next same-endpoint command to recover that tab without touching
+unrelated browser state.
 
 ### `pwright-script` — Declarative Script Runner
 
@@ -77,6 +119,9 @@ Parses and executes YAML automation scripts against `pwright-bridge`.
 
 Test-only crate providing `FakeCdpClient` with an in-memory DOM tree.
 
+- **`pwright.rs`** — Consumer-facing `FakePwright` harness. Wraps the in-memory
+  CDP fake and gives downstream projects a stable testing component for their
+  pwright-facing adapters.
 - **`dom.rs`** — DOM node tree with text_content, attributes, find, serialize.
 - **`selector.rs`** — CSS selector matching (tag, class, id, attribute, descendant, compound).
 - **`builder.rs`** — HTML parser that builds DomNode trees from strings.

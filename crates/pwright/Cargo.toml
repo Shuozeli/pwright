@@ -1,0 +1,233 @@
+[package]
+name = "pwright"
+description = "No-default-features umbrella for composable Pwright Rust v2 components"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+core = ["dep:pwright-core"]
+navigation = ["core", "dep:pwright-cap-navigation"]
+evaluation = ["core", "dep:pwright-cap-evaluation"]
+content = ["core", "dep:pwright-cap-content"]
+context-lifecycle = ["core", "dep:pwright-cap-context-lifecycle"]
+page-lifecycle = ["core", "dep:pwright-cap-page-lifecycle"]
+page-creation = ["core", "page-lifecycle", "dep:pwright-cap-page-creation"]
+handle-lifecycle = ["core", "dep:pwright-cap-handle-lifecycle"]
+handle-evaluation = ["core", "handle-lifecycle", "dep:pwright-cap-handle-evaluation"]
+ordered-handle-delivery = [
+    "handle-evaluation",
+    "runtime",
+    "transport",
+    "dep:pwright-plugin-ordered-handle-delivery",
+]
+context-creation = [
+    "core",
+    "context-lifecycle",
+    "dep:pwright-cap-context-creation",
+]
+locator = ["core", "dep:pwright-cap-locator"]
+locator-screenshot = ["core", "dep:pwright-cap-locator-screenshot"]
+dom-content = ["core", "dep:pwright-cap-dom-content"]
+page-events = ["core", "dep:pwright-cap-page-events"]
+network-events = ["core", "dep:pwright-cap-network-events"]
+client = ["core", "dep:pwright-client"]
+client-navigation = ["client", "navigation", "dep:pwright-client-navigation"]
+client-evaluation = ["client", "evaluation", "dep:pwright-client-evaluation"]
+client-content = ["client", "content", "dep:pwright-client-content"]
+client-context-lifecycle = [
+    "client",
+    "context-lifecycle",
+    "dep:pwright-client-context-lifecycle",
+]
+client-page-lifecycle = [
+    "client",
+    "page-lifecycle",
+    "dep:pwright-client-page-lifecycle",
+]
+client-page-creation = [
+    "client",
+    "page-creation",
+    "client-page-lifecycle",
+    "dep:pwright-client-page-creation",
+]
+client-handle-lifecycle = [
+    "client",
+    "handle-lifecycle",
+    "dep:pwright-client-handle-lifecycle",
+]
+client-handle-evaluation = [
+    "client",
+    "handle-evaluation",
+    "client-handle-lifecycle",
+    "dep:pwright-client-handle-evaluation",
+]
+client-context-creation = [
+    "client",
+    "context-creation",
+    "client-context-lifecycle",
+    "dep:pwright-client-context-creation",
+]
+client-locator = ["client", "locator", "dep:pwright-client-locator"]
+client-locator-screenshot = [
+    "client",
+    "locator-screenshot",
+    "dep:pwright-client-locator-screenshot",
+]
+client-dom-content = ["client", "dom-content", "dep:pwright-client-dom-content"]
+client-page-events = ["client", "page-events", "dep:pwright-client-page-events"]
+client-network-events = [
+    "client",
+    "network-events",
+    "dep:pwright-client-network-events",
+]
+cdp = ["dep:pwright-cdp"]
+chromium-content = [
+    "cdp",
+    "content",
+    "dep:pwright-composition-chromium-content",
+]
+chromium-context-lifecycle = [
+    "cdp",
+    "context-lifecycle",
+    "runtime",
+    "dep:pwright-composition-chromium-context-lifecycle",
+]
+chromium-page-lifecycle = [
+    "cdp",
+    "page-lifecycle",
+    "runtime",
+    "dep:pwright-composition-chromium-page-lifecycle",
+]
+chromium-page-creation = [
+    "cdp",
+    "runtime",
+    "page-creation",
+    "chromium-page-lifecycle",
+    "dep:pwright-composition-chromium-page-creation",
+]
+chromium-handle-lifecycle = [
+    "cdp",
+    "handle-lifecycle",
+    "runtime",
+    "dep:pwright-composition-chromium-handle-lifecycle",
+]
+chromium-handle-evaluation = [
+    "cdp",
+    "runtime",
+    "handle-evaluation",
+    "chromium-handle-lifecycle",
+    "dep:pwright-composition-chromium-handle-evaluation",
+]
+chromium-context-creation = [
+    "cdp",
+    "runtime",
+    "context-creation",
+    "chromium-context-lifecycle",
+    "dep:pwright-composition-chromium-context-creation",
+]
+chromium-locator = [
+    "cdp",
+    "locator",
+    "dep:pwright-composition-chromium-locator",
+]
+chromium-locator-screenshot = [
+    "chromium-selector-geometry",
+    "cdp",
+    "locator-screenshot",
+    "dep:pwright-composition-chromium-locator-screenshot",
+]
+chromium-selector-geometry = [
+    "cdp",
+    "locator-screenshot",
+    "dep:pwright-backend-cdp-selector-geometry",
+]
+chromium-dom-content = [
+    "cdp",
+    "dom-content",
+    "dep:pwright-composition-chromium-dom-content",
+]
+chromium-evaluation = [
+    "cdp",
+    "evaluation",
+    "dep:pwright-composition-chromium-evaluation",
+]
+chromium-navigation = [
+    "cdp",
+    "navigation",
+    "dep:pwright-composition-chromium-navigation",
+]
+chromium-page-events = [
+    "cdp",
+    "page-events",
+    "transport",
+    "dep:pwright-composition-chromium-page-events",
+]
+chromium-network-events = [
+    "cdp",
+    "network-events",
+    "runtime",
+    "transport",
+    "dep:pwright-composition-chromium-network-events",
+]
+runtime = ["core", "dep:pwright-runtime"]
+runtime-tokio = ["runtime", "dep:pwright-runtime-tokio"]
+transport = ["core", "dep:pwright-transport"]
+transport-tokio = ["transport", "dep:pwright-transport-tokio"]
+tokio = ["runtime-tokio", "transport-tokio"]
+
+[dependencies]
+pwright-core = { path = "../pwright-core", version = "0.1.0", optional = true }
+pwright-cap-navigation = { path = "../pwright-cap-navigation", version = "0.1.0", optional = true }
+pwright-cap-evaluation = { path = "../pwright-cap-evaluation", version = "0.1.0", optional = true }
+pwright-cap-content = { path = "../pwright-cap-content", version = "0.1.0", optional = true }
+pwright-cap-context-lifecycle = { path = "../pwright-cap-context-lifecycle", version = "0.1.0", optional = true }
+pwright-cap-page-lifecycle = { path = "../pwright-cap-page-lifecycle", version = "0.1.0", optional = true }
+pwright-cap-page-creation = { path = "../pwright-cap-page-creation", version = "0.1.0", optional = true }
+pwright-cap-handle-lifecycle = { path = "../pwright-cap-handle-lifecycle", version = "0.1.0", optional = true }
+pwright-cap-handle-evaluation = { path = "../pwright-cap-handle-evaluation", version = "0.1.0", optional = true }
+pwright-cap-context-creation = { path = "../pwright-cap-context-creation", version = "0.1.0", optional = true }
+pwright-cap-locator = { path = "../pwright-cap-locator", version = "0.1.0", optional = true }
+pwright-cap-locator-screenshot = { path = "../pwright-cap-locator-screenshot", version = "0.1.0", optional = true }
+pwright-cap-dom-content = { path = "../pwright-cap-dom-content", version = "0.1.0", optional = true }
+pwright-cap-page-events = { path = "../pwright-cap-page-events", version = "0.1.0", optional = true }
+pwright-cap-network-events = { path = "../pwright-cap-network-events", version = "0.1.0", optional = true }
+pwright-client = { path = "../pwright-client", version = "0.1.0", optional = true }
+pwright-client-navigation = { path = "../pwright-client-navigation", version = "0.1.0", optional = true }
+pwright-client-evaluation = { path = "../pwright-client-evaluation", version = "0.1.0", optional = true }
+pwright-client-content = { path = "../pwright-client-content", version = "0.1.0", optional = true }
+pwright-client-context-lifecycle = { path = "../pwright-client-context-lifecycle", version = "0.1.0", optional = true }
+pwright-client-page-lifecycle = { path = "../pwright-client-page-lifecycle", version = "0.1.0", optional = true }
+pwright-client-page-creation = { path = "../pwright-client-page-creation", version = "0.1.0", optional = true }
+pwright-client-handle-lifecycle = { path = "../pwright-client-handle-lifecycle", version = "0.1.0", optional = true }
+pwright-client-handle-evaluation = { path = "../pwright-client-handle-evaluation", version = "0.1.0", optional = true }
+pwright-client-context-creation = { path = "../pwright-client-context-creation", version = "0.1.0", optional = true }
+pwright-client-locator = { path = "../pwright-client-locator", version = "0.1.0", optional = true }
+pwright-client-locator-screenshot = { path = "../pwright-client-locator-screenshot", version = "0.1.0", optional = true }
+pwright-client-dom-content = { path = "../pwright-client-dom-content", version = "0.1.0", optional = true }
+pwright-client-page-events = { path = "../pwright-client-page-events", version = "0.1.0", optional = true }
+pwright-client-network-events = { path = "../pwright-client-network-events", version = "0.1.0", optional = true }
+pwright-cdp = { path = "../pwright-cdp", version = "0.1.0", optional = true }
+pwright-backend-cdp-selector-geometry = { path = "../pwright-backend-cdp-selector-geometry", version = "0.1.0", optional = true }
+pwright-composition-chromium-content = { path = "../pwright-composition-chromium-content", version = "0.1.0", optional = true }
+pwright-composition-chromium-context-lifecycle = { path = "../pwright-composition-chromium-context-lifecycle", version = "0.1.0", optional = true }
+pwright-composition-chromium-page-lifecycle = { path = "../pwright-composition-chromium-page-lifecycle", version = "0.1.0", optional = true }
+pwright-composition-chromium-page-creation = { path = "../pwright-composition-chromium-page-creation", version = "0.1.0", optional = true }
+pwright-composition-chromium-handle-lifecycle = { path = "../pwright-composition-chromium-handle-lifecycle", version = "0.1.0", optional = true }
+pwright-composition-chromium-handle-evaluation = { path = "../pwright-composition-chromium-handle-evaluation", version = "0.1.0", optional = true }
+pwright-plugin-ordered-handle-delivery = { path = "../pwright-plugin-ordered-handle-delivery", version = "0.1.0", optional = true }
+pwright-composition-chromium-context-creation = { path = "../pwright-composition-chromium-context-creation", version = "0.1.0", optional = true }
+pwright-composition-chromium-locator = { path = "../pwright-composition-chromium-locator", version = "0.1.0", optional = true }
+pwright-composition-chromium-locator-screenshot = { path = "../pwright-composition-chromium-locator-screenshot", version = "0.1.0", optional = true }
+pwright-composition-chromium-dom-content = { path = "../pwright-composition-chromium-dom-content", version = "0.1.0", optional = true }
+pwright-composition-chromium-evaluation = { path = "../pwright-composition-chromium-evaluation", version = "0.1.0", optional = true }
+pwright-composition-chromium-navigation = { path = "../pwright-composition-chromium-navigation", version = "0.1.0", optional = true }
+pwright-composition-chromium-page-events = { path = "../pwright-composition-chromium-page-events", version = "0.1.0", optional = true }
+pwright-composition-chromium-network-events = { path = "../pwright-composition-chromium-network-events", version = "0.1.0", optional = true }
+pwright-runtime = { path = "../pwright-runtime", version = "0.1.0", optional = true }
+pwright-runtime-tokio = { path = "../pwright-runtime-tokio", version = "0.1.0", optional = true }
+pwright-transport = { path = "../pwright-transport", version = "0.1.0", optional = true }
+pwright-transport-tokio = { path = "../pwright-transport-tokio", version = "0.1.0", optional = true }

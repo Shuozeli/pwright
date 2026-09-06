@@ -64,6 +64,18 @@ pub(crate) async fn dispatch_click_at(
     button: MouseButton,
     click_count: i32,
 ) -> CdpResult<()> {
+    dispatch_click_at_with_modifiers(session, x, y, button, click_count, None).await
+}
+
+/// Dispatch a click with the CDP modifier bit field kept on both mouse events.
+pub(crate) async fn dispatch_click_at_with_modifiers(
+    session: &dyn CdpClient,
+    x: f64,
+    y: f64,
+    button: MouseButton,
+    click_count: i32,
+    modifiers: Option<i32>,
+) -> CdpResult<()> {
     session
         .input_dispatch_mouse_event(
             MouseEventType::Pressed,
@@ -72,6 +84,7 @@ pub(crate) async fn dispatch_click_at(
             Some(button),
             Some(click_count),
             Some(1),
+            modifiers,
         )
         .await?;
     session
@@ -82,6 +95,7 @@ pub(crate) async fn dispatch_click_at(
             Some(button),
             Some(click_count),
             Some(0),
+            modifiers,
         )
         .await?;
     Ok(())
@@ -149,7 +163,7 @@ pub async fn hover_by_node_id(session: &dyn CdpClient, node_id: i64) -> CdpResul
     session.dom_scroll_into_view(node_id).await?;
     let (x, y) = get_element_center_js(session, node_id).await?;
     session
-        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
+        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None, None)
         .await?;
     Ok(())
 }
@@ -183,7 +197,7 @@ pub async fn drag_by_node_id(
     let steps = (dist / DRAG_STEP_PX).clamp(DRAG_MIN_STEPS, DRAG_MAX_STEPS) as i32;
 
     session
-        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None)
+        .input_dispatch_mouse_event(MouseEventType::Moved, x, y, None, None, None, None)
         .await?;
     session
         .input_dispatch_mouse_event(
@@ -193,6 +207,7 @@ pub async fn drag_by_node_id(
             Some(MouseButton::Left),
             Some(1),
             None,
+            None,
         )
         .await?;
     for i in 1..=steps {
@@ -200,7 +215,7 @@ pub async fn drag_by_node_id(
         let mx = x + t * dx as f64;
         let my = y + t * dy as f64;
         session
-            .input_dispatch_mouse_event(MouseEventType::Moved, mx, my, None, None, Some(1))
+            .input_dispatch_mouse_event(MouseEventType::Moved, mx, my, None, None, Some(1), None)
             .await?;
     }
     let end_x = x + dx as f64;
@@ -213,30 +228,45 @@ pub async fn drag_by_node_id(
             Some(MouseButton::Left),
             Some(1),
             None,
+            None,
         )
         .await?;
 
     Ok(())
 }
 
-/// Dispatch a named key press (Enter, Tab, Escape, etc.).
-pub async fn press_key(session: &dyn CdpClient, key: &str) -> CdpResult<()> {
+async fn dispatch_key_press(
+    session: &dyn CdpClient,
+    key: &str,
+    insert_printable_text: bool,
+) -> CdpResult<()> {
     if let Some(def) = keys::get_key_def(key) {
         // CDP key param must be the W3C key value. "Return" is accepted by
         // get_key_def as an alias but "Enter" is the canonical W3C name.
         let w3c_key = if key == "Return" { "Enter" } else { key };
 
-        session
-            .input_dispatch_key_event(
-                KeyEventType::RawKeyDown,
-                w3c_key,
-                &def.code,
-                Some(def.virtual_key),
-            )
-            .await?;
-
-        if !def.insert_text.is_empty() {
-            session.input_insert_text(def.insert_text).await?;
+        let inserted_text = if !def.insert_text.is_empty() {
+            Some(def.insert_text)
+        } else if insert_printable_text && key.chars().count() == 1 {
+            Some(key)
+        } else if insert_printable_text && key == "Space" {
+            Some(" ")
+        } else {
+            None
+        };
+        if let Some(text) = inserted_text {
+            session
+                .input_dispatch_text_key_event(w3c_key, &def.code, Some(def.virtual_key), text)
+                .await?;
+        } else {
+            session
+                .input_dispatch_key_event(
+                    KeyEventType::RawKeyDown,
+                    w3c_key,
+                    &def.code,
+                    Some(def.virtual_key),
+                )
+                .await?;
         }
 
         session
@@ -252,6 +282,34 @@ pub async fn press_key(session: &dyn CdpClient, key: &str) -> CdpResult<()> {
     }
 
     Ok(())
+}
+
+/// Dispatch one key or a modifier chord such as `Control+k`.
+pub async fn press_key(session: &dyn CdpClient, key: &str) -> CdpResult<()> {
+    if let Some((modifier, key)) = key.split_once('+')
+        && let Some(modifier_def) = keys::get_key_def(modifier)
+        && matches!(modifier, "Control" | "Shift" | "Alt" | "Meta")
+    {
+        session
+            .input_dispatch_key_event(
+                KeyEventType::RawKeyDown,
+                modifier,
+                &modifier_def.code,
+                Some(modifier_def.virtual_key),
+            )
+            .await?;
+        dispatch_key_press(session, key, false).await?;
+        session
+            .input_dispatch_key_event(
+                KeyEventType::KeyUp,
+                modifier,
+                &modifier_def.code,
+                Some(modifier_def.virtual_key),
+            )
+            .await?;
+        return Ok(());
+    }
+    dispatch_key_press(session, key, true).await
 }
 
 /// Check whether a checkbox/radio element is currently checked.
@@ -389,18 +447,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_press_key_enter_sends_three_events() {
+    async fn test_press_key_enter_sends_text_key_down_then_key_up() {
+        // Arrange
         let mock = MockCdpClient::new();
+
+        // Act
         press_key(&mock, "Enter").await.unwrap();
 
+        // Assert
         let methods = mock.method_names();
-        assert_eq!(methods[0], "Input.dispatchKeyEvent"); // rawKeyDown
-        assert_eq!(methods[1], "Input.insertText"); // "\r"
-        assert_eq!(methods[2], "Input.dispatchKeyEvent"); // keyUp
+        assert_eq!(
+            methods,
+            ["Input.dispatchKeyEvent", "Input.dispatchKeyEvent"]
+        );
 
         let key_calls = mock.calls_for("Input.dispatchKeyEvent");
-        assert_eq!(key_calls[0].args[0]["type"], "rawKeyDown");
+        assert_eq!(key_calls[0].args[0]["type"], "keyDown");
+        assert_eq!(key_calls[0].args[0]["text"], "\r");
         assert_eq!(key_calls[1].args[0]["type"], "keyUp");
+        assert!(mock.calls_for("Input.insertText").is_empty());
     }
 
     #[tokio::test]
@@ -418,16 +483,59 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_press_unknown_key_inserts_directly() {
+    async fn test_press_ascii_key_dispatches_text_bearing_key_events() {
+        // Arrange
         let mock = MockCdpClient::new();
+
+        // Act
         press_key(&mock, "x").await.unwrap();
 
+        // Assert
         let methods = mock.method_names();
-        assert_eq!(methods.len(), 1);
-        assert_eq!(methods[0], "Input.insertText");
+        assert_eq!(methods.len(), 2);
+        assert_eq!(methods[0], "Input.dispatchKeyEvent");
+        assert_eq!(methods[1], "Input.dispatchKeyEvent");
 
         let insert = mock.calls_for("Input.insertText");
-        assert_eq!(insert[0].args[0], "x");
+        assert!(insert.is_empty());
+        let events = mock.calls_for("Input.dispatchKeyEvent");
+        assert_eq!(events[0].args[0]["type"], "keyDown");
+        assert_eq!(events[0].args[0]["code"], "KeyX");
+        assert_eq!(events[0].args[0]["text"], "x");
+        assert_eq!(events[1].args[0]["type"], "keyUp");
+    }
+
+    #[tokio::test]
+    async fn test_press_unknown_key_inserts_directly() {
+        // Arrange
+        let mock = MockCdpClient::new();
+
+        // Act
+        press_key(&mock, "SomethingRandom").await.unwrap();
+
+        // Assert
+        assert_eq!(mock.method_names(), ["Input.insertText"]);
+        let insert = mock.calls_for("Input.insertText");
+        assert_eq!(insert[0].args[0], "SomethingRandom");
+    }
+
+    #[tokio::test]
+    async fn test_press_modifier_chord_holds_modifier_around_key_events() {
+        // Arrange
+        let mock = MockCdpClient::new();
+
+        // Act
+        press_key(&mock, "Control+k").await.unwrap();
+
+        // Assert
+        let events = mock.calls_for("Input.dispatchKeyEvent");
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0].args[0]["type"], "rawKeyDown");
+        assert_eq!(events[0].args[0]["code"], "ControlLeft");
+        assert_eq!(events[1].args[0]["code"], "KeyK");
+        assert_eq!(events[2].args[0]["type"], "keyUp");
+        assert_eq!(events[3].args[0]["code"], "ControlLeft");
+        assert!(mock.calls_for("Input.insertText").is_empty());
     }
 
     #[tokio::test]

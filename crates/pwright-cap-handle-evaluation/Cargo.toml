@@ -1,0 +1,12 @@
+[package]
+name = "pwright-cap-handle-evaluation"
+description = "Portable opt-in JavaScript handle evaluation contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-evaluation = { workspace = true }
+pwright-core = { workspace = true }

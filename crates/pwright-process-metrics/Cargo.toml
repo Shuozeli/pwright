@@ -1,0 +1,19 @@
+[package]
+name = "pwright-process-metrics"
+description = "Optional bounded OS process-memory attribution for Pwright diagnostics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true, optional = true }
+
+[features]
+default = []
+ledger = ["dep:pwright-core"]
+
+[[bin]]
+name = "pwright-process-metrics"
+path = "src/main.rs"

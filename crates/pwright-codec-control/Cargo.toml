@@ -1,0 +1,19 @@
+[package]
+name = "pwright-codec-control"
+description = "Canonical binary codec for Pwright lifecycle and connection control messages"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-codec-binary = { workspace = true }
+pwright-core = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-client-wire = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport-memory = { workspace = true }
+tokio = { workspace = true }

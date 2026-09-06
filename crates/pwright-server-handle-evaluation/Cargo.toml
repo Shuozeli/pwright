@@ -1,0 +1,19 @@
+[package]
+name = "pwright-server-handle-evaluation"
+description = "Generated opt-in typed server handlers for handle evaluation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-handle-evaluation = { workspace = true }
+pwright-codec-handle-evaluation = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-cap-evaluation = { workspace = true }
+pwright-core = { workspace = true }

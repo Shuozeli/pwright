@@ -1,0 +1,15 @@
+[package]
+name = "pwright-trace-format"
+description = "Shared bounded PWRTRACE encoder for pluggable trace sinks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-trace-model = { workspace = true }
+
+[dev-dependencies]
+pwright-trace-model = { workspace = true }

@@ -1,0 +1,378 @@
+format: 1
+capability: pwright.locator
+display_name: Locator queries and actions
+version: { major: 1, minor: 6 }
+root: pwright.locator
+imports:
+  - pwright.common
+commands:
+  - id: locator.click
+    name: click
+    method: 131073
+    targets: [pwright.browser.frame, pwright.browser.page]
+    command: click_command
+    result: click_result
+    params_type: pwright.locator.click_params
+    result_type: pwright.locator.action_result
+    error_details_type: pwright.locator.error_details
+  - id: locator.count
+    name: count
+    method: 131075
+    targets: [pwright.browser.frame, pwright.browser.page]
+    command: count_command
+    result: count_result
+    params_type: pwright.locator.count_params
+    result_type: pwright.locator.count_result
+    error_details_type: pwright.locator.error_details
+  - id: locator.fill
+    name: fill
+    method: 131074
+    targets: [pwright.browser.frame, pwright.browser.page]
+    command: fill_command
+    result: fill_result
+    params_type: pwright.locator.fill_params
+    result_type: pwright.locator.action_result
+    error_details_type: pwright.locator.error_details
+types:
+  - kind: tagged_union
+    id: pwright.locator
+    variants:
+      - tag: 1
+        name: click_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: selector, type: message, target: pwright.locator.selector }
+          - { name: options, type: message, target: pwright.locator.click_options }
+      - tag: 2
+        name: click_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.locator.outcome }
+      - tag: 3
+        name: fill_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: selector, type: message, target: pwright.locator.selector }
+          - { name: value, type: utf8 }
+          - { name: options, type: message, target: pwright.locator.fill_options }
+      - tag: 4
+        name: fill_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.locator.outcome }
+      - tag: 5
+        name: count_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: selector, type: message, target: pwright.locator.selector }
+      - tag: 6
+        name: count_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.locator.count_outcome }
+
+  - kind: record
+    id: pwright.locator.action_result
+    public_name: locator_action_result
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.locator.click_options
+    fields:
+      - { name: button, type: enum, target: pwright.locator.mouse_button }
+      - { name: click_count, type: u8, constraints: { minimum: 1 } }
+      - { name: force, type: bool }
+      - { name: trial, type: bool }
+
+  - kind: record
+    id: pwright.locator.click_params
+    public_name: click_params
+    public_external: true
+    fields:
+      - { name: selector, type: message, target: pwright.locator.selector }
+      - { name: options, type: message, target: pwright.locator.click_options }
+
+  - kind: tagged_union
+    id: pwright.locator.count_outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.locator.count_result }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.locator.error }
+
+  - kind: record
+    id: pwright.locator.count_params
+    public_name: count_params
+    public_external: true
+    fields:
+      - { name: selector, type: message, target: pwright.locator.selector }
+
+  - kind: record
+    id: pwright.locator.count_result
+    public_name: count_result
+    public_external: true
+    fields:
+      - { name: count, type: u32 }
+
+  - kind: record
+    id: pwright.locator.error
+    fields:
+      - { name: kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - { name: details, type: message, target: pwright.locator.error_details, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.locator.error_details
+    public_name: locator_error_details
+    public_external: true
+    variants:
+      - tag: 0
+        name: invalid_selector
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: strict_violation
+        fields:
+          - { name: selector, type: utf8 }
+          - { name: matches, type: u32 }
+      - tag: 2
+        name: invalid_backend_response
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 3
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 4
+        name: invalid_target
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 5
+        name: invalid_value
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: record
+    id: pwright.locator.fill_options
+    fields:
+      - { name: force, type: bool }
+
+  - kind: record
+    id: pwright.locator.fill_params
+    public_name: fill_params
+    public_external: true
+    fields:
+      - { name: selector, type: message, target: pwright.locator.selector }
+      - { name: value, type: utf8 }
+      - { name: options, type: message, target: pwright.locator.fill_options }
+
+  - kind: enum
+    id: pwright.locator.mouse_button
+    default: left
+    variants:
+      - { tag: 0, name: left }
+      - { tag: 1, name: right }
+      - { tag: 2, name: middle }
+
+  - kind: enum
+    id: pwright.locator.optional_aria_tri_state
+    variants:
+      - { tag: 0, name: absent }
+      - { tag: 1, name: "false" }
+      - { tag: 2, name: "true" }
+      - { tag: 3, name: mixed }
+
+  - kind: enum
+    id: pwright.locator.optional_bool
+    variants:
+      - { tag: 0, name: absent }
+      - { tag: 1, name: "false" }
+      - { tag: 2, name: "true" }
+
+  - kind: tagged_union
+    id: pwright.locator.outcome
+    variants:
+      - { tag: 0, name: success, fields: [] }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.locator.error }
+
+  - kind: record
+    id: pwright.locator.regex_matcher
+    fields:
+      - { name: source, type: utf8 }
+      - { name: flags, type: utf8 }
+
+  - kind: record
+    id: pwright.locator.role_pattern_selector
+    fields:
+      - { name: role, type: utf8 }
+      - { name: name, type: message, target: pwright.locator.text_pattern, cardinality: optional }
+      - { name: description, type: message, target: pwright.locator.text_pattern, cardinality: optional }
+      - { name: checked, type: enum, target: pwright.locator.optional_aria_tri_state }
+      - { name: disabled, type: enum, target: pwright.locator.optional_bool }
+      - { name: expanded, type: enum, target: pwright.locator.optional_bool }
+      - { name: include_hidden, type: bool }
+      - { name: level, type: u32, cardinality: optional, constraints: { minimum: 1 } }
+      - { name: pressed, type: enum, target: pwright.locator.optional_aria_tri_state }
+      - { name: selected, type: enum, target: pwright.locator.optional_bool }
+
+  - kind: record
+    id: pwright.locator.role_selector
+    fields:
+      - { name: role, type: utf8 }
+      - { name: name, type: message, target: pwright.locator.text_matcher, cardinality: optional }
+      - { name: description, type: message, target: pwright.locator.text_matcher, cardinality: optional }
+      - { name: checked, type: enum, target: pwright.locator.optional_aria_tri_state }
+      - { name: disabled, type: enum, target: pwright.locator.optional_bool }
+      - { name: expanded, type: enum, target: pwright.locator.optional_bool }
+      - { name: include_hidden, type: bool }
+      - { name: level, type: u32, cardinality: optional, constraints: { minimum: 1 } }
+      - { name: pressed, type: enum, target: pwright.locator.optional_aria_tri_state }
+      - { name: selected, type: enum, target: pwright.locator.optional_bool }
+
+  - kind: tagged_union
+    id: pwright.locator.selector
+    variants:
+      - tag: 0
+        name: css
+        fields:
+          - { name: value, type: utf8 }
+      - tag: 1
+        name: nth
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: index, type: i32 }
+      - tag: 2
+        name: filter_text
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: text, type: utf8 }
+          - { name: exact, type: bool }
+      - tag: 3
+        name: and
+        fields:
+          - { name: left, type: message, target: pwright.locator.selector }
+          - { name: right, type: message, target: pwright.locator.selector }
+      - tag: 4
+        name: or
+        fields:
+          - { name: left, type: message, target: pwright.locator.selector }
+          - { name: right, type: message, target: pwright.locator.selector }
+      - tag: 5
+        name: text
+        fields:
+          - { name: matcher, type: message, target: pwright.locator.text_matcher }
+      - tag: 6
+        name: label
+        fields:
+          - { name: matcher, type: message, target: pwright.locator.text_matcher }
+      - tag: 7
+        name: role
+        fields:
+          - { name: selector, type: message, target: pwright.locator.role_selector }
+      - tag: 8
+        name: within
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: descendant, type: message, target: pwright.locator.selector }
+      - tag: 9
+        name: filter_not_text
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: text, type: utf8 }
+          - { name: exact, type: bool }
+      - tag: 10
+        name: filter_has
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: descendant, type: message, target: pwright.locator.selector }
+      - tag: 11
+        name: filter_has_not
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: descendant, type: message, target: pwright.locator.selector }
+      - tag: 12
+        name: filter_visible
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: visible, type: bool }
+      - tag: 13
+        name: text_regex
+        fields:
+          - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+      - tag: 14
+        name: label_regex
+        fields:
+          - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+      - tag: 15
+        name: filter_text_regex
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+      - tag: 16
+        name: filter_not_text_regex
+        fields:
+          - { name: base, type: message, target: pwright.locator.selector }
+          - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+      - tag: 17
+        name: role_pattern
+        fields:
+          - { name: selector, type: message, target: pwright.locator.role_pattern_selector }
+      - tag: 18
+        name: attribute_text
+        fields:
+          - { name: attribute, type: enum, target: pwright.locator.user_facing_attribute }
+          - { name: matcher, type: message, target: pwright.locator.text_matcher }
+      - tag: 19
+        name: attribute_regex
+        fields:
+          - { name: attribute, type: enum, target: pwright.locator.user_facing_attribute }
+          - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+      - tag: 20
+        name: test_id_text
+        fields:
+          - { name: attributes, type: utf8 }
+          - { name: value, type: utf8 }
+      - tag: 21
+        name: test_id_regex
+        fields:
+          - { name: attributes, type: utf8 }
+          - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+
+  - kind: record
+    id: pwright.locator.text_matcher
+    fields:
+      - { name: value, type: utf8 }
+      - { name: exact, type: bool }
+
+  - kind: tagged_union
+    id: pwright.locator.text_pattern
+    variants:
+      - tag: 0
+        name: string
+        fields:
+          - { name: matcher, type: message, target: pwright.locator.text_matcher }
+      - tag: 1
+        name: regex
+        fields:
+          - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+
+  - kind: enum
+    id: pwright.locator.user_facing_attribute
+    variants:
+      - { tag: 0, name: placeholder }
+      - { tag: 1, name: alt }
+      - { tag: 2, name: title }

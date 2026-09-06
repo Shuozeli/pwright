@@ -1,0 +1,41 @@
+[package]
+name = "pwright-composition-chromium-launch"
+description = "Optional owned-Chromium launch leaf for Pwright composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-browser-provider = { workspace = true }
+pwright-cap-browser-events = { workspace = true }
+pwright-cap-browser-lifecycle = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-browser-lifecycle = { workspace = true }
+pwright-codec-handshake = { workspace = true }
+pwright-composition-chromium = { workspace = true }
+pwright-core = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+pwright-provider-chromium = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-runtime-control = { workspace = true }
+pwright-server-browser-lifecycle = { workspace = true }
+pwright-server-browser-events = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-backend-cdp = { workspace = true }
+pwright-browser-model = { workspace = true }
+pwright-client = { workspace = true }
+pwright-client-browser-lifecycle = { workspace = true }
+pwright-client-browser-events = { workspace = true }
+pwright-client-control = { workspace = true }
+pwright-client-wire = { workspace = true }
+pwright-codec-control = { workspace = true }
+pwright-codec-browser-events = { workspace = true }
+pwright-process-metrics = { workspace = true, features = ["ledger"] }
+pwright-runtime-tokio = { workspace = true }
+pwright-transport-memory = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }

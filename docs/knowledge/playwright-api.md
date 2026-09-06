@@ -1,3 +1,5 @@
+<!-- agent-updated: 2026-09-05T15:03:54Z -->
+
 # Playwright API Compatibility
 
 pwright aims to provide a Rust API with the same mental model as [Playwright](https://playwright.dev). This document maps every Playwright public API to its pwright status: **supported**, **planned**, or **out of scope**.
@@ -140,7 +142,7 @@ Playwright
 | `page.focus(selector)` | `page.focus()` | ✅ Exists | `DOM.focus` |
 | `page.check(selector)` | `page.check()` | ✅ Exists | Click if unchecked |
 | `page.uncheck(selector)` | `page.uncheck()` | ✅ Exists | Click if checked |
-| `page.selectOption(selector, v)` | `page.select_option()` | ✅ Exists | DOM select override |
+| `page.selectOption(selector, v)` | `page.select_option()` | ✅ Exists | Legacy value-only bridge; v2 Locator route is the semantic implementation |
 | `page.setInputFiles(sel, f)` | `page.set_input_files()` | ✅ Exists | `DOM.setFileInputFiles` |
 | `page.tap(selector)` | `page.touchscreen().tap()` | ✅ Exists | `Input.dispatchTouchEvent` |
 | `page.dragAndDrop(s, t)` | `page.drag_and_drop()` | Planned | Mouse event sequence |
@@ -231,7 +233,7 @@ Playwright
 | `locator.click(opts)` | `locator.click()` | ✅ Exists | Resolve → click via box model |
 | `locator.dblclick(opts)` | `locator.dblclick()` | ✅ Exists | `clickCount: 2` |
 | `locator.fill(value)` | `locator.fill()` | ✅ Exists | Resolve → focus + set value |
-| `locator.clear()` | `locator.clear()` | Planned | `fill("")` |
+| `locator.clear()` | `locator.clear()` | ✅ Exists | Client composition over `fill("")` |
 | `locator.type(text)` | `locator.type_text()` | ✅ Exists | Resolve → key events |
 | `locator.pressSequentially(t)` | `locator.press_sequentially()` | Planned | Alias for `type` |
 | `locator.press(key)` | `locator.press()` | ✅ Exists | Resolve → key dispatch |
@@ -240,13 +242,13 @@ Playwright
 | `locator.blur()` | `locator.blur()` | ✅ Exists | JS eval `blur()` |
 | `locator.check()` | `locator.check()` | ✅ Exists | Click if unchecked |
 | `locator.uncheck()` | `locator.uncheck()` | ✅ Exists | Click if checked |
-| `locator.setChecked(bool)` | `locator.set_checked()` | Planned | `check()` or `uncheck()` |
-| `locator.selectOption(val)` | `locator.select_option()` | ✅ Exists | Resolve → select JS |
+| `locator.setChecked(bool)` | `locator.set_checked()` | ✅ Exists | Desired-state primitive; check/uncheck compose over it |
+| `locator.selectOption(val)` | `locator.select_option()` | Partial | Locator 1.21/2.4 strings and descriptors; ElementHandle overload pending explicit adoption design |
 | `locator.tap(opts)` | `page.touchscreen().tap()` | ✅ Exists | `Input.dispatchTouchEvent` |
 | `locator.dragTo(target)` | `locator.drag_to()` | Planned (Tier 3) | Mouse event chain |
 | `locator.setInputFiles(f)` | `locator.set_input_files()` | ✅ Exists | `DOM.setFileInputFiles` |
 | `locator.dispatchEvent(type)` | `locator.dispatch_event()` | ✅ Exists | `Runtime.callFunctionOn` |
-| `locator.scrollIntoViewIfNeeded()` | `locator.scroll_into_view()` | ✅ Exists | `DOM.scrollIntoViewIfNeeded` |
+| `locator.scrollIntoViewIfNeeded()` | `locator.scroll_into_view_if_needed()` | Locator 1.22/2.5 | Strict lazy Locator route; stable-only wait and full-intersection no-op, implemented in the Chromium utility world |
 
 ### Queries
 

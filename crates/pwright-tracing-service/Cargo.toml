@@ -1,0 +1,25 @@
+[package]
+name = "pwright-tracing-service"
+description = "Task-free Context-scoped tracing recorder and injected sink composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-tracing = { workspace = true }
+pwright-core = { workspace = true }
+pwright-server-tracing = { workspace = true }
+pwright-trace-model = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-client = { workspace = true }
+pwright-client-tracing = { workspace = true }
+pwright-client-wire = { workspace = true }
+pwright-codec-tracing = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+pwright-transport-memory = { workspace = true }
+tokio = { workspace = true }
