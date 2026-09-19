@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 # Node retained handles: integration contract and verification
 
@@ -49,21 +49,46 @@ cannot acquire or revoke the rightful owner.
 
 Final checkpoint verification passes 5/5 focused backend tests, 4/4 focused
 composition tests and 9/9 selected host file-input tests. Both rebuilt
-artifacts pass the 306/306 offline retained-input matrix, 167/167 package suite
-and complete 35/35 real-Chrome raw binding lane; the combined artifact also
-passes the 59/59 focused profile/dispatch/Worker batch. TypeScript, exact
+artifacts pass the 392/392 offline retained-input/oracle matrix, 167/167 package
+suite and complete 42/42 ordinary real-Chrome raw binding lane; the combined
+artifact also passes the 59/59 focused profile/dispatch/Worker batch. TypeScript, exact
 dependency and package-boundary checks, formatting, diff checks and strict
 release Clippy for backend, composition, host, standalone addon and combined
 addon are green.
 
-The live mutation case proves exact `[0, 255, 1]` bytes, filename, MIME, browser
-creation-time `lastModified`, exact event order/flags, terminal resource
-reclamation and a late text-input no-op. It does not yet claim the unchecked
-upstream differential matrix for empty/multiple files, throwing listeners,
-detach/navigation races, mutation-time cancellation or the maximum admitted
-payload. The pinned channel currently strips caller `lastModifiedMs`, and no
-public `ElementHandle.setInputFiles` or public error/stack rewrite is exposed.
-Those facts are release gates, not hidden compatibility claims.
+The completed live matrix uses Playwright 1.58.2's in-process server
+instrumentation to pause both implementations after prevalidation. Empty,
+one-file and multiple-file bytes/name/MIME/call-time modified values, exact
+event flags, listener exceptions, late type change, deadline cancellation and
+Frame detach agree. A separate same-turn abort after native admission proves
+no side effect and complete continuation cleanup. Each artifact also admits and
+mutates exactly 50 MiB minus one byte: Node RSS grows by about 333--334 MiB at
+the sample point, the source ArrayBuffer returns exactly to baseline after GC,
+and all native owners are retired. RSS itself remains allocator-resident until
+process exit, so this is not reported as reclaimed physical memory.
+
+The matrix exposes two deliberate open compatibility decisions. Playwright
+resolves when the main document navigates during the instrumentation pause,
+whereas NODE-191 rejects fail-closed after reclaiming every owner. The pinned
+channel also strips caller `lastModifiedMs`; ordinary payloads still match the
+browser creation-time behavior. No public `ElementHandle.setInputFiles` or
+public error/stack rewrite is exposed, so neither difference is hidden behind a
+compatibility claim.
+
+Run the ordinary live matrix under each profile:
+
+```sh
+PWRIGHT_TEST_CDP=http://127.0.0.1:9222 \
+PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation \
+pnpm run test:handle-file-input-binding
+```
+
+Repeat with the `-combined` profile. Run the opt-in memory case with
+`PWRIGHT_MAX_PAYLOAD_GATE=1`, `PWDEBUG=0` and `node --expose-gc --test
+--test-name-pattern='maximum admitted payload'
+test/handle-file-input-binding.test.mjs` under each profile. These commands
+assume the externally managed, loopback-only dedicated Chrome required by the
+repository policy; the tests create and close only isolated Contexts.
 
 ## NODE-190: Bounded Rust ownership for the serialized payload graph
 

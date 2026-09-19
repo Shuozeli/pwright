@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 NODE-191 separates protocol, ownership, packaging and browser claims. Five fake
 CDP tests prove exact world/group/object identity, one large user-gesture call,
@@ -8,20 +8,24 @@ Four composition AAA tests prove success settlement, unpolled no-I/O drop,
 started-waiter cleanup transfer and cleanup-failure poisoning. The selected
 host file-input slice remains 9/9.
 
-Both final artifacts pass 306/306 offline retained-input cases, 167/167 package
-cases and the complete 35/35 real-Chrome raw binding lane; the combined artifact
-also passes the focused 59/59 profile/dispatch/Worker batch. Types, dependency
+Both final artifacts pass 392/392 offline retained-input/oracle cases, 167/167
+package cases and the complete 42/42 ordinary real-Chrome raw binding lane; the
+combined artifact also passes the focused 59/59 profile/dispatch/Worker batch.
+Types, dependency
 fingerprints, package boundaries, formatting and strict release Clippy pass.
-One deliberately misassembled 307-test command failed only because the live
-binding module requires `PWRIGHT_TEST_CDP`; the corrected separation is a clean
-306-case offline run plus the already-required 35-case live run.
+The earlier 306-case retained-input subset is now run together with its pinned
+DOM/target-marker oracle files as one 392-case offline gate; the live binding
+module remains separate because it requires `PWRIGHT_TEST_CDP`.
 
-The browser mutation assertion is intentionally narrow: one exact binary file,
-event order/flags, terminal same-ticket cleanup and a late non-file no-op. It
-does not count as the still-open upstream oracle matrix for empty/multiple
-payloads, listener exceptions, detach/navigation races, mutation cancellation
-or maximum payload memory. [Canonical NODE-191
-evidence](pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
+The live gate now separates three claims. A direct pinned-oracle matrix compares
+empty/multiple payloads, listener throws, late type changes, timeout
+cancellation, Frame detach and main-document navigation at the same awaited
+instrumentation boundary. Candidate-only same-turn native abort proves
+continuation cleanup. An explicitly enabled maximum gate mutates 50 MiB minus
+one byte under both artifacts, bounds sampled Node RSS growth below 768 MiB and
+requires ArrayBuffer/native-owner reclamation. Preserve the observed navigation
+settlement discrepancy: Playwright resolves while Pwright rejects fail-closed.
+[Canonical NODE-191 evidence](pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
 
 NODE-190 separates four claims. Offline coordinator tests prove import ordering
 and exact abort on rejection. Worker/profile checks prove only selected binaries

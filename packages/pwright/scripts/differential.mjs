@@ -16,7 +16,8 @@ const args = lane === 'mouse-public' ? ['scripts/compare-mouse.mjs']
   : lane === 'pages-public' ? ['--expose-gc', 'scripts/compare-page-enumeration.mjs']
   : lane === 'context-base' ? ['--expose-gc', 'scripts/compare-context-base.mjs']
   : lane === 'glob-ffi' ? ['--expose-gc', 'scripts/compare-glob-ffi.mjs']
-  : ['--test-reporter=tap', ...(lane === 'locator' ? ['--expose-gc'] : []), `test/${lane}.test.mjs`];
+  : ['--test-reporter=tap', ...(['locator', 'handle-file-input-binding'].includes(lane) ? ['--expose-gc'] : []),
+    `test/${lane}.test.mjs`];
 const child = spawn(process.execPath, args, {
   cwd: fileURLToPath(new URL('../', import.meta.url)),
   env: process.env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],

@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 NODE-191 adds `prepareMutatedTarget` after `prepareImportedTarget` under the
 same `progress.race`. `handleMutateSerializedFileInputPayloads` proves the exact
@@ -21,6 +21,14 @@ This adds no generic evaluator or public method. Node still owns JavaScript
 argument semantics, the single deadline and error facade; Rust owns target,
 transport, browser mutation, settlement and resource lifetime. [Canonical
 NODE-191 checkpoint](knowledge/pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
+
+The differential harness reaches pinned Playwright's in-process server only in
+tests to install an `onBeforeInputAction` listener. This gives oracle and
+candidate the same deterministic post-prevalidation pause for timeout,
+late-type and lifecycle races without adding a production hook. It exposes one
+settlement difference: Playwright resolves after main-document navigation at
+that pause, while the internal Pwright coordinator rejects fail-closed. The
+future public facade must choose that policy and map its error explicitly.
 
 NODE-190 adds `prepareImportedTarget` immediately after
 `prepareSerializedTarget`. `handleImportSerializedFileInputPayloads` first

@@ -10,8 +10,10 @@
 // them: no later native Weak upgrade or collected-wrapper behavior is proved.
 // NODE-190 cases import the serialized graph into one bounded Rust owner and
 // release its direct V8 roots. NODE-191 then consumes that owner in one
-// non-retargeting utility-world CDP mutation, verifies exact bytes/events and
-// treats a late non-file target as the same successful no-op as Playwright.
+// non-retargeting utility-world CDP mutation. The final NODE-191 matrix reaches
+// pinned Playwright's in-process instrumentation to compare payloads, events,
+// listener errors, late type changes, deadlines and lifecycle races at the
+// same post-prevalidation boundary, plus an explicit maximum-payload gate.
 // Cleanup accounting covers native-host/FFI/preparation resources only, not
 // the separate timeout-policy ledgers retained by raw client metadata wrappers.
 import assert from 'node:assert/strict';
@@ -28,9 +30,12 @@ const { serverValidationPorts } = require('../src/file-input-channel.cjs');
 const { asyncMaterialize } = require('../src/file-input-materialization.cjs');
 const { prepareServerPayloads, prepareMarkedTarget, prepareProjectedTarget,
   preparePrevalidatedTarget, prepareInstrumentedTarget,
-  prepareSerializedTarget, prepareMutatedTarget } = require('../src/file-input-dispatch.cjs');
+  prepareSerializedTarget, prepareImportedTarget, prepareMutatedTarget } = require('../src/file-input-dispatch.cjs');
 const { serializeFileInputCallArgument } = require('../src/file-input-call-argument.cjs');
 const debugInputs = require('../src/file-input-debug.cjs');
+const oracleRequire = createRequire(new URL('../../../tests/package.json', import.meta.url));
+assert.equal(oracleRequire('playwright/package.json').version, '1.58.2');
+const { chromium: oracleChromium } = oracleRequire('playwright');
 const { chromium, compatibility } = await import('@shuozeli/pwright');
 assert.ok(['retained-file-input', 'retained-file-input-combined', 'retained-target-marking',
   'retained-target-marking-combined', 'retained-target-prevalidation',
@@ -53,6 +58,8 @@ const endpoint = process.env.PWRIGHT_TEST_CDP;
 const EXERCISE_MS = 20000;
 const CLEANUP_PHASE_MS = 3000;
 const CASE_MS = 35000; // 20s exercise + four 3s cleanup phases + 3s margin.
+const MAX_SOURCE_BYTES = 50 * 1024 * 1024 - 1;
+const MAX_MEMORY_CASE_MS = 120000;
 let poisonedFixture;
 
 async function bounded(pending, label, timeout, onTimeout = () => {}) {
@@ -136,7 +143,7 @@ async function nativeRejection(pending, label, pattern) {
   return result.error;
 }
 
-async function withPage(exercise) {
+async function withPage(exercise, exerciseMs = EXERCISE_MS) {
   if (poisonedFixture) throw new Error('Binding fixture blocked by unresolved prior cleanup', { cause: poisonedFixture });
   const browsers = [];
   const handles = [];
@@ -230,7 +237,7 @@ async function withPage(exercise) {
     return exercise({ browser, session, context, page, connect, keep, remember, produce, prepare, preparations, active, run });
   };
   try {
-    return await bounded(body(), 'binding setup/exercise', EXERCISE_MS, () => {
+    return await bounded(body(), 'binding setup/exercise', exerciseMs, () => {
       retiring = true;
       // Even successful cleanup of the currently known owners cannot prove
       // reclamation of an acquisition that has not settled yet. Never open
@@ -284,6 +291,111 @@ async function withPage(exercise) {
     }
     if (failures.length) throw new AggregateError(primary ? [primary, ...failures] : failures,
       'retained binding cleanup failed', primary ? { cause: primary } : undefined);
+  }
+}
+
+async function withOraclePage(exercise) {
+  const browser = await oracleChromium.connectOverCDP(endpoint, { timeout: 5000 });
+  let context;
+  let primary;
+  try {
+    context = await browser.newContext();
+    return await exercise(await context.newPage());
+  } catch (error) {
+    primary = error;
+    throw error;
+  } finally {
+    const failures = [];
+    try { if (context) await diagnosticDeadline(context.close(), 'oracle mutation Context cleanup'); }
+    catch (error) { failures.push(error); }
+    try { await diagnosticDeadline(browser.close(), 'oracle mutation Browser disconnect'); }
+    catch (error) { failures.push(error); }
+    if (failures.length) throw new AggregateError(primary ? [primary, ...failures] : failures,
+      'oracle mutation cleanup failed', primary ? { cause: primary } : undefined);
+  }
+}
+
+async function observedFiles(page, id, before, after) {
+  return page.evaluate(async ({ id, before, after }) => {
+    const input = document.getElementById(id);
+    return {
+      files: input.files === null ? null : await Promise.all([...input.files].map(async file => ({
+        name: file.name,
+        type: file.type,
+        bytes: [...new Uint8Array(await file.arrayBuffer())],
+        modified: file.lastModified >= before && file.lastModified <= after ? 'call-time' : file.lastModified,
+      }))),
+      events: globalThis.__node191MatrixEvents,
+      errors: globalThis.__node191MatrixErrors,
+    };
+  }, { id, before, after });
+}
+
+async function installObservedInput(page, { id = 'node191-matrix', multiple = false, throwOnInput = false } = {}) {
+  await page.evaluate(({ id, multiple, throwOnInput }) => {
+    const input = Object.assign(document.createElement('input'), { id, type: 'file', multiple });
+    globalThis.__node191MatrixEvents = [];
+    globalThis.__node191MatrixErrors = [];
+    globalThis.addEventListener('error', event => {
+      globalThis.__node191MatrixErrors.push(event.message);
+      event.preventDefault();
+    });
+    for (const type of ['input', 'change']) input.addEventListener(type, event => {
+      globalThis.__node191MatrixEvents.push({
+        type: event.type, bubbles: event.bubbles, cancelable: event.cancelable,
+        composed: event.composed, target: event.target === input,
+      });
+    });
+    if (throwOnInput) input.addEventListener('input', () => { throw new Error('node191-listener-sentinel'); });
+    document.body.append(input);
+  }, { id, multiple, throwOnInput });
+}
+
+async function warmMutationMarker(fixture, raw, createPreparation) {
+  const { browser, session, page, prepare, active } = fixture;
+  const before = await ownership(browser, 'before matrix marker warmup', active);
+  const warm = (createPreparation ?? (options => prepare(raw, page, options)))({
+    timeout: 0,
+    payloads: [{ name: 'warm.txt', buffer: Buffer.from('warm') }],
+  });
+  await diagnosticDeadline(prepareMarkedTarget(session, warm), 'matrix marker warmup');
+  const held = browser.pwrightMetrics();
+  assert.ok(held.activeLeases > before.activeLeases);
+  assert.equal(warm.abort(), true);
+  return diagnosticDeadline((async () => {
+    for (;;) {
+      const current = await ownership(browser, 'matrix marker warmup cleanup sample', active);
+      if (current.activeLeases < held.activeLeases) return current;
+      await setImmediate();
+    }
+  })(), 'matrix marker warmup cleanup');
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(fulfill => { resolve = fulfill; });
+  return { promise, resolve };
+}
+
+function installOracleInputInstrumentation(page, listener) {
+  // Pinned test-only access to Playwright's in-process server object lets the
+  // oracle pause at the same awaited onBeforeInputAction boundary as Pwright.
+  // This is not package production code and is guarded by the exact 1.58.2
+  // assertion above.
+  const connection = page._connection;
+  assert.equal(typeof connection?.toImpl, 'function');
+  const pageImpl = connection.toImpl(page);
+  const contextImpl = connection.toImpl(page.context());
+  assert.equal(typeof pageImpl?.instrumentation?.addListener, 'function');
+  pageImpl.instrumentation.addListener(listener, contextImpl);
+  return () => pageImpl.instrumentation.removeListener(listener);
+}
+
+async function collectGarbage() {
+  assert.equal(typeof global.gc, 'function', 'run the maximum-payload gate with --expose-gc');
+  for (let index = 0; index < 3; index++) {
+    global.gc();
+    await setImmediate();
   }
 }
 
@@ -1208,6 +1320,477 @@ test('live native serialized mutation: exact bytes/events reach file inputs and 
     await run(() => session.handleDispose(textRaw));
     assert.deepEqual(await exactOwnership(browser, 'late non-file mutation reclamation', baseline, active), baseline);
   }));
+
+test('live mutation differential: empty and multiple payloads match pinned Playwright',
+  { timeout: CASE_MS, skip: !targetMutation }, async () => {
+    // Arrange: produce the oracle result through its public retained Handle.
+    const payloads = () => [
+      { name: 'alpha.txt', mimeType: 'text/plain', buffer: Buffer.from('alpha') },
+      { name: 'omega.bin', mimeType: 'application/x-node191', buffer: Buffer.from([0, 255, 1]) },
+    ];
+    const expected = await withOraclePage(async page => {
+      await installObservedInput(page, { multiple: true });
+      const handle = await page.$('#node191-matrix');
+      const beforeMultiple = Date.now();
+      await handle.setInputFiles(payloads(), { timeout: 2000 });
+      const afterMultiple = Date.now();
+      const multiple = await observedFiles(page, 'node191-matrix', beforeMultiple, afterMultiple);
+      await page.evaluate(() => {
+        globalThis.__node191MatrixEvents = [];
+        globalThis.__node191MatrixErrors = [];
+      });
+      const beforeEmpty = Date.now();
+      await handle.setInputFiles([], { timeout: 2000 });
+      const afterEmpty = Date.now();
+      const empty = await observedFiles(page, 'node191-matrix', beforeEmpty, afterEmpty);
+      await handle.dispose();
+      return { multiple, empty };
+    });
+
+    // Act: run the identical payload sequence through the terminal Rust owner.
+    const actual = await withPage(async fixture => {
+      const { browser, session, page, produce, prepare, active, run } = fixture;
+      await run(() => installObservedInput(page, { multiple: true }));
+      const raw = await produce('document.getElementById("node191-matrix")');
+      const baseline = await warmMutationMarker(fixture, raw);
+      const beforeMultiple = Date.now();
+      await diagnosticDeadline(prepareMutatedTarget(session, prepare(raw, page, {
+        timeout: 0, payloads: payloads(),
+      })), 'multiple serialized payload mutation');
+      const afterMultiple = Date.now();
+      const multiple = await run(() => observedFiles(page, 'node191-matrix', beforeMultiple, afterMultiple));
+      assert.deepEqual(await exactOwnership(browser, 'multiple mutation reclamation', baseline, active), baseline);
+      await run(() => page.evaluate(() => {
+        globalThis.__node191MatrixEvents = [];
+        globalThis.__node191MatrixErrors = [];
+      }));
+      const beforeEmpty = Date.now();
+      await diagnosticDeadline(prepareMutatedTarget(session, prepare(raw, page, {
+        timeout: 0, payloads: [],
+      })), 'empty serialized payload mutation');
+      const afterEmpty = Date.now();
+      const empty = await run(() => observedFiles(page, 'node191-matrix', beforeEmpty, afterEmpty));
+      assert.deepEqual(await exactOwnership(browser, 'empty mutation reclamation', baseline, active), baseline);
+      return { multiple, empty };
+    });
+
+    // Assert: bytes, names, MIME, call-time modified values and event flags all match.
+    assert.deepEqual(actual, expected);
+  });
+
+test('live mutation differential: a throwing input listener is reported but does not suppress change',
+  { timeout: CASE_MS, skip: !targetMutation }, async () => {
+    // Arrange
+    const payload = () => ({ name: 'listener.txt', mimeType: 'text/plain', buffer: Buffer.from('listener') });
+    const expected = await withOraclePage(async page => {
+      await installObservedInput(page, { throwOnInput: true });
+      const handle = await page.$('#node191-matrix');
+      const before = Date.now();
+      await handle.setInputFiles(payload(), { timeout: 2000 });
+      const after = Date.now();
+      const result = await observedFiles(page, 'node191-matrix', before, after);
+      await handle.dispose();
+      return result;
+    });
+
+    // Act
+    const actual = await withPage(async fixture => {
+      const { browser, session, page, produce, prepare, active, run } = fixture;
+      await run(() => installObservedInput(page, { throwOnInput: true }));
+      const raw = await produce('document.getElementById("node191-matrix")');
+      const baseline = await warmMutationMarker(fixture, raw);
+      const before = Date.now();
+      await diagnosticDeadline(prepareMutatedTarget(session, prepare(raw, page, {
+        timeout: 0, payloads: [payload()],
+      })), 'throwing-listener serialized payload mutation');
+      const after = Date.now();
+      const result = await run(() => observedFiles(page, 'node191-matrix', before, after));
+      assert.deepEqual(await exactOwnership(browser, 'throwing-listener mutation reclamation', baseline, active), baseline);
+      return result;
+    });
+
+    // Assert
+    assert.deepEqual(actual, expected);
+    assert.deepEqual(actual.errors, ['Uncaught Error: node191-listener-sentinel']);
+    assert.deepEqual(actual.events.map(event => event.type), ['input', 'change']);
+  });
+
+test('live mutation differential: a type change after prevalidation is the same successful no-op',
+  { timeout: CASE_MS, skip: !targetMutation }, async () => {
+    // Arrange: Playwright's injected helper returns text for a non-file input;
+    // ElementHandle._setInputFiles ignores that return and resolves normally.
+    const payload = () => ({ name: 'ignored.txt', mimeType: 'text/plain', buffer: Buffer.from('ignored') });
+    const expected = await withOraclePage(async page => {
+      await installObservedInput(page);
+      const handle = await page.$('#node191-matrix');
+      await handle.evaluate(input => { input.type = 'text'; });
+      const before = Date.now();
+      await handle.setInputFiles(payload(), { timeout: 2000 });
+      const after = Date.now();
+      const result = await observedFiles(page, 'node191-matrix', before, after);
+      await handle.dispose();
+      return result;
+    });
+
+    // Act: candidate mutation pauses after its exact original target has been
+    // marked, prevalidated and instrumented, then observes the changed type in
+    // the final non-retargeting utility-world call.
+    const actual = await withPage(async fixture => {
+      const { browser, session, page, produce, prepare, active, run } = fixture;
+      await run(() => installObservedInput(page));
+      const raw = await produce('document.getElementById("node191-matrix")');
+      const baseline = await warmMutationMarker(fixture, raw);
+      const preparation = prepare(raw, page, { timeout: 0, payloads: [payload()] });
+      const entered = deferred();
+      const release = deferred();
+      const pending = prepareMutatedTarget(session, preparation, {
+        onBeforeInputAction() { entered.resolve(); return release.promise; },
+      });
+      await diagnosticDeadline(entered.promise, 'late type-change instrumentation entry');
+      let result;
+      try {
+        await run(() => page.evaluate(() => { document.getElementById('node191-matrix').type = 'text'; }));
+        const before = Date.now();
+        release.resolve();
+        await diagnosticDeadline(pending, 'late type-change mutation no-op');
+        const after = Date.now();
+        result = await run(() => observedFiles(page, 'node191-matrix', before, after));
+      } finally {
+        release.resolve();
+      }
+      assert.equal(preparation.isPending(), false);
+      assert.equal(preparation.abort(), false);
+      assert.deepEqual(await exactOwnership(browser, 'late type-change reclamation', baseline, active), baseline);
+      return result;
+    });
+
+    // Assert
+    assert.deepEqual(actual, expected);
+    assert.deepEqual(actual, { files: null, events: [], errors: [] });
+  });
+
+test('live mutation differential: timeout at the awaited instrumentation boundary cancels before mutation',
+  { timeout: CASE_MS, skip: !targetMutation }, async () => {
+    // Arrange / Act: hold both implementations at their pinned
+    // onBeforeInputAction checkpoint until the single public deadline wins.
+    const expected = await withOraclePage(async page => {
+      await installObservedInput(page);
+      const handle = await page.$('#node191-matrix');
+      const entered = deferred();
+      const release = deferred();
+      const listener = { onBeforeInputAction() { entered.resolve(); return release.promise; } };
+      const remove = installOracleInputInstrumentation(page, listener);
+      let error;
+      try {
+        const pending = handle.setInputFiles({
+          name: 'timeout.txt', mimeType: 'text/plain', buffer: Buffer.from('timeout'),
+        }, { timeout: 25 });
+        await diagnosticDeadline(entered.promise, 'oracle cancellation instrumentation entry');
+        error = await nativeRejection(pending, 'oracle instrumentation cancellation');
+      } finally {
+        release.resolve();
+        remove();
+      }
+      const state = await observedFiles(page, 'node191-matrix', 0, 0);
+      await handle.dispose();
+      return { error, state };
+    });
+
+    const actual = await withPage(async fixture => {
+      const { browser, session, page, produce, prepare, active, run } = fixture;
+      await run(() => installObservedInput(page));
+      const raw = await produce('document.getElementById("node191-matrix")');
+      const baseline = await warmMutationMarker(fixture, raw);
+      const preparation = prepare(raw, page, {
+        timeout: 25,
+        payloads: [{ name: 'timeout.txt', mimeType: 'text/plain', buffer: Buffer.from('timeout') }],
+      });
+      const entered = deferred();
+      const release = deferred();
+      let error;
+      try {
+        const pending = prepareMutatedTarget(session, preparation, {
+          onBeforeInputAction() { entered.resolve(); return release.promise; },
+        });
+        await diagnosticDeadline(entered.promise, 'candidate cancellation instrumentation entry');
+        error = await nativeRejection(pending, 'candidate instrumentation cancellation');
+      } finally {
+        release.resolve();
+      }
+      const state = await run(() => observedFiles(page, 'node191-matrix', 0, 0));
+      assert.deepEqual(await exactOwnership(browser, 'instrumentation cancellation reclamation', baseline, active), baseline);
+      return { error, state };
+    });
+
+    // Assert: public error wrappers differ because NODE-191 intentionally does
+    // not expose ElementHandle.setInputFiles yet; the deadline and side effect
+    // semantics are identical.
+    assert.equal(expected.error.name, 'TimeoutError');
+    assert.match(expected.error.message, /Timeout 25ms exceeded/);
+    assert.equal(actual.error.code, 'PWRIGHT_TIMEOUT');
+    assert.match(actual.error.message, /Timeout 25ms exceeded/);
+    assert.deepEqual(actual.state, expected.state);
+    assert.deepEqual(actual.state, { files: [], events: [], errors: [] });
+  });
+
+test('live native serialized mutation: navigation after prevalidation rejects and reclaims ownership',
+  { timeout: CASE_MS, skip: !targetMutation }, async () => {
+    // Arrange / Act: pause pinned Playwright at the same awaited boundary and
+    // commit a replacement main document before either mutation may resume.
+    const expected = await withOraclePage(async page => {
+      await installObservedInput(page);
+      const handle = await page.$('#node191-matrix');
+      const entered = deferred();
+      const release = deferred();
+      const listener = { onBeforeInputAction() { entered.resolve(); return release.promise; } };
+      const remove = installOracleInputInstrumentation(page, listener);
+      let outcome;
+      try {
+        const pending = handle.setInputFiles({
+          name: 'navigation.txt', mimeType: 'text/plain', buffer: Buffer.from('navigation'),
+        }, { timeout: 2000 });
+        await diagnosticDeadline(entered.promise, 'oracle navigation instrumentation entry');
+        await page.goto('data:text/html,<title>node191-oracle-after-navigation</title>');
+        release.resolve();
+        outcome = await diagnosticDeadline(pending.then(
+          value => ({ status: 'resolved', value }),
+          error => ({ status: 'rejected', error }),
+        ), 'oracle navigation mutation settlement');
+      } finally {
+        release.resolve();
+        remove();
+        await handle.dispose();
+      }
+      return outcome;
+    });
+
+    const actual = await withPage(async fixture => {
+      // Arrange: stop after the original element has been marked and
+      // prevalidated in its utility world.
+      const { browser, session, page, produce, prepare, active, run } = fixture;
+      await run(() => installObservedInput(page));
+      const raw = await produce('document.getElementById("node191-matrix")');
+      const baseline = await warmMutationMarker(fixture, raw);
+      const preparation = prepare(raw, page, {
+        timeout: 0,
+        payloads: [{ name: 'navigation.txt', buffer: Buffer.from('navigation') }],
+      });
+      const entered = deferred();
+      const release = deferred();
+      const pending = prepareMutatedTarget(session, preparation, {
+        onBeforeInputAction() { entered.resolve(); return release.promise; },
+      });
+      await diagnosticDeadline(entered.promise, 'navigation race instrumentation entry');
+      let error;
+      try {
+        await run(() => page.goto('data:text/html,<title>node191-after-navigation</title>', {
+          waitUntil: 'load', timeout: 5000,
+        }));
+        assert.equal(await run(() => page.title()), 'node191-after-navigation');
+        release.resolve();
+        error = await nativeRejection(pending, 'navigation race mutation rejection');
+      } finally {
+        release.resolve();
+      }
+      assert.equal(preparation.isPending(), false);
+      const idle = await ownership(browser, 'navigation race reclamation', active);
+      assert.deepEqual(idle.preparation, { pending: 0, rootContainers: 0, rootedValues: 0 });
+      assert.equal(idle.activeOperations, 0);
+      assert.equal(idle.ffiReservedBytes, baseline.ffiReservedBytes);
+      return error;
+    });
+
+    // Assert: preserve the observed discrepancy. Pinned Playwright ignores the
+    // lost old-document target and resolves; NODE-191 fails closed while still
+    // reclaiming every native owner. A future public compatibility layer must
+    // choose this policy explicitly instead of hiding the difference.
+    assert.deepEqual(expected, { status: 'resolved', value: undefined });
+    assert.match(actual.message, /context|navigation|destroyed|closed/i);
+  });
+
+test('live native serialized mutation: frame detach after prevalidation rejects and reclaims ownership',
+  { timeout: CASE_MS, skip: !targetMutation }, async () => {
+    // Arrange / Act: pin the upstream server at the same input-action
+    // instrumentation boundary, then detach the target's owner Frame.
+    const expected = await withOraclePage(async page => {
+      await page.evaluate(async () => {
+        const iframe = document.createElement('iframe');
+        iframe.name = 'node191-child';
+        const loaded = new Promise(resolve => iframe.addEventListener('load', resolve, { once: true }));
+        iframe.srcdoc = '<body></body>';
+        document.body.append(iframe);
+        await loaded;
+      });
+      const frame = page.frames().find(candidate => candidate !== page.mainFrame() && candidate.name() === 'node191-child');
+      assert.ok(frame);
+      await installObservedInput(frame);
+      const handle = await frame.$('#node191-matrix');
+      const entered = deferred();
+      const release = deferred();
+      const listener = { onBeforeInputAction() { entered.resolve(); return release.promise; } };
+      const remove = installOracleInputInstrumentation(page, listener);
+      let error;
+      try {
+        const pending = handle.setInputFiles({
+          name: 'detached.txt', mimeType: 'text/plain', buffer: Buffer.from('detached'),
+        }, { timeout: 2000 });
+        await diagnosticDeadline(entered.promise, 'oracle frame-detach instrumentation entry');
+        await page.evaluate(() => document.querySelector('iframe[name="node191-child"]').remove());
+        await diagnosticDeadline((async () => {
+          while (!frame.isDetached()) await setImmediate();
+        })(), 'oracle frame-detach lifecycle publication');
+        release.resolve();
+        error = await nativeRejection(pending, 'oracle frame-detach mutation rejection');
+      } finally {
+        release.resolve();
+        remove();
+        await handle.dispose();
+      }
+      return error;
+    });
+
+    const actual = await withPage(async fixture => {
+      // Arrange
+      const { browser, session, page, keep, preparations, active, run } = fixture;
+      await run(() => page.evaluate(async () => {
+        const iframe = document.createElement('iframe');
+        iframe.name = 'node191-child';
+        const loaded = new Promise(resolve => iframe.addEventListener('load', resolve, { once: true }));
+        iframe.srcdoc = '<body></body>';
+        document.body.append(iframe);
+        await loaded;
+      }));
+      const frame = run(() => page.frames().find(candidate => candidate !== page.mainFrame() && candidate.name() === 'node191-child'));
+      assert.ok(frame);
+      await run(() => installObservedInput(frame));
+      const raw = await keep(session.frameEvaluateHandleWithPageTimeout(
+        frame._id, 'document.getElementById("node191-matrix")', false, undefined, page._id));
+      const createPreparation = options => run(() => {
+        const preparation = session.handlePrepareFileInput(raw, { ownerFrame: () => frame }, [], options);
+        preparations.push(preparation);
+        return preparation;
+      });
+      const baseline = await warmMutationMarker(fixture, raw, createPreparation);
+      const preparation = createPreparation({
+        timeout: 0,
+        payloads: [{ name: 'detached.txt', buffer: Buffer.from('detached') }],
+      });
+      const entered = deferred();
+      const release = deferred();
+      const pending = prepareMutatedTarget(session, preparation, {
+        onBeforeInputAction() { entered.resolve(); return release.promise; },
+      });
+      await diagnosticDeadline(entered.promise, 'frame-detach race instrumentation entry');
+      let error;
+      try {
+        await run(() => page.evaluate(() => document.querySelector('iframe[name="node191-child"]').remove()));
+        await diagnosticDeadline((async () => {
+          while (!frame.isDetached()) await setImmediate();
+        })(), 'frame-detach lifecycle publication');
+        release.resolve();
+        error = await nativeRejection(pending, 'frame-detach race mutation rejection');
+      } finally {
+        release.resolve();
+      }
+      assert.equal(preparation.isPending(), false);
+      const idle = await ownership(browser, 'frame-detach race reclamation', active);
+      assert.deepEqual(idle.preparation, { pending: 0, rootContainers: 0, rootedValues: 0 });
+      assert.equal(idle.activeOperations, 0);
+      assert.equal(idle.ffiReservedBytes, baseline.ffiReservedBytes);
+      return error;
+    });
+
+    // Assert
+    assert.match(expected.message, /context|detached|destroyed|closed/i);
+    assert.match(actual.message, /context|detached|destroyed|closed/i);
+  });
+
+test('live native serialized mutation: abort after native start rejects the waiter and settles cleanup',
+  { timeout: CASE_MS, skip: !targetMutation }, async () => withPage(async fixture => {
+    // Arrange
+    const { browser, session, page, produce, prepare, active, run } = fixture;
+    await run(() => installObservedInput(page));
+    const raw = await produce('document.getElementById("node191-matrix")');
+    const baseline = await warmMutationMarker(fixture, raw);
+    const preparation = prepare(raw, page, {
+      timeout: 0,
+      payloads: [{ name: 'cancelled.bin', mimeType: 'application/x-node191', buffer: Buffer.from([0, 255, 1]) }],
+    });
+    await diagnosticDeadline(prepareImportedTarget(session, preparation), 'mutation cancellation import');
+
+    // Act: the N-API promise has started the Rust mutation before synchronous
+    // revocation removes the public preparation ticket.
+    const pending = session.handleMutateSerializedFileInputPayloads(preparation);
+    assert.equal(preparation.abort(), true);
+    const error = await nativeRejection(pending, 'started mutation cancellation');
+
+    // Assert: started native work owns its cleanup independently of the waiter.
+    assert.match(error.message, /closed/i);
+    assert.equal(preparation.isPending(), false);
+    const result = await run(() => page.evaluate(async () => {
+      const input = document.getElementById('node191-matrix');
+      const file = input.files[0];
+      return file ? {
+        name: file.name, type: file.type,
+        bytes: [...new Uint8Array(await file.arrayBuffer())],
+      } : null;
+    }));
+    assert.equal(result, null, 'revocation before the native poll must prevent the browser side effect');
+    assert.deepEqual(await exactOwnership(browser, 'started mutation cancellation reclamation', baseline, active), baseline);
+  }));
+
+test('live native serialized mutation: maximum admitted payload stays bounded and fully reclaimable',
+  { timeout: MAX_MEMORY_CASE_MS,
+    skip: !targetMutation || process.env.PWRIGHT_MAX_PAYLOAD_GATE !== '1' }, async () => {
+    // Arrange
+    await collectGarbage();
+    const before = process.memoryUsage();
+    let admitted;
+
+    // Act
+    await withPage(async fixture => {
+      const { browser, session, page, produce, prepare, active, run } = fixture;
+      await run(() => installObservedInput(page));
+      const raw = await produce('document.getElementById("node191-matrix")');
+      const baseline = await warmMutationMarker(fixture, raw);
+      const bytes = Buffer.alloc(MAX_SOURCE_BYTES, 0xa5);
+      const beforeMutation = Date.now();
+      await prepareMutatedTarget(session, prepare(raw, page, {
+        timeout: 0,
+        payloads: [{ name: 'maximum.bin', mimeType: 'application/octet-stream', buffer: bytes }],
+      }));
+      const afterMutation = Date.now();
+      admitted = process.memoryUsage();
+      const result = await run(() => page.evaluate(async () => {
+        const file = document.getElementById('node191-matrix').files[0];
+        const first = new Uint8Array(await file.slice(0, 1).arrayBuffer())[0];
+        const last = new Uint8Array(await file.slice(-1).arrayBuffer())[0];
+        return { name: file.name, type: file.type, size: file.size, lastModified: file.lastModified, first, last };
+      }));
+      assert.deepEqual({ ...result, lastModified: 'call-time' }, {
+        name: 'maximum.bin', type: 'application/octet-stream', size: MAX_SOURCE_BYTES,
+        lastModified: 'call-time', first: 0xa5, last: 0xa5,
+      });
+      assert.ok(result.lastModified >= beforeMutation && result.lastModified <= afterMutation);
+      assert.deepEqual(await exactOwnership(browser, 'maximum payload mutation reclamation', baseline, active), baseline);
+    }, 90000);
+    await collectGarbage();
+    const after = process.memoryUsage();
+
+    // Assert: this is a process gate, not an allocator identity claim. It
+    // bounds the transient Node resident increase and proves the 50 MiB Buffer
+    // is no longer retained after ticket/Context/connection teardown.
+    const rssGrowth = admitted.rss - before.rss;
+    const retainedArrayBuffers = after.arrayBuffers - before.arrayBuffers;
+    assert.ok(rssGrowth < 768 * 1024 * 1024, `maximum payload grew Node RSS by ${rssGrowth} bytes`);
+    assert.ok(retainedArrayBuffers < 4 * 1024 * 1024,
+      `maximum payload retained ${retainedArrayBuffers} ArrayBuffer bytes`);
+    process.stdout.write(`${JSON.stringify({ maximumPayloadMemory: {
+      profile: compatibility.nativeProfile, sourceBytes: MAX_SOURCE_BYTES,
+      rssBefore: before.rss, rssAdmitted: admitted.rss, rssAfterGc: after.rss,
+      arrayBuffersBefore: before.arrayBuffers, arrayBuffersAfterGc: after.arrayBuffers,
+    } })}\n`);
+  });
 
 test('live native serialized import: the selected budget admits only one retained graph',
   { timeout: CASE_MS, skip: !targetImport }, async () => withPage(async fixture => {

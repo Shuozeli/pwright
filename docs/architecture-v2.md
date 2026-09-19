@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 NODE-191 is the first selected retained-upload phase that performs browser
 mutation, but it is still an internal terminal coordinator rather than a public
@@ -24,6 +24,14 @@ abort or waiting for GC. Dropping an unpolled operation sends no browser call;
 dropping a started waiter transfers mutation and cleanup into a pre-reserved
 continuation. [Canonical NODE-191
 checkpoint](knowledge/pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
+
+The completed browser matrix confirms the ownership boundary under empty and
+multiple payloads, throwing listeners, late type mutation, deadline
+cancellation, Frame detach, main-document navigation and the maximum admitted
+Buffer. Pwright releases every owner in all outcomes. Compatibility policy is
+still deliberately outside this internal phase: pinned Playwright resolves the
+post-instrumentation navigation race, while Pwright's internal coordinator
+rejects it fail-closed.
 
 NODE-190 introduces a transport-staging boundary, not browser execution. The
 explicit `retained-serialized-payload-import` selection composes the NODE-189

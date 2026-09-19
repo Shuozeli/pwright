@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 NODE-191: The selected internal path now continues `PayloadImported -> Mutated`
 and then terminally removes the preparation. Rust validates the exact
@@ -17,12 +17,15 @@ File-creation timestamp; the mutation helper still handles the optional
 serialized field when present. This discrepancy is recorded rather than
 misreported as full upstream parity.
 
-The real-Chrome lane proves one file's exact name, MIME and bytes, event order
-and flags, terminal same-ticket cleanup and the late non-file no-op under both
-artifacts. Public `ElementHandle.setInputFiles`, public Playwright error/stack
-rewriting and the broader empty/multiple/race/maximum-payload differential
-matrix remain later gates. [Canonical NODE-191
-contract](pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
+The real-Chrome lane now directly compares pinned Playwright for empty,
+one-file and multiple-file payloads, modified-time classification, event order
+and flags, throwing listeners, post-prevalidation type change, timeout
+cancellation, Frame detach and main-document navigation. Both artifacts pass
+42 ordinary cases plus a separately enabled 50 MiB minus one byte maximum gate.
+Frame detach/cancellation agree; navigation exposes an intentional observation:
+Playwright resolves while Pwright rejects fail-closed and reclaims its owners.
+Public `ElementHandle.setInputFiles` and public Playwright error/stack rewriting
+remain later gates. [Canonical NODE-191 contract](pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
 
 NODE-190: The selected internal path now continues `Serialized ->
 PayloadImported`. Rust admits one worst-case graph owner before the addon walks

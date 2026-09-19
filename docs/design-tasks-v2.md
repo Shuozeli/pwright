@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 NODE-191: Consume the retained serialized payload graph in one bounded,
 non-retargeting Rust/CDP file-input mutation and settle all native ownership.
@@ -68,7 +68,7 @@ facts without acquiring or retargeting the element again.
   consumed once; foreign-session/out-of-order calls cannot revoke the rightful
   ticket; success leaves zero preparations, roots, serialized owners, running
   FFI work or native groups.
-- [ ] Differentially verify actual Chrome against pinned Playwright for empty,
+- [x] Differentially verify actual Chrome against pinned Playwright for empty,
   one-file and multiple-file payloads; byte content, name, MIME and modified
   time; `input`/`change` order and flags; late `type` change no-op; listener
   throws; detach/navigation races; and cancellation. Run standalone and
@@ -86,14 +86,18 @@ composition, host ownership, same-ticket addon handoff, terminal registry
 commit, package coordinator, then offline and real-browser gates. No public
 method is exposed before every ownership and differential item above is green.
 
-Current NODE-191 checkpoint: implementation/ownership gates are green. Both
-artifacts pass 306/306 offline, 167/167 package and 35/35 real-Chrome raw-binding
-lanes. The remaining unchecked differential item is intentionally broader than
-the implemented smoke: add direct upstream empty/multiple payload comparison,
-listener-throw behavior, detach/navigation and mutation-cancellation races, and
-the maximum-admitted-payload memory gate before promoting this leaf into a
-public method. The pinned channel also strips caller `lastModifiedMs`; preserve
-that observed discrepancy until a separately designed schema change fixes it.
+Current NODE-191 checkpoint: every implementation, ownership and differential
+item above is exercised. Both artifacts pass 392/392 offline
+retained-input/oracle cases, 167/167 package cases and 42/42 ordinary
+real-Chrome raw-binding cases; each also passes the separate
+50 MiB minus one byte maximum-payload gate. Pinned, in-process Playwright
+instrumentation supplies the same post-prevalidation pause for empty/multiple,
+listener-throw, late-type, timeout, Frame-detach and navigation comparisons.
+The matrix records rather than hides two compatibility differences: Playwright
+resolves when the main document navigates during that pause while Pwright fails
+closed, and the current channel strips caller `lastModifiedMs`. Public
+`ElementHandle.setInputFiles` remains a later design task that must choose those
+policies and add the public error/stack facade explicitly.
 
 NODE-190: Bound and transfer the serialized value graph into Rust before any
 browser mutation.

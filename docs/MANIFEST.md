@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 NODE-191: Add explicit standalone/combined
 `retained-serialized-payload-mutation` profiles. They consume NODE-190's
@@ -8,8 +8,11 @@ large utility-world `Runtime.callFunctionOn` with `userGesture`, reproduce the
 pinned `File`/`DataTransfer` plus `input` then `change` behavior, settle the
 object group and terminally remove the same FFI ticket. There is no selector,
 second retarget/adoption, `DOM.setFileInputFiles`, extra N-API root or public
-`ElementHandle.setInputFiles`. The broader upstream differential race/memory
-matrix remains an explicit release gate. [Canonical contract and
+`ElementHandle.setInputFiles`. The completed upstream differential matrix
+covers payload/event semantics, late type change, listener exceptions,
+cancellation, navigation/detach races and the maximum admitted payload. It
+records, rather than hides, the navigation-settlement and `lastModifiedMs`
+differences that the later public API must decide. [Canonical contract and
 verification](knowledge/pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
 
 NODE-190: Add explicit standalone/combined

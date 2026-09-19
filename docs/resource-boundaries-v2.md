@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 NODE-191 installs two default-off, capacity-one mutation scopes. The backend
 reserves one ActiveCommand plus 64 KiB of BackendStateBytes for the sole large
@@ -16,6 +16,14 @@ zero. Protocol validation caps the narrow graph at 64 files, 4 KiB per name,
 the administrative allowances are not measured RSS and do not bound Chrome's
 `File`/`DataTransfer` allocations. [Canonical NODE-191 resource
 proof](knowledge/pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
+
+The explicit maximum gate uses a 52,428,799-byte source Buffer, whose padded
+base64 remains below the 70 MiB protocol cap. Standalone sampled Node RSS at
+125,140,992 bytes before and 474,054,656 bytes after admission; combined
+sampled 127,942,656 and 478,183,424 bytes. Both stay below the 768 MiB growth
+gate and return `arrayBuffers` exactly to the 148,023-byte baseline after three
+GC turns and complete Context/connection teardown. Post-GC RSS remains
+allocator-resident until process exit and is not called reclaimed memory.
 
 NODE-190 adds one explicitly selected host scope. Installation claims 4 KiB of
 fixed control storage plus one ActiveCommand and 96 MiB of BackendStateBytes

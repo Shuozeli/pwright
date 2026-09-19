@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-19T20:42:42Z -->
+<!-- agent-updated: 2026-09-19T21:23:32Z -->
 
 NODE-191 adds opt-in `retained-serialized-payload-mutation` and combined native
 artifacts. The internal coordinator consumes the Rust-owned serialized graph
@@ -8,12 +8,15 @@ for group cleanup, then terminally removes the same FFI ticket. It does not use
 `DOM.setFileInputFiles`, add a generic evaluator or expose public
 `ElementHandle.setInputFiles`.
 
-Both rebuilt profiles pass 306 offline retained-input cases, 167 package cases
-and all 35 real-Chrome raw binding cases, plus focused Rust, Worker, type,
-dependency, formatting and strict Clippy gates. The current live assertion is
-one binary file plus a late non-file no-op; the broader upstream
-empty/multiple/race/maximum-payload matrix and the channel-stripped
-`lastModifiedMs` discrepancy remain explicit release gates. See the [canonical
+Both rebuilt profiles pass 392 offline retained-input/oracle cases, 167 package
+cases, all 42 ordinary real-Chrome raw binding cases and a separately enabled 50 MiB
+minus one byte maximum-payload gate, plus focused Rust, Worker, type,
+dependency, formatting and strict Clippy gates. The direct Playwright 1.58.2
+matrix covers empty/multiple files, events, listener exceptions, late type
+change, cancellation and lifecycle races. It records that Playwright resolves
+post-instrumentation main-document navigation while Pwright rejects fail-closed;
+the channel-stripped `lastModifiedMs` remains a second explicit discrepancy.
+See the [canonical
 NODE-191 contract](../../docs/knowledge/pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
 
 NODE-190 adds opt-in `retained-serialized-payload-import` and combined native
