@@ -13,6 +13,9 @@ pub use generated_capability::*;
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DomContentParams;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TitleParams;
+
 #[derive(Debug)]
 pub struct DomContentData {
     text: BudgetedUtf8,
@@ -59,11 +62,11 @@ mod tests {
     use super::{
         DOM_CONTENT_CAPABILITY_ID, DOM_CONTENT_COMMAND_DESCRIPTORS, DomContentCapability,
         FRAME_CONTENT_COMMAND_ID, FRAME_CONTENT_METHOD, FRAME_CONTENT_TARGET_OBJECT_KINDS,
-        FrameContent,
+        FRAME_TITLE_COMMAND_ID, FrameContent,
     };
 
     #[test]
-    fn dom_content_registers_one_frame_only_read_command() {
+    fn dom_content_registers_content_and_title_frame_reads() {
         // Arrange
         let mut builder = RegistryBuilder::new();
         builder
@@ -80,7 +83,11 @@ mod tests {
             Some(DOM_CONTENT_CAPABILITY_ID)
         );
         assert_eq!(FrameContent::METHOD, FRAME_CONTENT_METHOD);
-        assert_eq!(DOM_CONTENT_COMMAND_DESCRIPTORS.len(), 1);
+        assert_eq!(DOM_CONTENT_COMMAND_DESCRIPTORS.len(), 2);
+        assert_eq!(
+            registry.owner_of(FRAME_TITLE_COMMAND_ID),
+            Some(DOM_CONTENT_CAPABILITY_ID)
+        );
         assert_eq!(FRAME_CONTENT_TARGET_OBJECT_KINDS.len(), 1);
         assert_eq!(
             FRAME_CONTENT_TARGET_OBJECT_KINDS[0].as_str(),

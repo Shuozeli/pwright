@@ -46,6 +46,18 @@ impl CdpSession {
             .await
     }
 
+    /// Initiates navigation in an explicit Frame, preserving Page/sibling targets.
+    pub async fn page_navigate_in_frame(
+        &self,
+        frame_id: &str,
+        url: &str,
+        referrer: Option<&str>,
+    ) -> Result<Value> {
+        let params = frame_navigation_params(frame_id, url, referrer);
+        self.send("Page.navigate", serde_json::to_value(&params)?)
+            .await
+    }
+
     /// Stops loading the page and its pending resources.
     pub async fn page_stop_loading(&self) -> Result<()> {
         self.send("Page.stopLoading", serde_json::json!({})).await?;
@@ -197,5 +209,56 @@ impl CdpSession {
     pub async fn page_close(&self) -> Result<()> {
         self.send("Page.close", serde_json::json!({})).await?;
         Ok(())
+    }
+}
+
+fn frame_navigation_params(
+    frame_id: &str,
+    url: &str,
+    referrer: Option<&str>,
+) -> cdp_gen::NavigateParams {
+    cdp_gen::NavigateParams {
+        url: url.to_owned(),
+        referrer: referrer.map(ToOwned::to_owned),
+        frame_id: Some(frame_id.to_owned()),
+        // Matches the pinned Playwright Chromium navigateFrame boundary.
+        referrer_policy: Some(cdp_gen::ReferrerPolicy::UnsafeUrl),
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod frame_navigation_tests {
+    use super::*;
+
+    #[test]
+    fn frame_navigation_serializes_explicit_target_and_referrer_policy() {
+        // Arrange
+        let params = frame_navigation_params(
+            "child",
+            "https://example.test/next",
+            Some("https://referrer.test/path?q=1"),
+        );
+        // Act
+        let encoded = serde_json::to_value(params).unwrap();
+        // Assert
+        assert_eq!(
+            encoded,
+            serde_json::json!({"frameId": "child", "url": "https://example.test/next",
+            "referrer": "https://referrer.test/path?q=1", "referrerPolicy": "unsafeUrl"})
+        );
+    }
+
+    #[test]
+    fn omitted_referrer_does_not_omit_the_frame_target() {
+        // Arrange
+        let params = frame_navigation_params("child", "about:blank", None);
+        // Act
+        let encoded = serde_json::to_value(params).unwrap();
+        // Assert
+        assert_eq!(
+            encoded,
+            serde_json::json!({"frameId": "child", "url": "about:blank", "referrerPolicy": "unsafeUrl"})
+        );
     }
 }

@@ -1,6 +1,33 @@
-<!-- agent-updated: 2026-09-05T09:11:21Z -->
+<!-- agent-updated: 2026-09-07T23:58:00Z -->
 
 # Pwright process-memory attribution
+
+NODE-047's selected controller provider allowance is now 86 MiB plus fixed
+storage, with a separate 17.25 MiB retained Locator invocation allowance.
+These are logical admission limits, NOT measured RSS or memory reductions.
+[Accounting](pwright-chromium-drag.md#node-047-resources-and-evidence).
+
+NODE-046's selected drag provider allowance is 83.5 MiB plus fixed storage per
+controller after including Keyboard cancel owners. This remains logical resource
+accounting, not eager allocation or measured RSS.
+[Budget context](pwright-chromium-drag.md#node-046-selection-and-resource-boundary).
+
+NODE-045 increases logical Mouse/CDP admission to preserve accepted batch
+semantics. At 552 pending slots, the existing 4 MiB command/response limits yield
+about 4.32 GiB of conservative declared wire allowance; the selected drag provider
+allowance is 81 MiB per controller. These are NOT measured RSS or eager
+allocations. Zero leases after close proves ownership return, not a memory
+optimization. [Context](pwright-chromium-drag.md#node-045-maximum-click-batches-and-matching-host-admission).
+
+## Context counts are not memory measurements
+
+The separate [Node reconnect diagnostic](../node-ffi-compatibility-design.md#node-013-retained-world-diagnostic-2026-09-07)
+observes named utility worlds surviving disconnect and appearing after an owned
+document reload. The bounded sample reuses one Pwright world and adds one oracle
+world per reconnect. This is not RSS, retained heap size, init-script inventory
+or proof of an unbounded leak. It does not replace the workload recorder or
+change this crate's dependency/resource boundaries. Changing topology and
+overlapping connections remain uncontrolled dimensions requiring separate tests.
 
 ## Decision
 

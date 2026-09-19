@@ -2,6 +2,41 @@
 
 use std::convert::Infallible;
 
+use pwright_cap_locator::{PressSequentiallyParams, v2::PressSequentially};
+
+/// Strict focus followed by literal sequential text under one call deadline.
+pub trait LocatorPressSequentiallyExt {
+    fn press_sequentially(
+        &self,
+        text: impl Into<String>,
+        delay: Option<std::time::Duration>,
+        metadata: CallMetadata,
+    ) -> CommandFuture<(), LocatorErrorDetails>;
+}
+
+impl<Channel, Ids, Query> LocatorPressSequentiallyExt for Locator<Channel, Ids, Query>
+where
+    Channel: Service<
+            Command<PressSequentially>,
+            Response = CommandResult<PressSequentially>,
+            Error = Infallible,
+        > + 'static,
+    Ids: CallIdSource,
+    Query: Clone + Into<Selector>,
+{
+    fn press_sequentially(
+        &self,
+        text: impl Into<String>,
+        delay: Option<std::time::Duration>,
+        metadata: CallMetadata,
+    ) -> CommandFuture<(), LocatorErrorDetails> {
+        self.dispatch::<PressSequentially>(
+            PressSequentiallyParams::new(self.query().clone(), text, delay),
+            metadata,
+        )
+    }
+}
+
 use pwright_cap_locator::{
     BlurParams, ClickOptionsV2, ClickParamsV2, FocusParams, LocatorErrorDetails, PressKey,
     PressOptions, PressParams, ScrollIntoViewIfNeededParams, SelectOptionOptions,

@@ -31,6 +31,7 @@ pub mod v2 {
     pub use super::{ClickOptionsV2 as ClickOptions, ClickParamsV2 as ClickParams};
 }
 
+pub use pwright_input_model::{INPUT_TEXT_MAX_BYTES, InputText};
 pub use pwright_selector_model::{
     AriaRole, AriaRoleParseError, AriaTriState, CssSelector, CssSelectorError, LocatorErrorDetails,
     MAX_TEST_ID_ATTRIBUTES, RegexMatcher, RegexMatcherError, RoleOptions, RolePatternSelector,
@@ -564,6 +565,29 @@ impl PressParams {
             selector: selector.into(),
             key,
             options,
+        }
+    }
+}
+
+/// Strict focus followed by literal sequential typing. The overall timeout
+/// remains in call metadata; typing does not wait for navigation signals.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PressSequentiallyParams {
+    pub selector: Selector,
+    pub text: String,
+    pub delay: Option<Duration>,
+}
+
+impl PressSequentiallyParams {
+    pub fn new(
+        selector: impl Into<Selector>,
+        text: impl Into<String>,
+        delay: Option<Duration>,
+    ) -> Self {
+        Self {
+            selector: selector.into(),
+            text: text.into(),
+            delay,
         }
     }
 }
@@ -1283,7 +1307,7 @@ mod tests {
             Click::TARGET_OBJECT_KINDS[1].as_str(),
             "pwright.browser.page"
         );
-        assert_eq!(LOCATOR_COMMAND_DESCRIPTORS.len(), 22);
+        assert_eq!(LOCATOR_COMMAND_DESCRIPTORS.len(), 23);
         assert_eq!(
             LOCATOR_COMMAND_DESCRIPTORS[0].command(),
             ALL_INNER_TEXTS_COMMAND_ID
@@ -1333,22 +1357,26 @@ mod tests {
         assert_eq!(LOCATOR_COMMAND_DESCRIPTORS[16].command(), PRESS_COMMAND_ID);
         assert_eq!(
             LOCATOR_COMMAND_DESCRIPTORS[17].command(),
-            SCROLL_INTO_VIEW_IF_NEEDED_COMMAND_ID
+            super::PRESS_SEQUENTIALLY_COMMAND_ID
         );
         assert_eq!(
             LOCATOR_COMMAND_DESCRIPTORS[18].command(),
-            SELECT_OPTION_COMMAND_ID
+            SCROLL_INTO_VIEW_IF_NEEDED_COMMAND_ID
         );
         assert_eq!(
             LOCATOR_COMMAND_DESCRIPTORS[19].command(),
-            SET_CHECKED_COMMAND_ID
+            SELECT_OPTION_COMMAND_ID
         );
         assert_eq!(
             LOCATOR_COMMAND_DESCRIPTORS[20].command(),
-            TEXT_CONTENT_COMMAND_ID
+            SET_CHECKED_COMMAND_ID
         );
         assert_eq!(
             LOCATOR_COMMAND_DESCRIPTORS[21].command(),
+            TEXT_CONTENT_COMMAND_ID
+        );
+        assert_eq!(
+            LOCATOR_COMMAND_DESCRIPTORS[22].command(),
             WAIT_FOR_COMMAND_ID
         );
         assert_eq!(
@@ -1357,7 +1385,7 @@ mod tests {
         );
         assert_eq!(
             LocatorCapability::DESCRIPTOR.plugin.version,
-            pwright_core::ProtocolVersion::new(1, 22)
+            pwright_core::ProtocolVersion::new(1, 23)
         );
         assert_eq!(Press::COMMAND, PRESS_COMMAND_ID);
         assert_eq!(Press::METHOD, PRESS_METHOD);
@@ -1683,7 +1711,7 @@ mod tests {
             <super::v2::LocatorCapability as Capability>::DESCRIPTOR
                 .plugin
                 .version,
-            pwright_core::ProtocolVersion::new(2, 5)
+            pwright_core::ProtocolVersion::new(2, 6)
         );
         assert_eq!(
             super::v2::Click::COMMAND,

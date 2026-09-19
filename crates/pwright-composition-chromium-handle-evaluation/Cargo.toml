@@ -7,7 +7,14 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+native-creation = []
+frame-value = []
+handle-value = []
+retained-reference = []
+
 [dependencies]
+pwright-backend-cdp-common = { workspace = true }
 pwright-backend-cdp-evaluation = { workspace = true }
 pwright-backend-cdp-handle-evaluation = { workspace = true }
 pwright-cap-handle-evaluation = { workspace = true }

@@ -58,6 +58,14 @@ pub struct CdpBrowserContextCloseService {
     ownership: CdpContextOwnership,
 }
 
+/// Preserve idempotent public close behavior without turning an error-classified
+/// already-closed result into authoritative native-destruction evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CdpContextCloseOutcome {
+    AcknowledgedDestruction,
+    AlreadyClosed,
+}
+
 impl CdpBrowserContextCloseService {
     pub fn new(
         client: Arc<dyn CdpClient>,
@@ -95,6 +103,16 @@ impl CdpBrowserContextCloseService {
         browser_context_id: &str,
         ownership: CdpContextOwnership,
     ) -> Result<(), OperationError<ContextLifecycleErrorDetails>> {
+        Self::close_route_with_outcome(client, browser_context_id, ownership)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn close_route_with_outcome(
+        client: &dyn CdpClient,
+        browser_context_id: &str,
+        ownership: CdpContextOwnership,
+    ) -> Result<CdpContextCloseOutcome, OperationError<ContextLifecycleErrorDetails>> {
         if ownership != CdpContextOwnership::Owned {
             let ownership = match ownership {
                 CdpContextOwnership::Default => "default",
@@ -113,11 +131,11 @@ impl CdpBrowserContextCloseService {
             .target_dispose_browser_context(browser_context_id)
             .await
         {
-            Ok(()) => Ok(()),
+            Ok(()) => Ok(CdpContextCloseOutcome::AcknowledgedDestruction),
             Err(error) => {
                 let error = map_close_error(error);
                 if error.kind() == FailureKind::TargetClosed {
-                    Ok(())
+                    Ok(CdpContextCloseOutcome::AlreadyClosed)
                 } else {
                     Err(error)
                 }
@@ -164,6 +182,31 @@ mod tests {
 
     fn limits() -> CdpContextCloseLimits {
         CdpContextCloseLimits::new(64)
+    }
+
+    #[tokio::test]
+    async fn native_ack_and_idempotent_error_have_distinct_destruction_outcomes() {
+        for (error, expected) in [
+            (None, super::CdpContextCloseOutcome::AcknowledgedDestruction),
+            (
+                Some("Failed to find context with id context-7".to_string()),
+                super::CdpContextCloseOutcome::AlreadyClosed,
+            ),
+        ] {
+            // Arrange
+            let client = FakeCdpClient::from_html("");
+            client.set_dispose_browser_context_error(error);
+            // Act
+            let outcome = CdpBrowserContextCloseService::close_route_with_outcome(
+                &client,
+                "context-7",
+                CdpContextOwnership::Owned,
+            )
+            .await;
+            // Assert
+            assert_eq!(outcome, Ok(expected));
+            assert_eq!(client.method_names(), ["Target.disposeBrowserContext"]);
+        }
     }
 
     #[tokio::test]

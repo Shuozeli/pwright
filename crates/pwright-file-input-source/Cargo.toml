@@ -1,0 +1,12 @@
+[package]
+name = "pwright-file-input-source"
+description = "Ledger-admitted file-input content ownership for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core.workspace = true
+pwright-file-input-model.workspace = true

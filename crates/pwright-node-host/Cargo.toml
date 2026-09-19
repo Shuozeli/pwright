@@ -1,0 +1,98 @@
+[package]
+name = "pwright-node-host"
+description = "Safe embedded Rust v2 host for the Pwright Node compatibility package"
+version.workspace = true
+edition.workspace = true
+license = "MIT AND Apache-2.0"
+repository.workspace = true
+
+[features]
+default = []
+retained-target-marking = ["retained-file-input", "pwright-composition-chromium-file-input/retained-target-marking"]
+retained-target-prevalidation = ["retained-target-marking", "pwright-composition-chromium-file-input/retained-target-prevalidation"]
+retained-serialized-payload-import = ["retained-target-prevalidation"]
+retained-serialized-payload-mutation = ["retained-serialized-payload-import", "pwright-composition-chromium-file-input/retained-serialized-payload-mutation"]
+retained-file-input = ["handles", "file-input", "pwright-composition-chromium-handle-evaluation/retained-reference", "pwright-composition-chromium-locator-resolution/retained-reference"]
+handles = ["dep:pwright-cap-handle-lifecycle", "dep:pwright-codec-handle-evaluation", "dep:pwright-codec-handle-lifecycle", "dep:pwright-composition-chromium-handle-evaluation", "pwright-composition-chromium-handle-evaluation/native-creation", "pwright-composition-chromium-handle-evaluation/frame-value", "pwright-composition-chromium-handle-evaluation/handle-value", "dep:pwright-composition-chromium-handle-lifecycle", "pwright-composition-chromium-handle-lifecycle/native-release", "pwright-runtime/disposal-reservations"]
+file-input = ["dep:pwright-file-input-model", "dep:pwright-file-input-source", "dep:pwright-file-input-fs", "dep:pwright-file-input-tokio", "dep:pwright-backend-cdp-file-input", "dep:pwright-composition-chromium-file-input", "pwright-backend-cdp-file-input/large-commands"]
+concurrent-close = ["pwright-composition-chromium/native-close-retirement", "pwright-runtime/disposal-reservations", "pwright-backend-cdp-topology/transition-reservations"]
+extra-headers = ["dep:pwright-network-model", "pwright-network-model/extra-headers", "dep:futures-util"]
+frame-lifecycle = ["pwright-composition-chromium/frame-lifecycle"]
+frame-navigation = ["frame-lifecycle", "pwright-cap-navigation/frame-navigation"]
+drag-source = ["dep:pwright-backend-cdp-drag"]
+drag-runtime = ["drag-source", "pwright-runtime/lifetime-handoff"]
+
+[dependencies]
+pwright-cap-handle-lifecycle = { workspace = true, optional = true }
+pwright-codec-handle-evaluation = { workspace = true, optional = true }
+pwright-codec-handle-lifecycle = { workspace = true, optional = true }
+pwright-composition-chromium-handle-evaluation = { workspace = true, optional = true }
+pwright-composition-chromium-handle-lifecycle = { workspace = true, optional = true }
+pwright-file-input-model = { workspace = true, optional = true }
+pwright-file-input-source = { workspace = true, optional = true }
+pwright-file-input-fs = { workspace = true, optional = true }
+pwright-file-input-tokio = { workspace = true, optional = true }
+pwright-backend-cdp-file-input = { workspace = true, optional = true }
+pwright-composition-chromium-file-input = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+pwright-network-model = { workspace = true, optional = true }
+pwright-input-model = { workspace = true }
+pwright-backend-cdp-drag = { workspace = true, optional = true, features = ["mouse-dispatch"] }
+pwright-cap-mouse = { workspace = true }
+pwright-backend-cdp-mouse = { workspace = true }
+pwright-composition-chromium-mouse = { workspace = true, features = ["runtime"] }
+pwright-cap-keyboard = { workspace = true }
+pwright-composition-chromium-keyboard = { workspace = true, features = ["runtime"] }
+pwright-backend-cdp-content = { workspace = true }
+pwright-cap-content = { workspace = true }
+pwright-codec-content = { workspace = true }
+pwright-backend-cdp-context-creation = { workspace = true }
+pwright-cap-context-creation = { workspace = true }
+pwright-cap-context-lifecycle = { workspace = true }
+pwright-codec-context-creation = { workspace = true }
+pwright-codec-context-lifecycle = { workspace = true }
+pwright-backend-cdp-navigation = { workspace = true }
+pwright-backend-cdp-dom-content = { workspace = true }
+pwright-backend-cdp-evaluation = { workspace = true }
+pwright-backend-cdp-page-creation = { workspace = true }
+pwright-backend-cdp-page-lifecycle = { workspace = true, features = ["native-confirmation"] }
+pwright-backend-cdp-topology = { workspace = true }
+pwright-cap-navigation = { workspace = true }
+pwright-cap-dom-content = { workspace = true }
+pwright-cap-evaluation = { workspace = true }
+pwright-cap-locator = { workspace = true }
+pwright-backend-cdp-selector-runtime = { workspace = true }
+pwright-backend-cdp-locator = { workspace = true }
+pwright-codec-locator = { workspace = true }
+pwright-cap-page-creation = { workspace = true }
+pwright-cap-page-lifecycle = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-navigation = { workspace = true }
+pwright-codec-dom-content = { workspace = true }
+pwright-codec-evaluation = { workspace = true }
+pwright-codec-page-creation = { workspace = true }
+pwright-codec-page-lifecycle = { workspace = true }
+pwright-composition-chromium = { workspace = true }
+pwright-composition-chromium-locator-evaluation = { workspace = true }
+pwright-composition-chromium-locator-resolution = { workspace = true }
+pwright-cap-handle-evaluation = { workspace = true }
+pwright-browser-model = { workspace = true }
+pwright-core = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-runtime-tokio = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

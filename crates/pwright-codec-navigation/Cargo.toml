@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+frame-navigation = ["pwright-cap-navigation/frame-navigation", "pwright-client-navigation/frame-navigation"]
+
 [dependencies]
 pwright-cap-navigation = { workspace = true }
 pwright-codec-binary = { workspace = true }

@@ -21,13 +21,16 @@ use crate::{
 
 /// Target-aware runtime installed by the navigation-only recipe.
 ///
-/// The shared ownership is explicit because both generated navigation handlers
+/// The shared ownership is explicit because all generated navigation handlers
 /// use the same dispatcher and its single route table.
 pub type ChromiumNavigationRuntime = Arc<DirectDispatcher<CdpPageServices>>;
 
-/// Only the two commands owned by the navigation capability.
-pub type ChromiumNavigationCommands =
-    NavigationServerHandlers<DirectDispatcher<CdpPageServices>, DirectDispatcher<CdpPageServices>>;
+/// Only the three commands owned by the navigation capability.
+pub type ChromiumNavigationCommands = NavigationServerHandlers<
+    DirectDispatcher<CdpPageServices>,
+    DirectDispatcher<CdpPageServices>,
+    DirectDispatcher<CdpPageServices>,
+>;
 
 /// A fully assembled, navigation-only remote Chromium connection.
 pub type ChromiumNavigationApplication<Transport, Authorization> = ChromiumApplicationConnection<
@@ -47,6 +50,7 @@ pub type ChromiumDiscoveringNavigationRuntime =
     Arc<ControlledDispatcher<CdpPageServices, CdpPageServices, NoDeadlineScheduler, CleanupQueue>>;
 
 pub type ChromiumDiscoveringNavigationCommands = NavigationServerHandlers<
+    ControlledDispatcher<CdpPageServices, CdpPageServices, NoDeadlineScheduler, CleanupQueue>,
     ControlledDispatcher<CdpPageServices, CdpPageServices, NoDeadlineScheduler, CleanupQueue>,
     ControlledDispatcher<CdpPageServices, CdpPageServices, NoDeadlineScheduler, CleanupQueue>,
 >;

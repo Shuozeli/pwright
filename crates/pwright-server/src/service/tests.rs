@@ -99,6 +99,7 @@ fn error_mapping_covers_all_variants() {
         ),
         (CdpError::WebSocket("ws".into()), Code::Unavailable),
         (CdpError::PageClosed, Code::FailedPrecondition),
+        (CdpError::SessionDetached, Code::FailedPrecondition),
         (CdpError::TabNotFound("t".into()), Code::NotFound),
         (CdpError::HttpFailed("h".into()), Code::Unavailable),
         (CdpError::JsException("j".into()), Code::Internal),

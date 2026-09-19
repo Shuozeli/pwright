@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Pwright Locator fixture</title></head>
+<body>
+<ul id="list"><li class="item first" data-key="a">Alpha <span>one</span></li><li class="item" data-key="b">Beta <span>two</span></li><li class="item hidden" data-key="c" style="display:none">Gamma <span>three</span></li></ul>
+<div id="content" data-present="" data-unicode="汉字 😀"> hello <strong>world</strong></div>
+<input id="input" value="initial"><input id="disabled" disabled value="locked">
+<input id="checked" type="checkbox" checked><input id="unchecked" type="checkbox">
+<button id="button">Submit</button><div id="mutable">before</div><div id="shadow"></div>
+<script>document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML='<button class="shadow-button">shadow value</button>';</script>
+</body></html>

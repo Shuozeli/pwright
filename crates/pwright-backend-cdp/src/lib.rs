@@ -96,7 +96,8 @@ pub use context_creation::{
 };
 #[cfg(feature = "full")]
 pub use context_lifecycle::{
-    CdpBrowserContextCloseService, CdpContextCloseLimits, CdpContextCloseSetupError,
+    CdpBrowserContextCloseService, CdpContextCloseLimits, CdpContextCloseOutcome,
+    CdpContextCloseSetupError,
 };
 #[cfg(feature = "full")]
 pub use dom_content::{
@@ -130,7 +131,7 @@ pub use input::{CdpInputCoordinator, CdpInputTransaction, CdpModifiers};
 
 #[cfg(feature = "full")]
 pub use locator::{
-    CdpLocatorProductionProfile, CdpLocatorService, CdpLocatorServiceFactory,
+    CdpLocatorProductionProfile, CdpLocatorService, CdpLocatorServiceFactory, LocatorInputHandoff,
     SelectorRuntimeMetrics,
 };
 #[cfg(feature = "full")]
@@ -245,7 +246,7 @@ use pwright_core::{
 };
 
 pub use pwright_backend_cdp_navigation::{
-    CDP_BEGIN_NAVIGATION_FEATURE, CDP_GOTO_FEATURE, CdpNavigationLimits,
+    CDP_BEGIN_NAVIGATION_FEATURE, CDP_GOTO_FEATURE, CDP_RELOAD_FEATURE, CdpNavigationLimits,
     CdpNavigationProductionProfile,
 };
 use pwright_backend_cdp_navigation::{
@@ -269,6 +270,8 @@ mod full_backend_features {
     pub const CDP_LOCATOR_FILL_FEATURE: BackendFeatureId = BackendFeatureId::new("locator.fill");
     pub const CDP_LOCATOR_FOCUS_FEATURE: BackendFeatureId = BackendFeatureId::new("locator.focus");
     pub const CDP_LOCATOR_PRESS_FEATURE: BackendFeatureId = BackendFeatureId::new("locator.press");
+    pub const CDP_LOCATOR_PRESS_SEQUENTIALLY_FEATURE: BackendFeatureId =
+        BackendFeatureId::new("locator.press-sequentially");
     pub const CDP_LOCATOR_SCROLL_INTO_VIEW_IF_NEEDED_FEATURE: BackendFeatureId =
         BackendFeatureId::new("locator.scroll-into-view-if-needed");
     pub const CDP_LOCATOR_SELECT_OPTION_FEATURE: BackendFeatureId =
@@ -474,6 +477,13 @@ pub const CHROMIUM_CDP_FEATURES: &[BackendFeatureDescriptor] = &[
         BackendImplementation::Emulated,
     ),
     BackendFeatureDescriptor::new(
+        CDP_RELOAD_FEATURE,
+        NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 1),
+        pwright_cap_navigation::RELOAD_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
+    BackendFeatureDescriptor::new(
         CDP_LOCATOR_ALL_INNER_TEXTS_FEATURE,
         LOCATOR_CAPABILITY_ID,
         ProtocolVersion::new(1, 17),
@@ -534,6 +544,13 @@ pub const CHROMIUM_CDP_FEATURES: &[BackendFeatureDescriptor] = &[
         LOCATOR_CAPABILITY_ID,
         ProtocolVersion::new(1, 22),
         SCROLL_INTO_VIEW_IF_NEEDED_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
+    BackendFeatureDescriptor::new(
+        CDP_LOCATOR_PRESS_SEQUENTIALLY_FEATURE,
+        LOCATOR_CAPABILITY_ID,
+        ProtocolVersion::new(1, 23),
+        pwright_cap_locator::PRESS_SEQUENTIALLY_COMMAND_ID,
         BackendImplementation::Emulated,
     ),
     BackendFeatureDescriptor::new(
@@ -698,6 +715,13 @@ pub const CHROMIUM_CDP_FEATURES: &[BackendFeatureDescriptor] = &[
         GOTO_COMMAND_ID,
         BackendImplementation::Emulated,
     ),
+    BackendFeatureDescriptor::new(
+        CDP_RELOAD_FEATURE,
+        NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 1),
+        pwright_cap_navigation::RELOAD_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
 ];
 
 #[cfg(not(feature = "full"))]
@@ -767,6 +791,23 @@ impl CdpNavigationServiceFactory {
 }
 
 impl CdpNavigationService {
+    /// Delegate explicit Frame initiation to the isolated navigation adapter.
+    /// Route lifetime and document/lifecycle completion remain caller-owned.
+    pub fn begin_frame_navigation<'a>(
+        &'a self,
+        frame_id: &'a str,
+        params: BeginNavigationParams,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<BeginNavigationResult, OperationError<NavigationErrorDetails>>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        self.inner.begin_frame_navigation(frame_id, params)
+    }
+
     pub fn new(client: Arc<dyn CdpClient>) -> Self {
         Self {
             inner: LeafCdpNavigationService::new(client),
@@ -839,6 +880,8 @@ impl NativeBackendAccess<ChromiumCdpBackend> for CdpNavigationService {
     }
 }
 
+mod navigation_reload;
+
 impl Service<BeginNavigationParams> for CdpNavigationService {
     type Response = BeginNavigationResult;
     type Error = OperationError<NavigationErrorDetails>;
@@ -908,7 +951,7 @@ mod minimal_tests {
     #[test]
     fn minimal_backend_descriptor_contains_only_navigation() {
         // Arrange
-        let expected = ["navigation.begin", "navigation.goto"];
+        let expected = ["navigation.begin", "navigation.goto", "navigation.reload"];
 
         // Act
         let descriptor = ChromiumCdpBackend::DESCRIPTOR;
@@ -1081,7 +1124,8 @@ mod tests {
         assert_eq!(manifest.descriptor().id, CHROMIUM_CDP_BACKEND_ID);
         assert_eq!(manifest.descriptor().protocol, CHROMIUM_CDP_PROTOCOL_ID);
         assert_eq!(manifest.descriptor().engine, BrowserEngine::Chromium);
-        assert_eq!(manifest.features().len(), 40);
+        assert_eq!(manifest.features().len(), 42);
+        assert!(manifest.supports(super::CDP_RELOAD_FEATURE));
         assert_eq!(manifest.event_features().len(), 7);
         assert!(manifest.supports(CDP_PAGE_LOAD_EVENT_FEATURE));
         assert!(manifest.supports(CDP_BROWSER_CONTEXT_PAGE_EVENT_FEATURE));
@@ -1132,6 +1176,7 @@ mod tests {
         assert!(manifest.supports(CDP_LOCATOR_FILL_FEATURE));
         assert!(manifest.supports(CDP_LOCATOR_FOCUS_FEATURE));
         assert!(manifest.supports(CDP_LOCATOR_PRESS_FEATURE));
+        assert!(manifest.supports(super::CDP_LOCATOR_PRESS_SEQUENTIALLY_FEATURE));
         assert!(manifest.supports(CDP_LOCATOR_SCROLL_INTO_VIEW_IF_NEEDED_FEATURE));
         assert!(manifest.supports(CDP_LOCATOR_SELECT_OPTION_FEATURE));
         assert!(manifest.supports(CDP_LOCATOR_SET_CHECKED_FEATURE));

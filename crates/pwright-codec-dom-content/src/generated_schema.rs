@@ -18,6 +18,16 @@ pub enum PwrightDomContent {
         call_id: u64,
         outcome: PwrightDomContentOutcome,
     },
+    FrameTitleCommand {
+        call_id: u64,
+        object_id: u64,
+        metadata: PwrightCommonCallMetadata,
+        params: PwrightDomContentTitleParams,
+    },
+    FrameTitleResult {
+        call_id: u64,
+        outcome: PwrightDomContentOutcome,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -63,6 +73,10 @@ pub enum PwrightDomContentOutcome {
 pub struct PwrightDomContentParams {
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PwrightDomContentTitleParams {
+}
+
 pub enum PwrightDomContentRef<'a> {
     FrameContentCommand {
         call_id: u64,
@@ -71,6 +85,16 @@ pub enum PwrightDomContentRef<'a> {
         params: PwrightDomContentParams,
     },
     FrameContentResult {
+        call_id: u64,
+        outcome: PwrightDomContentOutcomeRef<'a>,
+    },
+    FrameTitleCommand {
+        call_id: u64,
+        object_id: u64,
+        metadata: PwrightCommonCallMetadata,
+        params: PwrightDomContentTitleParams,
+    },
+    FrameTitleResult {
         call_id: u64,
         outcome: PwrightDomContentOutcomeRef<'a>,
     },
@@ -124,6 +148,20 @@ impl BinaryEncode for PwrightDomContent {
                     <PwrightDomContentOutcome as BinaryEncode>::encode_binary(outcome, writer, context)?;
                     Ok(())
                 }
+                Self::FrameTitleCommand { call_id, object_id, metadata, params } => {
+                    writer.u8(3)?;
+                    writer.u64(*call_id)?;
+                    writer.u64(*object_id)?;
+                    <PwrightCommonCallMetadata as BinaryEncode>::encode_binary(metadata, writer, context)?;
+                    <PwrightDomContentTitleParams as BinaryEncode>::encode_binary(params, writer, context)?;
+                    Ok(())
+                }
+                Self::FrameTitleResult { call_id, outcome } => {
+                    writer.u8(4)?;
+                    writer.u64(*call_id)?;
+                    <PwrightDomContentOutcome as BinaryEncode>::encode_binary(outcome, writer, context)?;
+                    Ok(())
+                }
             }
         })
     }
@@ -149,6 +187,26 @@ impl BinaryDecode for PwrightDomContent {
                     let call_id = reader.u64()?;
                     let outcome = <PwrightDomContentOutcome as BinaryDecode>::decode_binary(reader, context)?;
                     Ok(Self::FrameContentResult {
+                        call_id,
+                        outcome,
+                    })
+                },
+                3 => {
+                    let call_id = reader.u64()?;
+                    let object_id = reader.u64()?;
+                    let metadata = <PwrightCommonCallMetadata as BinaryDecode>::decode_binary(reader, context)?;
+                    let params = <PwrightDomContentTitleParams as BinaryDecode>::decode_binary(reader, context)?;
+                    Ok(Self::FrameTitleCommand {
+                        call_id,
+                        object_id,
+                        metadata,
+                        params,
+                    })
+                },
+                4 => {
+                    let call_id = reader.u64()?;
+                    let outcome = <PwrightDomContentOutcome as BinaryDecode>::decode_binary(reader, context)?;
+                    Ok(Self::FrameTitleResult {
                         call_id,
                         outcome,
                     })
@@ -332,6 +390,23 @@ impl BinaryDecode for PwrightDomContentParams {
     }
 }
 
+impl BinaryEncode for PwrightDomContentTitleParams {
+    fn encode_binary(&self, _writer: &mut BinaryWriter, context: &mut BinaryValueContext) -> Result<(), BinaryValueEncodeError> {
+        context.within_message("pwright.dom_content.title_params", |_context| {
+            Ok(())
+        })
+    }
+}
+
+impl BinaryDecode for PwrightDomContentTitleParams {
+    fn decode_binary(_reader: &mut BinaryReader<'_>, context: &mut BinaryValueContext) -> Result<Self, BinaryValueDecodeError> {
+        context.within_message("pwright.dom_content.title_params", |_context| {
+            Ok(Self {
+            })
+        })
+    }
+}
+
 impl BinaryEncode for PwrightDomContentRef<'_> {
     fn encode_binary(&self, writer: &mut BinaryWriter, context: &mut BinaryValueContext) -> Result<(), BinaryValueEncodeError> {
         context.within_message("pwright.dom_content", |context| {
@@ -346,6 +421,20 @@ impl BinaryEncode for PwrightDomContentRef<'_> {
                 }
                 Self::FrameContentResult { call_id, outcome } => {
                     writer.u8(2)?;
+                    writer.u64(*call_id)?;
+                    <PwrightDomContentOutcomeRef as BinaryEncode>::encode_binary(outcome, writer, context)?;
+                    Ok(())
+                }
+                Self::FrameTitleCommand { call_id, object_id, metadata, params } => {
+                    writer.u8(3)?;
+                    writer.u64(*call_id)?;
+                    writer.u64(*object_id)?;
+                    <PwrightCommonCallMetadata as BinaryEncode>::encode_binary(metadata, writer, context)?;
+                    <PwrightDomContentTitleParams as BinaryEncode>::encode_binary(params, writer, context)?;
+                    Ok(())
+                }
+                Self::FrameTitleResult { call_id, outcome } => {
+                    writer.u8(4)?;
                     writer.u64(*call_id)?;
                     <PwrightDomContentOutcomeRef as BinaryEncode>::encode_binary(outcome, writer, context)?;
                     Ok(())
@@ -451,19 +540,33 @@ const TYPE_0_VARIANT_1_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("outcome", "pwright.dom_content.outcome", BinaryCardinality::Required),
 ];
 
+const TYPE_0_VARIANT_2_FIELDS: &[BinaryFieldSchema] = &[
+    BinaryFieldSchema::new("call_id", BinaryFieldKind::U64, BinaryCardinality::Required),
+    BinaryFieldSchema::new("object_id", BinaryFieldKind::U64, BinaryCardinality::Required),
+    BinaryFieldSchema::message("metadata", "pwright.common.call_metadata", BinaryCardinality::Required),
+    BinaryFieldSchema::message("params", "pwright.dom_content.title_params", BinaryCardinality::Required),
+];
+
+const TYPE_0_VARIANT_3_FIELDS: &[BinaryFieldSchema] = &[
+    BinaryFieldSchema::new("call_id", BinaryFieldKind::U64, BinaryCardinality::Required),
+    BinaryFieldSchema::message("outcome", "pwright.dom_content.outcome", BinaryCardinality::Required),
+];
+
 const TYPE_0_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "frame_content_command", TYPE_0_VARIANT_0_FIELDS),
     BinaryVariantSchema::new(2, "frame_content_result", TYPE_0_VARIANT_1_FIELDS),
+    BinaryVariantSchema::new(3, "frame_title_command", TYPE_0_VARIANT_2_FIELDS),
+    BinaryVariantSchema::new(4, "frame_title_result", TYPE_0_VARIANT_3_FIELDS),
 ];
 
-pub const PWRIGHT_DOM_CONTENT_SCHEMA: BinarySchema = BinarySchema::new("pwright.dom_content", ProtocolVersion::new(1, 0), TYPE_0_VARIANTS);
+pub const PWRIGHT_DOM_CONTENT_SCHEMA: BinarySchema = BinarySchema::new("pwright.dom_content", ProtocolVersion::new(1, 1), TYPE_0_VARIANTS);
 
 const TYPE_1_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("attachment_index", BinaryFieldKind::U32, BinaryCardinality::Required),
     BinaryFieldSchema::new("byte_length", BinaryFieldKind::U64, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_DOM_CONTENT_DATA_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.dom_content.data", ProtocolVersion::new(1, 0), TYPE_1_FIELDS);
+pub const PWRIGHT_DOM_CONTENT_DATA_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.dom_content.data", ProtocolVersion::new(1, 1), TYPE_1_FIELDS);
 
 const TYPE_2_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("failure_kind", "pwright.common.failure_kind", BinaryCardinality::Required),
@@ -471,7 +574,7 @@ const TYPE_2_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("details", "pwright.dom_content.error_details", BinaryCardinality::Optional),
 ];
 
-pub const PWRIGHT_DOM_CONTENT_ERROR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.dom_content.error", ProtocolVersion::new(1, 0), TYPE_2_FIELDS);
+pub const PWRIGHT_DOM_CONTENT_ERROR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.dom_content.error", ProtocolVersion::new(1, 1), TYPE_2_FIELDS);
 
 const TYPE_3_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("message", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -496,7 +599,7 @@ const TYPE_3_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(3, "backend", TYPE_3_VARIANT_3_FIELDS),
 ];
 
-pub const PWRIGHT_DOM_CONTENT_ERROR_DETAILS_SCHEMA: BinarySchema = BinarySchema::new("pwright.dom_content.error_details", ProtocolVersion::new(1, 0), TYPE_3_VARIANTS);
+pub const PWRIGHT_DOM_CONTENT_ERROR_DETAILS_SCHEMA: BinarySchema = BinarySchema::new("pwright.dom_content.error_details", ProtocolVersion::new(1, 1), TYPE_3_VARIANTS);
 
 const TYPE_4_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.dom_content.data", BinaryCardinality::Required),
@@ -511,17 +614,24 @@ const TYPE_4_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_4_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_DOM_CONTENT_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.dom_content.outcome", ProtocolVersion::new(1, 0), TYPE_4_VARIANTS);
+pub const PWRIGHT_DOM_CONTENT_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.dom_content.outcome", ProtocolVersion::new(1, 1), TYPE_4_VARIANTS);
 
 const TYPE_5_FIELDS: &[BinaryFieldSchema] = &[
 ];
 
-pub const PWRIGHT_DOM_CONTENT_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.dom_content.params", ProtocolVersion::new(1, 0), TYPE_5_FIELDS);
+pub const PWRIGHT_DOM_CONTENT_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.dom_content.params", ProtocolVersion::new(1, 1), TYPE_5_FIELDS);
+
+const TYPE_6_FIELDS: &[BinaryFieldSchema] = &[
+];
+
+pub const PWRIGHT_DOM_CONTENT_TITLE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.dom_content.title_params", ProtocolVersion::new(1, 1), TYPE_6_FIELDS);
 
 pub const COMMAND_FRAME_CONTENT_SCHEMA: BinaryCommandSchema = BinaryCommandSchema::new(CommandId::new("frame.content"), MethodTag::new(393217), 1, 2);
+pub const COMMAND_FRAME_TITLE_SCHEMA: BinaryCommandSchema = BinaryCommandSchema::new(CommandId::new("frame.title"), MethodTag::new(393218), 3, 4);
 
 pub const COMMANDS: &[BinaryCommandSchema] = &[
     COMMAND_FRAME_CONTENT_SCHEMA,
+    COMMAND_FRAME_TITLE_SCHEMA,
 ];
 
 const TYPES: &[BinaryTypeSchema] = &[
@@ -534,6 +644,7 @@ const TYPES: &[BinaryTypeSchema] = &[
     BinaryTypeSchema::TaggedUnion(PWRIGHT_DOM_CONTENT_ERROR_DETAILS_SCHEMA),
     BinaryTypeSchema::TaggedUnion(PWRIGHT_DOM_CONTENT_OUTCOME_SCHEMA),
     BinaryTypeSchema::Record(PWRIGHT_DOM_CONTENT_PARAMS_SCHEMA),
+    BinaryTypeSchema::Record(PWRIGHT_DOM_CONTENT_TITLE_PARAMS_SCHEMA),
 ];
 
 pub const CATALOG: BinarySchemaCatalog = BinarySchemaCatalog::new(TYPES);

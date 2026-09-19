@@ -24,6 +24,7 @@ use crate::classify_cdp_failure;
 pub struct CdpScreenshotProductionProfile {
     max_screenshot_bytes: usize,
     max_concurrent_captures: usize,
+    intersect_viewport_clip: bool,
     requirements: ResourceRequirements,
 }
 
@@ -42,6 +43,7 @@ impl CdpScreenshotProductionProfile {
         Self {
             max_screenshot_bytes,
             max_concurrent_captures,
+            intersect_viewport_clip: false,
             requirements,
         }
     }
@@ -56,6 +58,13 @@ impl CdpScreenshotProductionProfile {
 
     pub const fn requirements(self) -> ResourceRequirements {
         self.requirements
+    }
+
+    /// Opt in to Playwright's viewport intersection for non-full-page clips.
+    /// The default retains the 1.0 exact-CDP-clip behavior and resource bounds.
+    pub const fn with_viewport_clip_intersection(mut self) -> Self {
+        self.intersect_viewport_clip = true;
+        self
     }
 }
 
@@ -190,7 +199,13 @@ impl CdpScreenshotService {
     ) -> Result<ScreenshotData, OperationError<ContentErrorDetails>> {
         validate_options(options)?;
         let format = options.format.unwrap_or_default();
-        let params = capture_params(self.client.as_ref(), options, format).await?;
+        let params = capture_params(
+            self.client.as_ref(),
+            options,
+            format,
+            self.resources.profile.intersect_viewport_clip,
+        )
+        .await?;
         let encoded = self
             .client
             .page_capture_screenshot(params)
@@ -262,6 +277,7 @@ async fn capture_params(
     client: &dyn CdpClient,
     options: ScreenshotOptions,
     format: ScreenshotFormat,
+    intersect_viewport_clip: bool,
 ) -> Result<CaptureScreenshotParams, OperationError<ContentErrorDetails>> {
     let needs_metrics = options.full_page.unwrap_or(false)
         || options.clip.is_some()
@@ -271,7 +287,11 @@ async fn capture_params(
             .page_get_layout_metrics()
             .await
             .map_err(map_cdp_error)?;
-        Some(viewport_from_metrics(&metrics, options)?)
+        Some(viewport_from_metrics(
+            &metrics,
+            options,
+            intersect_viewport_clip,
+        )?)
     } else {
         None
     };
@@ -300,6 +320,7 @@ const fn screenshot_format_for_cdp(format: ScreenshotFormat) -> &'static str {
 fn viewport_from_metrics(
     metrics: &GetLayoutMetricsReturns,
     options: ScreenshotOptions,
+    intersect_viewport_clip: bool,
 ) -> Result<Viewport, OperationError<ContentErrorDetails>> {
     let (x, y, width, height, mut scale) = if options.full_page.unwrap_or(false) {
         let size = &metrics.css_content_size;
@@ -311,6 +332,18 @@ fn viewport_from_metrics(
         height,
     }) = options.clip
     {
+        let (x, y, width, height) = if intersect_viewport_clip {
+            intersect_clip(
+                x,
+                y,
+                width,
+                height,
+                metrics.css_visual_viewport.client_width,
+                metrics.css_visual_viewport.client_height,
+            )?
+        } else {
+            (x, y, width, height)
+        };
         (
             metrics.css_visual_viewport.page_x + x,
             metrics.css_visual_viewport.page_y + y,
@@ -355,6 +388,33 @@ fn viewport_from_metrics(
         height,
         scale,
     })
+}
+
+fn intersect_clip(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    viewport_width: f64,
+    viewport_height: f64,
+) -> Result<(f64, f64, f64, f64), OperationError<ContentErrorDetails>> {
+    if !viewport_width.is_finite()
+        || !viewport_height.is_finite()
+        || viewport_width <= 0.0
+        || viewport_height <= 0.0
+    {
+        return Err(invalid_backend_response("invalid viewport dimensions"));
+    }
+    let left = x.min(viewport_width);
+    let top = y.min(viewport_height);
+    let right = (x + width).min(viewport_width);
+    let bottom = (y + height).min(viewport_height);
+    if right <= left || bottom <= top {
+        return Err(invalid_options(
+            "Clipped area is either empty or outside the resulting image",
+        ));
+    }
+    Ok((left, top, right - left, bottom - top))
 }
 
 fn validate_options(options: ScreenshotOptions) -> Result<(), OperationError<ContentErrorDetails>> {
@@ -447,6 +507,27 @@ mod tests {
     use super::{
         CdpScreenshotProductionProfile, CdpScreenshotServiceFactory, decoded_length_upper_bound,
     };
+
+    #[test]
+    fn opted_in_clip_intersection_trims_the_viewport_edge() {
+        // Arrange
+        let clip = (1200.0, 650.0, 300.0, 300.0);
+        // Act
+        let actual = super::intersect_clip(clip.0, clip.1, clip.2, clip.3, 1280.0, 720.0).unwrap();
+        // Assert
+        assert_eq!(actual, (1200.0, 650.0, 80.0, 70.0));
+        assert!(!CdpScreenshotProductionProfile::new(32, 1).intersect_viewport_clip);
+    }
+
+    #[test]
+    fn opted_in_clip_intersection_rejects_empty_intersections() {
+        // Arrange
+        let clip = (1280.0, 0.0, 50.0, 50.0);
+        // Act
+        let actual = super::intersect_clip(clip.0, clip.1, clip.2, clip.3, 1280.0, 720.0);
+        // Assert
+        assert!(actual.is_err());
+    }
 
     #[test]
     fn decoded_bound_accounts_for_standard_base64_padding() {

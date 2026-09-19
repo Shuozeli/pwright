@@ -11,5 +11,5 @@
     "declaration": false,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "specs/**/*.ts"]
+  "include": ["src/**/*.ts", "specs/**/*.ts", "unit/shared-differential.test.ts"]
 }

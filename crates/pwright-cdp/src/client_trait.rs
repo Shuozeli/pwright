@@ -31,6 +31,12 @@ pub trait SessionFactory: Send + Sync {
 /// Test code can use `MockCdpClient` to verify call sequences.
 #[async_trait]
 pub trait CdpClient: Send + Sync {
+    /// Optional concrete-session view for explicitly selected native extensions.
+    /// The returned Arc MUST be the original allocation, not a recreated binding.
+    /// Pure trait implementations need not expose one; no I/O or allocation.
+    fn retained_native_session(self: Arc<Self>) -> Option<Arc<CdpSession>> {
+        None
+    }
     // ── Browser domain ──
     async fn browser_set_download_behavior(
         &self,
@@ -43,6 +49,18 @@ pub trait CdpClient: Send + Sync {
     async fn page_navigate(&self, url: &str) -> Result<Value>;
     async fn page_navigate_with_referrer(&self, url: &str, referrer: Option<&str>)
     -> Result<Value>;
+    /// Explicit Frame navigation. Never fall back to the top-level Page.
+    async fn page_navigate_in_frame(
+        &self,
+        frame_id: &str,
+        url: &str,
+        referrer: Option<&str>,
+    ) -> Result<Value> {
+        let _ = (frame_id, url, referrer);
+        Err(crate::connection::CdpError::Other(
+            "Frame-targeted Page.navigate is not implemented by this CDP client".into(),
+        ))
+    }
     async fn page_stop_loading(&self) -> Result<()>;
     async fn page_enable(&self) -> Result<()>;
     async fn page_set_lifecycle_events_enabled(&self, enabled: bool) -> Result<()>;
@@ -115,6 +133,14 @@ pub trait CdpClient: Send + Sync {
             "DOM.describeNode by object ID is not implemented by this CDP client".to_string(),
         ))
     }
+    /// Raw node metadata for an exact retained object. No backend-ID projection
+    /// or second describe call substitutes for this request.
+    async fn dom_describe_node_by_object_id_raw(&self, object_id: &str) -> Result<Value> {
+        let _ = object_id;
+        Err(crate::connection::CdpError::Other(
+            "Raw DOM.describeNode by object ID is not implemented by this CDP client".to_string(),
+        ))
+    }
     async fn dom_resolve_backend_node_in_execution_context(
         &self,
         backend_node_id: i64,
@@ -124,6 +150,33 @@ pub trait CdpClient: Send + Sync {
         Err(crate::connection::CdpError::Other(
             "DOM.resolveNode by backend node and execution context is not implemented by this CDP client"
                 .to_string(),
+        ))
+    }
+    async fn dom_resolve_backend_node_in_execution_context_group(
+        &self,
+        backend_node_id: i64,
+        execution_context_id: i64,
+        object_group: &str,
+    ) -> Result<Value> {
+        let _ = (backend_node_id, execution_context_id, object_group);
+        Err(crate::connection::CdpError::Other(
+            "group-owned DOM.resolveNode is not implemented by this CDP client".into(),
+        ))
+    }
+    /// Acquire a raw retained node wrapper in an already-owned object group.
+    /// No ordinary response timeout may orphan a late native object. Callers
+    /// must retain this future and the group owner through terminal settlement.
+    /// Custom clients must opt in explicitly; no timed-method fallback is safe.
+    async fn dom_resolve_node_in_group_to_settlement(
+        &self,
+        backend_node_id: i64,
+        execution_context_id: i64,
+        object_group: &str,
+    ) -> Result<Value> {
+        let _ = (backend_node_id, execution_context_id, object_group);
+        Err(crate::connection::CdpError::Other(
+            "group-owned DOM.resolveNode to settlement is not implemented by this CDP client"
+                .into(),
         ))
     }
     async fn dom_enable(&self) -> Result<()>;
@@ -137,6 +190,16 @@ pub trait CdpClient: Send + Sync {
     async fn dom_request_node(&self, object_id: &str) -> Result<i64>;
 
     // ── Input domain ──
+    async fn input_dispatch_pointer_event(
+        &self,
+        params: crate::generated::input::DispatchMouseEventParams,
+    ) -> Result<()> {
+        let _ = params;
+        Err(crate::connection::CdpError::Other(
+            "complete pointer events are not implemented by this CDP client".into(),
+        ))
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn input_dispatch_mouse_event(
         &self,
@@ -194,12 +257,33 @@ pub trait CdpClient: Send + Sync {
 
     // ── Runtime domain ──
     async fn runtime_evaluate(&self, expression: &str) -> Result<Value>;
+    /// Explicit user-script evaluation policy; ordinary internal reads keep
+    /// their existing activation semantics.
+    async fn runtime_evaluate_with_user_gesture(
+        &self,
+        expression: &str,
+        unique_context_id: Option<&str>,
+    ) -> Result<Value> {
+        let _ = (expression, unique_context_id);
+        Err(crate::connection::CdpError::Other(
+            "User-gesture evaluation is not implemented by this CDP client".into(),
+        ))
+    }
     async fn runtime_evaluate_in_unique_context(
         &self,
         expression: &str,
         unique_context_id: &str,
     ) -> Result<Value>;
     async fn runtime_evaluate_as_object(&self, expression: &str) -> Result<Value>;
+    /// Explicit raw acquisition: preserve exception RemoteObjects and retain
+    /// the response registration until settlement. The caller owns cleanup
+    /// and must retain the future if its public waiter is cancelled.
+    async fn runtime_evaluate_as_object_to_settlement(&self, expression: &str) -> Result<Value> {
+        let _ = expression;
+        Err(crate::connection::CdpError::Other(
+            "retained Runtime.evaluate settlement is not implemented by this CDP client".to_owned(),
+        ))
+    }
     async fn runtime_evaluate_as_object_in_unique_context(
         &self,
         expression: &str,
@@ -223,6 +307,20 @@ pub trait CdpClient: Send + Sync {
                 .to_string(),
         ))
     }
+    /// Raw exact-world acquisition with the same caller-owned settlement and
+    /// cleanup contract as runtime_evaluate_as_object_to_settlement.
+    async fn runtime_call_function_as_object_in_unique_context_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Value> {
+        let _ = (unique_context_id, function_declaration, arguments);
+        Err(crate::connection::CdpError::Other(
+            "retained Runtime.callFunctionOn settlement is not implemented by this CDP client"
+                .to_owned(),
+        ))
+    }
     async fn runtime_call_function_by_value_in_unique_context(
         &self,
         unique_context_id: &str,
@@ -241,10 +339,162 @@ pub trait CdpClient: Send + Sync {
             "Runtime.getProperties is not implemented by this CDP client".to_string(),
         ))
     }
+    /// Raw retained property acquisition. Preserve descriptor and exception
+    /// RemoteObjects until settlement; the caller owns their cleanup and must
+    /// retain this future when its public waiter is cancelled.
+    async fn runtime_get_properties_to_settlement(&self, object_id: &str) -> Result<Value> {
+        let _ = object_id;
+        Err(crate::connection::CdpError::Other(
+            "retained Runtime.getProperties settlement is not implemented by this CDP client"
+                .to_owned(),
+        ))
+    }
+    /// Retain a synchronous function result and exception wrappers in an
+    /// already-owned group in one exact world. Do not assimilate a returned
+    /// Promise, flatten exceptions or abandon late results at the ordinary
+    /// response deadline. The caller must retain the future and group owner
+    /// through settlement/cleanup; custom clients must opt in without fallback.
+    async fn runtime_call_function_as_object_in_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+        user_gesture: bool,
+    ) -> Result<Value> {
+        let _ = (
+            unique_context_id,
+            function_declaration,
+            arguments,
+            object_group,
+            user_gesture,
+        );
+        Err(crate::connection::CdpError::Other(
+            "group-owned retained Runtime.callFunctionOn settlement is not implemented by this CDP client"
+                .to_owned(),
+        ))
+    }
+    /// Raw by-value reply with Promise assimilation, explicit gesture policy
+    /// and caller-owned exception/result group. Unlike the ordinary by-value
+    /// helper, this never flattens exceptionDetails. Retain the future and group
+    /// through settlement/cleanup; custom clients must explicitly implement it.
+    async fn runtime_call_function_raw_in_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+        user_gesture: bool,
+    ) -> Result<Value> {
+        let _ = (
+            unique_context_id,
+            function_declaration,
+            arguments,
+            object_group,
+            user_gesture,
+        );
+        Err(crate::connection::CdpError::Other(
+            "raw group-owned by-value settlement is not implemented by this CDP client".into(),
+        ))
+    }
+    /// Explicit by-value call with group ownership for exception wrappers too.
+    async fn runtime_call_function_by_value_in_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+    ) -> Result<Value> {
+        let _ = (
+            unique_context_id,
+            function_declaration,
+            arguments,
+            object_group,
+        );
+        Err(crate::connection::CdpError::Other(
+            "group-owned by-value calls are not implemented by this CDP client".to_string(),
+        ))
+    }
+    /// Explicit separately admitted large outbound message; never a fallback.
+    async fn runtime_call_function_by_value_in_large_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+    ) -> Result<Value> {
+        let _ = (
+            unique_context_id,
+            function_declaration,
+            arguments,
+            object_group,
+        );
+        Err(crate::connection::CdpError::InvalidConfiguration(
+            "large group calls are not implemented by this CDP client",
+        ))
+    }
+    /// Explicit separately admitted large outbound by-value call with the
+    /// caller-selected user-gesture bit.
+    async fn runtime_call_function_by_value_in_large_group_with_user_gesture_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+        user_gesture: bool,
+    ) -> Result<Value> {
+        let _ = (
+            unique_context_id,
+            function_declaration,
+            arguments,
+            object_group,
+            user_gesture,
+        );
+        Err(crate::connection::CdpError::InvalidConfiguration(
+            "large group calls with user gesture are not implemented by this CDP client",
+        ))
+    }
+    /// Retain a synchronous query result in an explicitly owned object group.
+    /// Unlike general evaluation, no user Promise is awaited by this primitive.
+    async fn runtime_query_object_in_group(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        object_group: &str,
+    ) -> Result<Value> {
+        let _ = (unique_context_id, function_declaration, object_group);
+        Err(crate::connection::CdpError::Other(
+            "group-owned Runtime query is not implemented by this CDP client".to_owned(),
+        ))
+    }
+    async fn runtime_release_object_group(&self, object_group: &str) -> Result<()> {
+        let _ = object_group;
+        Err(crate::connection::CdpError::Other(
+            "Runtime.releaseObjectGroup is not implemented by this CDP client".to_owned(),
+        ))
+    }
+    /// Explicit group-release acknowledgement without the ordinary deadline.
+    /// The group owner must remain admitted until this future settles; custom
+    /// clients must not fall back to a timed release that can orphan cleanup.
+    async fn runtime_release_object_group_to_settlement(&self, object_group: &str) -> Result<()> {
+        let _ = object_group;
+        Err(crate::connection::CdpError::Other(
+            "Runtime.releaseObjectGroup settlement is not implemented by this CDP client"
+                .to_owned(),
+        ))
+    }
     async fn runtime_release_object(&self, object_id: &str) -> Result<()> {
         let _ = object_id;
         Err(crate::connection::CdpError::Other(
             "Runtime.releaseObject is not implemented by this CDP client".to_string(),
+        ))
+    }
+    /// Explicit release acknowledgement without the ordinary response timer.
+    /// Dropping the future is not evidence that the native object was released.
+    async fn runtime_release_object_to_settlement(&self, object_id: &str) -> Result<()> {
+        let _ = object_id;
+        Err(crate::connection::CdpError::Other(
+            "Runtime.releaseObject settlement is not implemented by this CDP client".to_owned(),
         ))
     }
     async fn runtime_enable(&self) -> Result<()>;
@@ -298,6 +548,20 @@ pub trait CdpClient: Send + Sync {
     }
     async fn target_attach(&self, target_id: &str) -> Result<String>;
     async fn target_detach(&self, session_id: &str) -> Result<()>;
+    /// Detach a recursively attached child through the exact parent session
+    /// that announced it. This is not a browser-root detach or a new attachment.
+    async fn target_detach_in_parent(
+        &self,
+        parent_session_id: Option<&str>,
+        session_id: &str,
+    ) -> Result<()> {
+        if parent_session_id.is_none() {
+            return self.target_detach(session_id).await;
+        }
+        Err(crate::connection::CdpError::Other(
+            "parent-scoped Target.detachFromTarget is not implemented by this CDP client".into(),
+        ))
+    }
     async fn target_set_auto_attach(
         &self,
         auto_attach: bool,
@@ -332,6 +596,9 @@ macro_rules! cdp_delegate_impl {
     ) => {
         #[async_trait]
         impl CdpClient for CdpSession {
+            fn retained_native_session(self: Arc<Self>) -> Option<Arc<CdpSession>> {
+                Some(self)
+            }
             fn event_session_id(&self) -> Option<&str> {
                 self.session_id()
             }
@@ -356,9 +623,11 @@ macro_rules! cdp_delegate_impl {
 }
 
 cdp_delegate_impl! {
+    async fn input_dispatch_pointer_event(&self, params: crate::generated::input::DispatchMouseEventParams) -> Result<()>;
     async fn browser_set_download_behavior(&self, behavior: DownloadBehavior, download_path: Option<&str>, events_enabled: bool) -> Result<()>;
     async fn page_navigate(&self, url: &str) -> Result<Value>;
     async fn page_navigate_with_referrer(&self, url: &str, referrer: Option<&str>) -> Result<Value>;
+    async fn page_navigate_in_frame(&self, frame_id: &str, url: &str, referrer: Option<&str>) -> Result<Value>;
     async fn page_stop_loading(&self) -> Result<()>;
     async fn page_enable(&self) -> Result<()>;
     async fn page_set_lifecycle_events_enabled(&self, enabled: bool) -> Result<()>;
@@ -383,7 +652,10 @@ cdp_delegate_impl! {
     async fn dom_get_frame_owner(&self, frame_id: &str) -> Result<i64>;
     async fn dom_resolve_node(&self, node_id: i64) -> Result<Value>;
     async fn dom_describe_node_by_object_id(&self, object_id: &str) -> Result<i64>;
+    async fn dom_describe_node_by_object_id_raw(&self, object_id: &str) -> Result<Value>;
     async fn dom_resolve_backend_node_in_execution_context(&self, backend_node_id: i64, execution_context_id: i64) -> Result<Value>;
+    async fn dom_resolve_backend_node_in_execution_context_group(&self, backend_node_id: i64, execution_context_id: i64, object_group: &str) -> Result<Value>;
+    async fn dom_resolve_node_in_group_to_settlement(&self, backend_node_id: i64, execution_context_id: i64, object_group: &str) -> Result<Value>;
     async fn dom_enable(&self) -> Result<()>;
     async fn dom_get_document(&self) -> Result<Value>;
     async fn dom_query_selector(&self, node_id: i64, selector: &str) -> Result<i64>;
@@ -401,18 +673,31 @@ cdp_delegate_impl! {
     async fn input_insert_text(&self, text: &str) -> Result<()>;
     async fn input_dispatch_touch_event(&self, event_type: TouchEventType, x: f64, y: f64) -> Result<()>;
     async fn runtime_evaluate(&self, expression: &str) -> Result<Value>;
+    async fn runtime_evaluate_with_user_gesture(&self, expression: &str, unique_context_id: Option<&str>) -> Result<Value>;
     async fn runtime_evaluate_in_unique_context(
         &self,
         expression: &str,
         unique_context_id: &str
     ) -> Result<Value>;
     async fn runtime_evaluate_as_object(&self, expression: &str) -> Result<Value>;
+    async fn runtime_evaluate_as_object_to_settlement(&self, expression: &str) -> Result<Value>;
     async fn runtime_evaluate_as_object_in_unique_context(&self, expression: &str, unique_context_id: &str) -> Result<Value>;
     async fn runtime_call_function_on(&self, object_id: &str, function_declaration: &str, arguments: Vec<Value>) -> Result<Value>;
     async fn runtime_call_function_as_object_in_unique_context(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>) -> Result<Value>;
+    async fn runtime_call_function_as_object_in_unique_context_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>) -> Result<Value>;
+    async fn runtime_call_function_as_object_in_group_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str, user_gesture: bool) -> Result<Value>;
+    async fn runtime_call_function_raw_in_group_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str, user_gesture: bool) -> Result<Value>;
     async fn runtime_call_function_by_value_in_unique_context(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>) -> Result<Value>;
+    async fn runtime_call_function_by_value_in_group_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str) -> Result<Value>;
+    async fn runtime_call_function_by_value_in_large_group_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str) -> Result<Value>;
+    async fn runtime_call_function_by_value_in_large_group_with_user_gesture_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str, user_gesture: bool) -> Result<Value>;
     async fn runtime_get_properties(&self, object_id: &str) -> Result<Value>;
+    async fn runtime_get_properties_to_settlement(&self, object_id: &str) -> Result<Value>;
     async fn runtime_release_object(&self, object_id: &str) -> Result<()>;
+    async fn runtime_release_object_to_settlement(&self, object_id: &str) -> Result<()>;
+    async fn runtime_query_object_in_group(&self, unique_context_id: &str, function_declaration: &str, object_group: &str) -> Result<Value>;
+    async fn runtime_release_object_group(&self, object_group: &str) -> Result<()>;
+    async fn runtime_release_object_group_to_settlement(&self, object_group: &str) -> Result<()>;
     async fn runtime_enable(&self) -> Result<()>;
     async fn runtime_run_if_waiting_for_debugger(&self) -> Result<()>;
     async fn accessibility_enable(&self) -> Result<()>;
@@ -439,5 +724,6 @@ cdp_delegate_impl! {
     async fn target_get_target_info(&self) -> Result<target::TargetInfo>;
     async fn target_attach(&self, target_id: &str) -> Result<String>;
     async fn target_detach(&self, session_id: &str) -> Result<()>;
+    async fn target_detach_in_parent(&self, parent_session_id: Option<&str>, session_id: &str) -> Result<()>;
     async fn target_set_auto_attach(&self, auto_attach: bool, wait_for_debugger_on_start: bool, flatten: bool) -> Result<()>;
 }

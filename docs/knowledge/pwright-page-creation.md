@@ -1,10 +1,74 @@
-<!-- agent-updated: 2026-09-03T10:13:48Z -->
+<!-- agent-updated: 2026-09-10T06:55:30Z -->
 
 # Playwright-aligned Page creation design
+
+NODE-111: Existing synchronized initialization marks pre-registered Pages ready and now
+exposes that native effect to selected observers. Deferred popup linkage can
+arrive in an opener's later transaction; do not invent duplicate Page creation
+or assume a transaction is already one dependent callback group.
+[NODE-111 source contract and verification](pwright-node-lifecycle-events.md#node-111-borrowed-committed-driver-effects).
+
+NODE-110 characterizes listener mutation, async gates and popup listener failure.
+An async page listener does not delay newPage resolution; a synchronous Context
+page failure suppresses its dependent popup notification, not the already
+published Page membership. Candidate Page/popup notifications remain missing.
+[NODE-110 contracts, fix and verification](pwright-node-lifecycle-events.md#node-110-listener-failure-boundaries-and-scoped-exception-reporting).
+
+NODE-109's exclusive metadata drain reuses the queue pre-admitted before Page
+creation, adding one active guard's allowance. It does not synthesize Page/popup
+events from membership revisions or change Node creation publication. Native
+cause ordering and atomic event-visible state remain required before dispatch.
+[NODE-109 contract and verification](pwright-node-lifecycle-events.md#node-109-exclusive-fixed-watermark-publication-owner).
+
+NODE-105 characterizes explicit creation and popup events. Context page precedes
+newPage resolution; for a popup, Context page precedes opener popup with the same
+Page argument and registered membership. Native candidate creation/discovery
+works but these notifications are absent. Reuse existing typed Page-event and
+opener effects through a bounded Rust language-publication port, not JS inference.
+[Red evidence and proposed integration](pwright-node-lifecycle-events.md).
+
+NODE-104 verifies explicit single/concurrent Page creation, replacement and
+independent borrowed Page discovery while Node is blocked. Membership waits for
+publication; returned/main-Frame identities and retained arrays remain coherent.
+The seven-case lane passes twice on each NODE-103 profile. Concurrent creation
+completion can reorder insertion relative to invocation; stable per-connection
+enumeration is tested without imposing a stronger ordering contract.
+This does not implement Context page events, popup/opener semantics or Browser.newPage.
+[Current evidence and remaining event work](pwright-frame-publication.md#node-104-creation-and-discovery-publication-characterization).
+
+NODE-088 enables the selected header Network domain at scoped attachment, not
+per setter. The host keeps existing header jobs progressing while Page creation
+or initialization awaits native capacity. Expected header-syntax failure retains
+the exact-Page cleanup path; concurrent handoff/fault injection remains open.
+[Initialization and backpressure](pwright-extra-http-headers.md#node-088-caller-polled-native-jobs-and-early-primary-rejection).
+
+NODE-083 isolates expected header-syntax initialization rejection. The driver
+finishes topology initialization without sealing shared observers, then closes
+the exact newly created Page through the existing lifecycle service before
+rejecting creation. Context remains usable. This follows upstream newPage's
+failure cleanup, not merely its intermediate Page.reportAsNew event. Other
+initializer failures and exact transient Page events remain unverified.
+[Header lifecycle evidence](pwright-extra-http-headers.md#node-083-deferred-syntax-and-page-local-initialization-failure).
 
 > Status: implemented and verified for the first explicit
 > `BrowserContext.newPage()` slice, including Chrome 152. Popup discovery and
 > additional browser backends remain separate work.
+
+## Node FFI integration checkpoint
+
+The experimental Node host now exposes no-options `BrowserContext.newPage()`
+through this existing service. Its single topology driver serializes explicit
+creation with native event ingestion, initializes the new route/world snapshot,
+and replies with stable Page/main-Frame wrappers. It reserves the main Frame's
+metadata entry and initial URL bytes before creating the native target; a
+returned descriptor retains that exact snapshot even after external retirement.
+This does not add `Browser.newPage()` or Context creation to the Node API.
+
+The default Context uses an internal empty key. The production CDP client now
+omits `browserContextId` for that key instead of sending the invalid empty ID;
+explicit non-default IDs are preserved. Both encodings have release tests.
+See [the Node checkpoint](../node-ffi-compatibility-design.md#explicit-page-creation-and-ordinary-close-checkpoint)
+for differential evidence, FFI budgets and unfinished lifecycle gates.
 
 ## Upstream contract
 

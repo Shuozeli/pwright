@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pwright sequential typing fixture</title>
+<textarea id="text" aria-label="Typing target"></textarea>
+<div id="editable" contenteditable="true" aria-label="Editable target"></div>
+<script>
+'use strict';
+let typingEvents = [];
+let typingOverflow = false;
+let typingTarget;
+for (const type of ['keydown', 'keypress', 'keyup', 'beforeinput', 'input']) {
+  document.addEventListener(type, event => {
+    if (event.target !== typingTarget) return;
+    if (typingEvents.length === 1024) { typingOverflow = true; return; }
+    const keyboard = event instanceof KeyboardEvent;
+    const input = event instanceof InputEvent;
+    typingEvents.push({
+      type, key: keyboard ? event.key : null, code: keyboard ? event.code : null,
+      keyCode: keyboard ? event.keyCode : null,
+      charCode: keyboard ? event.charCode : null,
+      location: keyboard ? event.location : null,
+      repeat: keyboard ? event.repeat : null,
+      shift: keyboard ? event.shiftKey : null, control: keyboard ? event.ctrlKey : null,
+      alt: keyboard ? event.altKey : null, meta: keyboard ? event.metaKey : null,
+      data: input ? event.data : null, inputType: input ? event.inputType : null,
+      composing: event.isComposing, trusted: event.isTrusted,
+    });
+  });
+}
+window.resetTyping = selector => {
+  typingTarget = document.querySelector(selector);
+  if (typingTarget instanceof HTMLTextAreaElement) typingTarget.value = '';
+  else typingTarget.textContent = '';
+  typingTarget.focus();
+  if (typingTarget instanceof HTMLTextAreaElement) typingTarget.setSelectionRange(0, 0);
+  typingEvents = [];
+  typingOverflow = false;
+};
+window.typingSnapshot = () => ({
+  value: typingTarget instanceof HTMLTextAreaElement ? typingTarget.value : typingTarget.textContent,
+  events: typingEvents, overflow: typingOverflow,
+});
+</script>

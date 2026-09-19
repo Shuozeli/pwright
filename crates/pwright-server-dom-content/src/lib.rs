@@ -21,7 +21,7 @@ mod tests {
     use super::{DomContentServerServices, dom_content_server_handlers};
 
     #[test]
-    fn generated_handler_advertises_only_frame_content() {
+    fn generated_handlers_advertise_read_only_dom_content_1_1() {
         // Arrange
         let version = ProtocolVersion::new(1, 0);
         let frames = FrameLimits::new(16 * 1024, 1, 1024, 17 * 1024);
@@ -40,6 +40,7 @@ mod tests {
             protocol,
             DomContentServerServices {
                 frame_content: Arc::new(()),
+                frame_title: Arc::new(()),
             },
         );
         let capability = WireCapabilityId::new("pwright.dom_content", 64).unwrap();
@@ -55,7 +56,9 @@ mod tests {
         // Assert
         assert_eq!(
             manifest.support(&capability),
-            Some(VersionPolicy::compatible_through(version))
+            Some(VersionPolicy::compatible_through(ProtocolVersion::new(
+                1, 1
+            )))
         );
     }
 }

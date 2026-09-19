@@ -13,8 +13,8 @@ use pwright_selector_model::{
 pub const MAX_SELECTOR_DEPTH: usize = 32;
 pub const MAX_SELECTOR_NODES: usize = 256;
 pub const MAX_SELECTOR_STRING_BYTES: usize = 64 * 1024;
-pub const SELECTOR_RUNTIME_VERSION: u32 = 6;
-pub const SELECTOR_RUNTIME_SYMBOL: &str = "pwright.selector-runtime/6";
+pub const SELECTOR_RUNTIME_VERSION: u32 = 7;
+pub const SELECTOR_RUNTIME_SYMBOL: &str = "pwright.selector-runtime/7";
 const MAX_ESCAPED_BYTES_PER_INPUT_BYTE: usize = 6;
 const MAX_GENERATED_BYTES_PER_SELECTOR_NODE: usize = 1024;
 const MAX_ACTION_WRAPPER_BYTES: usize = 32 * 1024;
@@ -197,7 +197,8 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
       .find(role => validRoles.has(role));
     return explicit || implicitRole(element);
   };
-  const accessibleName = (element, seen = new Set()) => {
+  const nameFromContentRoles = new Set(['button','cell','checkbox','columnheader','gridcell','heading','link','menuitem','menuitemcheckbox','menuitemradio','option','radio','row','rowheader','switch','tab','tooltip','treeitem']);
+  const accessibleName = (element, seen = new Set(), role = null) => {
     if (seen.has(element)) return '';
     seen.add(element);
     const labelled = (element.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
@@ -211,6 +212,10 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
       return normalize(element.getAttribute('alt'));
     if (element.tagName === 'INPUT' && ['button', 'reset', 'submit'].includes(element.type))
       return normalize(element.value);
+    // For roles that allow naming from content, title is a fallback. Explicit
+    // ARIA labels, associated labels and native alternatives still win above.
+    const content = normalize(element.textContent);
+    if (nameFromContentRoles.has(role) && content) return content;
     if (element.hasAttribute('title')) return normalize(element.getAttribute('title'));
     return normalize(element.textContent);
   };
@@ -306,7 +311,9 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
     return pattern;
   };
   const matchesPattern = (actual, pattern) => pattern.kind === 'regex'
-    ? pattern.matcher.test(String(actual ?? ''))
+    // Role options use attribute matching. String.match resets global regex
+    // state for each candidate; text/label engines have separate semantics.
+    ? Boolean(String(actual ?? '').match(pattern.matcher))
     : matchesText(actual, pattern.value, pattern.exact);
   const role = (root, expectedRole, options) => {
     const name = compilePattern(options.name);
@@ -314,7 +321,7 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
     return all(root).filter(element => {
       if (ariaRole(element) !== expectedRole) return false;
       if (!options.includeHidden && hidden(element)) return false;
-      if (name && !matchesPattern(accessibleName(element), name)) return false;
+      if (name && !matchesPattern(accessibleName(element, new Set(), expectedRole), name)) return false;
       if (description && !matchesPattern(accessibleDescription(element), description)) return false;
       if (options.checked !== null && triState(element, 'aria-checked', 'checked') !== options.checked) return false;
       if (options.pressed !== null && triState(element, 'aria-pressed', 'pressed') !== options.pressed) return false;
@@ -363,7 +370,7 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   };
-  return Object.freeze({ version: 6, css, text, textRegex, label, labelRegex, attribute, attributeRegex, testId, testIdRegex, role, union, within, visible, elementState, retarget, matchesText });
+  return Object.freeze({ version: 7, css, text, textRegex, label, labelRegex, attribute, attributeRegex, testId, testIdRegex, role, union, within, visible, elementState, retarget, matchesText });
 })()"#;
 
 #[derive(Default)]

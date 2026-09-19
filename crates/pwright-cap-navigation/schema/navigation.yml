@@ -1,6 +1,6 @@
 format: 1
 capability: pwright.navigation
-version: { major: 1, minor: 0 }
+version: { major: 1, minor: 1 }
 root: pwright.navigation
 imports:
   - pwright.common
@@ -21,6 +21,15 @@ commands:
     command: goto_command
     result: goto_result
     params_type: pwright.navigation.goto_params
+    result_type: pwright.navigation.goto_result
+    error_details_type: pwright.navigation.error_details
+  - id: navigation.reload
+    name: reload
+    method: 65539
+    targets: [pwright.browser.page]
+    command: reload_command
+    result: reload_result
+    params_type: pwright.navigation.reload_params
     result_type: pwright.navigation.goto_result
     error_details_type: pwright.navigation.error_details
 types:
@@ -48,6 +57,19 @@ types:
           - { name: params, type: message, target: pwright.navigation.goto_params }
       - tag: 4
         name: goto_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.navigation.goto_outcome }
+
+      - tag: 5
+        name: reload_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.navigation.reload_params }
+      - tag: 6
+        name: reload_result
         fields:
           - { name: call_id, type: u64 }
           - { name: outcome, type: message, target: pwright.navigation.goto_outcome }
@@ -150,6 +172,12 @@ types:
     fields:
       - { name: name, type: utf8 }
       - { name: value, type: utf8 }
+
+  - kind: record
+    id: pwright.navigation.reload_params
+    public_name: reload_params
+    fields:
+      - { name: wait_until, type: enum, target: pwright.navigation.wait_until }
 
   - kind: record
     id: pwright.navigation.response

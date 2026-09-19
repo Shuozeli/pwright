@@ -1,5 +1,7 @@
 //! Canonical bounded binary payloads for the optional locator capability.
 
+mod typing;
+
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::num::{NonZeroU8, NonZeroU32};
@@ -160,7 +162,7 @@ impl LocatorCodec {
     pub const fn new(limits: LocatorCodecLimits) -> Self {
         Self {
             limits,
-            capability_version: ProtocolVersion::new(1, 22),
+            capability_version: ProtocolVersion::new(1, 23),
         }
     }
 
@@ -2947,6 +2949,9 @@ fn decode_press_options(reader: &mut BinaryReader<'_>) -> Result<PressOptions, L
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LocatorCodecError {
+    PressSequentiallyUnsupported {
+        version: ProtocolVersion,
+    },
     FocusManagementUnsupported {
         version: ProtocolVersion,
     },
@@ -3049,6 +3054,10 @@ pub enum LocatorCodecError {
 impl Display for LocatorCodecError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::PressSequentiallyUnsupported { version } => write!(
+                f,
+                "locator press_sequentially requires capability version 1.23 or 2.6, but {version} was selected"
+            ),
             Self::FocusManagementUnsupported { version } => write!(
                 f,
                 "locator focus and blur require capability version 1.18 or 2.1, but {version} was selected"
@@ -4391,11 +4400,12 @@ mod tests {
         let is_enabled = LOCATOR_COMMAND_SCHEMAS[14];
         let is_visible = LOCATOR_COMMAND_SCHEMAS[15];
         let press = LOCATOR_COMMAND_SCHEMAS[16];
-        let scroll_into_view_if_needed = LOCATOR_COMMAND_SCHEMAS[17];
-        let select_option = LOCATOR_COMMAND_SCHEMAS[18];
-        let set_checked = LOCATOR_COMMAND_SCHEMAS[19];
-        let text_content = LOCATOR_COMMAND_SCHEMAS[20];
-        let wait_for = LOCATOR_COMMAND_SCHEMAS[21];
+        let press_sequentially = LOCATOR_COMMAND_SCHEMAS[17];
+        let scroll_into_view_if_needed = LOCATOR_COMMAND_SCHEMAS[18];
+        let select_option = LOCATOR_COMMAND_SCHEMAS[19];
+        let set_checked = LOCATOR_COMMAND_SCHEMAS[20];
+        let text_content = LOCATOR_COMMAND_SCHEMAS[21];
+        let wait_for = LOCATOR_COMMAND_SCHEMAS[22];
 
         // Act
         let wire_mappings = [
@@ -4508,6 +4518,12 @@ mod tests {
                 scroll_into_view_if_needed.result_tag(),
             ),
             (
+                press_sequentially.id(),
+                press_sequentially.method(),
+                press_sequentially.command_tag(),
+                press_sequentially.result_tag(),
+            ),
+            (
                 select_option.id(),
                 select_option.method(),
                 select_option.command_tag(),
@@ -4609,6 +4625,12 @@ mod tests {
                     SCROLL_INTO_VIEW_IF_NEEDED_METHOD,
                     SCROLL_INTO_VIEW_IF_NEEDED_COMMAND,
                     SCROLL_INTO_VIEW_IF_NEEDED_RESULT,
+                ),
+                (
+                    pwright_cap_locator::PRESS_SEQUENTIALLY_COMMAND_ID,
+                    pwright_cap_locator::PRESS_SEQUENTIALLY_METHOD,
+                    45,
+                    46
                 ),
                 (
                     SELECT_OPTION_COMMAND_ID,

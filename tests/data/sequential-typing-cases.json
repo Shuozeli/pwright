@@ -1,0 +1,15 @@
+[
+  {"id":"ascii","selector":"#text","text":" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~","modifier":null,"delayMs":0},
+  {"id":"unicode","selector":"#text","text":"中文ée\u0301\ud83d\ude00\ud83d\udc69\u200d\ud83d\udcbb","modifier":null,"delayMs":0},
+  {"id":"literal-chord","selector":"#text","text":"Control+A Shift++ Enter","modifier":null,"delayMs":0},
+  {"id":"line-and-tab","selector":"#text","text":"a\nb\rc\td","modifier":null,"delayMs":0},
+  {"id":"nul","selector":"#text","text":"a\u0000b","modifier":null,"delayMs":0},
+  {"id":"repeated","selector":"#text","text":"aaaAAA+++","modifier":null,"delayMs":0},
+  {"id":"empty","selector":"#text","text":"","modifier":null,"delayMs":0},
+  {"id":"delay","selector":"#text","text":"a中A\ud83d\ude00","modifier":null,"delayMs":5},
+  {"id":"shift","selector":"#text","text":"aA+中","modifier":"Shift","delayMs":0},
+  {"id":"control","selector":"#text","text":"a中","modifier":"Control","delayMs":0},
+  {"id":"alt","selector":"#text","text":"a中","modifier":"Alt","delayMs":0},
+  {"id":"meta","selector":"#text","text":"a中","modifier":"Meta","delayMs":0},
+  {"id":"contenteditable","selector":"#editable","text":"a中\nA\t\ud83d\ude00","modifier":null,"delayMs":0}
+]

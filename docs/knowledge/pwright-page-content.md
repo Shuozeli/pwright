@@ -1,6 +1,22 @@
-<!-- agent-updated: 2026-09-05T12:22:56Z -->
+<!-- agent-updated: 2026-09-07T01:45:30Z -->
 
 # Playwright Page content semantics and Pwright boundary
+
+## Optional Node execution-world precondition
+
+Node's selected Chromium readiness component waits for the current utility
+world before dispatching Page/Frame title and content. A temporarily missing
+world on a live Frame is no longer classified as a missing installed
+capability. Absent capabilities still reject; default Rust profiles retain
+immediate call-construction route snapshots without waiting. The DOM leaf
+itself and its standalone dependency closure do not gain evaluation or a driver.
+
+The wait lives inside existing runtime admission/cancellation. Public
+title/content still have no new action timeout; this change does not replace
+their no-timeout contract with a private deadline. Close and transport loss
+can interrupt it. See [NODE-021](../node-ffi-compatibility-design.md#node-021-bounded-execution-world-readiness)
+for bounded accounting and post-navigation paired tests. Later document
+replacement after dispatch is a separate boundary, not automatically retried.
 
 ## Decision
 
@@ -193,9 +209,52 @@ extracted into `pwright-backend-cdp-dom-content`, while
 users. The isolated `pwright-composition-chromium-dom-content` leaf binds one
 Frame and its exact bounded utility-world `uniqueContextId`, claims the full
 route plus source-result, decoded-result, and wire peaks from one caller-owned
-production ledger, and materializes only the generated `Frame.content`
-handler. `examples/v2-dom-content-only` and its CI dependency allowlist prove
+production ledger, and initially materialized the generated `Frame.content`
+handler (1.1 also binds `Frame.title`). `examples/v2-dom-content-only` and its CI dependency allowlist prove
 an exact 15-package Pwright closure with no public evaluation, screenshot,
 navigation, aggregate backend/composition, client, provider, installer, or
 runtime choice. Shared CDP failure classification lives in the command-free
 `pwright-backend-cdp-common` leaf, so reuse does not merge capabilities.
+
+## DOM-read 1.1: isolated Frame title
+
+The Node FFI differential oracle (Playwright 1.58.2, installed
+`playwright-core/lib/server/frames.js` `Frame.title`) reads `document.title` in
+the utility world. Its prototype-interference fixture demonstrated why main-
+world value evaluation is not an equivalent implementation.
+
+Add `FrameTitle` (`frame.title`, method `0x0006_0002`, root wire tags 3/4) to
+the existing read-only DOM capability as version 1.1. The preserved 1.0 baseline
+and existing content tags/fields remain unchanged. `TitleParams` is empty and
+does not accept arbitrary source. This adds a narrower projection of DOM text
+already accessible to this capability, not a mutation or evaluation privilege.
+Separate `FrameTitleExt`/`PageTitleExt` traits keep existing content-only client
+channel bounds source-compatible. Page dispatch resolves its main Frame; both
+reads carry no action deadline, while connection/cancellation budgets remain.
+
+The Chromium implementation shares the exact utility execution route, finite
+read/concurrency admission, and `DomContentBytes` result ownership with content.
+Its only title source is the private fixed `document.title` expression; it does
+not serialize the whole document to extract a title. The title result uses the
+same bounded UTF-8 attachment codec with distinct command/result tags. It cannot
+be decoded as a content result or vice versa. Native teardown and late-result
+handling are the same as other fixed DOM reads.
+
+The standalone DOM-content composition exposes both typed read handlers without
+adding an evaluation, browser, provider, or runtime dependency. The Node host no
+longer installs its former title-only evaluation profile. Its aggregate Rust
+dependency graph is still broad; this does not claim the aggregate host is a
+minimal distribution. Node conversion-result budgets remain a separate gate.
+
+Required verification for 1.1: preserved 1.0 schema compatibility, title command
+and attachment round trips with cross-result rejection, exact utility context
+and fixed-source checks, byte-budget release/oversize rejection, client main-
+Frame dispatch, shared route replacement/detach/crash behavior, standalone
+dependency proof, and actual Playwright-paired prototype/concurrent-read cases.
+
+Those title-specific unit, generated-schema and negotiated-server tests passed;
+the existing shared-route/cancellation suite also passed. The real Chrome 152
+Node lane now passes nineteen cases without a TODO, including prototype
+interference and concurrent reads. Workspace release check, strict changed-
+component Clippy and the unchanged fifteen-package DOM-read dependency proof
+passed. The aggregate host remains a broad prototype, not a narrow distribution.

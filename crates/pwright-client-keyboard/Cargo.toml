@@ -1,0 +1,18 @@
+[package]
+name = "pwright-client-keyboard"
+description = "Optional raw Page Keyboard client layer for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-keyboard = { workspace = true }
+pwright-client = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-core = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

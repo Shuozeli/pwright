@@ -77,6 +77,17 @@ impl CdpSession {
         Ok(returns.node.backend_node_id)
     }
 
+    /// Read the full node description without losing its current Frame ID.
+    /// This read uses the ordinary command deadline and acquires no RemoteObject.
+    pub async fn dom_describe_node_by_object_id_raw(&self, object_id: &str) -> Result<Value> {
+        let params = cdp_gen::DescribeNodeParams {
+            object_id: Some(object_id.to_owned()),
+            ..Default::default()
+        };
+        self.send("DOM.describeNode", serde_json::to_value(&params)?)
+            .await
+    }
+
     pub async fn dom_resolve_backend_node_in_execution_context(
         &self,
         backend_node_id: i64,
@@ -88,6 +99,41 @@ impl CdpSession {
             ..Default::default()
         };
         self.send("DOM.resolveNode", serde_json::to_value(&params)?)
+            .await
+    }
+
+    pub async fn dom_resolve_backend_node_in_execution_context_group(
+        &self,
+        backend_node_id: i64,
+        execution_context_id: i64,
+        object_group: &str,
+    ) -> Result<Value> {
+        let params = cdp_gen::ResolveNodeParams {
+            backend_node_id: Some(backend_node_id),
+            execution_context_id: Some(execution_context_id),
+            object_group: Some(object_group.into()),
+            ..Default::default()
+        };
+        self.send("DOM.resolveNode", serde_json::to_value(&params)?)
+            .await
+    }
+
+    /// Retained acquisition into a caller-owned group. Return the raw response
+    /// for ownership-aware parsing, and keep the pending command through late
+    /// replies or transport termination rather than the ordinary deadline.
+    pub async fn dom_resolve_node_in_group_to_settlement(
+        &self,
+        backend_node_id: i64,
+        execution_context_id: i64,
+        object_group: &str,
+    ) -> Result<Value> {
+        let params = cdp_gen::ResolveNodeParams {
+            backend_node_id: Some(backend_node_id),
+            execution_context_id: Some(execution_context_id),
+            object_group: Some(object_group.into()),
+            ..Default::default()
+        };
+        self.send_to_settlement("DOM.resolveNode", serde_json::to_value(&params)?)
             .await
     }
 

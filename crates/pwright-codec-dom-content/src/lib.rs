@@ -9,7 +9,7 @@ use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 use pwright_cap_dom_content::{
-    DomContentData, DomContentErrorDetails, DomContentParams, FrameContent,
+    DomContentData, DomContentErrorDetails, DomContentParams, FrameContent, FrameTitle, TitleParams,
 };
 use pwright_codec_binary::{
     BinaryValueDecodeError, BinaryValueEncodeError, BinaryValueLimits, decode_value, encode_value,
@@ -23,6 +23,8 @@ use pwright_transport::{EncodedParts, FrameRoute, WireCodec, WireFrame};
 
 const FRAME_CONTENT_COMMAND: u8 = 1;
 const FRAME_CONTENT_RESULT: u8 = 2;
+const FRAME_TITLE_COMMAND: u8 = 3;
+const FRAME_TITLE_RESULT: u8 = 4;
 const CONTENT_ATTACHMENT_INDEX: u32 = 0;
 
 #[doc(hidden)]
@@ -38,7 +40,7 @@ use generated_schema::{
     PwrightCommonCallMetadata, PwrightCommonDuration, PwrightCommonFailureKind, PwrightDomContent,
     PwrightDomContentData, PwrightDomContentError, PwrightDomContentErrorDetailsRef,
     PwrightDomContentErrorRef, PwrightDomContentOutcome, PwrightDomContentOutcomeRef,
-    PwrightDomContentParams, PwrightDomContentRef,
+    PwrightDomContentParams, PwrightDomContentRef, PwrightDomContentTitleParams,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -148,14 +150,14 @@ impl Display for DomContentCodecError {
                 "DOM-content payload {field} {inner} does not match outer route {outer}"
             ),
             Self::TimeoutUnsupported => {
-                formatter.write_str("Frame.content does not accept timeout metadata")
+                formatter.write_str("DOM reads do not accept timeout metadata")
             }
             Self::UnexpectedAttachments { actual } => write!(
                 formatter,
                 "DOM-content payload has {actual} attachment(s) where none are allowed"
             ),
             Self::MissingContentAttachment => {
-                formatter.write_str("successful Frame.content result has no attachment")
+                formatter.write_str("successful DOM read result has no attachment")
             }
             Self::InvalidAttachmentIndex(index) => {
                 write!(
@@ -199,165 +201,197 @@ impl Error for DomContentCodecError {
     }
 }
 
-impl WireCodec<Command<FrameContent>> for DomContentCodec {
-    type Error = DomContentCodecError;
+macro_rules! impl_dom_read_codec {
+    ($command:ty, $params:expr, $wire_params:ident, $wire_command:ident, $wire_result:ident,
+     $command_tag:expr, $result_tag:expr) => {
+        impl WireCodec<Command<$command>> for DomContentCodec {
+            type Error = DomContentCodecError;
 
-    fn encode_parts(&self, command: &Command<FrameContent>) -> Result<EncodedParts, Self::Error> {
-        validate_metadata(command.metadata())?;
-        let wire = PwrightDomContentRef::FrameContentCommand {
-            call_id: command.call_id().get(),
-            object_id: command.object_id().get(),
-            metadata: metadata_to_wire(command.metadata()),
-            params: PwrightDomContentParams {},
-        };
-        let payload =
-            encode_value(&wire, self.value_limits()).map_err(DomContentCodecError::Encode)?;
-        Ok(EncodedParts::new(
-            FrameRoute::Command {
-                call_id: command.call_id(),
-                target: command.object_id(),
-                method: FrameContent::METHOD,
-            },
-            payload,
-            Vec::new(),
-        ))
-    }
-
-    fn decode_frame(&self, frame: WireFrame) -> Result<Command<FrameContent>, Self::Error> {
-        let (outer_call_id, outer_object_id) = command_route::<FrameContent>(&frame)?;
-        ensure_no_attachments(&frame)?;
-        match decode_value::<PwrightDomContent>(frame.payload(), self.value_limits())
-            .map_err(DomContentCodecError::Decode)?
-        {
-            PwrightDomContent::FrameContentCommand {
-                call_id,
-                object_id,
-                metadata,
-                params: _,
-            } => {
-                ensure_identity("call ID", outer_call_id.get(), call_id)?;
-                ensure_identity("object ID", outer_object_id.get(), object_id)?;
-                let metadata = metadata_from_wire(metadata);
-                validate_metadata(metadata)?;
-                Ok(Command::new(
-                    CallId::new(call_id),
-                    ObjectId::new(object_id),
-                    metadata,
-                    DomContentParams,
+            fn encode_parts(
+                &self,
+                command: &Command<$command>,
+            ) -> Result<EncodedParts, Self::Error> {
+                validate_metadata(command.metadata())?;
+                let wire = PwrightDomContentRef::$wire_command {
+                    call_id: command.call_id().get(),
+                    object_id: command.object_id().get(),
+                    metadata: metadata_to_wire(command.metadata()),
+                    params: $wire_params {},
+                };
+                let payload = encode_value(&wire, self.value_limits())
+                    .map_err(DomContentCodecError::Encode)?;
+                Ok(EncodedParts::new(
+                    FrameRoute::Command {
+                        call_id: command.call_id(),
+                        target: command.object_id(),
+                        method: <$command>::METHOD,
+                    },
+                    payload,
+                    Vec::new(),
                 ))
             }
-            other => Err(DomContentCodecError::WrongPayloadKind {
-                expected: FRAME_CONTENT_COMMAND,
-                actual: wire_kind(&other),
-            }),
-        }
-    }
-}
 
-impl WireCodec<CommandResult<FrameContent>> for DomContentCodec {
-    type Error = DomContentCodecError;
-
-    fn encode_parts(
-        &self,
-        result: &CommandResult<FrameContent>,
-    ) -> Result<EncodedParts, Self::Error> {
-        let mut attachments = Vec::new();
-        let outcome = match result.outcome() {
-            Ok(result) => {
-                validate_content_length(result.len(), self.limits.content_bytes)?;
-                attachments.push(result.as_str().as_bytes().to_vec());
-                PwrightDomContentOutcomeRef::Success {
-                    result: PwrightDomContentData {
-                        attachment_index: CONTENT_ATTACHMENT_INDEX,
-                        byte_length: u64::try_from(result.len()).map_err(|_| {
-                            DomContentCodecError::ContentTooLarge {
-                                actual: result.len(),
-                                limit: self.limits.content_bytes,
-                            }
-                        })?,
-                    },
-                }
-            }
-            Err(error) => {
-                validate_operation_error(error, self.limits.error_string_bytes)?;
-                PwrightDomContentOutcomeRef::Error {
-                    error: operation_error_to_wire_ref(error),
-                }
-            }
-        };
-        let wire = PwrightDomContentRef::FrameContentResult {
-            call_id: result.call_id().get(),
-            outcome,
-        };
-        let payload =
-            encode_value(&wire, self.value_limits()).map_err(DomContentCodecError::Encode)?;
-        Ok(EncodedParts::new(
-            FrameRoute::Result {
-                call_id: result.call_id(),
-            },
-            payload,
-            attachments,
-        ))
-    }
-
-    fn decode_frame(&self, frame: WireFrame) -> Result<CommandResult<FrameContent>, Self::Error> {
-        let outer_call_id = result_route(&frame)?;
-        match decode_value::<PwrightDomContent>(frame.payload(), self.value_limits())
-            .map_err(DomContentCodecError::Decode)?
-        {
-            PwrightDomContent::FrameContentResult { call_id, outcome } => {
-                ensure_identity("call ID", outer_call_id.get(), call_id)?;
-                let outcome = match outcome {
-                    PwrightDomContentOutcome::Success { result } => {
-                        if result.attachment_index != CONTENT_ATTACHMENT_INDEX {
-                            return Err(DomContentCodecError::InvalidAttachmentIndex(
-                                result.attachment_index,
-                            ));
-                        }
-                        if frame.attachments().len() != 1 {
-                            return Err(if frame.attachments().is_empty() {
-                                DomContentCodecError::MissingContentAttachment
-                            } else {
-                                DomContentCodecError::UnexpectedAttachments {
-                                    actual: frame.attachments().len(),
-                                }
-                            });
-                        }
-                        let bytes = frame.attachments()[0].as_bytes();
-                        if result.byte_length != u64::try_from(bytes.len()).unwrap_or(u64::MAX) {
-                            return Err(DomContentCodecError::AttachmentLengthMismatch {
-                                declared: result.byte_length,
-                                actual: bytes.len(),
-                            });
-                        }
-                        validate_content_length(bytes.len(), self.limits.content_bytes)?;
-                        let text = std::str::from_utf8(bytes)
-                            .map_err(DomContentCodecError::InvalidUtf8)?;
-                        let text = BudgetedUtf8::copy_from_str(
-                            &self.result_ledger,
-                            ResourceScope::Call(CallId::new(call_id)),
-                            ResourceClass::DomContentBytes,
-                            text,
-                        )
-                        .map_err(DomContentCodecError::Resource)?;
-                        Ok(DomContentData::new(text))
+            fn decode_frame(&self, frame: WireFrame) -> Result<Command<$command>, Self::Error> {
+                let (outer_call_id, outer_object_id) = command_route::<$command>(&frame)?;
+                ensure_no_attachments(&frame)?;
+                match decode_value::<PwrightDomContent>(frame.payload(), self.value_limits())
+                    .map_err(DomContentCodecError::Decode)?
+                {
+                    PwrightDomContent::$wire_command {
+                        call_id,
+                        object_id,
+                        metadata,
+                        params: _,
+                    } => {
+                        ensure_identity("call ID", outer_call_id.get(), call_id)?;
+                        ensure_identity("object ID", outer_object_id.get(), object_id)?;
+                        let metadata = metadata_from_wire(metadata);
+                        validate_metadata(metadata)?;
+                        Ok(Command::new(
+                            CallId::new(call_id),
+                            ObjectId::new(object_id),
+                            metadata,
+                            $params,
+                        ))
                     }
-                    PwrightDomContentOutcome::Error { error } => {
-                        ensure_no_attachments(&frame)?;
-                        let error = operation_error_from_wire(error);
-                        validate_operation_error(&error, self.limits.error_string_bytes)?;
-                        Err(error)
+                    other => Err(DomContentCodecError::WrongPayloadKind {
+                        expected: $command_tag,
+                        actual: wire_kind(&other),
+                    }),
+                }
+            }
+        }
+
+        impl WireCodec<CommandResult<$command>> for DomContentCodec {
+            type Error = DomContentCodecError;
+
+            fn encode_parts(
+                &self,
+                result: &CommandResult<$command>,
+            ) -> Result<EncodedParts, Self::Error> {
+                let mut attachments = Vec::new();
+                let outcome = match result.outcome() {
+                    Ok(result) => {
+                        validate_content_length(result.len(), self.limits.content_bytes)?;
+                        attachments.push(result.as_str().as_bytes().to_vec());
+                        PwrightDomContentOutcomeRef::Success {
+                            result: PwrightDomContentData {
+                                attachment_index: CONTENT_ATTACHMENT_INDEX,
+                                byte_length: u64::try_from(result.len()).map_err(|_| {
+                                    DomContentCodecError::ContentTooLarge {
+                                        actual: result.len(),
+                                        limit: self.limits.content_bytes,
+                                    }
+                                })?,
+                            },
+                        }
+                    }
+                    Err(error) => {
+                        validate_operation_error(error, self.limits.error_string_bytes)?;
+                        PwrightDomContentOutcomeRef::Error {
+                            error: operation_error_to_wire_ref(error),
+                        }
                     }
                 };
-                Ok(CommandResult::new(CallId::new(call_id), outcome))
+                let wire = PwrightDomContentRef::$wire_result {
+                    call_id: result.call_id().get(),
+                    outcome,
+                };
+                let payload = encode_value(&wire, self.value_limits())
+                    .map_err(DomContentCodecError::Encode)?;
+                Ok(EncodedParts::new(
+                    FrameRoute::Result {
+                        call_id: result.call_id(),
+                    },
+                    payload,
+                    attachments,
+                ))
             }
-            other => Err(DomContentCodecError::WrongPayloadKind {
-                expected: FRAME_CONTENT_RESULT,
-                actual: wire_kind(&other),
-            }),
+
+            fn decode_frame(
+                &self,
+                frame: WireFrame,
+            ) -> Result<CommandResult<$command>, Self::Error> {
+                let outer_call_id = result_route(&frame)?;
+                match decode_value::<PwrightDomContent>(frame.payload(), self.value_limits())
+                    .map_err(DomContentCodecError::Decode)?
+                {
+                    PwrightDomContent::$wire_result { call_id, outcome } => {
+                        ensure_identity("call ID", outer_call_id.get(), call_id)?;
+                        let outcome = match outcome {
+                            PwrightDomContentOutcome::Success { result } => {
+                                if result.attachment_index != CONTENT_ATTACHMENT_INDEX {
+                                    return Err(DomContentCodecError::InvalidAttachmentIndex(
+                                        result.attachment_index,
+                                    ));
+                                }
+                                if frame.attachments().len() != 1 {
+                                    return Err(if frame.attachments().is_empty() {
+                                        DomContentCodecError::MissingContentAttachment
+                                    } else {
+                                        DomContentCodecError::UnexpectedAttachments {
+                                            actual: frame.attachments().len(),
+                                        }
+                                    });
+                                }
+                                let bytes = frame.attachments()[0].as_bytes();
+                                if result.byte_length
+                                    != u64::try_from(bytes.len()).unwrap_or(u64::MAX)
+                                {
+                                    return Err(DomContentCodecError::AttachmentLengthMismatch {
+                                        declared: result.byte_length,
+                                        actual: bytes.len(),
+                                    });
+                                }
+                                validate_content_length(bytes.len(), self.limits.content_bytes)?;
+                                let text = std::str::from_utf8(bytes)
+                                    .map_err(DomContentCodecError::InvalidUtf8)?;
+                                let text = BudgetedUtf8::copy_from_str(
+                                    &self.result_ledger,
+                                    ResourceScope::Call(CallId::new(call_id)),
+                                    ResourceClass::DomContentBytes,
+                                    text,
+                                )
+                                .map_err(DomContentCodecError::Resource)?;
+                                Ok(DomContentData::new(text))
+                            }
+                            PwrightDomContentOutcome::Error { error } => {
+                                ensure_no_attachments(&frame)?;
+                                let error = operation_error_from_wire(error);
+                                validate_operation_error(&error, self.limits.error_string_bytes)?;
+                                Err(error)
+                            }
+                        };
+                        Ok(CommandResult::new(CallId::new(call_id), outcome))
+                    }
+                    other => Err(DomContentCodecError::WrongPayloadKind {
+                        expected: $result_tag,
+                        actual: wire_kind(&other),
+                    }),
+                }
+            }
         }
-    }
+    };
 }
+
+impl_dom_read_codec!(
+    FrameContent,
+    DomContentParams,
+    PwrightDomContentParams,
+    FrameContentCommand,
+    FrameContentResult,
+    FRAME_CONTENT_COMMAND,
+    FRAME_CONTENT_RESULT
+);
+impl_dom_read_codec!(
+    FrameTitle,
+    TitleParams,
+    PwrightDomContentTitleParams,
+    FrameTitleCommand,
+    FrameTitleResult,
+    FRAME_TITLE_COMMAND,
+    FRAME_TITLE_RESULT
+);
 
 fn validate_metadata(metadata: CallMetadata) -> Result<(), DomContentCodecError> {
     if metadata.timeout.is_some() {
@@ -516,6 +550,8 @@ fn wire_kind(value: &PwrightDomContent) -> u8 {
     match value {
         PwrightDomContent::FrameContentCommand { .. } => FRAME_CONTENT_COMMAND,
         PwrightDomContent::FrameContentResult { .. } => FRAME_CONTENT_RESULT,
+        PwrightDomContent::FrameTitleCommand { .. } => FRAME_TITLE_COMMAND,
+        PwrightDomContent::FrameTitleResult { .. } => FRAME_TITLE_RESULT,
     }
 }
 
@@ -553,7 +589,9 @@ fn failure_kind_from_wire(value: PwrightCommonFailureKind) -> FailureKind {
 mod tests {
     use std::time::Duration;
 
-    use pwright_cap_dom_content::{DomContentData, DomContentParams, FrameContent};
+    use pwright_cap_dom_content::{
+        DomContentData, DomContentParams, FrameContent, FrameTitle, TitleParams,
+    };
     use pwright_codec_binary::encode_value;
     use pwright_core::{
         BudgetedUtf8, CallId, CallMetadata, Command, CommandResult, ObjectId, ProtocolVersion,
@@ -642,6 +680,87 @@ mod tests {
         assert_eq!(decoded.call_id(), CallId::new(7));
         assert_eq!(decoded.object_id(), ObjectId::new(9));
         assert_eq!(decoded.metadata(), CallMetadata::default());
+    }
+
+    #[test]
+    fn title_command_round_trips_with_a_distinct_method_and_payload_tag() {
+        // Arrange
+        let codec = codec(&ledger(256));
+        let command = Command::<FrameTitle>::new(
+            CallId::new(7),
+            ObjectId::new(9),
+            CallMetadata::default(),
+            TitleParams,
+        );
+        let protocol = WireProtocol::new_exact_directional(
+            codec,
+            ProtocolVersion::new(1, 0),
+            FrameLimits::new(1024, 1, 128, 1152),
+            FrameLimits::new(1024, 1, 128, 1152),
+        );
+        // Act
+        let frame = protocol.encode(&command).unwrap();
+        let decoded: Command<FrameTitle> = protocol.decode(frame).unwrap();
+        // Assert
+        assert_eq!(decoded.call_id(), CallId::new(7));
+        assert_eq!(decoded.object_id(), ObjectId::new(9));
+        assert_eq!(decoded.metadata(), CallMetadata::default());
+    }
+
+    #[test]
+    fn title_result_round_trips_as_a_budgeted_utf8_attachment() {
+        // Arrange
+        let ledger = ledger(256);
+        let text = BudgetedUtf8::copy_from_str(
+            &ledger,
+            ResourceScope::Call(CallId::new(3)),
+            ResourceClass::DomContentBytes,
+            "标题",
+        )
+        .unwrap();
+        let result =
+            CommandResult::<FrameTitle>::new(CallId::new(3), Ok(DomContentData::new(text)));
+        let protocol = WireProtocol::new_exact_directional(
+            codec(&ledger),
+            ProtocolVersion::new(1, 0),
+            FrameLimits::new(1024, 1, 128, 1152),
+            FrameLimits::new(1024, 1, 128, 1152),
+        );
+        // Act
+        let frame = protocol.encode(&result).unwrap();
+        let decoded: CommandResult<FrameTitle> = protocol.decode(frame).unwrap();
+        // Assert
+        assert_eq!(decoded.outcome().as_ref().unwrap().as_str(), "标题");
+        assert_eq!(
+            ledger
+                .metrics()
+                .unwrap()
+                .class(ResourceClass::DomContentBytes)
+                .current,
+            12
+        );
+        drop(decoded);
+        drop(result);
+        assert_eq!(ledger.metrics().unwrap().active_leases, 0);
+    }
+
+    #[test]
+    fn content_result_cannot_be_decoded_as_a_title_result() {
+        // Arrange
+        let ledger = ledger(256);
+        let codec = codec(&ledger);
+        let frame = success_frame(&codec, 0, 1, vec![b"x".to_vec()]);
+        // Act
+        let result: Result<CommandResult<FrameTitle>, _> = codec.decode_frame(frame);
+        // Assert
+        assert!(matches!(
+            result,
+            Err(DomContentCodecError::WrongPayloadKind {
+                expected: 4,
+                actual: 2
+            })
+        ));
+        assert_eq!(ledger.metrics().unwrap().active_leases, 0);
     }
 
     #[test]

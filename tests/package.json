@@ -9,7 +9,11 @@
     "golden:record:cli": "tsx src/record-golden-cli.ts",
     "test": "tsx src/run-golden.ts",
     "test:cli": "tsx src/run-golden-cli.ts",
-    "test:unit": "tsx unit/cli-harness.test.ts"
+    "test:unit": "tsx unit/cli-harness.test.ts",
+    "test:shared:unit": "tsx --test unit/shared-differential.test.ts",
+    "test:types": "tsc --noEmit",
+    "test:node-ffi": "node scripts/shared-node-ffi.mjs",
+    "probe:shared-history": "tsx src/probe-shared-history.ts"
   },
   "dependencies": {
     "playwright": "^1.50.0",
@@ -17,6 +21,7 @@
     "@grpc/proto-loader": "^0.7.0"
   },
   "devDependencies": {
+    "@shuozeli/pwright": "link:../packages/pwright",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "@types/node": "^22.0.0"

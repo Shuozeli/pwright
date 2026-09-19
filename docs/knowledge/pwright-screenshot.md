@@ -1,11 +1,31 @@
-<!-- agent-updated: 2026-09-05T12:38:10Z -->
+<!-- agent-updated: 2026-09-07T10:36:07Z -->
 
 # Playwright screenshot semantics and Pwright boundary
+
+## Node compatibility integration
+
+The Node recipe now selects the existing Rust content capability and returns a
+Node-owned Buffer with explicit result-copy admission. Its independent bounded
+queue serializes each Page, with eight admitted calls and two simultaneous
+captures per host; deadlines include queue wait. An opt-in backend profile
+intersects non-full-page clips with the viewport; default 1.0 behavior is intact.
+Core byte leases are released at the admitted host-copy handoff before the next
+queued capture. Ten live tests compare decoded pixels/dimensions and prove Buffer
+survival and cleanup on the handoff-stage artifact; final-artifact verification
+is 8/10 on attachment failures. The subsequent trace-only 3/12 run also failed
+before either new Worker assertion. After the opt-in recursive-attachment join,
+the current artifact passes **12/12**, including four queued native settlements,
+exact owned Context removal and published Buffer copies surviving Worker exit.
+These are lifecycle/copy proofs, not RSS bounds; rendering transactions remain
+unimplemented. [Latest evidence](../node-ffi-compatibility-design.md#node-013-recursive-attachment-prerequisite-join-2026-09-07).
+This is not full Playwright screenshot compatibility:
+combined fullPage/clip, path, rendering-state options and default font/caret
+behavior remain work. See [the exact evidence](../node-ffi-compatibility-design.md#node-page-screenshot-binding-and-ownership-checkpoint-2026-09-07).
 
 ## Upstream model
 
 Playwright exposes screenshot capture on `Page` and `Locator`. Page capture can
-select PNG, JPEG, or WebP, constrain JPEG/WebP quality, capture the viewport or
+select PNG or JPEG in the pinned Playwright 1.58.2 API, constrain JPEG quality, capture the viewport or
 full document, clip a rectangle, omit the default background, and choose CSS or
 device-pixel scaling. Its broader option set can also hide the caret, disable
 animations, inject temporary style, and mask locators.

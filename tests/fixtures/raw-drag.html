@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pwright drag observer fixture</title>
+<style>
+  body { margin: 0; font: 16px sans-serif; }
+  #source, #target { position: absolute; top: 20px; width: 100px; height: 80px; }
+  #source { left: 20px; background: #96c; }
+  #target { left: 200px; background: #9c6; }
+</style>
+<div id="source" draggable="true">Drag source</div>
+<div id="target">Drop target</div>
+<input id="keyboard" style="position:absolute;top:200px" aria-label="Keyboard fixture">
+<script>
+  window.dragFixture = { prevented: false, events: [], keys: [], dropped: null, overflow: false };
+  const frameMode = new URL(location.href).searchParams.get('frame-mode');
+  if (frameMode === 'local' || frameMode === 'sandbox') {
+    const child = document.createElement('iframe');
+    child.name = 'keyboard-frame';
+    child.style = 'position:absolute;top:260px;width:400px;height:160px';
+    if (frameMode === 'sandbox') child.setAttribute('sandbox', 'allow-scripts');
+    const childURL = new URL('raw-drag-frame.html', location.href);
+    childURL.search = location.search;
+    child.src = childURL.href;
+    document.body.append(child);
+  }
+  for (const type of ['keydown', 'keyup']) {
+    addEventListener(type, event => {
+      if (dragFixture.keys.length === 32) dragFixture.overflow = true;
+      else dragFixture.keys.push({ type, code: event.code, repeat: event.repeat,
+        shift: event.shiftKey, control: event.ctrlKey, alt: event.altKey, meta: event.metaKey });
+    });
+  }
+  for (const type of ['dragstart', 'dragenter', 'dragover', 'drop', 'dragend']) {
+    addEventListener(type, event => {
+      if (dragFixture.events.length === 32) dragFixture.overflow = true;
+      else dragFixture.events.push(type);
+      if (type === 'dragstart') {
+        if (dragFixture.prevented) event.preventDefault();
+        else event.dataTransfer.setData('text/plain', 'pwright-drag-observer');
+      }
+      if (type === 'dragover' || type === 'drop') event.preventDefault();
+      if (type === 'drop') dragFixture.dropped = event.dataTransfer.getData('text/plain');
+    });
+  }
+</script>

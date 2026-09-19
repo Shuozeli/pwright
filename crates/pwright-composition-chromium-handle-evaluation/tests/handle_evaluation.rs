@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -27,9 +28,9 @@ use pwright_composition_chromium_handle_evaluation::{
     HandleLifecycleCodecLimits,
 };
 use pwright_core::{
-    AtomicObjectIdSource, CallId, CallMetadata, Command, ControlMessage, FailureKind, ObjectId,
-    ProductionResourceLedger, ProtocolVersion, ResourceClass, ResourceLimits, ResourceRequirements,
-    ResourceScope, Service,
+    AtomicObjectIdSource, CallId, CallMetadata, Command, CommandResult, ControlMessage,
+    FailureKind, ObjectId, ProductionResourceLedger, ProtocolVersion, ResourceClass,
+    ResourceLimits, ResourceRequirements, ResourceScope, Service,
 };
 use pwright_fake::FakeCdpClient;
 use pwright_plugin_ordered_handle_delivery::OrderedHandleEvaluationHandler;
@@ -42,6 +43,61 @@ use pwright_transport::{FrameRoute, FrameTransport, VersionPolicy, WireProtocol}
 use pwright_transport_memory::MemoryFrameTransport;
 
 type TestRuntime = ControlledDispatcher<(), (), NoDeadlineScheduler, CleanupQueue>;
+
+mod acquisition_cleanup;
+#[cfg(feature = "native-creation")]
+mod native_creation;
+mod property_creation;
+
+#[tokio::test]
+async fn handle_world_identity_is_the_creation_world_not_the_current_frame_world() {
+    // Arrange
+    let fixture = fixture(2);
+    let service = fixture.installation.raw_service();
+    fixture.primary.set_evaluate_response(serde_json::json!({
+        "result": {"type": "object", "objectId": "target-1", "description": "target"}
+    }));
+    let handle = service
+        .call(Command::<EvaluateHandle>::new(
+            CallId::new(1),
+            ObjectId::new(4),
+            CallMetadata::default(),
+            EvaluateHandleParams::expression("({})"),
+        ))
+        .await
+        .unwrap()
+        .into_outcome()
+        .unwrap();
+    fixture
+        .installation
+        .routes()
+        .unbind(ObjectId::new(4))
+        .unwrap();
+    fixture
+        .installation
+        .routes()
+        .bind(
+            ObjectId::new(4),
+            ObjectId::new(3),
+            fixture.primary.clone(),
+            201,
+            "replacement-world",
+        )
+        .unwrap();
+    let before = fixture.primary.calls().len();
+
+    // Act
+    let identity = service
+        .handle_world_identity(handle.object_id)
+        .unwrap()
+        .unwrap();
+
+    // Assert
+    assert_eq!(identity.page_id(), ObjectId::new(3));
+    assert_eq!(identity.execution_context_id(), 101);
+    assert_eq!(identity.unique_context_id(), "world-1");
+    assert_eq!(fixture.primary.calls().len(), before);
+}
 type TestInstallation = ChromiumHandleEvaluationInstallation<CleanupQueue, CleanupQueue>;
 
 struct Fixture {
@@ -430,7 +486,12 @@ async fn six_commands_share_one_lifecycle_registry_and_dispose_every_result() {
             "result": {"value": {"ok": true, "value": {"t": "num", "v": 7.0}}}
         }),
         serde_json::json!({
-            "result": {"type": "object", "objectId": "property-3", "description": "property"}
+            "result": {"type": "object", "objectId": "property-snapshot-3", "description": "Object"}
+        }),
+        serde_json::json!({
+            "result": [{"name": "value", "enumerable": true, "value": {
+                "type": "object", "objectId": "property-3", "description": "property"
+            }}]
         }),
         serde_json::json!({
             "result": {"type": "object", "objectId": "snapshot-4", "description": "Object"}
@@ -1212,4 +1273,177 @@ async fn dropped_started_creation_finishes_and_disposes_unobserved_handle() {
         0
     );
     assert_eq!(fixture.runtime.is_object_live(ObjectId::new(10)), Ok(false));
+}
+
+/// Inject a native release failure only for selected portable identities.
+/// Creation, route ownership, disposal and the continuation are real services.
+struct SelectiveReleaseFailure<Inner> {
+    inner: Arc<Inner>,
+    client: Arc<FakeCdpClient>,
+    failed_ids: Vec<ObjectId>,
+}
+
+impl<Inner> Service<Command<HandleDispose>> for SelectiveReleaseFailure<Inner>
+where
+    Inner: Service<Command<HandleDispose>, Response = CommandResult<HandleDispose>, Error = Infallible>,
+{
+    type Response = CommandResult<HandleDispose>;
+    type Error = Infallible;
+    type Future<'a>
+        = Pin<Box<dyn Future<Output = Result<Self::Response, Infallible>> + Send + 'a>>
+    where
+        Self: 'a;
+
+    fn call(&self, command: Command<HandleDispose>) -> Self::Future<'_> {
+        Box::pin(async move {
+            self.client.set_release_object_error(
+                self.failed_ids
+                    .contains(&command.object_id())
+                    .then(|| "injected native release refusal".to_owned()),
+            );
+            self.inner.call(command).await
+        })
+    }
+}
+
+async fn assert_abandoned_batch_cleanup(failed_ids: Vec<ObjectId>) {
+    // Arrange
+    let fixture = fixture(4);
+    let raw = fixture.installation.raw_service();
+    fixture.primary.set_evaluate_response(serde_json::json!({
+        "result": {"type": "object", "objectId": "batch-target"}
+    }));
+    let target = raw
+        .call(Command::<EvaluateHandle>::new(
+            CallId::new(1),
+            ObjectId::new(4),
+            CallMetadata::default(),
+            EvaluateHandleParams::expression("({one: {}, two: {}, three: {}})"),
+        ))
+        .await
+        .unwrap()
+        .into_outcome()
+        .unwrap();
+    fixture.primary.set_evaluate_responses([
+        serde_json::json!({"result": {"type": "object", "objectId": "snapshot"}}),
+        serde_json::json!({"result": [
+            {"name": "one", "enumerable": true, "value": {"type": "object", "objectId": "one"}},
+            {"name": "two", "enumerable": true, "value": {"type": "object", "objectId": "two"}},
+            {"name": "three", "enumerable": true, "value": {"type": "object", "objectId": "three"}}
+        ]}),
+    ]);
+    let gate = Arc::new(tokio::sync::Notify::new());
+    fixture.primary.set_evaluate_gate(Some(Arc::clone(&gate)));
+    let continuation = CleanupQueue::new(1);
+    let service = ContinuableHandleEvaluationService::new(
+        raw,
+        Arc::new(SelectiveReleaseFailure {
+            inner: fixture.installation.lifecycle().raw_dispose_service(),
+            client: Arc::clone(&fixture.primary),
+            failed_ids: failed_ids.clone(),
+        }),
+        continuation.clone(),
+    );
+    let mut abandoned = Box::pin(service.call(Command::<HandleGetProperties>::new(
+        CallId::new(2),
+        target.object_id,
+        CallMetadata::default(),
+        GetPropertiesOptions,
+    )));
+    assert!(poll_now(abandoned.as_mut()).is_pending());
+    drop(abandoned);
+    fixture.primary.set_evaluate_gate(None);
+    gate.notify_waiters();
+    let cleanup = continuation
+        .try_take()
+        .unwrap()
+        .expect("started batch owns cleanup");
+
+    // Act
+    let outcome = cleanup.await;
+
+    // Assert
+    assert_eq!(outcome.is_err(), !failed_ids.is_empty());
+    if let Err(error) = outcome {
+        assert_eq!(
+            error.message(),
+            "abandoned Handle evaluation result could not be disposed"
+        );
+    }
+    let released = fixture
+        .primary
+        .calls()
+        .into_iter()
+        .filter(|(method, _)| method == "Runtime.releaseObject")
+        .map(|(_, params)| params[0].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(released, ["snapshot", "one", "two", "three"]);
+    let routes = fixture.installation.lifecycle().routes();
+    assert_eq!(routes.metrics().unwrap().current, 1 + failed_ids.len());
+    for id in [ObjectId::new(11), ObjectId::new(12), ObjectId::new(13)] {
+        assert_eq!(routes.contains(id).unwrap(), failed_ids.contains(&id));
+        assert_eq!(
+            fixture.runtime.is_object_live(id).unwrap(),
+            failed_ids.contains(&id)
+        );
+    }
+    assert_eq!(
+        fixture
+            .resources
+            .metrics()
+            .unwrap()
+            .class(ResourceClass::RemoteHandle)
+            .current,
+        (1 + failed_ids.len()) as u64
+    );
+    assert_eq!(continuation.metrics().unwrap().reserved, 0);
+    assert_eq!(continuation.metrics().unwrap().queued, 0);
+
+    // Release the still-visible target and failed routes through the same public
+    // disposer; failed native releases must remain available for explicit retry.
+    fixture.primary.set_release_object_error(None);
+    let dispose = fixture.installation.lifecycle().raw_dispose_service();
+    for id in std::iter::once(target.object_id).chain(failed_ids) {
+        dispose
+            .call(Command::<HandleDispose>::new(
+                CallId::new(3),
+                id,
+                CallMetadata::default(),
+                (),
+            ))
+            .await
+            .unwrap()
+            .into_outcome()
+            .unwrap();
+    }
+    assert_eq!(routes.metrics().unwrap().current, 0);
+    assert_eq!(
+        fixture
+            .resources
+            .metrics()
+            .unwrap()
+            .class(ResourceClass::RemoteHandle)
+            .current,
+        0
+    );
+}
+
+#[tokio::test]
+async fn abandoned_batch_first_release_failure_does_not_skip_later_handles() {
+    assert_abandoned_batch_cleanup(vec![ObjectId::new(11)]).await;
+}
+
+#[tokio::test]
+async fn abandoned_batch_middle_release_failure_does_not_skip_last_handle() {
+    assert_abandoned_batch_cleanup(vec![ObjectId::new(12)]).await;
+}
+
+#[tokio::test]
+async fn abandoned_batch_multiple_release_failures_still_attempt_every_handle() {
+    assert_abandoned_batch_cleanup(vec![ObjectId::new(11), ObjectId::new(12)]).await;
+}
+
+#[tokio::test]
+async fn abandoned_batch_success_disposes_every_handle() {
+    assert_abandoned_batch_cleanup(Vec::new()).await;
 }

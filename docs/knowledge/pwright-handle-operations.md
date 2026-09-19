@@ -1,6 +1,132 @@
-<!-- agent-updated: 2026-09-04T17:11:15Z -->
+<!-- agent-updated: 2026-09-17T07:39:41Z -->
 
 # Pwright Handle-local operations design
+
+## NODE-167 current DOM owner contract (2026-09-17)
+
+The handles-only Node profile now exposes `ElementHandle.ownerFrame()`. Rust
+resolves the retained node's current owner document, temporarily retains its
+document element, reads that root with direct raw `DOM.describeNode`, and awaits
+native cleanup settlement. Creation Frame identity and DOM attachment are not
+substitutes for this lookup: adoption can change the owner, a removed node can
+keep its owner, and an orphan document has none. After topology publication,
+the host selects a current Frame in the source BrowserContext; JavaScript only
+returns its canonical cached wrapper or null. `evaluateHandle`, `getProperty`
+and `getProperties` descendants retain the same context-scoped resolver.
+
+Only this ownerFrame acquisition validates and copies one protected receiver ID
+after evaluation admission. A source-alias success is rejected; malformed or
+exception compensation skips the borrowed ID while attempting every distinct
+new owner. Other acquisition paths are unchanged, so this is neither generic
+borrowed-ID protection nor a release pin against explicit source disposal.
+
+The host also records the immutable source-world fingerprint at scalar and
+batch publication (Page ID, numeric context ID and `Arc<str>` unique context ID)
+inside the existing 16 KiB descriptor allowance, with no client, receipt, permit
+or native lease retained. Only that same Page in Ready state with an observed
+replacement main world permits the canonical navigation error before lookup or
+refinement of ordinary TargetClosed. Missing worlds, crashes and closes do not
+prove navigation, and Cleanup errors are not reclassified. Live verification of
+this refinement belongs in the canonical record, not this contract checkpoint.
+
+A raw caller must pre-own continuation and cleanup admission, retaining the
+source and entire future through settlement even after cancellation. The host
+uses its eight shared call slots plus two transient `RemoteHandle` units per
+query, sixteen aggregate at pending scope `extension(154, 1)`; it consumes none
+of the 64 persistent-result slots. Unaddressable raw IDs/pre-owned groups and
+conservative Cleanup-versus-detach outcomes remain open. Retained
+`ElementHandle.setInputFiles` is not implemented by this checkpoint.
+[Exact verification and remaining gates](pwright-node-handles.md) are canonical;
+this implementation checkpoint makes no live-pass claim. NODE-166 and earlier
+entries below remain historical evidence within their stated scopes.
+
+## NODE-166 staged batch and property-settlement contract (2026-09-17)
+
+The existing `native-creation` selection adds
+`stage_get_properties(target, metadata, maximum_results)`. Caller-admitted N
+result slots become N reserved routes and distinct ObjectIds before browser
+I/O; unused routes trim downward. One unpublished batch owns every native result
+until an all-or-none runtime/route commit or explicit attempt-all compensation.
+Every publication retry revalidates the target and frozen source world, and a
+busy lifecycle transaction does not repeat evaluation. Primitive targets may
+return an empty N=0 result with no browser I/O; nonprimitive N=0 is rejected.
+Sibling ownership is independent and uses ObjectId cleanup identities.
+
+The backend uses explicit raw `runtime_get_properties_to_settlement` and keeps
+the original evaluation allowance through acquisition, property read, carrier
+release and failure compensation. Its normal temporary native peak is one
+carrier plus N+1 overflow-detection values; at most N results transfer to publication.
+Before parser copies, bounded-depth structural accounting covers String/Vec
+capacities, sparse map storage and simultaneous staging. Raw response allocation
+is still constrained by CDP limits. Malformed, exception, overflow and unexpected
+descriptor-owner responses compensate all addressable IDs without discarding
+later failures; missing/invalid/oversized identities remain Cleanup. The parser
+itself remains pure and ordinary CDP methods retain their old contracts.
+
+The Node host admits sibling tickets, one aggregate compensation slot, and its
+existing started-call continuation before I/O. A shared call allowance covers
+names through language conversion; partial addon conversion revokes already
+wrapped siblings and drops remaining Rust owners without relying on GC.
+No new package, feature or portable 1.2 schema is introduced. This source contract
+does not assert completed compatibility: use [the canonical Node checkpoint](pwright-node-handles.md)
+for exact verification and pending gates.
+
+Scope limits remain explicit: legacy portable `getProperties` still admits its
+route batch after native retrieval; the browser algorithm's `Object.keys`
+allocation is not bounded by these host/native-wrapper limits; pre-owned groups
+for unaddressable IDs, conservative compensation-versus-detach failures and the
+full Playwright corpus remain follow-ups. NODE-165 and older entries below are
+historical checkpoints superseded only within the scope stated here.
+
+## NODE-165 acquisition checkpoint (2026-09-17)
+
+Carrier acquisition now uses the explicit raw retained-result CDP contract,
+so malformed result and exception identities survive until failure
+compensation. At most two borrowed IDs are deduplicated, each addressable
+release is awaited through settlement while evaluation admission is held,
+and unresolved IDs remain Cleanup. The shared parser is still pure;
+ordinary CDP methods and portable 1.2 schemas do not change.
+
+This supersedes the addressable-ID parse-before-owner implementation gap
+recorded below. It does not cover late Runtime.getProperties responses or
+evaluation admission across the entire successful property pipeline.
+A separately admitted pre-owned group for unaddressable IDs, staged Node
+getProperties batch/sibling ownership, and full-corpus compatibility remain
+open. Use [the canonical checkpoint](pwright-node-handles.md) for exact
+verification rather than carrying historical test counts forward.
+
+## NODE-164 checkpoint (2026-09-17)
+
+Portable HandleGetProperty now uses identity-preserving property snapshots,
+pre-admits the persistent route before native I/O, and shares single-result
+publication and compensation. This supersedes the portable-command gap in the
+historical NODE-163 entry below. Abandoned Cleanup outcomes remain failures.
+The separate priority raw-class audit also now has a crate-wide module-local
+TypeTag implementation using the actual N-API checks. Exact verification and
+remaining gates are recorded in [the canonical checkpoint](pwright-node-handles.md).
+Node getProperties still requires staged batch admission, sibling cleanup
+identities and complete publication rollback; broader compatibility remains open.
+
+Historical NODE-164 audit priority (addressable-ID acquisition implementation
+superseded by NODE-165 above): close the malformed RemoteObject
+parse-before-owner cleanup gap; route native-release ownership and failure
+evidence to [the canonical checkpoint](pwright-node-handles.md).
+
+## NODE-163 native Node integration checkpoint
+
+The optional native-creation path now stages Handle-targeted evaluateHandle
+and getProperty with exact target/world revalidation and independent
+Frame-owned results. The selected Node profile publishes these through its
+existing Rust driver and owned cleanup continuation. Property extraction uses
+a bounded null-prototype carrier so a Promise-valued property remains a Promise
+Handle. See [the canonical evidence](pwright-node-handles.md#node-163-handle-targeted-producers-and-failure-safe-publication).
+
+This does not expose Node getProperties: atomic batch admission, sibling owner
+identities and partial-language-publication rollback remain required. Portable
+1.2 schemas are unchanged. Its older direct get_property command still delegates
+to awaited Handle evaluation; this turn fixes and verifies the separate staged
+Node path, not that legacy command's Promise behavior. Keep that distinction
+explicit until the portable command is repaired and independently tested.
 
 ## Decision
 

@@ -40,6 +40,34 @@ use pwright_server_handle_lifecycle::{
 pub use pwright_transport::FrameLimits;
 use pwright_transport::WireProtocol;
 
+#[cfg(feature = "native-release")]
+pub mod native_release;
+
+#[cfg(feature = "native-release")]
+type RouteResource = Arc<ResourceLease>;
+#[cfg(not(feature = "native-release"))]
+type RouteResource = ResourceLease;
+
+fn route_resource(lease: ResourceLease) -> RouteResource {
+    #[cfg(feature = "native-release")]
+    {
+        Arc::new(lease)
+    }
+    #[cfg(not(feature = "native-release"))]
+    {
+        lease
+    }
+}
+
+fn route_bytes(native: usize, preview: usize) -> u64 {
+    let bytes = u64::try_from(native)
+        .unwrap_or(u64::MAX)
+        .saturating_add(u64::try_from(preview).unwrap_or(u64::MAX));
+    #[cfg(feature = "native-release")]
+    let bytes = bytes.saturating_add(native_release::ROUTE_OWNER_BYTES);
+    bytes
+}
+
 /// Production admission for routes retained by optional Handle producers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChromiumHandleRouteProfile {
@@ -82,9 +110,7 @@ impl ChromiumHandleRouteProfile {
 
     pub fn requirements(self) -> ResourceRequirements {
         let handles = u64::try_from(self.max_handles).unwrap_or(u64::MAX);
-        let bytes_per_handle = u64::try_from(self.max_native_id_bytes)
-            .unwrap_or(u64::MAX)
-            .saturating_add(u64::try_from(self.max_preview_bytes).unwrap_or(u64::MAX));
+        let bytes_per_handle = route_bytes(self.max_native_id_bytes, self.max_preview_bytes);
         if self.max_handles == 0 {
             return ResourceRequirements::none();
         }
@@ -332,7 +358,7 @@ struct ChromiumHandleRouteEntry {
     disposer: Option<Arc<dyn ChromiumHandleDisposer>>,
     payload: Arc<dyn Any + Send + Sync>,
     retained_bytes: u64,
-    _resource: ResourceLease,
+    _resource: RouteResource,
 }
 
 struct ChromiumHandleRouteState {
@@ -387,9 +413,10 @@ impl ChromiumHandleRoutes {
                 limit: self.profile.max_handles,
             });
         }
-        let maximum_bytes = u64::try_from(self.profile.max_native_id_bytes)
-            .unwrap_or(u64::MAX)
-            .saturating_add(u64::try_from(self.profile.max_preview_bytes).unwrap_or(u64::MAX));
+        let maximum_bytes = route_bytes(
+            self.profile.max_native_id_bytes,
+            self.profile.max_preview_bytes,
+        );
         let lease = self
             .ledger
             .reserve_many(
@@ -432,9 +459,10 @@ impl ChromiumHandleRoutes {
                 limit: self.profile.max_handles,
             });
         }
-        let maximum_bytes = u64::try_from(self.profile.max_native_id_bytes)
-            .unwrap_or(u64::MAX)
-            .saturating_add(u64::try_from(self.profile.max_preview_bytes).unwrap_or(u64::MAX));
+        let maximum_bytes = route_bytes(
+            self.profile.max_native_id_bytes,
+            self.profile.max_preview_bytes,
+        );
         let requests = [
             ResourceRequest::new(ResourceClass::RemoteHandle, 1),
             ResourceRequest::new(ResourceClass::BackendStateBytes, maximum_bytes),
@@ -523,6 +551,23 @@ impl ChromiumHandleRoutes {
         Ok(PreparedChromiumHandleParentRetirement { state, object_ids })
     }
 
+    /// Borrow a pre-admitted stable disposal slice for a short synchronous
+    /// commit, without allocating another Handle-ID list. Keep this guard in
+    /// the selecting coordinator's lock order; dropping it changes no routes.
+    pub fn borrow_parent_retirement<'a>(
+        &'a self,
+        disposal_order: &'a [ObjectId],
+    ) -> Result<BorrowedChromiumHandleParentRetirement<'a>, ChromiumHandleRouteError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| ChromiumHandleRouteError::StatePoisoned)?;
+        Ok(BorrowedChromiumHandleParentRetirement {
+            state,
+            object_ids: disposal_order,
+        })
+    }
+
     pub fn retire_connection(&self) -> Result<usize, ChromiumHandleRouteError> {
         self.prepare_connection_retirement()
             .map(PreparedChromiumHandleConnectionRetirement::commit)
@@ -607,6 +652,21 @@ pub struct PreparedChromiumHandleConnectionRetirement<'a> {
 pub struct PreparedChromiumHandleParentRetirement<'a> {
     state: MutexGuard<'a, ChromiumHandleRouteState>,
     object_ids: Vec<ObjectId>,
+}
+
+#[must_use = "commit borrowed parent retirement or drop to preserve routes"]
+pub struct BorrowedChromiumHandleParentRetirement<'a> {
+    state: MutexGuard<'a, ChromiumHandleRouteState>,
+    object_ids: &'a [ObjectId],
+}
+impl BorrowedChromiumHandleParentRetirement<'_> {
+    pub fn commit(mut self) -> usize {
+        retire_locked(
+            &mut self.state,
+            self.object_ids,
+            ChromiumHandleRetirementReason::Parent,
+        )
+    }
 }
 
 #[must_use = "dropping prepared Handle owner retirement preserves every route"]
@@ -749,9 +809,7 @@ impl ChromiumHandleRouteReservation {
                 },
             ));
         }
-        let retained_bytes = u64::try_from(spec.native_id_bytes)
-            .unwrap_or(u64::MAX)
-            .saturating_add(u64::try_from(spec.preview_bytes).unwrap_or(u64::MAX));
+        let retained_bytes = route_bytes(spec.native_id_bytes, spec.preview_bytes);
         let mut lease = self
             .lease
             .take()
@@ -780,7 +838,7 @@ impl ChromiumHandleRouteReservation {
                 disposer: spec.disposer,
                 payload: spec.payload,
                 retained_bytes,
-                _resource: lease,
+                _resource: route_resource(lease),
             },
         );
         state.metrics.current = state.metrics.current.saturating_add(1);
@@ -831,6 +889,28 @@ pub struct ChromiumHandleRouteBatchReservation {
 }
 
 impl ChromiumHandleRouteBatchReservation {
+    /// Return unused admission without reacquiring capacity. Growing a batch is
+    /// forbidden; callers admit their maximum before creating native results.
+    /// Trimming to zero is valid and does not publish an empty route batch.
+    pub fn trim_to(&mut self, count: usize) -> Result<(), ChromiumHandleRouteError> {
+        if count > self.count {
+            return Err(ChromiumHandleRouteError::BatchLengthMismatch {
+                reserved: self.count,
+                actual: count,
+            });
+        }
+        let mut state = self
+            .routes
+            .state
+            .lock()
+            .map_err(|_| ChromiumHandleRouteError::StatePoisoned)?;
+        state.reserved = state.reserved.saturating_sub(self.count - count);
+        state.metrics.reserved = state.reserved;
+        self.count = count;
+        self.leases.truncate(count);
+        Ok(())
+    }
+
     pub fn publish(
         self,
         entries: Vec<(ObjectId, ChromiumHandleRouteSpec)>,
@@ -881,11 +961,7 @@ impl ChromiumHandleRouteBatchReservation {
                     },
                 ));
             }
-            retained.push(
-                u64::try_from(spec.native_id_bytes)
-                    .unwrap_or(u64::MAX)
-                    .saturating_add(u64::try_from(spec.preview_bytes).unwrap_or(u64::MAX)),
-            );
+            retained.push(route_bytes(spec.native_id_bytes, spec.preview_bytes));
         }
         for (lease, retained_bytes) in self.leases.iter_mut().zip(&retained) {
             lease
@@ -925,7 +1001,7 @@ impl ChromiumHandleRouteBatchReservation {
                     disposer: spec.disposer,
                     payload: spec.payload,
                     retained_bytes,
-                    _resource: lease,
+                    _resource: route_resource(lease),
                 },
             );
         }

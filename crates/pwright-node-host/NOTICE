@@ -1,0 +1,14 @@
+pwright-node-host contains a Rust adaptation of the glob conversion algorithm
+from Playwright 1.58.2, lib/utils/isomorphic/urlMatch.js.
+Modified by pwright contributors: Rust iterator-based compilation, explicit
+resource admission, bounded storage and retained metadata lookup integration.
+The adapted modules are src/frame_lookup/glob.rs and glob_base.rs, including
+URL-glob preprocessing and legacy string replacement. No Playwright driver is bundled.
+
+Original upstream NOTICE:
+
+Playwright
+Copyright (c) Microsoft Corporation
+
+This software contains code derived from the Puppeteer project (https://github.com/puppeteer/puppeteer),
+available under the Apache 2.0 license (https://github.com/puppeteer/puppeteer/blob/master/LICENSE).

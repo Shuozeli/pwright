@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+large-commands = []
+
 [dependencies]
 pwright-core = { workspace = true }
 tokio = { workspace = true }
@@ -18,4 +22,7 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 async-trait = { workspace = true }
-tokio-util = { workspace = true }
+tokio-util = { workspace = true, features = ["rt"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

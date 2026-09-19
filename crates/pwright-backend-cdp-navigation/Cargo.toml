@@ -7,6 +7,18 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+frame-lifecycle = []
+
+[[example]]
+name = "frame_lifecycle_trace"
+required-features = ["frame-lifecycle"]
+
+[[example]]
+name = "frame_navigation_trace"
+required-features = ["frame-lifecycle"]
+
 [dependencies]
 pwright-backend-cdp-common = { workspace = true }
 pwright-browser-backend = { workspace = true }

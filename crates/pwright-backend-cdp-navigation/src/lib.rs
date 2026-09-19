@@ -34,10 +34,16 @@ use pwright_core::{
 
 pub const CHROMIUM_CDP_NAVIGATION_BACKEND_ID: BackendId =
     BackendId::new("pwright.backend.chromium-cdp.navigation");
+
+mod frame_begin;
+#[cfg(feature = "frame-lifecycle")]
+pub mod frame_lifecycle;
+mod reload;
 pub const CHROMIUM_CDP_PROTOCOL_ID: BackendProtocolId = BackendProtocolId::new("cdp");
 pub const CDP_BEGIN_NAVIGATION_FEATURE: BackendFeatureId =
     BackendFeatureId::new("navigation.begin");
 pub const CDP_GOTO_FEATURE: BackendFeatureId = BackendFeatureId::new("navigation.goto");
+pub const CDP_RELOAD_FEATURE: BackendFeatureId = BackendFeatureId::new("navigation.reload");
 
 pub const CHROMIUM_CDP_NAVIGATION_FEATURES: &[BackendFeatureDescriptor] = &[
     BackendFeatureDescriptor::new(
@@ -52,6 +58,13 @@ pub const CHROMIUM_CDP_NAVIGATION_FEATURES: &[BackendFeatureDescriptor] = &[
         NAVIGATION_CAPABILITY_ID,
         ProtocolVersion::new(1, 0),
         GOTO_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
+    BackendFeatureDescriptor::new(
+        CDP_RELOAD_FEATURE,
+        NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 1),
+        pwright_cap_navigation::RELOAD_COMMAND_ID,
         BackendImplementation::Emulated,
     ),
 ];
@@ -614,6 +627,15 @@ async fn wait_for_new_document(
     events: &mut CdpEventReceiver,
     wait: NewDocumentWait<'_>,
 ) -> Result<GotoResult, OperationError<NavigationErrorDetails>> {
+    let state = NewDocumentState::new(wait.wait_until);
+    wait_for_new_document_with_state(events, wait, state).await
+}
+
+async fn wait_for_new_document_with_state(
+    events: &mut CdpEventReceiver,
+    wait: NewDocumentWait<'_>,
+    mut state: NewDocumentState,
+) -> Result<GotoResult, OperationError<NavigationErrorDetails>> {
     let NewDocumentWait {
         expected_session,
         frame_id,
@@ -623,7 +645,6 @@ async fn wait_for_new_document(
         idle_delay,
         limits,
     } = wait;
-    let mut state = NewDocumentState::new(wait_until);
     let requires_response =
         requested_url.starts_with("http://") || requested_url.starts_with("https://");
 
@@ -1137,7 +1158,7 @@ mod tests {
     #[test]
     fn descriptor_contains_only_navigation_commands() {
         // Arrange
-        let expected = ["navigation.begin", "navigation.goto"];
+        let expected = ["navigation.begin", "navigation.goto", "navigation.reload"];
 
         // Act
         let descriptor = ChromiumCdpNavigationBackend::DESCRIPTOR;

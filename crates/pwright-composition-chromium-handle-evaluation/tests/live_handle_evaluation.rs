@@ -7,8 +7,9 @@ use pwright_browser_model::{
 };
 use pwright_browser_provider::AttachBrowserProvider;
 use pwright_cap_handle_evaluation::{
-    EvaluateHandle, EvaluateHandleParams, EvaluationValue, EvaluationValueLimits, HandleEvaluate,
-    HandleEvaluateParams, HandleEvaluationValue,
+    EvaluateHandle, EvaluateHandleParams, EvaluationValue, EvaluationValueLimits,
+    GetPropertyParams, HandleEvaluate, HandleEvaluateParams, HandleEvaluationValue,
+    HandleGetProperty,
 };
 use pwright_cap_handle_lifecycle::HandleDispose;
 use pwright_cdp::connection::ConnectionConfig;
@@ -59,6 +60,351 @@ fn control_protocol() -> WireProtocol<ControlCodec> {
         FrameLimits::new(128, 0, 0, 128),
     )
     .expect("control protocol should build")
+}
+
+#[tokio::test]
+#[ignore = "requires the dedicated Chrome CDP process and PWRIGHT_CDP_WS_URL"]
+async fn portable_property_preserves_promise_and_thenable_identity_after_target_disposal() {
+    // Arrange one test-owned about:blank Context in the externally owned Chrome.
+    let endpoint = CdpWebSocketEndpoint::parse(
+        std::env::var("PWRIGHT_CDP_WS_URL")
+            .expect("PWRIGHT_CDP_WS_URL must point to the dedicated Chrome CDP profile"),
+    )
+    .unwrap();
+    let attachment = CdpAttachProvider::new()
+        .attach(CdpAttachRequest::new(endpoint, ConnectionConfig::default()))
+        .await
+        .unwrap();
+    let connection = Arc::clone(attachment.connection());
+    let browser = CdpSession::browser(Arc::clone(&connection));
+    let context_id = browser
+        .target_create_browser_context(None, None)
+        .await
+        .unwrap();
+    let exercise_connection = Arc::clone(&connection);
+    let exercise_context_id = context_id.clone();
+    let mut exercise = tokio::spawn(async move {
+        let connection = exercise_connection;
+        let context_id = exercise_context_id;
+        let browser = CdpSession::browser(Arc::clone(&connection));
+        let target_id = browser
+            .target_create_in_context("about:blank", &context_id)
+            .await
+            .unwrap();
+        let session_id = browser.target_attach(&target_id).await.unwrap();
+        let page: Arc<dyn CdpClient> = Arc::new(CdpSession::new(
+            Arc::clone(&connection),
+            session_id,
+            target_id,
+        ));
+        let mut events = page.subscribe_events();
+        page.runtime_enable().await.unwrap();
+        let (execution_context_id, unique_context_id) =
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let event = events
+                        .recv()
+                        .await
+                        .expect("CDP event stream should remain open");
+                    if event.method == "Runtime.executionContextCreated"
+                        && event.params["context"]["auxData"]["isDefault"].as_bool() == Some(true)
+                        && let Some(execution_context_id) = event.params["context"]["id"].as_i64()
+                        && let Some(unique_id) = event.params["context"]["uniqueId"].as_str()
+                    {
+                        break (execution_context_id, unique_id.to_owned());
+                    }
+                }
+            })
+            .await
+            .expect("main execution context should be announced");
+        let values = EvaluationValueLimits::new(8, 64, 64, 4096, 4096).unwrap();
+        let frames = FrameLimits::new(32 * 1024, 0, 0, 32 * 1024);
+        let lifecycle = ChromiumHandleLifecycleProfile::new(
+            ChromiumHandleRouteProfile::new(ResourceScope::extension(102, 2), 3, 4096, 4096),
+            HandleLifecycleCodecLimits::new(1024),
+            frames,
+            frames,
+        );
+        let profile = ChromiumHandleEvaluationProfile::new(
+            ChromiumHandleEvaluationBackendProfile::new(
+                CdpEvaluationProductionProfile::new(
+                    ResourceScope::extension(102, 1),
+                    CdpEvaluationLimits::new(4096, 64 * 1024, 4096, values),
+                    1,
+                )
+                .with_context_routes(1, 4096),
+                4096,
+                4096,
+                CdpHandlePropertyLimits::new(1, 4096).unwrap(),
+            ),
+            HandleEvaluationCodecLimits::new(4096, 4096, values).unwrap(),
+            frames,
+            frames,
+            lifecycle,
+        );
+        let runtime_limits = RuntimeLimits::new(8, 2)
+            .with_active_commands(1)
+            .with_control_messages(8);
+        let requirements = runtime_limits
+            .resource_requirements()
+            .combine_concurrent(profile.requirements());
+        let resources = ProductionResourceLedger::new(exact_limits(requirements), requirements)
+            .expect("exact property production plan should build");
+        let runtime = Arc::new(
+            ControlledDispatcher::with_object_kinds_and_topology(
+                (),
+                (),
+                NoDeadlineScheduler,
+                runtime_limits,
+                BROWSER_OBJECT_KIND_CATALOG,
+                ObjectTopologyMode::Complete,
+            )
+            .unwrap()
+            .with_production_resources(&resources)
+            .unwrap(),
+        );
+        for (object_id, parent, kind) in [
+            (ObjectId::new(1), None, BROWSER_OBJECT_KIND.tag),
+            (
+                ObjectId::new(2),
+                Some(ObjectId::new(1)),
+                BROWSER_CONTEXT_OBJECT_KIND.tag,
+            ),
+            (
+                ObjectId::new(3),
+                Some(ObjectId::new(2)),
+                PAGE_OBJECT_KIND.tag,
+            ),
+            (
+                ObjectId::new(4),
+                Some(ObjectId::new(3)),
+                FRAME_OBJECT_KIND.tag,
+            ),
+        ] {
+            runtime.register_object(object_id, parent, kind).unwrap();
+        }
+        while runtime.pop_control_message().unwrap().is_some() {}
+        let creation_continuation = CleanupQueue::new(1);
+        let lifecycle_continuation = CleanupQueue::new(1);
+        let installation = ChromiumHandleEvaluationInstallation::install(
+            ChromiumHandleEvaluationBindings {
+                runtime: runtime.lifecycle_handle(),
+                object_ids: Arc::new(AtomicObjectIdSource::new(5).unwrap()),
+                creation_continuation: creation_continuation.clone(),
+                lifecycle_continuation: lifecycle_continuation.clone(),
+            },
+            profile,
+            &resources,
+        )
+        .unwrap();
+        installation
+            .routes()
+            .bind(
+                ObjectId::new(4),
+                ObjectId::new(3),
+                Arc::clone(&page),
+                execution_context_id,
+                unique_context_id,
+            )
+            .unwrap();
+        let baseline = resources.metrics().unwrap();
+        let creation = installation.creation_service();
+        let evaluation = installation.raw_service();
+        let dispose = installation.lifecycle().raw_dispose_service();
+        let target = creation
+            .call(Command::<EvaluateHandle>::new(
+                CallId::new(1),
+                ObjectId::new(4),
+                CallMetadata::default(),
+                EvaluateHandleParams::function_without_argument(
+                    r#"() => {
+                    let reads = 0;
+                    return {
+                        promise: Promise.resolve(42),
+                        thenable: {
+                            marker: 'retained',
+                            get then() {
+                                reads++;
+                                return resolve => resolve(7);
+                            }
+                        },
+                        get reads() { return reads; }
+                    };
+                }"#,
+                ),
+            ))
+            .await
+            .unwrap()
+            .into_outcome()
+            .unwrap();
+
+        // Act through portable 1.2 commands, not the optional staged native API.
+        let mut properties = Vec::with_capacity(2);
+        for (call_id, name) in [(2, "promise"), (3, "thenable")] {
+            let command = Command::<HandleGetProperty>::new(
+                CallId::new(call_id),
+                target.object_id,
+                CallMetadata::default(),
+                GetPropertyParams::new(name),
+            );
+            let command = installation
+                .protocol()
+                .decode::<Command<HandleGetProperty>>(
+                    installation.protocol().encode(&command).unwrap(),
+                )
+                .unwrap();
+            properties.push(
+                creation
+                    .call(command)
+                    .await
+                    .unwrap()
+                    .into_outcome()
+                    .unwrap(),
+            );
+        }
+        let mut original_identities = Vec::with_capacity(2);
+        for (call_id, property, source) in [
+            (
+                4,
+                &properties[0],
+                "(value, target) => value === target.promise && value instanceof Promise",
+            ),
+            (
+                5,
+                &properties[1],
+                "(value, target) => value === target.thenable && target.reads === 0",
+            ),
+        ] {
+            original_identities.push(
+                evaluation
+                    .call(Command::<HandleEvaluate>::new(
+                        CallId::new(call_id),
+                        property.object_id,
+                        CallMetadata::default(),
+                        HandleEvaluateParams::function(
+                            source,
+                            HandleEvaluationValue::Handle(target.object_id),
+                        ),
+                    ))
+                    .await
+                    .unwrap()
+                    .into_outcome()
+                    .unwrap()
+                    .value,
+            );
+        }
+        dispose
+            .call(Command::<HandleDispose>::new(
+                CallId::new(6),
+                target.object_id,
+                CallMetadata::default(),
+                (),
+            ))
+            .await
+            .unwrap()
+            .into_outcome()
+            .unwrap();
+        let retained_after_target_disposal = installation.lifecycle().routes().metrics().unwrap();
+        let mut retained_values = Vec::with_capacity(2);
+        for (call_id, property, source) in [
+            (7, &properties[0], "value => value instanceof Promise"),
+            (8, &properties[1], "value => value.marker === 'retained'"),
+        ] {
+            retained_values.push(
+                evaluation
+                    .call(Command::<HandleEvaluate>::new(
+                        CallId::new(call_id),
+                        property.object_id,
+                        CallMetadata::default(),
+                        HandleEvaluateParams::function_without_argument(source),
+                    ))
+                    .await
+                    .unwrap()
+                    .into_outcome()
+                    .unwrap()
+                    .value,
+            );
+        }
+        for (call_id, property) in [(9, &properties[0]), (10, &properties[1])] {
+            dispose
+                .call(Command::<HandleDispose>::new(
+                    CallId::new(call_id),
+                    property.object_id,
+                    CallMetadata::default(),
+                    (),
+                ))
+                .await
+                .unwrap()
+                .into_outcome()
+                .unwrap();
+        }
+        while runtime.pop_control_message().unwrap().is_some() {}
+        let released = resources.metrics().unwrap();
+        let routes = installation.lifecycle().routes().metrics().unwrap();
+
+        // Assert identity was retained without Promise assimilation or reading the
+        // then getter, and all published ownership returned to its starting budget.
+        assert_eq!(
+            original_identities,
+            [EvaluationValue::Bool(true), EvaluationValue::Bool(true)]
+        );
+        assert_eq!(
+            retained_values,
+            [EvaluationValue::Bool(true), EvaluationValue::Bool(true)]
+        );
+        assert_eq!(retained_after_target_disposal.current, 2);
+        assert!(!runtime.is_object_live(target.object_id).unwrap());
+        for property in &properties {
+            assert_eq!(property.parent_id, ObjectId::new(4));
+            assert!(!runtime.is_object_live(property.object_id).unwrap());
+        }
+        assert_eq!(routes.current, 0);
+        assert_eq!(routes.reserved, 0);
+        assert_eq!(routes.explicitly_disposed, 3);
+        assert_eq!(released.active_leases, baseline.active_leases);
+        for class in [
+            ResourceClass::RemoteHandle,
+            ResourceClass::BackendStateBytes,
+        ] {
+            assert_eq!(released.class(class).current, baseline.class(class).current);
+        }
+        for continuation in [creation_continuation, lifecycle_continuation] {
+            let metrics = continuation.metrics().unwrap();
+            assert_eq!(metrics.reserved, 0);
+            assert_eq!(metrics.queued, 0);
+            assert_eq!(metrics.accepted, 0);
+        }
+    });
+    let outcome = tokio::time::timeout(Duration::from_secs(30), &mut exercise).await;
+    if outcome.is_err() {
+        exercise.abort();
+        let _ = exercise.await;
+    }
+
+    // Keep Context ownership outside the exercise so panic, operation failure,
+    // and timeout all reach bounded cleanup before reporting the test outcome.
+    let cleanup = tokio::time::timeout(
+        Duration::from_secs(10),
+        browser.target_dispose_browser_context(&context_id),
+    )
+    .await;
+    let browser_alive = tokio::time::timeout(
+        Duration::from_secs(10),
+        connection.send_command("Browser.getVersion", serde_json::json!({})),
+    )
+    .await;
+    assert!(
+        matches!(cleanup, Ok(Ok(_))),
+        "test-owned Context cleanup failed: {cleanup:?}; exercise: {outcome:?}"
+    );
+    assert!(
+        matches!(browser_alive, Ok(Ok(_))),
+        "externally owned Chrome must remain alive: {browser_alive:?}; exercise: {outcome:?}"
+    );
+    assert!(
+        matches!(outcome, Ok(Ok(()))),
+        "portable property exercise failed or exceeded 30 seconds: {outcome:?}"
+    );
 }
 
 #[tokio::test]

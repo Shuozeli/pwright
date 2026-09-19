@@ -58,8 +58,8 @@ pub enum ChromiumLocatorTrack {
 impl ChromiumLocatorTrack {
     pub const fn version(self) -> ProtocolVersion {
         match self {
-            Self::V1 => ProtocolVersion::new(1, 22),
-            Self::V2 => ProtocolVersion::new(2, 5),
+            Self::V1 => ProtocolVersion::new(1, 23),
+            Self::V2 => ProtocolVersion::new(2, 6),
         }
     }
 }
@@ -337,6 +337,7 @@ impl_locator_command!(IsEditable);
 impl_locator_command!(IsEnabled);
 impl_locator_command!(IsVisible);
 impl_locator_command!(Press);
+impl_locator_command!(pwright_cap_locator::PressSequentially);
 impl_locator_command!(ScrollIntoViewIfNeeded);
 impl_locator_command!(SelectOption);
 impl_locator_command!(SetChecked);
@@ -359,6 +360,7 @@ impl_locator_command!(locator_v2::IsEditable);
 impl_locator_command!(locator_v2::IsEnabled);
 impl_locator_command!(locator_v2::IsVisible);
 impl_locator_command!(locator_v2::Press);
+impl_locator_command!(locator_v2::PressSequentially);
 impl_locator_command!(locator_v2::ScrollIntoViewIfNeeded);
 impl_locator_command!(locator_v2::SelectOption);
 impl_locator_command!(locator_v2::SetChecked);
@@ -391,6 +393,7 @@ pub type ChromiumLocatorV1Handlers = LocatorServerHandlers<
         ChromiumLocatorTarget,
         ChromiumLocatorTarget,
         ChromiumLocatorTarget,
+        ChromiumLocatorTarget,
     >,
 >;
 
@@ -409,6 +412,7 @@ pub type ChromiumLocatorV2Handlers = LocatorV2ServerHandlers<
         ChromiumLocatorTarget,
     >,
     LocatorV2ServerHandlersRight<
+        ChromiumLocatorTarget,
         ChromiumLocatorTarget,
         ChromiumLocatorTarget,
         ChromiumLocatorTarget,
@@ -590,6 +594,7 @@ fn v1_handlers(
                 is_enabled: Arc::clone(&service),
                 is_visible: Arc::clone(&service),
                 press: Arc::clone(&service),
+                press_sequentially: Arc::clone(&service),
                 scroll_into_view_if_needed: Arc::clone(&service),
                 select_option: Arc::clone(&service),
                 set_checked: Arc::clone(&service),
@@ -627,6 +632,7 @@ fn v2_handlers(
                 is_enabled: Arc::clone(&service),
                 is_visible: Arc::clone(&service),
                 press: Arc::clone(&service),
+                press_sequentially: Arc::clone(&service),
                 scroll_into_view_if_needed: Arc::clone(&service),
                 select_option: Arc::clone(&service),
                 set_checked: Arc::clone(&service),
@@ -818,6 +824,71 @@ mod tests {
             resources
                 .metrics()
                 .expect("released route metrics should be readable")
+                .class(ResourceClass::BackendStateBytes)
+                .current,
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_sequential_typing_uses_the_bound_world_and_releases_action_resources() {
+        // Arrange
+        let profile = profile(true, true);
+        let resources = resources(profile);
+        let input = CdpInputCoordinator::new();
+        let fake = Arc::new(FakeCdpClient::from_html("<input>"));
+        fake.set_evaluate_responses([
+            json!({"result": {"value": true}}),
+            json!({"result": {"value": {"status": "done", "isMac": false}}}),
+        ]);
+        let installation = ChromiumLocatorInstallation::install_unique_context(
+            ObjectId::new(8),
+            fake.clone(),
+            "utility-world",
+            input.clone(),
+            profile,
+            &resources,
+        )
+        .unwrap();
+        let command = Command::<locator_v2::PressSequentially>::new(
+            CallId::new(12),
+            ObjectId::new(8),
+            CallMetadata::default(),
+            pwright_cap_locator::PressSequentiallyParams::new(selector("input"), "a中", None),
+        );
+        // Act
+        let result = installation
+            .target()
+            .call(command)
+            .await
+            .unwrap()
+            .into_outcome();
+        // Assert
+        assert_eq!(result, Ok(()));
+        assert_eq!(fake.calls()[1].1[0]["uniqueContextId"], "utility-world");
+        assert_eq!(
+            fake.method_names().last().map(String::as_str),
+            Some("Input.insertText")
+        );
+        assert!(
+            installation
+                .target()
+                .backend()
+                .uses_input_coordinator(&input)
+        );
+        assert_eq!(
+            resources
+                .metrics()
+                .unwrap()
+                .class(ResourceClass::SelectorBytes)
+                .current,
+            0
+        );
+        drop(installation);
+        assert_eq!(
+            resources
+                .metrics()
+                .unwrap()
                 .class(ResourceClass::BackendStateBytes)
                 .current,
             0

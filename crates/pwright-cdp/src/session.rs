@@ -29,6 +29,13 @@ impl CdpSession {
 
     /// Create a tab-level session.
     pub fn new(conn: Arc<CdpConnection>, session_id: String, target_id: String) -> Self {
+        // Opaque routing identity only. Retention belongs to an explicitly
+        // installed subscriber; no correlation table lives in the CDP client.
+        tracing::trace!(
+            session_id = session_id.as_str(),
+            target_id = target_id.as_str(),
+            "bound CDP target session"
+        );
         Self {
             conn,
             session_id: Some(session_id),
@@ -50,6 +57,14 @@ impl CdpSession {
     pub async fn send(&self, method: &str, params: Value) -> Result<Value> {
         self.conn
             .send_command_with_session(method, params, self.session_id.as_deref())
+            .await
+    }
+
+    /// Send without the ordinary response timer. The caller must retain this
+    /// Future through settlement; dropping it is not native cancellation.
+    pub async fn send_to_settlement(&self, method: &str, params: Value) -> Result<Value> {
+        self.conn
+            .send_command_to_settlement_with_session(method, params, self.session_id.as_deref())
             .await
     }
 

@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Frame navigation isolation</title>
+<script>
+  const mode = new URL(location.href).searchParams.get('mode');
+  if (mode !== 'local' && mode !== 'sandbox') throw new Error('explicit frame mode required');
+  const frame = document.createElement('iframe');
+  frame.name = 'navigation-target';
+  if (mode === 'sandbox') frame.sandbox = 'allow-scripts';
+  frame.src = 'frame-lookup-parent.html';
+  document.documentElement.append(frame);
+  const sibling = document.createElement('iframe');
+  sibling.name = 'unaffected-sibling';
+  sibling.src = 'empty.html#sibling';
+  document.documentElement.append(sibling);
+</script>

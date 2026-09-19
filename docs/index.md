@@ -1,9 +1,177 @@
-<!-- agent-updated: 2026-09-05T18:49:06Z -->
+<!-- agent-updated: 2026-09-08T01:19:49Z -->
 
 # pwright - Project Guide
 
+NODE-050: the opt-in Node addon is now built and verified through real public
+Mouse/Keyboard/Locator calls. Internal Frame lifecycle coverage expands to 18.
+[Selection, evidence and remaining work](knowledge/pwright-chromium-drag.md#node-050-native-lifetime-gates-and-selected-node-addon).
+
+NODE-049: selected Rust Frame input now hands cancellation lifetime to Page
+after focus. The expanded local/OOPIF native gate matches 12/12.
+[Contract, evidence and remaining gates](knowledge/pwright-chromium-drag.md#node-049-optional-frame-to-page-lifetime-handoff).
+
+NODE-048: [native local/OOPIF Frame gate](knowledge/pwright-chromium-drag.md#node-048-native-frame-gate-exposes-a-lifetime-discrepancy)
+finds premature Rust cancellation after iframe removal. It remains failing (8/10).
+
+NODE-047: [Locator keyboard / Page drag integration](knowledge/pwright-chromium-drag.md#node-047-locator-keyboard-selects-the-owning-page).
+Ten native host/oracle matches, including timeout; addon remains unchanged.
+
+NODE-046: [Rust Escape interception and retirement](knowledge/pwright-chromium-drag.md#node-046-optional-rust-keyboard-escape-interception)
+shares the Page drag controller without adding a default drag dependency.
+
+NODE-045: [derived click-batch admission](knowledge/pwright-chromium-drag.md#node-045-maximum-click-batches-and-matching-host-admission)
+fixes the maximum count boundary in the rebuilt Node addon. Public Mouse remains
+incomplete at 39/44.
+
+NODE-044: [Rust HostSession drag integration](knowledge/pwright-chromium-drag.md#node-044-opt-in-hostsession-mouse-integration)
+is available behind `drag-runtime`. It does not yet change the Node addon or
+public Mouse baseline.
+
+NODE-043 adds an opt-in host `drag-source`: fresh Page utility snapshots now
+remain owned through movement results, retirement and quarantine. Exact world
+destruction drains started listener requests without issuing new cleanup there.
+Default/selected host closures are **234/235**; only the drag leaf is added.
+HostSession Mouse/close/Escape selection and public differential checks remain
+pending; the addon and public **36/41** baseline are unchanged.
+[Production source and evidence](knowledge/pwright-chromium-drag.md#node-043-retained-production-page-drag-source).
+
+NODE-042 adds immediate, budgeted snapshots of a Page's existing utility worlds,
+including child Frames/OOPIFs without waiting for a main world. Utility-only
+native destruction receipts retain snapshot admission and remain distinct from
+route invalidation and owned-session retirement. Production drag-source/host
+integration is still pending; no addon rebuild or public **36/41** change.
+[Snapshot ownership and verification](knowledge/pwright-chromium-drag.md#node-042-existing-page-utility-world-snapshots).
+
+NODE-041 implements the explicit `mouse-dispatch` feature and Page-owned cleanup
+driver: **82** unit tests and **4** selected-Mouse native cases pass, alongside
+the prior **10** native cases. Default/feature closures are **3/5** Pwright
+packages. Host Frame-source/lifecycle and Keyboard Escape integration remain
+pending; no addon rebuild or public **36/41** change.
+[Selected dispatcher and evidence](knowledge/pwright-chromium-drag.md#node-041-selected-mouse-dispatcher-and-page-cleanup-driver).
+
+NODE-040 adds Page-owned drag state and retained native enter/over/drop/cancel.
+**70** unit tests and **10** native scenarios pass, including actual drop and
+cancel with dragend checks. The optional leaf remains **3** Pwright packages;
+Mouse dispatch/forClick/down suppression, Keyboard Escape and Node host selection
+are still pending. The addon/public **36/41** evidence is unchanged.
+[Page state and verification](knowledge/pwright-chromium-drag.md#node-040-page-drag-state-and-native-event-owners).
+
+NODE-039 composes drag listeners, interception and lazy native movement in Rust;
+**57** unit tests and **9** native cases pass. Full Page/Mouse and Node integration
+remain open. [Current checkpoint](knowledge/pwright-chromium-drag.md#node-039-composed-intercepted-movement).
+
+NODE-038 adds a fixed-session capture owner for subscriptions and interception
+enable/disable, preserving cleanup across cancellation. **44** unit tests and
+**6** native cases pass; Page dispatcher and Node host integration remain open.
+[Current checkpoint](knowledge/pwright-chromium-drag.md#node-038-retained-capture-lifecycle).
+
+NODE-037 adds bounded typed intercepted-data retention in Rust, with **14** new
+tests (**27** total) and real captured-text delivery verified. Subscription epochs,
+the full drag provider and host integration remain pending.
+[Current checkpoint](knowledge/pwright-chromium-drag.md#node-037-admitted-intercepted-data).
+
+NODE-036 implements a separate Rust-owned utility-world drag observer, with
+**13** unit tests and **6** real Chrome scenarios. It is not yet the production
+Mouse drag provider. [Design and next integration](knowledge/pwright-chromium-drag.md).
+
+Native/Page bindings now select an optional Mouse dispatcher across five
+pointer APIs; standalone button results retain independent cleanup (NODE-035).
+Default and test passthrough paths pass **22/22** each. Drag and host integration
+remain open. [Selection and evidence](knowledge/pwright-raw-mouse.md#page-scoped-dispatcher-selection-node-035).
+
+The optional Mouse dispatcher now has separate action and cleanup polling,
+live Page-state readers and fixed-slot retirement tests (NODE-034). Chromium
+drag and factory/host injection remain pending; the addon is not rebuilt.
+[Current source checkpoint](knowledge/pwright-raw-mouse.md#optional-mouse-dispatch-ownership-node-034).
+
+Latest concurrency gate is red: Mouse **33/41 -> 36/41** after a bounded Rust
+first-poll ordering boundary. This preserves overlapping results but is not a
+whole-operation lock. Five ordinary left-held moves require the missing drag
+delegate. [NODE-033](knowledge/pwright-raw-mouse.md#same-turn-input-ordering-node-033).
+
+Final ordering artifact also records typing **30/38** and actions **24/27** due
+to oracle/candidate attachment timeouts. Mouse Worker/profile **3/3**, Keyboard
+**24/24**, screenshot **12/12** and lifecycle **45/45** pass. Prior reload/shared
+results were not rerun on this final artifact.
+
+Previous Mouse release addon: public **26/26** and profile/Worker **3/3**; Keyboard 24,
+typing 38, actions 27, screenshot 12 and lifecycle 45 all pass. Reload remains
+**16/18**, shared **53 match / 2 unsupported / 1 oracle-error / 1 setup-error**.
+The topology-attach timeout and native reload-close failures remain open.
+[Artifact-specific evidence](knowledge/pwright-raw-mouse.md#same-artifact-regression).
+
+`pwright-backend-cdp-mouse` now provides six admitted native starters, explicit
+result/retirement owners, **13** unit tests and **22/22** real-browser matches.
+Its normal closure is **8** Pwright packages. The optional Page route adds bounded
+caller-polled retirement, **18** tests and **22/22** full-wire browser matches,
+with a **16-package** closure. The explicit `runtime` adapter adds **15** tests,
+**22/22** controlled browser matches and only `pwright-runtime` (**17** packages).
+The safe Rust host now installs bounded retirement workers and all six typed
+methods: **22/22** host browser matches and a real close-during-delay probe pass.
+Host source closure is **234**. The rebuilt addon exposes all six public Mouse
+methods: **26/26** paired cases and **3/3** profile/Worker tests pass. Final
+nested allocation and artifact-wide regression gates remain open.
+
+New optional packages: `pwright-cap-mouse`, `pwright-client-mouse`,
+`pwright-codec-mouse`, `pwright-server-mouse`. Six typed Page commands and their
+normal closures **3/6/7/10** pass; no native/Node installation is pulled in.
+[Contract ownership and next integration gates](knowledge/pwright-raw-mouse.md#optional-mouse-10-contracts).
+
+[Raw Mouse and click scheduling](knowledge/pwright-raw-mouse.md) now match
+**22/22** pinned event/state cases. Rust retains in-flight click calls through
+explicit retirement. Node `page.mouse` and owned/borrowed Worker close now pass;
+concurrent error ordering, HTML drag and final allocation validation remain open.
+
+Same-artifact full gates now pass typing **38/38**, actions **27/27**, screenshot
+**12/12**, lifecycle **45/45**. Reload remains **16/18** at the unchanged short
+response/close boundary. See the [regression checkpoint](knowledge/pwright-raw-keyboard.md).
+
+Keyboard's opt-in controlled adapter now passes **18** composition tests, with
+default/runtime closures **16/17**, and a fresh regenerated-wire Chrome comparison
+matches **14/14** cases. The subsequent host/N-API installation exposes all five
+public Keyboard methods and passes **24/24**, with shared coverage **52/3/2**;
+see the [checkpoint](knowledge/pwright-raw-keyboard.md).
+
 This is the authoritative reference for understanding pwright. Read this
 before proposing changes.
+
+[Raw Keyboard primitives](knowledge/pwright-raw-keyboard.md) pass **14/14**
+native oracle cases and preserve the shared Page input boundary. Keyboard 1.0
+contract layers now pass **19** tests, with no native/backend/Node dependency.
+The separate native backend passes **18** tests and **14/14** typed Chrome cases.
+The optional Page wire composition adds **11** tests and **14/14** wire-to-Chrome
+cases. Aggregate lifecycle routing and public Node integration remain pending;
+no shared reclassification.
+Aggregate Page input is now independently selected and retained-state-budgeted,
+including leases held by escaped coordinator clones and transactions. Node host
+source selects it; the unchanged addon has not yet incorporated this source change.
+
+[Rust-backed reload](knowledge/pwright-page-reload.md) now has typed navigation
+1.1 and Node FFI bindings. Both shared reload cases match (corpus **48/7/2**);
+its public held-response close gate and broader window geometry remain red.
+
+New [sequential-typing binding evidence](knowledge/pwright-sequential-typing.md)
+records typed Locator 1.23/2.6 aliases and Node's new opt-in interleaved input
+policy. The new artifact passes **30/30 typing and 27/27 action** tests, including
+the previous overlap and NODE-022 failures. Default Rust exclusivity remains;
+native in-flight cancellation and broader Frame/timeout cases still need
+verification. The full goal is not complete.
+
+The preceding Node artifact opts into a fixed recursive-attachment prerequisite join.
+Screenshot passes 12/12, lifecycle 45/45 and serial/selected OOPIF checks 2/2.
+Shared results are 45 match / 10 unsupported / 2 oracle-error, not a full
+compatibility pass. [Latest checkpoint](node-ffi-compatibility-design.md#node-013-recursive-attachment-prerequisite-join-2026-09-07).
+
+Node `page.screenshot()` now composes the Rust content command, bounded queue and
+Buffer handoff. Earlier screenshot/shared attachment failures remain preserved
+as [artifact-specific evidence](node-ffi-compatibility-design.md#node-page-screenshot-binding-and-ownership-checkpoint-2026-09-07).
+
+Current Node work exposes Locator.evaluate through the existing Rust command,
+with admitted Node-thread source/argument conversion. Its native running-Worker
+cleanup gate now passes through acknowledged owned-session retirement (NODE-027),
+including preservation of a borrowed Page and user Promise. Other discrepancies
+and unsupported APIs remain; [the checkpoint](node-ffi-compatibility-design.md#node-027-host-integration-and-worker-verification-2026-09-07)
+supersedes earlier unexposed-method and native Worker-cleanup failure statements.
 
 ## What is pwright?
 
@@ -21,10 +189,29 @@ already-running Chrome instance and provides browser automation via:
 pwright-cdp          Raw bounded WebSocket CDP client
                      Connection, Session, domain wrappers (DOM, Runtime, etc.);
                      cancellation-safe pending map, shared event payloads,
-                     opt-in production resource profile, and an owned terminal
-                     connection-closure signal for v2 composition
+                     opt-in production resource and stateless event-admission
+                     policies, and an owned terminal
+                     connection-closure signal plus owned I/O-cleanup barrier
+                     for v2 composition
 
 pwright-js           Centralized JS snippets (string constants, no runtime)
+
+pwright-node-host    Experimental safe Rust v2 attach/topology and controlled
+                    navigation/DOM-read/value-evaluation, Locator query/read/action
+                    and Context/Page lifecycle host;
+                    owned Context defaults through optional session initialization;
+                    serial lifecycle/topology transactions, metadata admission
+                    before creation, bounded native URL snapshots
+                    and ordered JS-loop publication, plus environment-owned
+                    FFI execution/result admission and separate lazy-query budget
+                    with one controlled Locator selection/conversion/evaluation
+                    continuation (native retirement and public Node binding pending)
+pwright-node-addon   Bounded Node-API conversion, Node-thread binary staging,
+                     and environment cleanup (no browser implementation)
+packages/pwright    Local-build-only ESM/CJS facade and differential tests;
+                    see node-ffi-compatibility-design.md for incomplete gates
+tests/              Shared API catalog and owned-Context Node-FFI/oracle runner;
+                    reports unsupported and oracle failures without golden updates
 
 pwright-bridge       High-level browser operations
                      Page, Locator, Keyboard, Mouse, Touchscreen
@@ -304,7 +491,7 @@ pwright-codec-locator-screenshot
                          screenshot attachment and retained result lease
 
 pwright-codec-dom-content
-                         Serde-free `pwright.dom_content` Frame serialization
+                         Serde-free `pwright.dom_content` Frame content/title
                          codec; validates one UTF-8 attachment and retains the
                          caller result under a dedicated lease
 
@@ -354,7 +541,7 @@ pwright-client-locator-screenshot
                          the Locator's Page/Frame scope
 
 pwright-client-dom-content
-                         Independent opt-in Frame.content and Page-to-main-Frame
+                         Independent opt-in Frame content/title and Page-to-main-Frame
                          facade returning non-cloneable budgeted UTF-8
 
 pwright-client-handle-lifecycle
@@ -515,7 +702,7 @@ pwright-cap-locator-screenshot
                          Core-only selector plus screenshot-value command for
                          one cancellation-bounded Locator capture operation
 
-pwright-cap-dom-content  Core-only optional read-only Frame DOM serialization,
+pwright-cap-dom-content  Core-only optional read-only Frame DOM content/title,
                          budgeted UTF-8 result, errors, and generated metadata
 
 pwright-cap-locator      Core-only Locator command identities, params, results,
@@ -575,6 +762,25 @@ pwright-composition-chromium-locator
                          Minimal generated Locator 1.22/2.5 server composition
                          for one explicit Page/Frame route; caller-owned CDP,
                          Page input, transport driver, runtime, and browser
+
+pwright-backend-cdp-locator-resolution
+                         Opt-in strict utility-world query into a unique native
+                         object group; bounded temporary element, no polling,
+                         user evaluation, public Handle or browser ownership
+
+pwright-composition-chromium-locator-resolution
+                         Pre-admitted caller-owned continuation cleanup for
+                         resolution/element/release; fail-closed admission after
+                         failed or abandoned native cleanup; optional bounded
+                         strict waiting with injected routes, pacing and one
+                         termination signal; not installed by Node yet
+
+pwright-composition-chromium-locator-evaluation
+                         Opt-in selected-element adoption into main world and
+                         one Rust value evaluation; both wrappers remain in
+                         the source group; paired strict preparation preserves
+                         the original deadline and route owner through cleanup;
+                         no public Handle or Node installation
 
 pwright-composition-chromium-context-lifecycle
                          Minimal generated BrowserContext.close server leaf;
@@ -647,7 +853,7 @@ pwright-backend-cdp-selector-geometry
 
 pwright-backend-cdp-dom-content
                          Isolated attach-only read-only Frame DOM adapter;
-                         fixed utility-world serializer, bounded result and
+                         fixed utility-world reads, bounded result and
                          route ownership, with no public evaluation
 
 pwright-backend-cdp-evaluation
@@ -695,7 +901,7 @@ pwright-composition-chromium-locator-screenshot
 
 pwright-composition-chromium-dom-content
                          Minimal attach-only one-Frame DOM-content server leaf;
-                         generated one-command handler, exact utility route,
+                         generated content/title handlers, exact utility route,
                          combined result/route/wire plan, and no evaluation,
                          screenshot, navigation, client, provider, installer,
                          runtime choice, Node.js, or browser bytes
@@ -766,7 +972,8 @@ pwright-composition-chromium
 
 The navigation extension now includes a Playwright-shaped `Page::goto` slice
 alongside its lower-level primitive. See [Composable architecture v2](architecture-v2.md),
-[v2 design tasks](design-tasks-v2.md), and the
+[v2 design tasks](design-tasks-v2.md), the
+[Playwright-compatible Node FFI design](node-ffi-compatibility-design.md), and the
 [Playwright design course](knowledge/playwright-design-course.md), plus the
 [resource ownership and limits](resource-boundaries-v2.md),
 [protocol IDL decision record](knowledge/pwright-protocol-idl.md) and
@@ -840,6 +1047,19 @@ per Frame and bind the exact local or OOPIF session plus utility
 evaluation remains routed to the main world. World replacement atomically
 replaces the locator service and its selector-runtime cell under a separately
 reserved route-memory bound.
+
+An independently installed `ChromiumFrameWorldAccess` port pairs the observed
+main and utility worlds for one exact Frame, retains an explicitly budgeted
+snapshot, and provides caller-polled invalidation through the existing commit
+notification. Renderer handoff/swap gaps cannot export old-session world
+routes, and late previous-renderer announcements cannot replace current worlds.
+The snapshot is not an atomic browser document lease or native group-cleanup
+proof. The safe Node host now installs the port and separately selects bounded
+native-destruction receipts: exact Context acknowledgement or both execution
+worlds' destruction can discharge group cleanup. Receipt clones retain snapshot
+admission, and default profiles do not install the registry. Node-thread deferred
+conversion remains pending; public Locator.evaluate is unavailable. See
+[its ownership and validation contract](knowledge/pwright-locator-evaluation.md#optional-native-destruction-receipts-2026-09-07).
 
 Browser attachment and browser launch are separate provider traits. An
 external CDP attachment can disconnect its transport but has no process lease,
@@ -941,6 +1161,7 @@ Real Chrome via `chromedp/headless-shell` with in-process test server.
 | `docs/architecture.md` | Crate internals and design principles |
 | `docs/architecture-v2.md` | Composable v2 architecture checkpoints and boundaries |
 | `docs/design-tasks-v2.md` | Ordered v2 design questions and implementation evidence |
+| `docs/node-ffi-compatibility-design.md` | Playwright-compatible Node-API boundary and differential verification plan |
 | `docs/knowledge/playwright-design-course.md` | Playwright architecture lessons and source anchors |
 | `docs/knowledge/pwright-tracing.md` | Optional base tracing boundary, contributor separation, state machine, resource contract, atomic file-sink format, and Playwright source evidence |
 | `docs/knowledge/pwright-artifacts-and-streams.md` | Playwright remote Artifact/Stream evidence, Pwright pull-transfer decisions, two-phase read semantics, resources, and remaining protocol gates |

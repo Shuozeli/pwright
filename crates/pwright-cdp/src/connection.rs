@@ -24,6 +24,11 @@ use crate::event_fanout::{
 };
 use crate::events::{CdpEvent, CdpEventReceiver};
 
+#[cfg(feature = "large-commands")]
+pub mod large_commands;
+mod lifecycle_trace;
+mod session_retirement;
+
 /// Errors from the CDP connection layer.
 #[derive(Debug, thiserror::Error)]
 pub enum CdpError {
@@ -35,6 +40,8 @@ pub enum CdpError {
     Protocol { code: i64, message: String },
     #[error("Connection closed")]
     Closed,
+    #[error("Native session detached")]
+    SessionDetached,
     #[error("Response channel dropped")]
     ChannelDropped,
     #[error("Timeout waiting for response")]
@@ -90,9 +97,21 @@ pub type Result<T> = std::result::Result<T, CdpError>;
 
 type CommandResult = std::result::Result<Value, CdpError>;
 
+struct CommandResource {
+    _lease: ResourceLease,
+    #[cfg(feature = "large-commands")]
+    large: Option<Arc<large_commands::CommandLease>>,
+}
+
+struct CommandAdmission {
+    max_bytes: usize,
+    #[cfg(feature = "large-commands")]
+    large: Option<Arc<large_commands::CommandLease>>,
+}
+
 struct RetainedCommandResult {
     result: CommandResult,
-    _resource: Option<Arc<ResourceLease>>,
+    _resource: Option<Arc<CommandResource>>,
 }
 
 struct PendingCommandSlot {
@@ -109,7 +128,8 @@ impl Drop for PendingCommandSlot {
 struct PendingEntry {
     response: oneshot::Sender<RetainedCommandResult>,
     _slot: PendingCommandSlot,
-    resource: Option<Arc<ResourceLease>>,
+    resource: Option<Arc<CommandResource>>,
+    session_id: Option<Box<str>>,
 }
 
 type PendingMap = Arc<DashMap<u64, PendingEntry>>;
@@ -129,12 +149,12 @@ struct PreparedCommand {
     raw: String,
     response: oneshot::Receiver<RetainedCommandResult>,
     _registration: PendingRegistration,
-    resource: Option<Arc<ResourceLease>>,
+    resource: Option<Arc<CommandResource>>,
 }
 
 struct OutboundMessage {
     message: Message,
-    _resource: Option<Arc<ResourceLease>>,
+    _resource: Option<Arc<CommandResource>>,
 }
 
 #[derive(Clone, Debug)]
@@ -270,10 +290,13 @@ pub struct CdpConnection {
     event_delivery: CdpEventDelivery,
     default_timeout: Duration,
     max_command_bytes: usize,
+    #[cfg(feature = "large-commands")]
+    large_commands: Option<large_commands::Pool>,
     resources: Option<ConnectionResourceBudget>,
     _reader_resource: Option<ResourceLease>,
     _event_delivery_resource: Option<ResourceLease>,
     shutdown: tokio_util::sync::CancellationToken,
+    io_tasks: tokio_util::task::TaskTracker,
 }
 
 impl Drop for CdpConnection {
@@ -408,6 +431,10 @@ pub struct CdpConnectionProductionProfile {
     reclaiming_event_subscribers: Option<usize>,
     event_delivery_resource_bytes: u64,
     requirements: ResourceRequirements,
+    event_admission: Option<crate::CdpEventAdmissionPolicy>,
+    pending_session_id_bytes: Option<usize>,
+    #[cfg(feature = "large-commands")]
+    large_commands: Option<large_commands::LargeCommandProfile>,
 }
 
 impl CdpConnectionProductionProfile {
@@ -438,6 +465,10 @@ impl CdpConnectionProductionProfile {
             reclaiming_event_subscribers: None,
             event_delivery_resource_bytes: 0,
             requirements,
+            event_admission: None,
+            pending_session_id_bytes: None,
+            #[cfg(feature = "large-commands")]
+            large_commands: None,
         }
     }
 
@@ -456,9 +487,14 @@ impl CdpConnectionProductionProfile {
             self.config.event_channel_capacity,
             max_subscribers,
         );
+        let existing = self.requirements.class(ResourceClass::BackendStateBytes);
         self.requirements = self
             .requirements
-            .with_class(ResourceClass::BackendStateBytes, retained, retained)
+            .with_class(
+                ResourceClass::BackendStateBytes,
+                existing.global.saturating_add(retained),
+                existing.per_scope.saturating_add(retained),
+            )
             .with_metadata(
                 self.requirements.scopes,
                 self.requirements.leases.saturating_add(1),
@@ -466,6 +502,57 @@ impl CdpConnectionProductionProfile {
         self.reclaiming_event_subscribers = Some(max_subscribers);
         self.event_delivery_resource_bytes = retained;
         Ok(self)
+    }
+
+    /// Retire already-admitted calls when Chrome announces their exact session
+    /// detached. No session registry, tombstone history or event subscriber is
+    /// installed. Commands admitted after that event retain native validation.
+    pub fn with_pending_session_retirement(mut self, max_native_id_bytes: usize) -> Result<Self> {
+        if max_native_id_bytes == 0 || max_native_id_bytes > self.config.max_command_bytes {
+            return Err(CdpError::InvalidConfiguration(
+                "invalid pending session ID bound",
+            ));
+        }
+        if self.pending_session_id_bytes.is_some() {
+            return Err(CdpError::InvalidConfiguration(
+                "pending session retirement already selected",
+            ));
+        }
+        // Each command's existing lease owns the compact ID and inline metadata,
+        // including overlap with its outgoing bytes or retained native response.
+        let retained = usize_to_u64(max_native_id_bytes)
+            .saturating_add(usize_to_u64(std::mem::size_of::<Option<Box<str>>>()));
+        self.command_wire_bytes = self.command_wire_bytes.saturating_add(retained);
+        let added = usize_to_u64(self.config.pending_command_capacity).saturating_mul(retained);
+        let existing = self.requirements.class(ResourceClass::WireBytes);
+        self.requirements = self.requirements.with_class(
+            ResourceClass::WireBytes,
+            existing.global.saturating_add(added),
+            existing.per_scope.saturating_add(added),
+        );
+        self.pending_session_id_bytes = Some(max_native_id_bytes);
+        Ok(self)
+    }
+
+    /// Select a stateless policy before event item/byte admission and fanout.
+    /// Raw-message and per-event byte ceilings still apply before selection.
+    /// This changes the connection-wide event contract for ALL consumers; the
+    /// composition must select a policy compatible with every installed leaf.
+    pub fn with_event_admission_policy(
+        mut self,
+        policy: crate::CdpEventAdmissionPolicy,
+    ) -> Result<Self> {
+        if self.event_admission.is_some() {
+            return Err(CdpError::InvalidConfiguration(
+                "event admission policy was configured more than once",
+            ));
+        }
+        self.event_admission = Some(policy);
+        Ok(self)
+    }
+
+    pub const fn event_admission_policy(&self) -> Option<crate::CdpEventAdmissionPolicy> {
+        self.event_admission
     }
 
     pub const fn resource_scope(&self) -> ResourceScope {
@@ -502,7 +589,8 @@ fn usize_to_u64(value: usize) -> u64 {
 }
 
 impl CdpConnection {
-    /// Resolves when this concrete browser-protocol transport has terminated.
+    /// Resolves when this concrete browser-protocol transport is stopping.
+    /// Await io_finished separately to prove both I/O tasks have retired.
     ///
     /// The returned future owns only a cancellation-token clone. It does not
     /// keep the connection or browser alive, and transport loss is terminal:
@@ -515,6 +603,23 @@ impl CdpConnection {
 
     pub fn is_closed(&self) -> bool {
         self.shutdown.is_cancelled()
+    }
+
+    /// Terminally stop this client's I/O and reject pending/new commands.
+    /// This sends no Browser.close or target/context disposal command. Pending
+    /// writes retain their backing until the I/O tasks actually retire; await
+    /// io_finished for that boundary. Transport loss is not native cleanup proof.
+    pub fn request_disconnect(&self) {
+        self.shutdown.cancel();
+        fail_all_pending(&self.pending);
+    }
+
+    /// Waits for both native I/O tasks to finish cleanup, not merely receive
+    /// cancellation. This owned future retains no connection or WebSocket.
+    /// Request disconnect, drop the owner, or wait for peer loss before awaiting it.
+    pub fn io_finished(&self) -> impl Future<Output = ()> + Send + 'static {
+        let tasks = self.io_tasks.clone();
+        async move { tasks.wait().await }
     }
 
     /// Connect to a Chrome DevTools Protocol endpoint via WebSocket.
@@ -596,6 +701,16 @@ impl CdpConnection {
         event_delivery_resource: Option<ResourceLease>,
     ) -> Result<Arc<Self>> {
         config.validate()?;
+        #[cfg(feature = "large-commands")]
+        let large_commands = resources
+            .as_ref()
+            .and_then(|budget| {
+                budget
+                    .profile
+                    .large_commands
+                    .map(|profile| large_commands::Pool::new(profile, &budget.ledger))
+            })
+            .transpose()?;
         debug!(url = ws_url, "connecting to CDP WebSocket");
 
         let websocket_config = cdp_websocket_config(config.max_websocket_bytes);
@@ -608,11 +723,12 @@ impl CdpConnection {
         let pending: PendingMap = Arc::new(DashMap::new());
         let active_pending = Arc::new(AtomicUsize::new(0));
         let shutdown = tokio_util::sync::CancellationToken::new();
+        let io_tasks = tokio_util::task::TaskTracker::new();
 
         // Writer task: forwards messages from the channel to the WebSocket
         let shutdown_w = shutdown.clone();
         let shutdown_writer_failsafe = shutdown.clone();
-        tokio::spawn(async move {
+        io_tasks.spawn(async move {
             tokio::select! {
                 _ = shutdown_w.cancelled() => {}
                 _ = Self::writer_loop(ws_write, write_rx) => {}
@@ -630,7 +746,7 @@ impl CdpConnection {
         let max_event_bytes = config.max_event_bytes;
         let max_protocol_error_bytes = config.max_protocol_error_bytes;
         let reader_resources = resources.clone();
-        tokio::spawn(async move {
+        io_tasks.spawn(async move {
             tokio::select! {
                 _ = shutdown_r.cancelled() => {}
                 _ = Self::reader_loop(
@@ -650,6 +766,7 @@ impl CdpConnection {
             shutdown_failsafe.cancel();
         });
 
+        io_tasks.close();
         let conn = Arc::new(Self {
             write_tx,
             next_id: AtomicU64::new(1),
@@ -659,10 +776,13 @@ impl CdpConnection {
             event_delivery,
             default_timeout: config.timeout,
             max_command_bytes: config.max_command_bytes,
+            #[cfg(feature = "large-commands")]
+            large_commands,
             resources,
             _reader_resource: reader_resource,
             _event_delivery_resource: event_delivery_resource,
             shutdown,
+            io_tasks,
         });
 
         debug!("CDP WebSocket connected");
@@ -685,28 +805,81 @@ impl CdpConnection {
         params: Value,
         session_id: Option<&str>,
     ) -> impl Future<Output = Result<Value>> + Send + '_ {
+        self.send_command_with_response_timeout(
+            method,
+            params,
+            session_id,
+            Some(self.default_timeout),
+        )
+    }
+
+    /// Retain the response registration until protocol settlement, without the
+    /// ordinary command timer. A composing continuation must retain this future
+    /// when its public waiter times out or is cancelled. Dropping this future
+    /// still removes its registration and is not native cancellation evidence.
+    /// Transport failure is an error, not proof that browser objects retired.
+    pub fn send_command_to_settlement_with_session(
+        &self,
+        method: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> impl Future<Output = Result<Value>> + Send + '_ {
+        self.send_command_with_response_timeout(method, params, session_id, None)
+    }
+
+    fn send_command_with_response_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        session_id: Option<&str>,
+        response_timeout: Option<Duration>,
+    ) -> impl Future<Output = Result<Value>> + Send + '_ {
         let prepared = self.prepare_command(method, params, session_id);
-        async move {
-            let PreparedCommand {
-                raw,
-                response,
-                _registration,
-                resource,
-            } = prepared?;
+        self.send_prepared(prepared, response_timeout)
+    }
 
-            self.write_tx
-                .send(OutboundMessage {
-                    message: Message::Text(raw.into()),
-                    _resource: resource,
-                })
-                .await
-                .map_err(|_| CdpError::Closed)?;
+    async fn send_prepared(
+        &self,
+        prepared: Result<PreparedCommand>,
+        response_timeout: Option<Duration>,
+    ) -> Result<Value> {
+        if self.is_closed() {
+            return Err(CdpError::Closed);
+        }
+        let PreparedCommand {
+            raw,
+            mut response,
+            _registration,
+            resource,
+        } = prepared?;
 
-            match tokio::time::timeout(self.default_timeout, response).await {
-                Ok(Ok(retained)) => retained.result,
-                Ok(Err(_)) => Err(CdpError::ChannelDropped),
-                Err(_) => Err(CdpError::Timeout),
+        let enqueue = self.write_tx.send(OutboundMessage {
+            message: Message::Text(raw.into()),
+            _resource: resource,
+        });
+        if self
+            .resources
+            .as_ref()
+            .is_some_and(|resources| resources.profile.pending_session_id_bytes.is_some())
+        {
+            // Detach also settles calls not yet polled or waiting for write
+            // admission. Dropping enqueue releases unsent wire ownership.
+            tokio::select! {
+                biased;
+                result = &mut response => return result.map_err(|_| CdpError::ChannelDropped)?.result,
+                sent = enqueue => sent.map_err(|_| CdpError::Closed)?,
             }
+        } else {
+            enqueue.await.map_err(|_| CdpError::Closed)?;
+        }
+
+        let Some(timeout) = response_timeout else {
+            return response.await.map_err(|_| CdpError::ChannelDropped)?.result;
+        };
+        match tokio::time::timeout(timeout, response).await {
+            Ok(Ok(retained)) => retained.result,
+            Ok(Err(_)) => Err(CdpError::ChannelDropped),
+            Err(_) => Err(CdpError::Timeout),
         }
     }
 
@@ -716,6 +889,28 @@ impl CdpConnection {
         params: Value,
         session_id: Option<&str>,
     ) -> Result<PreparedCommand> {
+        self.prepare_admitted_command(
+            method,
+            params,
+            session_id,
+            CommandAdmission {
+                max_bytes: self.max_command_bytes,
+                #[cfg(feature = "large-commands")]
+                large: None,
+            },
+        )
+    }
+
+    fn prepare_admitted_command(
+        &self,
+        method: &str,
+        params: Value,
+        session_id: Option<&str>,
+        admission: CommandAdmission,
+    ) -> Result<PreparedCommand> {
+        if self.is_closed() {
+            return Err(CdpError::Closed);
+        }
         let slot = acquire_pending_slot(
             Arc::clone(&self.active_pending),
             self.pending_command_capacity,
@@ -731,7 +926,13 @@ impl CdpConnection {
                 )
             })
             .transpose()?
-            .map(Arc::new);
+            .map(|lease| {
+                Arc::new(CommandResource {
+                    _lease: lease,
+                    #[cfg(feature = "large-commands")]
+                    large: admission.large,
+                })
+            });
         let id = self
             .next_id
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |id| id.checked_add(1))
@@ -745,8 +946,36 @@ impl CdpConnection {
         if let Some(sid) = session_id {
             msg["sessionId"] = Value::String(sid.to_string());
         }
-        let raw = serialize_bounded(&msg, self.max_command_bytes)?;
-        trace!(id, method, "prepared CDP command");
+        let raw = serialize_bounded(&msg, admission.max_bytes)?;
+        let retained_session = match self
+            .resources
+            .as_ref()
+            .and_then(|resources| resources.profile.pending_session_id_bytes)
+        {
+            Some(limit) => match session_id {
+                Some("") => {
+                    return Err(CdpError::InvalidConfiguration(
+                        "pending session ID must be nonempty",
+                    ));
+                }
+                Some(id) if id.len() > limit => {
+                    return Err(CdpError::LimitExceeded {
+                        resource: "pending session ID bytes",
+                        actual: id.len(),
+                        limit,
+                    });
+                }
+                Some(id) => Some(Box::<str>::from(id)),
+                None => None,
+            },
+            None => None,
+        };
+        trace!(
+            id,
+            method,
+            session_id = session_id.unwrap_or(""),
+            "prepared CDP command"
+        );
         let (response_tx, response) = oneshot::channel();
         let replaced = self.pending.insert(
             id,
@@ -754,6 +983,7 @@ impl CdpConnection {
                 response: response_tx,
                 _slot: slot,
                 resource: resource.clone(),
+                session_id: retained_session,
             },
         );
         debug_assert!(replaced.is_none(), "monotonic CDP command ID was reused");
@@ -815,6 +1045,20 @@ impl CdpConnection {
         mut write_rx: tokio::sync::mpsc::Receiver<OutboundMessage>,
     ) {
         while let Some(outbound) = write_rx.recv().await {
+            #[cfg(feature = "large-commands")]
+            if let Some(large) = outbound
+                ._resource
+                .as_ref()
+                .and_then(|resource| resource.large.as_ref())
+            {
+                if let Err(error) =
+                    large_commands::write_fragmented(&mut ws_write, outbound.message, large).await
+                {
+                    error!(%error, "fragmented CDP WebSocket write failed");
+                    break;
+                }
+                continue;
+            }
             if let Err(e) = ws_write.send(outbound.message).await {
                 error!("WebSocket write error: {}", e);
                 break;
@@ -826,8 +1070,8 @@ impl CdpConnection {
     }
 
     // Reader loop: websocket -> route to pending or the selected event fanout
-    async fn reader_loop(
-        mut ws_read: futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    async fn reader_loop<ReadError: std::fmt::Display>(
+        mut ws_read: impl futures_util::Stream<Item = std::result::Result<Message, ReadError>> + Unpin,
         pending: PendingMap,
         event_delivery: CdpEventDelivery,
         max_response_bytes: usize,
@@ -889,6 +1133,7 @@ impl CdpConnection {
                                 limit: max_protocol_error_bytes,
                             })
                         } else {
+                            trace!(id, code, "CDP protocol command failed");
                             Err(CdpError::Protocol {
                                 code,
                                 message: compact_string(message),
@@ -916,6 +1161,32 @@ impl CdpConnection {
                         "CDP event exceeded the configured byte limit; closing connection"
                     );
                     break;
+                }
+                if let Some(limit) = resources
+                    .as_ref()
+                    .and_then(|budget| budget.profile.pending_session_id_bytes)
+                {
+                    session_retirement::retire_from_event(
+                        &pending,
+                        &method,
+                        object.get("params").unwrap_or(&Value::Null),
+                        limit,
+                    );
+                }
+                if let Some(policy) = resources
+                    .as_ref()
+                    .and_then(|budget| budget.profile.event_admission_policy())
+                    && !policy.retains(
+                        &method,
+                        object.get("params").unwrap_or(&Value::Null),
+                        object.get("sessionId").and_then(Value::as_str),
+                    )
+                {
+                    // Reader wire storage was admitted already. Omitted
+                    // payloads never acquire an event lease or an Arc/fanout
+                    // slot; the following command response still gets read.
+                    trace!(target: "pwright_cdp::event_admission", method, policy = policy.name(), "CDP event omitted by selected admission policy");
+                    continue;
                 }
                 let session_id = match object.remove("sessionId") {
                     Some(Value::String(session_id)) => Some(compact_string(&session_id)),
@@ -955,6 +1226,7 @@ impl CdpConnection {
                 };
 
                 trace!(method = event.method, "CDP event received");
+                lifecycle_trace::received(&event.method, &event.params);
                 match event_delivery.send(event) {
                     Ok(0) => warn!(method, "CDP event dropped (no active subscribers)"),
                     Ok(_) => {}
@@ -1067,6 +1339,13 @@ fn compact_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    mod dom_description;
+    mod event_admission;
+    #[cfg(feature = "large-commands")]
+    mod large_commands;
+    mod retained_result;
+    mod session_retirement;
+    mod settlement;
     use super::*;
 
     fn test_connection(config: ConnectionConfig) -> CdpConnection {
@@ -1082,10 +1361,13 @@ mod tests {
             event_delivery,
             default_timeout: config.timeout,
             max_command_bytes: config.max_command_bytes,
+            #[cfg(feature = "large-commands")]
+            large_commands: None,
             resources: None,
             _reader_resource: None,
             _event_delivery_resource: None,
             shutdown: tokio_util::sync::CancellationToken::new(),
+            io_tasks: tokio_util::task::TaskTracker::new(),
         }
     }
 
@@ -1170,6 +1452,10 @@ mod tests {
                 event_delivery,
                 default_timeout: config.timeout,
                 max_command_bytes: config.max_command_bytes,
+                #[cfg(feature = "large-commands")]
+                large_commands: profile.large_commands.map(|large| {
+                    crate::connection::large_commands::Pool::new(large, &ledger).unwrap()
+                }),
                 resources: Some(ConnectionResourceBudget {
                     ledger,
                     profile: profile.clone(),
@@ -1177,6 +1463,7 @@ mod tests {
                 _reader_resource: Some(reader_resource),
                 _event_delivery_resource: event_delivery_resource,
                 shutdown: tokio_util::sync::CancellationToken::new(),
+                io_tasks: tokio_util::task::TaskTracker::new(),
             },
             write_rx,
         )
@@ -1257,6 +1544,49 @@ mod tests {
         assert_eq!(config.max_event_bytes, MAX_CDP_WEBSOCKET_BYTES);
         assert_eq!(config.max_websocket_bytes, MAX_CDP_WEBSOCKET_BYTES);
         assert_eq!(config.max_protocol_error_bytes, 64 * 1024);
+    }
+
+    #[test]
+    fn io_finished_waits_for_task_cleanup_without_retaining_connection() {
+        // Arrange
+        let connection = test_connection(ConnectionConfig::default());
+        let task = connection.io_tasks.token();
+        connection.io_tasks.close();
+        let mut finished = Box::pin(connection.io_finished());
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        drop(connection);
+        assert!(finished.as_mut().poll(&mut context).is_pending());
+
+        // Act
+        drop(task);
+
+        // Assert
+        assert!(finished.as_mut().poll(&mut context).is_ready());
+    }
+
+    #[tokio::test]
+    async fn explicit_disconnect_rejects_unpolled_and_new_commands_without_browser_close() {
+        // Arrange
+        let profile = CdpConnectionProductionProfile::new(
+            ResourceScope::Connection,
+            ConnectionConfig::default(),
+        );
+        let resources = production_resources(&profile);
+        let (connection, mut wire) = test_production_connection_with_writer(&profile, &resources);
+        let prepared = connection.send_command("Browser.getVersion", serde_json::json!({}));
+        let closed = connection.closed();
+        // Act
+        connection.request_disconnect();
+        // Assert
+        closed.await;
+        assert!(matches!(prepared.await, Err(CdpError::Closed)));
+        let new_call = connection
+            .send_command("Browser.getVersion", serde_json::json!({}))
+            .await;
+        assert!(matches!(new_call, Err(CdpError::Closed)));
+        assert!(wire.try_recv().is_err());
+        drop(connection);
+        assert_eq!(resources.metrics().unwrap().active_leases, 0);
     }
 
     #[test]
@@ -1378,6 +1708,7 @@ mod tests {
                     response,
                     _slot: slot,
                     resource: None,
+                    session_id: None,
                 },
             );
             receivers.push(receiver);
@@ -1416,6 +1747,256 @@ mod tests {
         assert!(matches!(error, CdpError::LimitExceeded { .. }));
         assert!(connection.pending.is_empty());
         assert_eq!(connection.active_pending.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn child_detach_resumes_child_then_addresses_the_announcing_parent() {
+        // Arrange: replace the wire with an in-memory transport, keeping the
+        // actual CdpSession command serialization and pending-call machinery.
+        let mut connection = test_connection(ConnectionConfig::default());
+        let (sender, mut wire) = tokio::sync::mpsc::channel(2);
+        connection.write_tx = sender;
+        let connection = Arc::new(connection);
+        let client = crate::CdpSession::browser(connection.clone());
+        // Act
+        let operation = tokio::spawn(async move {
+            client
+                .target_detach_in_parent(Some("parent"), "child")
+                .await
+        });
+        // Assert
+        for (method, session, params) in [
+            (
+                "Runtime.runIfWaitingForDebugger",
+                "child",
+                serde_json::json!({}),
+            ),
+            (
+                "Target.detachFromTarget",
+                "parent",
+                serde_json::json!({"sessionId":"child"}),
+            ),
+        ] {
+            let outbound = wire.recv().await.unwrap();
+            let message: Value = serde_json::from_str(outbound.message.to_text().unwrap()).unwrap();
+            assert_eq!(message["method"], method);
+            assert_eq!(message["sessionId"], session);
+            assert_eq!(message["params"], params);
+            let (_, pending) = connection
+                .pending
+                .remove(&message["id"].as_u64().unwrap())
+                .unwrap();
+            assert!(
+                pending
+                    .response
+                    .send(RetainedCommandResult {
+                        result: Ok(serde_json::json!({})),
+                        _resource: pending.resource
+                    })
+                    .is_ok()
+            );
+        }
+        operation.await.unwrap().unwrap();
+        assert!(wire.try_recv().is_err());
+        assert!(connection.pending.is_empty());
+        assert_eq!(connection.active_pending.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn child_detach_accepts_only_exact_missing_child_receipt_before_detaching() {
+        // Arrange
+        let cases = [
+            (CdpError::SessionDetached, true),
+            (
+                CdpError::Protocol {
+                    code: -32001,
+                    message: "Session with given id not found.".into(),
+                },
+                true,
+            ),
+            (
+                CdpError::Protocol {
+                    code: -32000,
+                    message: "Session with given id not found.".into(),
+                },
+                false,
+            ),
+            (
+                CdpError::Protocol {
+                    code: -32001,
+                    message: "other failure".into(),
+                },
+                false,
+            ),
+            (CdpError::Closed, false),
+            (CdpError::Timeout, false),
+        ];
+        for (error, retired) in cases {
+            let expected = error.to_string();
+            let mut connection = test_connection(ConnectionConfig::default());
+            let (sender, mut wire) = tokio::sync::mpsc::channel(2);
+            connection.write_tx = sender;
+            let connection = Arc::new(connection);
+            let client = crate::CdpSession::browser(connection.clone());
+            // Act
+            let operation = tokio::spawn(async move {
+                client
+                    .target_detach_in_parent(Some("parent"), "child")
+                    .await
+            });
+            let outbound = wire.recv().await.unwrap();
+            let message: Value = serde_json::from_str(outbound.message.to_text().unwrap()).unwrap();
+            assert_eq!(message["method"], "Runtime.runIfWaitingForDebugger");
+            assert_eq!(message["sessionId"], "child");
+            let (
+                _,
+                PendingEntry {
+                    response,
+                    resource,
+                    _slot: slot,
+                    session_id: _,
+                },
+            ) = connection
+                .pending
+                .remove(&message["id"].as_u64().unwrap())
+                .unwrap();
+            drop(slot);
+            assert!(
+                response
+                    .send(RetainedCommandResult {
+                        result: Err(error),
+                        _resource: resource,
+                    })
+                    .is_ok()
+            );
+            let result = operation.await.unwrap();
+            // Assert
+            if retired {
+                assert!(result.is_ok());
+            } else {
+                assert_eq!(result.unwrap_err().to_string(), expected);
+            }
+            assert!(
+                wire.try_recv().is_err(),
+                "no detach or retry after a failed resume"
+            );
+            assert!(connection.pending.is_empty());
+            assert_eq!(connection.active_pending.load(Ordering::Acquire), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn child_detach_accepts_only_exact_second_stage_already_detached_receipt() {
+        // Arrange: exercise both serialized native commands and real pending
+        // registrations; only the injected transport response differs per case.
+        let cases = [
+            (
+                CdpError::Protocol {
+                    code: -32602,
+                    message: "No session with given id".into(),
+                },
+                true,
+            ),
+            (
+                CdpError::Protocol {
+                    code: -32000,
+                    message: "No session with given id".into(),
+                },
+                false,
+            ),
+            (
+                CdpError::Protocol {
+                    code: -32602,
+                    message: "No session with given id.".into(),
+                },
+                false,
+            ),
+            (
+                CdpError::Protocol {
+                    code: -32602,
+                    message: "other invalid parameters".into(),
+                },
+                false,
+            ),
+            (
+                CdpError::Protocol {
+                    code: -32001,
+                    message: "Session with given id not found.".into(),
+                },
+                false,
+            ),
+            (CdpError::Closed, false),
+            (CdpError::Timeout, false),
+            (CdpError::ChannelDropped, false),
+        ];
+        for (error, retired) in cases {
+            let expected = error.to_string();
+            let mut connection = test_connection(ConnectionConfig::default());
+            let (sender, mut wire) = tokio::sync::mpsc::channel(2);
+            connection.write_tx = sender;
+            let connection = Arc::new(connection);
+            let client = crate::CdpSession::browser(connection.clone());
+            // Act
+            let operation = tokio::spawn(async move {
+                client
+                    .target_detach_in_parent(Some("parent"), "child")
+                    .await
+            });
+            for (method, session, result) in [
+                (
+                    "Runtime.runIfWaitingForDebugger",
+                    "child",
+                    Ok(serde_json::json!({})),
+                ),
+                ("Target.detachFromTarget", "parent", Err(error)),
+            ] {
+                let outbound = wire.recv().await.unwrap();
+                let message: Value =
+                    serde_json::from_str(outbound.message.to_text().unwrap()).unwrap();
+                assert_eq!(message["method"], method);
+                assert_eq!(message["sessionId"], session);
+                if method == "Target.detachFromTarget" {
+                    assert_eq!(
+                        message["params"],
+                        serde_json::json!({ "sessionId": "child" })
+                    );
+                }
+                let (
+                    _,
+                    PendingEntry {
+                        response,
+                        resource,
+                        _slot: slot,
+                        session_id: _,
+                    },
+                ) = connection
+                    .pending
+                    .remove(&message["id"].as_u64().unwrap())
+                    .unwrap();
+                drop(slot);
+                assert!(
+                    response
+                        .send(RetainedCommandResult {
+                            result,
+                            _resource: resource
+                        })
+                        .is_ok()
+                );
+            }
+            let result = operation.await.unwrap();
+            // Assert
+            if retired {
+                assert!(result.is_ok());
+            } else {
+                assert_eq!(result.unwrap_err().to_string(), expected);
+            }
+            assert!(
+                wire.try_recv().is_err(),
+                "no retries or extra cleanup commands"
+            );
+            assert!(connection.pending.is_empty());
+            assert_eq!(connection.active_pending.load(Ordering::Acquire), 0);
+        }
     }
 
     #[test]

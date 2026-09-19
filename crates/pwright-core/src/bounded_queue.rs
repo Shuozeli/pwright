@@ -58,6 +58,19 @@ impl<T> BoundedQueue<T> {
         self.capacity
     }
 
+    /// Reserve storage for the logical limit without changing queue contents,
+    /// metrics or overflow policy. Callers admitting payload bytes must do so
+    /// before this allocation; allocator bookkeeping is separate.
+    pub fn try_reserve_full_capacity(&mut self) -> Result<(), std::collections::TryReserveError> {
+        self.items
+            .try_reserve_exact(self.capacity.saturating_sub(self.items.len()))
+    }
+
+    /// Backing element slots, not the logical admission limit or physical RAM.
+    pub fn allocated_capacity(&self) -> usize {
+        self.items.capacity()
+    }
+
     pub const fn policy(&self) -> OverflowPolicy {
         self.policy
     }
@@ -157,6 +170,42 @@ impl<T> BoundedQueue<T> {
 #[cfg(test)]
 mod tests {
     use super::{BoundedQueue, OverflowPolicy, PushOutcome, QueueMetrics};
+
+    #[test]
+    fn preallocation_preserves_queue_contents_metrics_and_overflow() {
+        // Arrange
+        let mut queue = BoundedQueue::new(16, OverflowPolicy::RejectNewest);
+        queue.push(7u64);
+        let before = queue.metrics();
+        // Act
+        queue.try_reserve_full_capacity().unwrap();
+        // Assert
+        assert_eq!(queue.metrics(), before);
+        assert!(queue.allocated_capacity() >= 16);
+        let capacity = queue.allocated_capacity();
+        for i in 1..16 {
+            assert_eq!(queue.push(i), PushOutcome::Enqueued);
+        }
+        assert!(matches!(queue.push(99), PushOutcome::Rejected { .. }));
+        assert_eq!(queue.pop(), Some(7));
+        assert_eq!(queue.allocated_capacity(), capacity);
+    }
+
+    #[test]
+    fn failed_preallocation_preserves_the_existing_queue() {
+        // Arrange
+        let mut queue = BoundedQueue::new(usize::MAX, OverflowPolicy::RejectNewest);
+        queue.push(7u64);
+        let before = queue.metrics();
+        let capacity = queue.allocated_capacity();
+        // Act
+        let result = queue.try_reserve_full_capacity();
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(queue.metrics(), before);
+        assert_eq!(queue.allocated_capacity(), capacity);
+        assert_eq!(queue.pop(), Some(7));
+    }
 
     #[test]
     fn reject_newest_preserves_queued_events() {

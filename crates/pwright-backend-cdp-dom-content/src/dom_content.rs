@@ -1,10 +1,13 @@
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use pwright_browser_backend::NativeBackendAccess;
-use pwright_cap_dom_content::{DomContentData, DomContentErrorDetails, DomContentParams};
+use pwright_cap_dom_content::{
+    DomContentData, DomContentErrorDetails, DomContentParams, TitleParams,
+};
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::CdpError;
 use pwright_core::{
@@ -24,11 +27,16 @@ const DOM_CONTENT_SERIALIZER: &str = r#"(() => {
   return value;
 })()"#;
 
+// One utility-world numeric context ID in both the current and atomically
+// prepared replacement route. This is separate from retained native strings.
+const CONTEXT_ROUTE_NUMERIC_ID_BYTES: u64 = 2 * std::mem::size_of::<i64>() as u64;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CdpDomContentProductionProfile {
     scope: ResourceScope,
     max_content_bytes: usize,
     max_concurrent_reads: usize,
+    max_frame_reads: NonZeroUsize,
     max_context_routes: usize,
     max_native_id_bytes: usize,
     maximum_route_retained_bytes: u64,
@@ -55,6 +63,7 @@ impl CdpDomContentProductionProfile {
             scope,
             max_content_bytes,
             max_concurrent_reads,
+            max_frame_reads: NonZeroUsize::MIN,
             max_context_routes: 0,
             max_native_id_bytes: 0,
             maximum_route_retained_bytes: 0,
@@ -62,10 +71,22 @@ impl CdpDomContentProductionProfile {
         }
     }
 
+    /// Allows independent same-Frame reads within the unchanged shared
+    /// connection-wide read/byte allowance. Default Frame admission is one.
+    pub const fn with_frame_concurrency(mut self, maximum: NonZeroUsize) -> Self {
+        self.max_frame_reads = maximum;
+        self
+    }
+
+    pub const fn max_frame_reads(self) -> NonZeroUsize {
+        self.max_frame_reads
+    }
+
     /// Adds persistent storage for shared Frame utility-world routes. Five
     /// native strings cover the route identity, unique context ID, and the
     /// target-local CDP client's copies. A second set covers atomic route
-    /// replacement when an execution world is recreated.
+    /// replacement when an execution world is recreated. Both generations'
+    /// utility-world numeric context IDs have a separate size-derived allowance.
     pub fn with_context_routes(
         mut self,
         max_context_routes: usize,
@@ -75,8 +96,12 @@ impl CdpDomContentProductionProfile {
         self.max_native_id_bytes = max_native_id_bytes;
         self.maximum_route_retained_bytes = u64::try_from(max_context_routes)
             .unwrap_or(u64::MAX)
-            .saturating_mul(10)
-            .saturating_mul(u64::try_from(max_native_id_bytes).unwrap_or(u64::MAX));
+            .saturating_mul(
+                u64::try_from(max_native_id_bytes)
+                    .unwrap_or(u64::MAX)
+                    .saturating_mul(10)
+                    .saturating_add(CONTEXT_ROUTE_NUMERIC_ID_BYTES),
+            );
         let content_bytes = u64::try_from(self.max_content_bytes)
             .unwrap_or(u64::MAX)
             .saturating_mul(u64::try_from(self.max_concurrent_reads).unwrap_or(u64::MAX));
@@ -146,7 +171,7 @@ struct DomContentResources {
 struct DomContentAdmission {
     lease: Option<ResourceLease>,
     active: Arc<AtomicUsize>,
-    frame_active: Arc<AtomicBool>,
+    frame_active: Arc<AtomicUsize>,
 }
 
 impl DomContentAdmission {
@@ -160,7 +185,8 @@ impl DomContentAdmission {
 impl Drop for DomContentAdmission {
     fn drop(&mut self) {
         drop(self.lease.take());
-        self.frame_active.store(false, Ordering::Release);
+        let previous_frame = self.frame_active.fetch_sub(1, Ordering::AcqRel);
+        debug_assert!(previous_frame > 0);
         let previous = self.active.fetch_sub(1, Ordering::AcqRel);
         debug_assert!(previous > 0);
     }
@@ -171,7 +197,7 @@ pub struct CdpDomContentService {
     client: Arc<dyn CdpClient>,
     unique_context_id: Arc<str>,
     resources: DomContentResources,
-    frame_active: Arc<AtomicBool>,
+    frame_active: Arc<AtomicUsize>,
 }
 
 #[derive(Clone)]
@@ -203,7 +229,7 @@ impl CdpDomContentServiceFactory {
             client,
             unique_context_id,
             resources: self.resources.clone(),
-            frame_active: Arc::new(AtomicBool::new(false)),
+            frame_active: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -242,11 +268,17 @@ impl CdpDomContentService {
         }
         if self
             .frame_active
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (current < profile.max_frame_reads().get()).then_some(current + 1)
+            })
             .is_err()
         {
             return Err(resource_error(
-                "a DOM-content read is already active for this Frame",
+                if profile.max_frame_reads() == NonZeroUsize::MIN {
+                    "a DOM-content read is already active for this Frame"
+                } else {
+                    "DOM-content Frame concurrency limit was reached"
+                },
             ));
         }
         if self
@@ -257,7 +289,8 @@ impl CdpDomContentService {
             })
             .is_err()
         {
-            self.frame_active.store(false, Ordering::Release);
+            let previous_frame = self.frame_active.fetch_sub(1, Ordering::AcqRel);
+            debug_assert!(previous_frame > 0);
             return Err(resource_error(
                 "DOM-content connection concurrency limit was reached",
             ));
@@ -274,7 +307,8 @@ impl CdpDomContentService {
                 frame_active: Arc::clone(&self.frame_active),
             }),
             Err(error) => {
-                self.frame_active.store(false, Ordering::Release);
+                let previous_frame = self.frame_active.fetch_sub(1, Ordering::AcqRel);
+                debug_assert!(previous_frame > 0);
                 let previous = self.resources.active.fetch_sub(1, Ordering::AcqRel);
                 debug_assert!(previous > 0);
                 Err(map_resource_error(error))
@@ -298,6 +332,25 @@ impl Service<DomContentParams> for CdpDomContentService {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
     fn call(&self, _params: DomContentParams) -> Self::Future<'_> {
+        self.read(DOM_CONTENT_SERIALIZER)
+    }
+}
+
+impl Service<TitleParams> for CdpDomContentService {
+    type Response = DomContentData;
+    type Error = OperationError<DomContentErrorDetails>;
+    type Future<'a> =
+        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
+
+    fn call(&self, _params: TitleParams) -> Self::Future<'_> {
+        self.read("document.title")
+    }
+}
+
+impl CdpDomContentService {
+    // Private fixed-source implementation shared by the two typed DOM reads.
+    // No public API accepts caller-provided JavaScript.
+    fn read(&self, source: &'static str) -> <Self as Service<DomContentParams>>::Future<'_> {
         let mut admission = match self.reserve() {
             Ok(admission) => admission,
             Err(error) => return Box::pin(async move { Err(error) }),
@@ -305,10 +358,7 @@ impl Service<DomContentParams> for CdpDomContentService {
         Box::pin(async move {
             let response = self
                 .client
-                .runtime_evaluate_in_unique_context(
-                    DOM_CONTENT_SERIALIZER,
-                    self.unique_context_id.as_ref(),
-                )
+                .runtime_evaluate_in_unique_context(source, self.unique_context_id.as_ref())
                 .await
                 .map_err(map_cdp_error)?;
             let text = take_string_result(response)?;
@@ -401,7 +451,7 @@ mod tests {
 
     use super::{
         CdpDomContentProductionProfile, CdpDomContentServiceFactory, DomContentErrorDetails,
-        DomContentParams,
+        DomContentParams, TitleParams,
     };
 
     fn profile(max_content_bytes: usize, concurrent: usize) -> CdpDomContentProductionProfile {
@@ -425,7 +475,9 @@ mod tests {
     #[test]
     fn shared_context_route_storage_is_explicit_and_reservable() {
         // Arrange
-        let profile = profile(128, 1).with_context_routes(3, 64);
+        let ordinary = profile(128, 1);
+        let profile = ordinary.with_context_routes(3, 64);
+        let expected_route_bytes = 3 * (10 * 64 + 2 * std::mem::size_of::<i64>() as u64);
         let resources = resources(profile);
         let factory =
             CdpDomContentServiceFactory::new_with_production_resources(profile, &resources)
@@ -440,14 +492,24 @@ mod tests {
         // Assert
         assert_eq!(profile.max_context_routes(), 3);
         assert_eq!(profile.max_native_id_bytes(), 64);
-        assert_eq!(profile.maximum_route_retained_bytes(), 3 * 10 * 64);
+        assert_eq!(profile.maximum_route_retained_bytes(), expected_route_bytes);
+        assert_eq!(
+            profile.requirements().leases,
+            ordinary.requirements().leases + 1
+        );
+        assert_eq!(
+            profile.requirements().class(ResourceClass::DomContentBytes),
+            ordinary
+                .requirements()
+                .class(ResourceClass::DomContentBytes)
+        );
         assert_eq!(
             resources
                 .metrics()
                 .unwrap()
                 .class(ResourceClass::BackendStateBytes)
                 .current,
-            3 * 10 * 64
+            expected_route_bytes
         );
         drop(lease);
         assert_eq!(
@@ -458,6 +520,145 @@ mod tests {
                 .current,
             0
         );
+    }
+
+    #[test]
+    fn frame_parallelism_is_opt_in_and_does_not_increase_the_shared_byte_plan() {
+        // Arrange
+        let serial = profile(64, 3);
+        // Act
+        let parallel = serial.with_frame_concurrency(std::num::NonZeroUsize::new(2).unwrap());
+        // Assert
+        assert_eq!(serial.max_frame_reads().get(), 1);
+        assert_eq!(parallel.max_frame_reads().get(), 2);
+        assert_eq!(parallel.requirements(), serial.requirements());
+    }
+
+    #[tokio::test]
+    async fn frame_parallel_read_admission_is_bounded_before_browser_work() {
+        // Arrange
+        let profile =
+            profile(64, 3).with_frame_concurrency(std::num::NonZeroUsize::new(2).unwrap());
+        let resources = resources(profile);
+        let factory =
+            CdpDomContentServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let service = factory.bind_shared_unique_context(client.clone(), Arc::from("frame"));
+        let first = service.call(TitleParams);
+        let second = service.call(DomContentParams);
+        // Act
+        let error = service.call(TitleParams).await.unwrap_err();
+        // Assert
+        assert_eq!(error.kind(), FailureKind::ResourceExhausted);
+        assert!(error.message().contains("Frame concurrency"));
+        assert_eq!(
+            resources
+                .metrics()
+                .unwrap()
+                .class(ResourceClass::DomContentBytes)
+                .current,
+            128
+        );
+        assert!(client.calls().is_empty());
+        drop(first);
+        let replacement = service.call(TitleParams);
+        assert_eq!(
+            resources
+                .metrics()
+                .unwrap()
+                .class(ResourceClass::DomContentBytes)
+                .current,
+            128
+        );
+        drop((replacement, second));
+        assert_eq!(resources.metrics().unwrap().active_leases, 0);
+    }
+
+    #[tokio::test]
+    async fn parallel_frames_share_the_original_connection_limit_and_rollback_failed_admission() {
+        // Arrange
+        let profile =
+            profile(64, 2).with_frame_concurrency(std::num::NonZeroUsize::new(2).unwrap());
+        let resources = resources(profile);
+        let factory =
+            CdpDomContentServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let service = factory.bind_shared_unique_context(client.clone(), Arc::from("first"));
+        let sibling = factory.bind_shared_unique_context(client.clone(), Arc::from("second"));
+        let first = service.call(TitleParams);
+        let second = service.call(DomContentParams);
+        // Act
+        let error = sibling.call(TitleParams).await.unwrap_err();
+        // Assert
+        assert_eq!(error.kind(), FailureKind::ResourceExhausted);
+        assert!(error.message().contains("connection concurrency"));
+        drop((first, second));
+        // Both sibling permits must fit after global rejection; a stale Frame
+        // count would reject its second permit even though no read was started.
+        let next = sibling.call(TitleParams);
+        let concurrent = sibling.call(DomContentParams);
+        assert_eq!(
+            resources
+                .metrics()
+                .unwrap()
+                .class(ResourceClass::DomContentBytes)
+                .current,
+            128
+        );
+        assert!(client.calls().is_empty());
+        drop((next, concurrent));
+        assert_eq!(resources.metrics().unwrap().active_leases, 0);
+    }
+
+    #[tokio::test]
+    async fn title_uses_fixed_source_in_the_bound_utility_world_and_releases_its_result() {
+        // Arrange
+        let profile = profile(128, 1);
+        let resources = resources(profile);
+        let factory =
+            CdpDomContentServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(json!({"result":{"value":"标题"}}));
+        let service =
+            factory.bind_shared_unique_context(client.clone(), Arc::from("utility-title"));
+        // Act
+        let title = service.call(TitleParams).await.unwrap();
+        // Assert
+        assert_eq!(title.as_str(), "标题");
+        assert_eq!(client.method_names(), ["Runtime.evaluate"]);
+        assert_eq!(client.calls()[0].1[0]["expression"], "document.title");
+        assert_eq!(client.calls()[0].1[0]["uniqueContextId"], "utility-title");
+        assert_eq!(
+            resources
+                .metrics()
+                .unwrap()
+                .class(ResourceClass::DomContentBytes)
+                .current,
+            6
+        );
+        drop(title);
+        assert_eq!(resources.metrics().unwrap().active_leases, 0);
+    }
+
+    #[tokio::test]
+    async fn oversized_title_is_not_published_or_retained() {
+        // Arrange
+        let profile = profile(4, 1);
+        let resources = resources(profile);
+        let factory =
+            CdpDomContentServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(json!({"result":{"value":"12345"}}));
+        let service = factory.bind_shared_unique_context(client, Arc::from("utility-title"));
+        // Act
+        let error = service.call(TitleParams).await.unwrap_err();
+        // Assert
+        assert_eq!(error.kind(), FailureKind::ProtocolViolation);
+        assert_eq!(resources.metrics().unwrap().active_leases, 0);
     }
 
     #[tokio::test]

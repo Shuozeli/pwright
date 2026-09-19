@@ -1,8 +1,8 @@
 //! Bounded Playwright-compatible US keyboard layout resolution.
 //!
 //! This is a static-data adapter. It performs no browser I/O and allocates no
-//! collections, so malformed or unknown key expressions fail before an input
-//! transaction starts.
+//! collections. Callers choose strict prevalidation or raw Keyboard parsing,
+//! where unknown/empty tokens are resolved only at their ordered input step.
 
 use std::fmt::{self, Display, Formatter};
 
@@ -63,6 +63,19 @@ impl std::error::Error for KeyChordParseError {}
 
 impl<'a> KeyTokens<'a> {
     pub fn parse(value: &'a str) -> Result<Self, KeyChordParseError> {
+        Self::parse_with_empty_tail(value, false)
+    }
+
+    /// Raw Keyboard resolves an empty final token only after pressing any
+    /// earlier tokens. Locator's strict parser deliberately keeps its policy.
+    pub fn parse_raw_keyboard(value: &'a str) -> Result<Self, KeyChordParseError> {
+        Self::parse_with_empty_tail(value, true)
+    }
+
+    fn parse_with_empty_tail(
+        value: &'a str,
+        allow_empty_tail: bool,
+    ) -> Result<Self, KeyChordParseError> {
         let mut values = [""; INPUT_CHORD_MAX_KEYS];
         let mut len = 0;
         let mut start = 0;
@@ -79,7 +92,7 @@ impl<'a> KeyTokens<'a> {
                 building = true;
             }
         }
-        if !building {
+        if !building && !allow_empty_tail {
             return Err(KeyChordParseError::EmptyToken { token: len });
         }
         if len >= INPUT_CHORD_MAX_KEYS {
@@ -191,7 +204,11 @@ pub fn resolve_key(
     };
     let (code, force_shifted) = key_code_for_token(token).ok_or(UnknownKey(token))?;
     let definition = definition_for_code(code).ok_or(UnknownKey(token))?;
-    let shifted = force_shifted || (shift_pressed && definition.shift_key.is_some());
+    // Upstream's layout closure stores literal character aliases without a
+    // shifted variant. Only physical codes such as KeyA/Digit1 follow held
+    // Shift; a literal `a`/`1` remains that literal, including in Press.
+    let shifted = force_shifted
+        || (shift_pressed && definition.shift_key.is_some() && character_code(token).is_none());
     let key = if shifted {
         definition.shift_key.unwrap_or(definition.key)
     } else {
@@ -588,6 +605,28 @@ mod tests {
 
         // Assert
         assert_eq!(error.0, token);
+    }
+
+    #[test]
+    fn literal_aliases_keep_their_characters_while_physical_codes_follow_shift() {
+        // Arrange
+        let aliases = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789`~!@#$%^&*()-_=+\\|[]{};:'\",<.>/? ";
+        for character in aliases.chars() {
+            let mut bytes = [0; 4];
+            let token = character.encode_utf8(&mut bytes);
+            let unshifted = resolve_key(token, false, false).unwrap();
+            // Act
+            let shifted = resolve_key(token, true, false).unwrap();
+            // Assert
+            assert_eq!(shifted, unshifted, "literal {token:?}");
+        }
+        for (code, expected) in [("KeyA", "A"), ("Digit1", "!"), ("Minus", "_")] {
+            // Act
+            let shifted = resolve_key(code, true, false).unwrap();
+            // Assert
+            assert_eq!(shifted.key, expected);
+            assert_eq!(shifted.text, expected);
+        }
     }
 
     #[test]

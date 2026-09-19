@@ -1,0 +1,193 @@
+format: 1
+capability: pwright.keyboard
+version: { major: 1, minor: 0 }
+root: pwright.keyboard
+imports:
+  - pwright.common
+commands:
+  - id: keyboard.down
+    name: keyboard_down
+    method: 851969
+    targets: [pwright.browser.page]
+    command: keyboard_down_command
+    result: keyboard_down_result
+    params_type: pwright.keyboard.down_params
+    result_type: pwright.keyboard.success
+    error_details_type: pwright.keyboard.error_details
+  - id: keyboard.insert-text
+    name: keyboard_insert_text
+    method: 851972
+    targets: [pwright.browser.page]
+    command: keyboard_insert_text_command
+    result: keyboard_insert_text_result
+    params_type: pwright.keyboard.insert_text_params
+    result_type: pwright.keyboard.success
+    error_details_type: pwright.keyboard.error_details
+  - id: keyboard.press
+    name: keyboard_press
+    method: 851971
+    targets: [pwright.browser.page]
+    command: keyboard_press_command
+    result: keyboard_press_result
+    params_type: pwright.keyboard.press_params
+    result_type: pwright.keyboard.success
+    error_details_type: pwright.keyboard.error_details
+  - id: keyboard.type
+    name: keyboard_type
+    method: 851973
+    targets: [pwright.browser.page]
+    command: keyboard_type_command
+    result: keyboard_type_result
+    params_type: pwright.keyboard.type_params
+    result_type: pwright.keyboard.success
+    error_details_type: pwright.keyboard.error_details
+  - id: keyboard.up
+    name: keyboard_up
+    method: 851970
+    targets: [pwright.browser.page]
+    command: keyboard_up_command
+    result: keyboard_up_result
+    params_type: pwright.keyboard.up_params
+    result_type: pwright.keyboard.success
+    error_details_type: pwright.keyboard.error_details
+types:
+  - kind: tagged_union
+    id: pwright.keyboard
+    variants:
+      - tag: 1
+        name: keyboard_down_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.keyboard.down_params }
+      - tag: 2
+        name: keyboard_down_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.keyboard.outcome }
+      - tag: 3
+        name: keyboard_up_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.keyboard.up_params }
+      - tag: 4
+        name: keyboard_up_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.keyboard.outcome }
+      - tag: 5
+        name: keyboard_press_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.keyboard.press_params }
+      - tag: 6
+        name: keyboard_press_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.keyboard.outcome }
+      - tag: 7
+        name: keyboard_insert_text_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.keyboard.insert_text_params }
+      - tag: 8
+        name: keyboard_insert_text_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.keyboard.outcome }
+      - tag: 9
+        name: keyboard_type_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.keyboard.type_params }
+      - tag: 10
+        name: keyboard_type_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.keyboard.outcome }
+
+  - kind: record
+    id: pwright.keyboard.down_params
+    public_name: down_params
+    public_external: true
+    fields:
+      - { name: key, type: utf8, constraints: { maximum_length: 128 } }
+
+
+  - kind: record
+    id: pwright.keyboard.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8, constraints: { maximum_length: 4096 } }
+      - { name: details, type: message, target: pwright.keyboard.error_details, cardinality: optional }
+
+  - kind: tagged_union
+    id: pwright.keyboard.error_details
+    public_name: keyboard_error_details
+    variants:
+      - tag: 0
+        name: invalid_key
+        fields:
+          - { name: message, type: utf8, constraints: { maximum_length: 4096 } }
+      - tag: 1
+        name: resource
+        fields:
+          - { name: message, type: utf8, constraints: { maximum_length: 4096 } }
+      - tag: 2
+        name: backend
+        fields:
+          - { name: message, type: utf8, constraints: { maximum_length: 4096 } }
+
+  - kind: record
+    id: pwright.keyboard.insert_text_params
+    public_name: insert_text_params
+    public_external: true
+    fields:
+      - { name: text, type: utf8, constraints: { maximum_length: 1048576 } }
+
+  - kind: tagged_union
+    id: pwright.keyboard.outcome
+    variants:
+      - { tag: 0, name: success, fields: [] }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.keyboard.error }
+
+  - kind: record
+    id: pwright.keyboard.press_params
+    public_name: press_params
+    public_external: true
+    fields:
+      - { name: key, type: utf8, constraints: { maximum_length: 128 } }
+      - { name: delay, type: message, target: pwright.common.duration, cardinality: optional }
+
+  - kind: record
+    id: pwright.keyboard.success
+    public_name: keyboard_success
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.keyboard.type_params
+    public_name: type_params
+    public_external: true
+    fields:
+      - { name: text, type: utf8, constraints: { maximum_length: 1048576 } }
+      - { name: delay, type: message, target: pwright.common.duration, cardinality: optional }
+
+  - kind: record
+    id: pwright.keyboard.up_params
+    public_name: up_params
+    public_external: true
+    fields:
+      - { name: key, type: utf8, constraints: { maximum_length: 128 } }

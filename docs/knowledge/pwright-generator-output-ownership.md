@@ -1,6 +1,22 @@
-<!-- agent-updated: 2026-09-04T18:17:33Z -->
+<!-- agent-updated: 2026-09-09T08:34:00Z -->
 
 # Pwright generator output ownership
+
+NODE-074 extends binding placement with capability-only `rust_minor_module`.
+Navigation 1.2 generates `generated_capability_1_2.rs`,
+`generated_schema_1_2.rs` and `generated_server_1_2.rs`; selected wire/server
+imports refer to `v1_2`. The raw schema and public models remain generator-owned;
+the typed codec and Frame extension remain handwritten semantic adapters.
+Root 1.1 outputs are not overwritten. CI checks selected outputs against the
+frozen 1.1 baseline. This flag does not alter wire IDs or schema compatibility.
+[Contract and evidence](pwright-frame-navigation.md#node-074-opt-in-typed-navigation-12-contract).
+
+Mouse 1.0 follows the same multi-output boundary: canonical source
+`pwright-cap-mouse/schema/mouse.yml` owns six Page commands, methods 917505–917510
+and tags 1–12. Capability/schema/server/reference are generated; fixed-size
+validated arguments and codec/client adapters are handwritten. The Mouse CI
+contract proof checks output freshness and exact normal closures independently.
+[Verification and remaining native integration](pwright-raw-mouse.md#optional-mouse-10-contracts).
 
 > Status: DT-031 decision with navigation and locator multi-output generation,
 > protocol references, and optional server bindings implemented.
@@ -8,6 +24,27 @@
 > public or wire ABI.
 
 ## Decision
+
+Keyboard 1.0 adds five Page commands at methods 851969–851973 and root tags 1–10.
+Its canonical source is `pwright-cap-keyboard/schema/keyboard.yml`; capability,
+wire models, server chain and reference are generator-owned. Bounded argument
+types and adapters are handwritten semantic layers. The dedicated contract CI
+check verifies fresh outputs, method ownership and exact independent normal
+dependency closures. This is an initial unpublished ABI, without a prior released
+baseline. [Contract and remaining native/FFI work](pwright-raw-keyboard.md).
+
+Navigation 1.1 now exercises the same boundary for Reload: method 65539 and
+tags 5/6, generated capability/schema/server/reference, checked against the
+unchanged navigation/common 1.0 baselines. The new client/backend/FFI adapters
+remain handwritten semantic layers. Existing Goto golden bytes still pass.
+[Reload integration](pwright-page-reload.md).
+
+Locator sequential typing now exercises this boundary in both 1.23 and 2.6.
+Its prior 1.22/2.5 schemas are independently frozen, and command/schema/server/
+reference outputs are regenerated from each reviewed schema, not hand-edited.
+`--previous ... --check` verifies compatibility and output freshness. Portable
+behavior, codec mappings and native execution remain separate handwritten
+layers. [Typing integration](pwright-sequential-typing.md).
 
 One capability schema is the reviewed source of truth for its public semantic
 operations and protocol mapping. The canonical source belongs to the portable

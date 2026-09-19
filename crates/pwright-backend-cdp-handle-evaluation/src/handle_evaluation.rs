@@ -18,7 +18,12 @@ use pwright_cdp::connection::CdpError;
 use pwright_core::{FailureKind, ObjectKindTag, OperationError, Service};
 use serde_json::{Map, Value};
 
-use pwright_backend_cdp_evaluation::{CdpEvaluationLimits, CdpEvaluationService};
+use crate::CdpHandleEvaluationProgram;
+use pwright_backend_cdp_evaluation::{CdpEvaluationLimits, CdpEvaluationService, EvaluationLease};
+
+pub(crate) mod acquisition;
+#[cfg(test)]
+mod acquisition_live;
 
 const HANDLE_RUNTIME: &str = r#"async function(c) {
   'use strict';
@@ -86,8 +91,8 @@ const HANDLE_RUNTIME: &str = r#"async function(c) {
     }
   };
   const argument = c.hasArgument ? decode(c.argument) : undefined;
-  if (c.mode === 'expression') return await eval(c.source);
-  const fn = eval('(' + c.source + ')');
+  if (c.mode === 'expression') return await globalThis.eval(c.source);
+  const fn = globalThis.eval('(' + c.source + ')');
   if (typeof fn !== 'function') throw new TypeError('evaluation source is not a function');
   if (c.receiverSlot === null) return await fn(argument);
   if (!Number.isInteger(c.receiverSlot) || c.receiverSlot < 0 || c.receiverSlot >= handles.length)
@@ -173,6 +178,26 @@ impl Debug for CdpEvaluatedHandle {
 }
 
 impl CdpEvaluatedHandle {
+    pub(crate) fn element_reference(
+        client: Arc<dyn CdpClient>,
+        object_id: &str,
+        max_native_bytes: usize,
+    ) -> Result<Self, OperationError<HandleEvaluationErrorDetails>> {
+        if object_id.is_empty() || object_id.len() > max_native_bytes {
+            return Err(invalid_value(
+                "native element reference is empty or oversized".into(),
+            ));
+        }
+        Ok(Self {
+            client,
+            kind: CdpHandleKind::Element,
+            object_id: Some(Arc::from(object_id)),
+            primitive_argument: None,
+            native_argument_bytes: object_id.len(),
+            preview: Arc::from(""),
+        })
+    }
+
     pub const fn kind(&self) -> CdpHandleKind {
         self.kind
     }
@@ -225,8 +250,9 @@ impl CdpEvaluatedHandle {
 /// graph and must match `EvaluateHandleParams::referenced_handles` exactly.
 #[derive(Clone)]
 pub struct CdpHandleEvaluationRequest {
-    params: EvaluateHandleParams,
+    params: CdpHandleEvaluationProgram,
     receiver: Option<(pwright_core::ObjectId, CdpEvaluatedHandle)>,
+    native_receiver: Option<CdpEvaluatedHandle>,
     handles: Vec<(pwright_core::ObjectId, CdpEvaluatedHandle)>,
 }
 
@@ -236,8 +262,9 @@ impl CdpHandleEvaluationRequest {
         handles: Vec<(pwright_core::ObjectId, CdpEvaluatedHandle)>,
     ) -> Self {
         Self {
-            params,
+            params: CdpHandleEvaluationProgram::from_portable(params),
             receiver: None,
+            native_receiver: None,
             handles,
         }
     }
@@ -248,14 +275,55 @@ impl CdpHandleEvaluationRequest {
         handles: Vec<(pwright_core::ObjectId, CdpEvaluatedHandle)>,
     ) -> Self {
         Self {
-            params,
+            params: CdpHandleEvaluationProgram::from_portable(params),
             receiver: Some(receiver),
+            native_receiver: None,
             handles,
         }
     }
 
+    /// Portable validation projection. For native expression arguments this is
+    /// not the executable mode; use program() to inspect invocation semantics.
     pub const fn params(&self) -> &EvaluateHandleParams {
+        self.params.portable_projection()
+    }
+
+    pub const fn program(&self) -> &CdpHandleEvaluationProgram {
         &self.params
+    }
+
+    pub const fn new_program(
+        params: CdpHandleEvaluationProgram,
+        receiver: Option<(pwright_core::ObjectId, CdpEvaluatedHandle)>,
+        handles: Vec<(pwright_core::ObjectId, CdpEvaluatedHandle)>,
+    ) -> Self {
+        Self {
+            params,
+            receiver,
+            native_receiver: None,
+            handles,
+        }
+    }
+
+    /// Temporary backend-owned receiver with no portable Handle registration.
+    /// Its composing owner must retain and release the native object.
+    pub fn new_on_native_handle(
+        params: EvaluateHandleParams,
+        receiver: CdpEvaluatedHandle,
+    ) -> Self {
+        Self {
+            params: CdpHandleEvaluationProgram::from_portable(params),
+            receiver: None,
+            native_receiver: Some(receiver),
+            handles: Vec::new(),
+        }
+    }
+
+    fn receiver_handle(&self) -> Option<&CdpEvaluatedHandle> {
+        self.receiver
+            .as_ref()
+            .map(|(_, handle)| handle)
+            .or(self.native_receiver.as_ref())
     }
 
     pub fn handles(&self) -> &[(pwright_core::ObjectId, CdpEvaluatedHandle)] {
@@ -306,6 +374,34 @@ impl CdpHandleEvaluationService {
 
 impl CdpHandleEvaluationService {
     fn evaluate(&self, request: CdpHandleEvaluationRequest) -> CdpHandleEvaluationFuture<'_> {
+        self.evaluate_with(request, false, |handle, _lease| handle)
+    }
+
+    /// Property pipelines keep the original admission through carrier reading
+    /// and compensation instead of reserving a second concurrent operation.
+    pub(crate) fn call_retaining_lease(
+        &self,
+        request: CdpHandleEvaluationRequest,
+    ) -> CdpHandleEvaluationFuture<'_, (CdpEvaluatedHandle, Option<EvaluationLease>)> {
+        self.evaluate_with(request, false, |handle, lease| (handle, lease))
+    }
+
+    /// A temporary owner lookup must never dispose its borrowed receiver when
+    /// a corrupt acquisition response reuses that native identity. The single
+    /// protected ID is bounded and copied only under the evaluation admission.
+    pub(crate) fn call_retaining_lease_protecting_receiver(
+        &self,
+        request: CdpHandleEvaluationRequest,
+    ) -> CdpHandleEvaluationFuture<'_, (CdpEvaluatedHandle, Option<EvaluationLease>)> {
+        self.evaluate_with(request, true, |handle, lease| (handle, lease))
+    }
+
+    fn evaluate_with<'a, T: Send + 'a>(
+        &'a self,
+        request: CdpHandleEvaluationRequest,
+        protect_receiver: bool,
+        finish: impl FnOnce(CdpEvaluatedHandle, Option<EvaluationLease>) -> T + Send + 'a,
+    ) -> CdpHandleEvaluationFuture<'a, T> {
         let params = &request.params;
         let value_params = match params.value_projection(self.limits.evaluation.value) {
             Ok(params) => params,
@@ -315,18 +411,33 @@ impl CdpHandleEvaluationService {
             Ok(lease) => lease,
             Err(error) => return Box::pin(async move { Err(map_evaluation_error(error)) }),
         };
+        let protected_receiver = if protect_receiver {
+            let Some(id) = request
+                .receiver_handle()
+                .and_then(CdpEvaluatedHandle::object_id)
+                .filter(|id| !id.is_empty() && id.len() <= self.limits.native_id_bytes())
+            else {
+                let error = acquisition::bounded_protocol_error(
+                    "protected acquisition requires a bounded native receiver identity",
+                    self.limits.evaluation.error_bytes,
+                );
+                return Box::pin(async move { Err(error) });
+            };
+            Some(id.to_owned())
+        } else {
+            None
+        };
         let invocation =
             build_invocation(&request, self.limits, self.unique_context_id().is_some());
         drop(value_params);
         drop(request);
         Box::pin(async move {
-            let _lease = lease;
             let invocation = invocation?;
             let response = match (self.unique_context_id(), invocation) {
                 (Some(unique_context_id), HandleInvocation::Call { arguments }) => {
                     self.evaluation
                         .shared_client()
-                        .runtime_call_function_as_object_in_unique_context(
+                        .runtime_call_function_as_object_in_unique_context_to_settlement(
                             unique_context_id,
                             HANDLE_RUNTIME,
                             arguments,
@@ -336,7 +447,7 @@ impl CdpHandleEvaluationService {
                 (None, HandleInvocation::Evaluate { script }) => {
                     self.evaluation
                         .shared_client()
-                        .runtime_evaluate_as_object(&script)
+                        .runtime_evaluate_as_object_to_settlement(&script)
                         .await
                 }
                 (None, HandleInvocation::Call { .. }) => {
@@ -349,18 +460,28 @@ impl CdpHandleEvaluationService {
                 }
             }
             .map_err(|error| map_cdp_error(error, self.limits.evaluation.error_bytes))?;
-            parse_response(self.evaluation.shared_client(), response, self.limits)
+            let handle = match protected_receiver.as_deref() {
+                Some(receiver) => {
+                    acquisition::finish_protecting_receiver(
+                        self.evaluation.shared_client(),
+                        response,
+                        self.limits,
+                        receiver,
+                    )
+                    .await?
+                }
+                None => {
+                    acquisition::finish(self.evaluation.shared_client(), response, self.limits)
+                        .await?
+                }
+            };
+            Ok(finish(handle, lease))
         })
     }
 }
 
-type CdpHandleEvaluationFuture<'a> = Pin<
-    Box<
-        dyn Future<
-                Output = Result<CdpEvaluatedHandle, OperationError<HandleEvaluationErrorDetails>>,
-            > + Send
-            + 'a,
-    >,
+type CdpHandleEvaluationFuture<'a, T = CdpEvaluatedHandle> = Pin<
+    Box<dyn Future<Output = Result<T, OperationError<HandleEvaluationErrorDetails>>> + Send + 'a>,
 >;
 
 impl Service<EvaluateHandleParams> for CdpHandleEvaluationService {
@@ -407,12 +528,7 @@ pub(crate) fn build_invocation(
             "resolved native Handles do not match the portable argument graph".to_owned(),
         ));
     }
-    if request.params.argument().is_some() && request.params.mode() == EvaluationMode::Expression {
-        return Err(invalid_value(
-            "expression evaluation cannot carry an argument".to_owned(),
-        ));
-    }
-    let slot_offset = usize::from(request.receiver.is_some());
+    let slot_offset = usize::from(request.receiver_handle().is_some());
     let slots = request
         .handles
         .iter()
@@ -433,7 +549,7 @@ pub(crate) fn build_invocation(
         "mode": mode,
         "hasArgument": argument.is_some(),
         "argument": argument,
-        "receiverSlot": request.receiver.as_ref().map(|_| 0),
+        "receiverSlot": request.receiver_handle().map(|_| 0),
         "errorBytes": limits.evaluation.error_bytes,
         "maxDepth": limits.evaluation.value.max_depth(),
         "maxNodes": limits.evaluation.value.max_nodes(),
@@ -457,10 +573,10 @@ pub(crate) fn build_invocation(
                 .handles
                 .len()
                 .saturating_add(1)
-                .saturating_add(usize::from(request.receiver.is_some())),
+                .saturating_add(usize::from(request.receiver_handle().is_some())),
         );
         arguments.push(serde_json::json!({ "value": config }));
-        if let Some((_, receiver)) = &request.receiver {
+        if let Some(receiver) = request.receiver_handle() {
             arguments.push(receiver.call_argument());
         }
         arguments.extend(
@@ -471,7 +587,7 @@ pub(crate) fn build_invocation(
         );
         return Ok(HandleInvocation::Call { arguments });
     }
-    if request.receiver.is_some() || !request.handles.is_empty() {
+    if request.receiver_handle().is_some() || !request.handles.is_empty() {
         return Err(invalid_value(
             "Handle arguments require an exact CDP execution context".to_owned(),
         ));
@@ -481,7 +597,7 @@ pub(crate) fn build_invocation(
 }
 
 fn build_script(
-    params: &EvaluateHandleParams,
+    params: &CdpHandleEvaluationProgram,
     argument: Option<&Value>,
     limits: CdpHandleEvaluationLimits,
 ) -> Result<String, OperationError<HandleEvaluationErrorDetails>> {
@@ -667,6 +783,14 @@ const fn typed_array_name(kind: pwright_cap_evaluation::TypedArrayKind) -> &'sta
 pub(crate) fn parse_response(
     client: Arc<dyn CdpClient>,
     response: Value,
+    limits: CdpHandleEvaluationLimits,
+) -> Result<CdpEvaluatedHandle, OperationError<HandleEvaluationErrorDetails>> {
+    parse_borrowed_response(client, &response, limits)
+}
+
+fn parse_borrowed_response(
+    client: Arc<dyn CdpClient>,
+    response: &Value,
     limits: CdpHandleEvaluationLimits,
 ) -> Result<CdpEvaluatedHandle, OperationError<HandleEvaluationErrorDetails>> {
     let remote = response
@@ -933,7 +1057,48 @@ mod tests {
             .unwrap_err();
 
         // Assert
-        assert_eq!(error.kind(), FailureKind::ProtocolViolation);
+        assert_eq!(error.kind(), FailureKind::Cleanup);
+    }
+
+    #[tokio::test]
+    async fn native_expression_keeps_reference_slots_and_exact_execution_mode() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_responses([
+            serde_json::json!({"result": {"type": "object", "objectId": "native-input"}}),
+            serde_json::json!({"result": {"type": "number", "value": 42}}),
+        ]);
+        let evaluation = CdpEvaluationService::with_limits_in_unique_context(
+            client.clone(),
+            "world-9",
+            Default::default(),
+        );
+        let service = CdpHandleEvaluationService::from_evaluation(evaluation, 64, 64);
+        let input = service
+            .call(EvaluateHandleParams::expression("({})"))
+            .await
+            .unwrap();
+        let request = CdpHandleEvaluationRequest::new_program(
+            crate::CdpHandleEvaluationProgram::expression(
+                "40 + 2".into(),
+                HandleEvaluationValue::Handle(ObjectId::new(41)),
+            ),
+            None,
+            vec![(ObjectId::new(41), input)],
+        );
+
+        // Act
+        let output = service.call(request).await.unwrap();
+
+        // Assert
+        assert_eq!(output.object_id(), None);
+        let calls = client.calls();
+        let config = &calls[1].1[0]["arguments"][0]["value"];
+        assert_eq!(config["mode"], "expression");
+        assert_eq!(config["source"], "40 + 2");
+        assert_eq!(config["hasArgument"], true);
+        assert_eq!(config["argument"]["t"], "handle");
+        assert_eq!(calls[1].1[0]["arguments"][1]["objectId"], "native-input");
     }
 
     #[tokio::test]
@@ -989,3 +1154,8 @@ mod tests {
         assert_eq!(calls[1].1[0]["arguments"][0]["value"]["argument"]["i"], 0);
     }
 }
+
+#[cfg(test)]
+mod acquisition_limits_tests;
+#[cfg(test)]
+mod acquisition_tests;

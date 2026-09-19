@@ -2,9 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::connection::Result;
+use crate::connection::{CdpError, Result};
 use crate::generated::target as cdp_gen;
 use crate::session::CdpSession;
+
+#[derive(Serialize)]
+struct ResumePausedTargetParams {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +25,59 @@ pub struct TargetInfo {
 }
 
 impl CdpSession {
+    /// The child ID belongs in the command parameters; its announcing parent
+    /// belongs in the flattened CDP envelope. No synthetic target binding.
+    pub async fn target_detach_in_parent(
+        &self,
+        parent_session_id: Option<&str>,
+        session_id: &str,
+    ) -> Result<()> {
+        // Chromium does not reliably resume a paused target on detach. Match
+        // Playwright's child-session detach sequence before releasing ownership.
+        let resumed = self
+            .connection()
+            .send_command_with_session(
+                "Runtime.runIfWaitingForDebugger",
+                serde_json::to_value(ResumePausedTargetParams {})?,
+                Some(session_id),
+            )
+            .await;
+        match resumed {
+            Ok(_) => {}
+            Err(CdpError::SessionDetached) => return Ok(()),
+            // The exact child is already gone; no detach command can release
+            // it further. Other errors (including connection loss) still fail.
+            Err(CdpError::Protocol {
+                code: -32001,
+                message,
+            }) if message == "Session with given id not found." => return Ok(()),
+            Err(error) => return Err(error),
+        }
+        let params = cdp_gen::DetachFromTargetParams {
+            session_id: Some(session_id.to_owned()),
+            target_id: None,
+        };
+        let detached = self
+            .connection()
+            .send_command_with_session(
+                "Target.detachFromTarget",
+                serde_json::to_value(params)?,
+                parent_session_id,
+            )
+            .await;
+        match detached {
+            Ok(_) => Ok(()),
+            // Resume succeeded, but the child can disappear before this second
+            // command reaches its parent. This exact command/receipt confirms
+            // that no child attachment remains to release. It is not a general
+            // invalid-parameters or connection-loss success policy.
+            Err(CdpError::Protocol {
+                code: -32602,
+                message,
+            }) if message == "No session with given id" => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
     pub async fn target_create_browser_context(
         &self,
         proxy_server: Option<&str>,
@@ -60,11 +116,7 @@ impl CdpSession {
         url: &str,
         browser_context_id: &str,
     ) -> Result<String> {
-        let params = cdp_gen::CreateTargetParams {
-            url: url.to_string(),
-            browser_context_id: Some(browser_context_id.to_owned()),
-            ..Default::default()
-        };
+        let params = target_creation_params(url, browser_context_id);
         let result = self
             .send("Target.createTarget", serde_json::to_value(&params)?)
             .await?;
@@ -173,5 +225,41 @@ impl CdpSession {
         self.send("Target.setAutoAttach", serde_json::to_value(params)?)
             .await?;
         Ok(())
+    }
+}
+
+fn target_creation_params(url: &str, browser_context_id: &str) -> cdp_gen::CreateTargetParams {
+    cdp_gen::CreateTargetParams {
+        url: url.to_owned(),
+        // The topology uses an empty key for the browser's default Context.
+        // CDP requires omission here: an explicitly empty ID is not a Context.
+        browser_context_id: (!browser_context_id.is_empty()).then(|| browser_context_id.to_owned()),
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::target_creation_params;
+
+    #[test]
+    fn default_context_creation_omits_the_native_context_id() {
+        // Arrange
+        let params = target_creation_params("about:blank", "");
+        // Act
+        let encoded = serde_json::to_value(params).unwrap();
+        // Assert
+        assert_eq!(encoded["url"], "about:blank");
+        assert!(encoded.get("browserContextId").is_none());
+    }
+
+    #[test]
+    fn explicit_context_creation_preserves_the_exact_native_id() {
+        // Arrange
+        let params = target_creation_params("about:blank", "context-a");
+        // Act
+        let encoded = serde_json::to_value(params).unwrap();
+        // Assert
+        assert_eq!(encoded["browserContextId"], "context-a");
     }
 }

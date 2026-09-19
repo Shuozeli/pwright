@@ -1,0 +1,8 @@
+[package]
+name = "pwright-file-input-model"
+description = "Allocation-free file-input preparation policy for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true

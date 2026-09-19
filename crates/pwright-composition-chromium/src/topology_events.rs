@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use pwright_backend_cdp::{
-    CdpFrameAttachment, CdpFrameDetachReason, CdpTopologyEventError, CdpTopologyProductionProfile,
-    CdpTopologyUpdate, CdpWorldAttachment, ConnectionEpoch,
+    CdpContextOwnership, CdpFrameAttachment, CdpFrameDetachReason, CdpTopologyEventError,
+    CdpTopologyProductionProfile, CdpTopologyUpdate, CdpWorldAttachment, ConnectionEpoch,
 };
 use pwright_cdp::connection::CdpError;
 use pwright_cdp::generated::{page, runtime, target};
@@ -41,7 +41,197 @@ use crate::{
     ChromiumTopologyRuntime, SharedChromiumTopology, transact_topology_update,
 };
 
-const UTILITY_WORLD_NAME_PREFIX: &str = "__pwright_utility_";
+pub(super) const UTILITY_WORLD_NAME_PREFIX: &str = "__pwright_utility_";
+
+mod discovered_session;
+mod synchronized_session;
+
+/// Optional caller-owned session initialization, before debugger resume and
+/// Page readiness. The driver installs no settings or extra task by default.
+pub type ChromiumSessionInitializationFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send + 'a>>;
+
+/// Currently initialized target classes. Worker attachment is not implemented
+/// by this driver and must not be represented as an out-of-process Frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChromiumSessionTargetKind {
+    Page,
+    OutOfProcessFrame,
+}
+
+/// Borrowed native routing and portable ownership selected by the driver before
+/// resume. New Pages carry their reserved ID before topology publication; IDs
+/// are not proof of public readiness. Retention requires caller-owned admission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChromiumSessionInitializationTarget<'a> {
+    pub session_id: &'a str,
+    pub target_id: &'a str,
+    pub page_target_id: &'a str,
+    pub page: ObjectId,
+    pub context: ObjectId,
+    pub ownership: CdpContextOwnership,
+    pub kind: ChromiumSessionTargetKind,
+}
+
+pub trait ChromiumSessionInitializer: Send + Sync {
+    fn initialize<'a>(
+        &'a self,
+        session_id: &'a str,
+        target_id: &'a str,
+        ownership: CdpContextOwnership,
+        is_page: bool,
+    ) -> ChromiumSessionInitializationFuture<'a>;
+
+    /// Identity-aware extension. Existing initializers keep their original
+    /// behavior without allocating a wrapper or another initialization task.
+    fn initialize_scoped<'a>(
+        &'a self,
+        target: ChromiumSessionInitializationTarget<'a>,
+    ) -> ChromiumSessionInitializationFuture<'a> {
+        self.initialize(
+            target.session_id,
+            target.target_id,
+            target.ownership,
+            target.kind == ChromiumSessionTargetKind::Page,
+        )
+    }
+}
+
+/// Optional synchronous projection of committed Frame URLs. Implementations
+/// own their retention budgets and must not reenter topology from callbacks.
+/// No observer, URL cache, task or extra CDP subscription is installed by default.
+pub trait ChromiumFrameUrlObserver: Send + Sync {
+    fn update(
+        &self,
+        frame: ObjectId,
+        url: &str,
+        fragment: Option<&str>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>>;
+
+    /// Full navigation metadata. URL-only projections need not retain names.
+    /// Same-document events continue to call `update`, preserving the name.
+    fn update_navigation(
+        &self,
+        frame: ObjectId,
+        url: &str,
+        fragment: Option<&str>,
+        _name: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        self.update(frame, url, fragment)
+    }
+
+    fn retain_live(
+        &self,
+        is_live: &dyn Fn(ObjectId) -> bool,
+    ) -> Result<(), Box<dyn Error + Send + Sync>>;
+
+    /// Optional ownership projection after URL observations for this committed
+    /// update. The borrowed view needs no execution world or new allocation.
+    fn reconcile_ownership(
+        &self,
+        _view: ChromiumFrameOwnershipView<'_>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        Ok(())
+    }
+
+    /// Observe the exact effects of one committed topology transaction together
+    /// with its coherent ownership view. Default observers keep their previous
+    /// snapshot behavior. This is native metadata projection under the topology
+    /// lock, never a foreign callback/delivery boundary: do not reenter topology.
+    /// Retention requires caller-owned admission before native mutation.
+    /// Only driver transactions reach this hook. Direct lifecycle-service commits
+    /// and terminal teardown are not an exhaustive event source here; snapshot
+    /// refresh still uses `reconcile_ownership` without replaying effects.
+    /// Errors propagate after native commit; they do not roll back that commit.
+    fn reconcile_committed(
+        &self,
+        publication: ChromiumCommittedFrameOwnership<'_>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        self.reconcile_ownership(publication.ownership())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChromiumFrameOwnership {
+    pub frame: ObjectId,
+    pub page: ObjectId,
+    pub parent: Option<ObjectId>,
+}
+
+#[derive(Clone, Copy)]
+pub struct ChromiumFrameOwnershipView<'a>(&'a pwright_backend_cdp::CdpTopology);
+
+/// Borrowed committed cause data, not a reconstructed collection difference.
+/// No queue, observer, allocation or event subscription is installed by this
+/// value. A later snapshot-only refresh carries no replay of these effects.
+/// This view is delivered before the driver combines several transactions into
+/// its outer outcome, and is not a Playwright callback group or a delivery fence.
+#[derive(Clone, Copy)]
+pub struct ChromiumCommittedFrameOwnership<'a> {
+    ownership: ChromiumFrameOwnershipView<'a>,
+    effects: &'a [pwright_backend_cdp::CdpTopologyEffect],
+}
+
+impl<'a> ChromiumCommittedFrameOwnership<'a> {
+    pub fn ownership(self) -> ChromiumFrameOwnershipView<'a> {
+        self.ownership
+    }
+
+    /// Exact transaction order, including ready/linkage/disposal effects.
+    /// Popup linkage can be deferred to a different readiness transaction;
+    /// consumers must not assume every link follows a ready effect for itself.
+    pub fn effects(self) -> &'a [pwright_backend_cdp::CdpTopologyEffect] {
+        self.effects
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChromiumContextMembership {
+    pub id: ObjectId,
+    pub owned: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChromiumPageMembership {
+    pub id: ObjectId,
+    pub context: ObjectId,
+}
+
+impl ChromiumFrameOwnershipView<'_> {
+    /// Borrowed portable membership; no additional browser domain or allocation.
+    pub fn collection_contexts(&self) -> impl Iterator<Item = ChromiumContextMembership> + '_ {
+        self.0
+            .browser_context_routes()
+            .map(|context| ChromiumContextMembership {
+                id: context.object_id(),
+                owned: context.ownership() == CdpContextOwnership::Owned,
+            })
+    }
+
+    pub fn collection_pages(&self) -> impl Iterator<Item = ChromiumPageMembership> + '_ {
+        self.0
+            .page_session_routes()
+            .map(|page| ChromiumPageMembership {
+                id: page.object_id(),
+                context: page.browser_context_object_id(),
+            })
+    }
+
+    pub fn frames(&self) -> impl Iterator<Item = ChromiumFrameOwnership> + '_ {
+        self.0
+            .frame_page_routes()
+            .map(|(frame, page)| ChromiumFrameOwnership {
+                frame,
+                page,
+                parent: self.0.parent_frame_object_id(frame),
+            })
+    }
+
+    /// Page liveness is independent of renderer/session/world availability.
+    pub fn contains_page(&self, page: ObjectId) -> bool {
+        self.0.main_frame_native_id(page).is_some()
+    }
+}
 
 /// Explicit opt-in for Playwright-style per-Page isolated utility worlds.
 ///
@@ -84,6 +274,8 @@ impl ChromiumUtilityWorldProfile {
 /// identities, one temporary target-local client, and a
 /// conservative four-times expansion of the largest admitted event and
 /// frame-tree response while they are deserialized into generated types.
+/// Opt-in paired prerequisites reserve a second response expansion; concurrent
+/// utility-world registration reserves a third.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChromiumTopologyEventDriverProductionProfile {
     resource_scope: ResourceScope,
@@ -93,6 +285,10 @@ pub struct ChromiumTopologyEventDriverProductionProfile {
     max_response_bytes: usize,
     max_event_bytes: usize,
     event_channel_capacity: usize,
+    pending_command_capacity: usize,
+    parallel_session_prerequisites: bool,
+    parallel_utility_world_registration: bool,
+    parallel_recursive_attachment: bool,
     maximum_retained_bytes: u64,
     requirements: ResourceRequirements,
 }
@@ -155,6 +351,10 @@ impl ChromiumTopologyEventDriverProductionProfile {
             max_response_bytes: connection.config().max_response_bytes,
             max_event_bytes: connection.config().max_event_bytes,
             event_channel_capacity: connection.config().event_channel_capacity,
+            pending_command_capacity: connection.config().pending_command_capacity,
+            parallel_session_prerequisites: false,
+            parallel_utility_world_registration: false,
+            parallel_recursive_attachment: false,
             maximum_retained_bytes,
             requirements,
         })
@@ -192,6 +392,108 @@ impl ChromiumTopologyEventDriverProductionProfile {
         self.requirements
     }
 
+    /// Polls frame-tree acquisition and Runtime enable together, for one
+    /// session at a time. No task is spawned; both must finish before readiness.
+    pub fn with_parallel_session_prerequisites(
+        mut self,
+    ) -> Result<Self, ChromiumTopologyEventDriverProfileError> {
+        if self.pending_command_capacity < 2 {
+            return Err(
+                ChromiumTopologyEventDriverProfileError::InsufficientPendingCommands {
+                    capacity: self.pending_command_capacity,
+                },
+            );
+        }
+        if !self.parallel_session_prerequisites {
+            self.maximum_retained_bytes = u64::try_from(self.max_response_bytes)
+                .ok()
+                .and_then(|bytes| bytes.checked_mul(4))
+                .and_then(|bytes| self.maximum_retained_bytes.checked_add(bytes))
+                .ok_or(ChromiumTopologyEventDriverProfileError::CapacityOverflow)?;
+            self.requirements = self.requirements.with_class(
+                ResourceClass::BackendStateBytes,
+                self.maximum_retained_bytes,
+                self.maximum_retained_bytes,
+            );
+            self.parallel_session_prerequisites = true;
+        }
+        Ok(self)
+    }
+
+    pub const fn parallel_session_prerequisites(self) -> bool {
+        self.parallel_session_prerequisites
+    }
+
+    /// Adds empty utility-world script registration to the paired prerequisites.
+    /// Page enable and Context settings still precede this join; world creation,
+    /// recursive attachment, resume and publication still follow all replies.
+    /// The serial and paired-only profiles retain their original behavior.
+    pub fn with_parallel_utility_world_registration(
+        self,
+    ) -> Result<Self, ChromiumTopologyEventDriverProfileError> {
+        if self.pending_command_capacity < 3 {
+            return Err(
+                ChromiumTopologyEventDriverProfileError::InsufficientRegistrationCommands {
+                    capacity: self.pending_command_capacity,
+                },
+            );
+        }
+        let mut profile = self.with_parallel_session_prerequisites()?;
+        if !profile.parallel_utility_world_registration {
+            profile.maximum_retained_bytes = u64::try_from(profile.max_response_bytes)
+                .ok()
+                .and_then(|bytes| bytes.checked_mul(4))
+                .and_then(|bytes| profile.maximum_retained_bytes.checked_add(bytes))
+                .ok_or(ChromiumTopologyEventDriverProfileError::CapacityOverflow)?;
+            profile.requirements = profile.requirements.with_class(
+                ResourceClass::BackendStateBytes,
+                profile.maximum_retained_bytes,
+                profile.maximum_retained_bytes,
+            );
+            profile.parallel_utility_world_registration = true;
+        }
+        Ok(profile)
+    }
+
+    pub const fn parallel_utility_world_registration(self) -> bool {
+        self.parallel_utility_world_registration
+    }
+
+    /// Starts recursive attachment alongside the three session prerequisites.
+    /// All four replies precede world creation, resume and Page publication.
+    /// Context settings and Page enable retain their earlier ordering. No
+    /// cross-session concurrency or independent initialization task is added.
+    pub fn with_parallel_recursive_attachment(
+        self,
+    ) -> Result<Self, ChromiumTopologyEventDriverProfileError> {
+        if self.pending_command_capacity < 4 {
+            return Err(
+                ChromiumTopologyEventDriverProfileError::InsufficientAttachmentCommands {
+                    capacity: self.pending_command_capacity,
+                },
+            );
+        }
+        let mut profile = self.with_parallel_utility_world_registration()?;
+        if !profile.parallel_recursive_attachment {
+            profile.maximum_retained_bytes = u64::try_from(profile.max_response_bytes)
+                .ok()
+                .and_then(|bytes| bytes.checked_mul(4))
+                .and_then(|bytes| profile.maximum_retained_bytes.checked_add(bytes))
+                .ok_or(ChromiumTopologyEventDriverProfileError::CapacityOverflow)?;
+            profile.requirements = profile.requirements.with_class(
+                ResourceClass::BackendStateBytes,
+                profile.maximum_retained_bytes,
+                profile.maximum_retained_bytes,
+            );
+            profile.parallel_recursive_attachment = true;
+        }
+        Ok(profile)
+    }
+
+    pub const fn parallel_recursive_attachment(self) -> bool {
+        self.parallel_recursive_attachment
+    }
+
     pub fn matches(
         self,
         connection: &CdpConnectionProductionProfile,
@@ -204,6 +506,7 @@ impl ChromiumTopologyEventDriverProductionProfile {
             && connection.config().max_response_bytes == self.max_response_bytes
             && connection.config().max_event_bytes == self.max_event_bytes
             && connection.config().event_channel_capacity == self.event_channel_capacity
+            && connection.config().pending_command_capacity == self.pending_command_capacity
     }
 }
 
@@ -251,6 +554,9 @@ impl ChromiumPageDiscoveryProductionProfile {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ChromiumTopologyEventDriverProfileError {
     InvalidResourceScope { resource_scope: ResourceScope },
+    InsufficientPendingCommands { capacity: usize },
+    InsufficientRegistrationCommands { capacity: usize },
+    InsufficientAttachmentCommands { capacity: usize },
     CapacityOverflow,
 }
 
@@ -264,6 +570,18 @@ impl Display for ChromiumTopologyEventDriverProfileError {
             Self::CapacityOverflow => {
                 formatter.write_str("Chromium topology-event capacity calculation overflowed")
             }
+            Self::InsufficientPendingCommands { capacity } => write!(
+                formatter,
+                "parallel session prerequisites require at least two pending CDP commands, got {capacity}"
+            ),
+            Self::InsufficientRegistrationCommands { capacity } => write!(
+                formatter,
+                "parallel utility-world registration requires at least three pending CDP commands, got {capacity}"
+            ),
+            Self::InsufficientAttachmentCommands { capacity } => write!(
+                formatter,
+                "parallel recursive attachment requires at least four pending CDP commands, got {capacity}"
+            ),
         }
     }
 }
@@ -278,6 +596,12 @@ pub enum ChromiumTopologyEventDriverOutcome {
 
 #[derive(Debug)]
 pub enum ChromiumTopologyEventDriverError {
+    FrameEventObserver(Box<dyn Error + Send + Sync>),
+    SessionInitialization(Box<dyn Error + Send + Sync>),
+    SessionContextUnavailable,
+    InitialSnapshotLimitExceeded {
+        limit: usize,
+    },
     AlreadyInstalled,
     EventSubscription(CdpEventSubscriptionError),
     EventStreamClosed,
@@ -334,6 +658,7 @@ pub enum ChromiumTopologyEventDriverError {
     Resources(ProductionResourceError),
     Resource(ResourceError),
     Network(ChromiumNetworkEventDriverError),
+    FrameUrlObserver(Box<dyn Error + Send + Sync>),
     PageDiscoveryCleanup {
         primary: String,
         cleanup: String,
@@ -343,6 +668,15 @@ pub enum ChromiumTopologyEventDriverError {
 impl Display for ChromiumTopologyEventDriverError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FrameEventObserver(error) => Display::fmt(error, formatter),
+            Self::SessionInitialization(error) => Display::fmt(error, formatter),
+            Self::SessionContextUnavailable => {
+                formatter.write_str("session has no registered browser Context")
+            }
+            Self::InitialSnapshotLimitExceeded { limit } => write!(
+                formatter,
+                "initial Chromium topology exceeded the {limit}-event snapshot budget"
+            ),
             Self::AlreadyInstalled => formatter
                 .write_str("this Chromium attachment already owns its topology-event driver"),
             Self::EventSubscription(error) => Display::fmt(error, formatter),
@@ -411,6 +745,7 @@ impl Display for ChromiumTopologyEventDriverError {
             Self::Resources(error) => Display::fmt(error, formatter),
             Self::Resource(error) => Display::fmt(error, formatter),
             Self::Network(error) => Display::fmt(error, formatter),
+            Self::FrameUrlObserver(error) => Display::fmt(error, formatter),
             Self::PageDiscoveryCleanup { primary, cleanup } => write!(
                 formatter,
                 "Page discovery failed ({primary}) and cleanup also failed: {cleanup}"
@@ -422,6 +757,8 @@ impl Display for ChromiumTopologyEventDriverError {
 impl Error for ChromiumTopologyEventDriverError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::FrameEventObserver(error) => Some(error.as_ref()),
+            Self::SessionInitialization(error) => Some(error.as_ref()),
             Self::Decode { error, .. } => Some(error),
             Self::EventSubscription(error) => Some(error),
             Self::TopologyEvent(error) => Some(error),
@@ -431,6 +768,7 @@ impl Error for ChromiumTopologyEventDriverError {
             Self::Resources(error) => Some(error),
             Self::Resource(error) => Some(error),
             Self::Network(error) => Some(error),
+            Self::FrameUrlObserver(error) => Some(error.as_ref()),
             _ => None,
         }
     }
@@ -529,8 +867,18 @@ pub struct ChromiumTopologyEventDriver {
     page_discovery: Option<ChromiumPageDiscoveryProductionProfile>,
     utility_world: Option<ChromiumUtilityWorldProfile>,
     network_registration: Option<ChromiumNetworkPageRegistrationHandle>,
+    frame_urls: Option<Arc<dyn ChromiumFrameUrlObserver>>,
+    frame_events: Option<Arc<dyn crate::ChromiumFrameEventObserver>>,
+    session_initializer: Option<Arc<dyn ChromiumSessionInitializer>>,
+    playwright_context_fallback: bool,
     profile: ChromiumTopologyEventDriverProductionProfile,
     _resource: Option<ResourceLease>,
+}
+
+impl Drop for ChromiumTopologyEventDriver {
+    fn drop(&mut self) {
+        self.seal_frame_events();
+    }
 }
 
 impl ChromiumTopologyEventDriver {
@@ -572,6 +920,10 @@ impl ChromiumTopologyEventDriver {
             page_discovery,
             utility_world,
             network_registration: None,
+            frame_urls: None,
+            frame_events: None,
+            session_initializer: None,
+            playwright_context_fallback: false,
             profile,
             _resource: resource,
         })
@@ -581,12 +933,91 @@ impl ChromiumTopologyEventDriver {
         self.profile
     }
 
+    /// Install before any session initialization; rejection never replaces an
+    /// existing observer. Sealed owners must be replaced with a new driver.
+    pub fn with_frame_event_observer(
+        mut self,
+        observer: Arc<dyn crate::ChromiumFrameEventObserver>,
+    ) -> Result<Self, ChromiumTopologyEventDriverError> {
+        if self.browser_initialized
+            || !self.initialized_sessions.is_empty()
+            || self.frame_events.is_some()
+        {
+            return Err(ChromiumTopologyEventDriverError::AlreadyInstalled);
+        }
+        self.frame_events = Some(observer);
+        Ok(self)
+    }
+
+    fn seal_frame_events(&self) {
+        if let Some(observer) = &self.frame_events {
+            observer.seal();
+        }
+    }
+
+    async fn enable_frame_events(
+        &self,
+        client: &dyn CdpClient,
+        page: ObjectId,
+    ) -> Result<(), ChromiumTopologyEventDriverError> {
+        if self
+            .frame_events
+            .as_ref()
+            .is_some_and(|observer| observer.observes_page(page))
+        {
+            if let Some(observer) = &self.frame_events {
+                let topology = self
+                    .topology
+                    .lock()
+                    .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?;
+                observer
+                    .prepare_page(topology.topology(), page)
+                    .map_err(ChromiumTopologyEventDriverError::FrameEventObserver)?;
+            }
+            client.network_enable().await?;
+            client.page_set_lifecycle_events_enabled(true).await?;
+        }
+        Ok(())
+    }
+
     pub fn initialized_session_count(&self) -> usize {
         self.initialized_sessions.len()
     }
 
     pub const fn epoch(&self) -> ConnectionEpoch {
         self.epoch
+    }
+
+    /// Install before initializing the snapshot. URL changes share this
+    /// driver's ordered cursor and topology lock, including initial discovery.
+    pub fn with_frame_url_observer(mut self, observer: Arc<dyn ChromiumFrameUrlObserver>) -> Self {
+        self.frame_urls = Some(observer);
+        self
+    }
+
+    pub fn with_session_initializer(
+        mut self,
+        initializer: Arc<dyn ChromiumSessionInitializer>,
+    ) -> Self {
+        self.session_initializer = Some(initializer);
+        self
+    }
+
+    /// Match Playwright's CDP attachment view: Pages in foreign, non-default
+    /// contexts are attributed to this connection's default Context. This
+    /// does not acquire the foreign Context or grant authority to dispose it.
+    /// Strict foreign-context exclusion remains the default for other callers.
+    pub fn with_playwright_context_fallback(mut self) -> Self {
+        self.playwright_context_fallback = true;
+        self
+    }
+
+    fn foreign_context_key(&self) -> Result<Option<String>, ChromiumTopologyEventDriverError> {
+        if self.playwright_context_fallback {
+            self.default_context_key()
+        } else {
+            Ok(None)
+        }
     }
 
     /// Makes newly discovered Pages join the installed single-cursor network
@@ -606,9 +1037,30 @@ impl ChromiumTopologyEventDriver {
         self.resync_required
     }
 
-    pub async fn receive_once<Runtime>(
+    /// Initializes the default Context and drains the bounded initial target
+    /// announcements without waiting for an unrelated future browser event.
+    /// The browser command barrier in initialization orders existing targets.
+    /// Callers must keep this driver for subsequent topology updates.
+    pub async fn initialize_snapshot<Runtime>(
         &mut self,
         runtime: &Runtime,
+        max_events: usize,
+    ) -> Result<ChromiumTopologyEventDriverOutcome, ChromiumTopologyEventDriverError>
+    where
+        Runtime: ChromiumTopologyRuntime,
+    {
+        let mut attempt = crate::frame_event_observer::ObservationAttempt::new(&self.frame_events);
+        let result = self.initialize_snapshot_inner(runtime, max_events).await;
+        if result.is_ok() {
+            attempt.completed();
+        }
+        result
+    }
+
+    async fn initialize_snapshot_inner<Runtime>(
+        &mut self,
+        runtime: &Runtime,
+        max_events: usize,
     ) -> Result<ChromiumTopologyEventDriverOutcome, ChromiumTopologyEventDriverError>
     where
         Runtime: ChromiumTopologyRuntime,
@@ -618,7 +1070,86 @@ impl ChromiumTopologyEventDriver {
         }
         let mut combined = self.initialize_browser(runtime).await?;
         combined = combined.combine(self.synchronize_sessions(runtime).await?);
-        let event = match self.receiver.recv().await {
+        for processed in 0..=max_events {
+            let event = match self.receiver.try_recv() {
+                Ok(event) => event,
+                Err(CdpEventTryRecvError::Empty) => {
+                    // Lifecycle services can commit topology directly. Project
+                    // their final state even when no subsequent event arrived.
+                    self.refresh_frame_ownership()?;
+                    return Ok(update_outcome(combined));
+                }
+                Err(CdpEventTryRecvError::Closed) => {
+                    return Err(ChromiumTopologyEventDriverError::EventStreamClosed);
+                }
+                Err(CdpEventTryRecvError::Lagged(skipped)) => {
+                    self.resync_required = Some(skipped);
+                    return Err(ChromiumTopologyEventDriverError::ResyncRequired { skipped });
+                }
+            };
+            if processed == max_events {
+                self.resync_required = Some(1);
+                return Err(
+                    ChromiumTopologyEventDriverError::InitialSnapshotLimitExceeded {
+                        limit: max_events,
+                    },
+                );
+            }
+            combined = combined.combine(outcome_update(self.apply_event(runtime, &event).await?));
+            combined = combined.combine(self.synchronize_sessions(runtime).await?);
+        }
+        unreachable!("bounded snapshot loop returns after its final iteration")
+    }
+
+    pub async fn receive_once<Runtime>(
+        &mut self,
+        runtime: &Runtime,
+    ) -> Result<ChromiumTopologyEventDriverOutcome, ChromiumTopologyEventDriverError>
+    where
+        Runtime: ChromiumTopologyRuntime,
+    {
+        self.receive_once_or_signal(runtime, std::future::pending())
+            .await
+    }
+
+    /// A caller-owned signal can interrupt only the idle event receive, never
+    /// an in-progress topology transaction or target initialization. Callers
+    /// may then drain the bounded snapshot to establish a command-return fence.
+    pub async fn receive_once_or_signal<Runtime>(
+        &mut self,
+        runtime: &Runtime,
+        signal: impl Future<Output = ()>,
+    ) -> Result<ChromiumTopologyEventDriverOutcome, ChromiumTopologyEventDriverError>
+    where
+        Runtime: ChromiumTopologyRuntime,
+    {
+        let mut attempt = crate::frame_event_observer::ObservationAttempt::new(&self.frame_events);
+        let result = self.receive_once_or_signal_inner(runtime, signal).await;
+        if result.is_ok() {
+            attempt.completed();
+        }
+        result
+    }
+
+    async fn receive_once_or_signal_inner<Runtime>(
+        &mut self,
+        runtime: &Runtime,
+        signal: impl Future<Output = ()>,
+    ) -> Result<ChromiumTopologyEventDriverOutcome, ChromiumTopologyEventDriverError>
+    where
+        Runtime: ChromiumTopologyRuntime,
+    {
+        if let Some(skipped) = self.resync_required {
+            return Err(ChromiumTopologyEventDriverError::ResyncRequired { skipped });
+        }
+        let mut combined = self.initialize_browser(runtime).await?;
+        combined = combined.combine(self.synchronize_sessions(runtime).await?);
+        let received = tokio::select! {
+            biased;
+            () = signal => return Ok(update_outcome(combined)),
+            received = self.receiver.recv() => received,
+        };
+        let event = match received {
             Ok(event) => event,
             Err(CdpEventRecvError::Closed) => {
                 return Err(ChromiumTopologyEventDriverError::EventStreamClosed);
@@ -650,6 +1181,7 @@ impl ChromiumTopologyEventDriver {
     where
         Runtime: ChromiumTopologyRuntime,
     {
+        self.seal_frame_events();
         let skipped = self
             .resync_required
             .ok_or(ChromiumTopologyEventDriverError::ResyncNotRequired)?;
@@ -784,6 +1316,11 @@ impl ChromiumTopologyEventDriver {
                 .any(|route| route.session_id == *session_id && route.target_id == *target_id)
         });
         for route in routes {
+            // A preceding parent retirement may have removed another route
+            // from this bounded snapshot. Never initialize that stale child.
+            if !self.session_route_is_current(&route)? {
+                continue;
+            }
             if self
                 .initialized_sessions
                 .get(&route.session_id)
@@ -791,29 +1328,16 @@ impl ChromiumTopologyEventDriver {
             {
                 continue;
             }
-            let client = self
-                .session_factory
-                .create_session(route.session_id.clone(), route.target_id.clone());
-            let page_session = route.target_id == route.page_target_id;
-            client.page_enable().await?;
-            let mut frame_tree = client.page_get_frame_tree().await?;
-            client.runtime_enable().await?;
-            if let Some(world_name) = self.utility_world_name_for_route(&route)? {
-                frame_tree = self
-                    .initialize_utility_worlds(
-                        client.as_ref(),
-                        frame_tree,
-                        &world_name,
-                        !page_session,
-                    )
-                    .await?;
-            }
-            client
-                .target_set_auto_attach(true, self.page_discovery.is_some(), true)
-                .await?;
-            if self.page_discovery.is_some() {
-                client.runtime_run_if_waiting_for_debugger().await?;
-            }
+            let frame_tree = match self.initialize_synchronized_session(&route).await {
+                Ok(tree) => tree,
+                Err(error) if discovered_session::missing_native_session(&error) => {
+                    let retired =
+                        self.retire_session(runtime, &route.session_id, Some(&route.target_id))?;
+                    combined = combined.combine(outcome_update(retired));
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
             combined = combined.combine(self.initialize_frame_tree(runtime, &route, frame_tree)?);
             self.initialized_sessions
                 .insert(route.session_id, route.target_id);
@@ -842,6 +1366,41 @@ impl ChromiumTopologyEventDriver {
         Ok(Some(profile.world_name(page_object_id)))
     }
 
+    async fn initialize_context_session(
+        &self,
+        route: &SessionRoute,
+        context: ObjectId,
+        page: ObjectId,
+    ) -> Result<(), ChromiumTopologyEventDriverError> {
+        let Some(initializer) = &self.session_initializer else {
+            return Ok(());
+        };
+        let ownership = self
+            .topology
+            .lock()
+            .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?
+            .topology()
+            .browser_context_route(context)
+            .map(|context| context.ownership())
+            .ok_or(ChromiumTopologyEventDriverError::SessionContextUnavailable)?;
+        initializer
+            .initialize_scoped(ChromiumSessionInitializationTarget {
+                session_id: &route.session_id,
+                target_id: &route.target_id,
+                page_target_id: &route.page_target_id,
+                page,
+                context,
+                ownership,
+                kind: if route.target_id == route.page_target_id {
+                    ChromiumSessionTargetKind::Page
+                } else {
+                    ChromiumSessionTargetKind::OutOfProcessFrame
+                },
+            })
+            .await
+            .map_err(ChromiumTopologyEventDriverError::SessionInitialization)
+    }
+
     fn utility_world_name_for_session(
         &self,
         session_id: &str,
@@ -852,18 +1411,98 @@ impl ChromiumTopologyEventDriver {
         self.utility_world_name_for_route(&route)
     }
 
+    async fn initialize_session_worlds(
+        &self,
+        client: &dyn CdpClient,
+        world_name: Option<&str>,
+        allow_root_parent: bool,
+    ) -> Result<page::FrameTree, ChromiumTopologyEventDriverError> {
+        let parallel_registration = self.profile.parallel_utility_world_registration();
+        let frame_tree = if self.profile.parallel_recursive_attachment() {
+            crate::session_prerequisites::initialize_with_attachment(
+                client.page_get_frame_tree(),
+                client.runtime_enable(),
+                async {
+                    if let Some(world_name) = world_name {
+                        client
+                            .page_add_script_on_new_document_in_world("", world_name)
+                            .await?;
+                    }
+                    Ok(())
+                },
+                client.target_set_auto_attach(true, self.page_discovery.is_some(), true),
+            )
+            .await?
+        } else if parallel_registration && let Some(world_name) = world_name {
+            crate::session_prerequisites::initialize_with_registration(
+                client.page_get_frame_tree(),
+                client.runtime_enable(),
+                async {
+                    client
+                        .page_add_script_on_new_document_in_world("", world_name)
+                        .await?;
+                    Ok(())
+                },
+            )
+            .await?
+        } else {
+            crate::session_prerequisites::initialize(
+                self.profile.parallel_session_prerequisites(),
+                client.page_get_frame_tree(),
+                client.runtime_enable(),
+            )
+            .await?
+        };
+        let Some(world_name) = world_name else {
+            return Ok(frame_tree);
+        };
+        // Validate before the serial registration, retaining the default error
+        // ordering. The opt-in registration is empty and independent of the tree;
+        // no actual worlds or ready routes are created until validation succeeds.
+        let frame_ids = self.validate_frame_tree_ids(&frame_tree, allow_root_parent)?;
+        if !parallel_registration {
+            client
+                .page_add_script_on_new_document_in_world("", world_name)
+                .await?;
+        }
+        let worlds = self.initialize_utility_worlds(
+            client,
+            frame_tree,
+            frame_ids,
+            world_name,
+            allow_root_parent,
+        );
+        if self.resumes_with_utility_worlds() {
+            // A newly auto-attached OOPIF can be paused before its document
+            // exists. Awaiting isolated-world creation before resume deadlocks.
+            // Prerequisites/settings/recursive attachment have all completed;
+            // this second phase needs only two of the admitted four slots.
+            let (tree, ()) = tokio::try_join!(worlds, async {
+                client
+                    .runtime_run_if_waiting_for_debugger()
+                    .await
+                    .map_err(ChromiumTopologyEventDriverError::from)
+            })?;
+            Ok(tree)
+        } else {
+            worlds.await
+        }
+    }
+
+    fn resumes_with_utility_worlds(&self) -> bool {
+        self.profile.parallel_recursive_attachment()
+            && self.page_discovery.is_some()
+            && self.utility_world.is_some()
+    }
+
     async fn initialize_utility_worlds(
         &self,
         client: &dyn CdpClient,
         frame_tree: page::FrameTree,
+        frame_ids: Vec<String>,
         world_name: &str,
         allow_root_parent: bool,
     ) -> Result<page::FrameTree, ChromiumTopologyEventDriverError> {
-        let frame_ids = self.validate_frame_tree_ids(&frame_tree, allow_root_parent)?;
-        client
-            .page_add_script_on_new_document_in_world("", world_name)
-            .await?;
-
         let mut failed = None;
         for frame_id in &frame_ids {
             if let Err(error) = client
@@ -963,35 +1602,39 @@ impl ChromiumTopologyEventDriver {
         Runtime: ChromiumTopologyRuntime,
     {
         let page_session = route.target_id == route.page_target_id;
-        let prepared = self.prepare_frame_tree(route, frame_tree, None)?;
+        let prepared = self.prepare_frame_tree(route, &frame_tree, None)?;
         let page_target_id = route.page_target_id.clone();
         let epoch = self.epoch;
-        self.transact_update(runtime, move |topology| {
-            let mut update = CdpTopologyUpdate::idempotent();
-            for (attachment, object_id) in prepared {
-                update = update.combine(topology.attach_frame(epoch, attachment, object_id)?);
-            }
-            if page_session {
-                update = update.combine(topology.mark_page_ready(epoch, &page_target_id)?);
-            }
-            Ok(update)
-        })
+        self.transact_update_and_observe(
+            runtime,
+            move |topology| {
+                let mut update = CdpTopologyUpdate::idempotent();
+                for (attachment, object_id) in prepared {
+                    update = update.combine(topology.attach_frame(epoch, attachment, object_id)?);
+                }
+                if page_session {
+                    update = update.combine(topology.mark_page_ready(epoch, &page_target_id)?);
+                }
+                Ok(update)
+            },
+            |topology| self.observe_frame_tree(topology, route, &frame_tree),
+        )
     }
 
     fn prepare_frame_tree(
         &self,
         route: &SessionRoute,
-        frame_tree: page::FrameTree,
+        frame_tree: &page::FrameTree,
         supplied_main_frame_object_id: Option<pwright_core::ObjectId>,
     ) -> Result<Vec<(CdpFrameAttachment, pwright_core::ObjectId)>, ChromiumTopologyEventDriverError>
     {
         let page_session = route.target_id == route.page_target_id;
         if page_session && frame_tree.frame.parent_id.is_some() {
             return Err(ChromiumTopologyEventDriverError::FrameTreeRootHasParent {
-                frame_id: frame_tree.frame.id,
+                frame_id: frame_tree.frame.id.clone(),
             });
         }
-        let mut stack = vec![(frame_tree, None::<String>, true)];
+        let mut stack = vec![(frame_tree, None::<&str>, true)];
         let mut seen = std::collections::BTreeSet::new();
         let mut attachments = Vec::new();
         while let Some((node, tree_parent, root)) = stack.pop() {
@@ -999,8 +1642,7 @@ impl ChromiumTopologyEventDriver {
             if !seen.insert(frame_id.clone()) {
                 return Err(ChromiumTopologyEventDriverError::DuplicateFrameTreeId { frame_id });
             }
-            if let (Some(expected), Some(actual)) =
-                (tree_parent.as_deref(), node.frame.parent_id.as_deref())
+            if let (Some(expected), Some(actual)) = (tree_parent, node.frame.parent_id.as_deref())
                 && expected != actual
             {
                 return Err(ChromiumTopologyEventDriverError::FrameTreeParentMismatch {
@@ -1018,14 +1660,12 @@ impl ChromiumTopologyEventDriver {
                 attachments.push(CdpFrameAttachment::local(
                     route.page_target_id.clone(),
                     node.frame.id.clone(),
-                    tree_parent
-                        .as_deref()
-                        .expect("a non-root frame-tree item has a tree parent"),
+                    tree_parent.expect("a non-root frame-tree item has a tree parent"),
                 ));
             }
-            if let Some(children) = node.child_frames {
-                for child in children.into_iter().rev() {
-                    stack.push((child, Some(node.frame.id.clone()), false));
+            if let Some(children) = &node.child_frames {
+                for child in children.iter().rev() {
+                    stack.push((child, Some(node.frame.id.as_str()), false));
                 }
             }
         }
@@ -1120,8 +1760,54 @@ impl ChromiumTopologyEventDriver {
     where
         Runtime: ChromiumTopologyRuntime,
     {
+        let outcome = self.apply_topology_event(runtime, event).await?;
+        if let Some(observer) = &self.frame_events {
+            let topology = self
+                .topology
+                .lock()
+                .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?;
+            observer
+                .event(topology.topology(), event)
+                .map_err(ChromiumTopologyEventDriverError::FrameEventObserver)?;
+        }
+        Ok(outcome)
+    }
+
+    async fn apply_topology_event<Runtime>(
+        &mut self,
+        runtime: &Runtime,
+        event: &CdpEvent,
+    ) -> Result<ChromiumTopologyEventDriverOutcome, ChromiumTopologyEventDriverError>
+    where
+        Runtime: ChromiumTopologyRuntime,
+    {
         self.ensure_topology_epoch()?;
         match event.method.as_str() {
+            "Target.targetDestroyed" => {
+                // This is a native destruction fact, unlike detachedFromTarget
+                // or local route disposal. Do not infer Page/Frame/public close
+                // events here, rebuild routes, or require the route to survive.
+                let topology = self
+                    .topology
+                    .lock()
+                    .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?;
+                self.ensure_current_epoch(topology.topology().epoch())?;
+                let routes = runtime.page_services().routes.lock().map_err(|_| {
+                    ChromiumCompositionError::from(crate::CdpPageRouteError::StatePoisoned)
+                })?;
+                let Some(registry) = &routes.native_world_retirement else {
+                    return Ok(ChromiumTopologyEventDriverOutcome::Ignored);
+                };
+                let params: target::TargetDestroyedEvent =
+                    self.decode(event, "Target.targetDestroyed")?;
+                registry
+                    .mark(
+                        self.epoch,
+                        crate::native_world_retirement::Destruction::PageTarget(&params.target_id),
+                    )
+                    .map_err(ChromiumCompositionError::from)?;
+                Ok(ChromiumTopologyEventDriverOutcome::Ignored)
+            }
             "Page.frameAttached" => {
                 let params: page::FrameAttachedEvent = self.decode(event, "Page.frameAttached")?;
                 let Some(route) = self.route_for_event_session(event, "Page.frameAttached")? else {
@@ -1152,7 +1838,27 @@ impl ChromiumTopologyEventDriver {
                     return Ok(ChromiumTopologyEventDriverOutcome::Ignored);
                 };
                 if params.frame.parent_id.is_some() || route.target_id != route.page_target_id {
-                    return Ok(ChromiumTopologyEventDriverOutcome::Ignored);
+                    let update = self.transact_update_and_observe(
+                        runtime,
+                        |topology| {
+                            topology.frame_document_committed(
+                                self.epoch,
+                                &route.session_id,
+                                &params.frame.id,
+                            )
+                        },
+                        |topology| {
+                            self.observe_frame_url(
+                                topology,
+                                &route,
+                                &params.frame.id,
+                                &params.frame.url,
+                                params.frame.url_fragment.as_deref(),
+                                Some(params.frame.name.as_deref().unwrap_or("")),
+                            )
+                        },
+                    )?;
+                    return Ok(update_outcome(update));
                 }
                 let main_frame_object_id = {
                     let topology = self
@@ -1166,11 +1872,42 @@ impl ChromiumTopologyEventDriver {
                 let Some(main_frame_object_id) = main_frame_object_id else {
                     return Ok(ChromiumTopologyEventDriverOutcome::Ignored);
                 };
-                let attachment = CdpFrameAttachment::main(route.page_target_id, params.frame.id);
+                let attachment =
+                    CdpFrameAttachment::main(route.page_target_id.clone(), params.frame.id.clone());
                 let epoch = self.epoch;
-                self.transact(runtime, move |topology| {
-                    topology.attach_frame(epoch, attachment, main_frame_object_id)
-                })
+                let update = self.transact_update_and_observe(
+                    runtime,
+                    |topology| {
+                        let update =
+                            topology.attach_frame(epoch, attachment, main_frame_object_id)?;
+                        Ok(update.combine(topology.frame_document_committed(
+                            epoch,
+                            &route.session_id,
+                            &params.frame.id,
+                        )?))
+                    },
+                    |topology| {
+                        self.observe_frame_url(
+                            topology,
+                            &route,
+                            &params.frame.id,
+                            &params.frame.url,
+                            params.frame.url_fragment.as_deref(),
+                            Some(params.frame.name.as_deref().unwrap_or("")),
+                        )
+                    },
+                )?;
+                Ok(update_outcome(update))
+            }
+            "Page.navigatedWithinDocument" if self.frame_urls.is_some() => {
+                let params: page::NavigatedWithinDocumentEvent =
+                    self.decode(event, "Page.navigatedWithinDocument")?;
+                if let Some(route) =
+                    self.route_for_event_session(event, "Page.navigatedWithinDocument")?
+                {
+                    self.observe_frame_event(&route, &params.frame_id, &params.url, None, None)?;
+                }
+                Ok(ChromiumTopologyEventDriverOutcome::Ignored)
             }
             "Runtime.executionContextCreated" => {
                 let params: runtime::ExecutionContextCreatedEvent =
@@ -1200,9 +1937,16 @@ impl ChromiumTopologyEventDriver {
                 if self.route_for_session(session_id)?.is_none() {
                     return Ok(ChromiumTopologyEventDriverOutcome::Ignored);
                 }
-                self.transact(runtime, |topology| {
-                    topology.destroy_world(self.epoch, session_id, params.execution_context_id)
-                })
+                self.transact_destruction(
+                    runtime,
+                    |topology| {
+                        topology.destroy_world(self.epoch, session_id, params.execution_context_id)
+                    },
+                    crate::native_world_retirement::Destruction::World {
+                        session: session_id,
+                        unique: &params.execution_context_unique_id,
+                    },
+                )
             }
             "Runtime.executionContextsCleared" => {
                 let session_id =
@@ -1210,9 +1954,11 @@ impl ChromiumTopologyEventDriver {
                 if self.route_for_session(session_id)?.is_none() {
                     return Ok(ChromiumTopologyEventDriverOutcome::Ignored);
                 }
-                self.transact(runtime, |topology| {
-                    topology.clear_worlds(self.epoch, session_id)
-                })
+                self.transact_destruction(
+                    runtime,
+                    |topology| topology.clear_worlds(self.epoch, session_id),
+                    crate::native_world_retirement::Destruction::SessionWorlds(session_id),
+                )
             }
             "Target.attachedToTarget" => {
                 let params: target::AttachedToTargetEvent =
@@ -1228,7 +1974,10 @@ impl ChromiumTopologyEventDriver {
                         self.route_for_event_session(event, "Target.attachedToTarget")?
                     else {
                         self.browser_client
-                            .target_detach(&params.session_id)
+                            .target_detach_in_parent(
+                                event.session_id.as_deref(),
+                                &params.session_id,
+                            )
                             .await?;
                         return Ok(ChromiumTopologyEventDriverOutcome::Ignored);
                     };
@@ -1238,7 +1987,7 @@ impl ChromiumTopologyEventDriver {
                 }
                 if self.page_discovery.is_some() {
                     self.browser_client
-                        .target_detach(&params.session_id)
+                        .target_detach_in_parent(event.session_id.as_deref(), &params.session_id)
                         .await?;
                 }
                 Ok(ChromiumTopologyEventDriverOutcome::Ignored)
@@ -1246,35 +1995,7 @@ impl ChromiumTopologyEventDriver {
             "Target.detachedFromTarget" => {
                 let params: target::DetachedFromTargetEvent =
                     self.decode(event, "Target.detachedFromTarget")?;
-                let retiring_target = self
-                    .route_for_session(&params.session_id)?
-                    .filter(|route| route.target_id == route.page_target_id)
-                    .map(|route| route.page_target_id);
-                let retiring_page = match retiring_target {
-                    Some(target_id) => self
-                        .topology
-                        .lock()
-                        .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?
-                        .topology()
-                        .page_object_id(&target_id),
-                    None => None,
-                };
-                let publish = || {
-                    self.transact(runtime, |topology| {
-                        topology.detach_target(
-                            self.epoch,
-                            &params.session_id,
-                            params.target_id.as_deref(),
-                        )
-                    })
-                };
-                match (self.network_registration.as_ref(), retiring_page) {
-                    (Some(registration), Some(page)) => registration
-                        .commit_page_retirement(page, publish)
-                        .map_err(ChromiumTopologyEventDriverError::Network)?
-                        .map(|(outcome, _cleanup)| outcome),
-                    _ => publish(),
-                }
+                self.retire_session(runtime, &params.session_id, params.target_id.as_deref())
             }
             "Target.targetCrashed" => {
                 let params: target::TargetCrashedEvent =
@@ -1336,17 +2057,24 @@ impl ChromiumTopologyEventDriver {
             Some(registered)
         } else if let Some(reported) = reported_context_id {
             self.validate_discovery_native_id("browser context ID", &reported)?;
-            if self.default_native_context_id.as_deref() == Some(reported.as_str()) {
+            // Playwright attributes every unregistered native Context to this
+            // connection's default view. A Context-list snapshot may predate an
+            // attachment, or the Context may already be disposed while its
+            // attach event waits. Do not infer default identity from that stale
+            // list in this selected mode. Initialization verifies the session.
+            if self.playwright_context_fallback
+                || self.default_native_context_id.as_deref() == Some(reported.as_str())
+            {
                 self.default_context_key()?
             } else if self.nondefault_context_ids.contains(&reported) {
-                None
+                self.foreign_context_key()?
             } else if self.default_native_context_id.is_none() {
                 self.default_native_context_id = Some(reported.into_boxed_str().into_string());
                 self.default_context_key()?
             } else {
                 self.refresh_nondefault_contexts().await?;
                 if self.nondefault_context_ids.contains(&reported) {
-                    None
+                    self.foreign_context_key()?
                 } else {
                     match self.default_native_context_id.as_deref() {
                         Some(existing) if existing != reported => None,
@@ -1434,19 +2162,19 @@ impl ChromiumTopologyEventDriver {
         let client = self
             .session_factory
             .create_session(route.session_id.clone(), route.target_id.clone());
-        client.page_enable().await?;
-        let mut frame_tree = client.page_get_frame_tree().await?;
-        client.runtime_enable().await?;
-        if let Some(profile) = self.utility_world {
-            let world_name = profile.world_name(object_ids.page);
-            frame_tree = self
-                .initialize_utility_worlds(client.as_ref(), frame_tree, &world_name, false)
-                .await?;
-        }
-        client.target_set_auto_attach(true, true, true).await?;
-        client.runtime_run_if_waiting_for_debugger().await?;
+        let Some(frame_tree) = self
+            .initialize_discovered_session(
+                client.as_ref(),
+                &route,
+                browser_context_object_id,
+                object_ids.page,
+            )
+            .await?
+        else {
+            return Ok(ChromiumTopologyEventDriverOutcome::Ignored);
+        };
         let prepared_frames =
-            self.prepare_frame_tree(&route, frame_tree, Some(object_ids.main_frame))?;
+            self.prepare_frame_tree(&route, &frame_tree, Some(object_ids.main_frame))?;
         let prepared_network = if is_new_page {
             if let Some(registration) = &network_registration {
                 match registration
@@ -1512,17 +2240,22 @@ impl ChromiumTopologyEventDriver {
         let target_id = target.target_id.clone();
         let publish = |network_cleanup: &[ControlMessage]| {
             let network_cleanup = network_cleanup.to_vec();
-            self.transact_update(runtime, move |topology| {
-                let mut update = topology.attach_page(epoch, target, object_ids)?;
-                for (attachment, object_id) in prepared_frames {
-                    update = update.combine(topology.attach_frame(epoch, attachment, object_id)?);
-                }
-                if !network_cleanup.is_empty() {
-                    update = update.combine(CdpTopologyUpdate::lifecycle(network_cleanup));
-                }
-                update = update.combine(topology.mark_page_ready(epoch, &target_id)?);
-                Ok(update)
-            })
+            self.transact_update_and_observe(
+                runtime,
+                move |topology| {
+                    let mut update = topology.attach_page(epoch, target, object_ids)?;
+                    for (attachment, object_id) in prepared_frames {
+                        update =
+                            update.combine(topology.attach_frame(epoch, attachment, object_id)?);
+                    }
+                    if !network_cleanup.is_empty() {
+                        update = update.combine(CdpTopologyUpdate::lifecycle(network_cleanup));
+                    }
+                    update = update.combine(topology.mark_page_ready(epoch, &target_id)?);
+                    Ok(update)
+                },
+                |topology| self.observe_frame_tree(topology, &route, &frame_tree),
+            )
         };
         let publication = match (
             network_registration.as_ref(),
@@ -1664,13 +2397,171 @@ impl ChromiumTopologyEventDriver {
     where
         Runtime: ChromiumTopologyRuntime,
     {
+        self.transact_update_and_observe(runtime, apply, |_| Ok(()))
+    }
+
+    fn transact_destruction<Runtime>(
+        &self,
+        runtime: &Runtime,
+        apply: impl FnOnce(
+            &mut pwright_backend_cdp::CdpTopology,
+        ) -> Result<CdpTopologyUpdate, pwright_backend_cdp::CdpTopologyError>,
+        destruction: crate::native_world_retirement::Destruction<'_>,
+    ) -> Result<ChromiumTopologyEventDriverOutcome, ChromiumTopologyEventDriverError>
+    where
+        Runtime: ChromiumTopologyRuntime,
+    {
+        let mut topology = self
+            .topology
+            .lock()
+            .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?;
+        self.ensure_current_epoch(topology.topology().epoch())?;
+        let update = crate::transact_topology_update_with_destruction(
+            &mut topology,
+            runtime,
+            apply,
+            Some(destruction),
+        )?;
+        // These mutations only retire worlds; Frame URL ownership is unchanged.
+        Ok(ChromiumTopologyEventDriverOutcome::Updated(update))
+    }
+
+    fn transact_update_and_observe<Runtime>(
+        &self,
+        runtime: &Runtime,
+        apply: impl FnOnce(
+            &mut pwright_backend_cdp::CdpTopology,
+        ) -> Result<CdpTopologyUpdate, pwright_backend_cdp::CdpTopologyError>,
+        observe: impl FnOnce(
+            &pwright_backend_cdp::CdpTopology,
+        ) -> Result<(), ChromiumTopologyEventDriverError>,
+    ) -> Result<CdpTopologyUpdate, ChromiumTopologyEventDriverError>
+    where
+        Runtime: ChromiumTopologyRuntime,
+    {
         let mut topology = self
             .topology
             .lock()
             .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?;
         self.ensure_current_epoch(topology.topology().epoch())?;
         let update = transact_topology_update(&mut topology, runtime, apply)?;
+        if let Some(observer) = &self.frame_urls {
+            observer
+                .retain_live(&|id| topology.topology().frame_native_id(id).is_some())
+                .map_err(ChromiumTopologyEventDriverError::FrameUrlObserver)?;
+        }
+        observe(topology.topology())?;
+        if let Some(observer) = &self.frame_urls {
+            observer
+                .reconcile_committed(ChromiumCommittedFrameOwnership {
+                    ownership: ChromiumFrameOwnershipView(topology.topology()),
+                    effects: update.effects(),
+                })
+                .map_err(ChromiumTopologyEventDriverError::FrameUrlObserver)?;
+        }
         Ok(update)
+    }
+
+    fn refresh_frame_ownership(&self) -> Result<(), ChromiumTopologyEventDriverError> {
+        if let Some(observer) = &self.frame_events {
+            let topology = self
+                .topology
+                .lock()
+                .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?;
+            self.ensure_current_epoch(topology.topology().epoch())?;
+            observer
+                .reconcile(topology.topology())
+                .map_err(ChromiumTopologyEventDriverError::FrameEventObserver)?;
+        }
+        let Some(observer) = &self.frame_urls else {
+            return Ok(());
+        };
+        let topology = self
+            .topology
+            .lock()
+            .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?;
+        self.ensure_current_epoch(topology.topology().epoch())?;
+        observer
+            .retain_live(&|id| topology.topology().frame_native_id(id).is_some())
+            .map_err(ChromiumTopologyEventDriverError::FrameUrlObserver)?;
+        observer
+            .reconcile_ownership(ChromiumFrameOwnershipView(topology.topology()))
+            .map_err(ChromiumTopologyEventDriverError::FrameUrlObserver)
+    }
+
+    fn observe_frame_event(
+        &self,
+        route: &SessionRoute,
+        frame_id: &str,
+        url: &str,
+        fragment: Option<&str>,
+        name: Option<&str>,
+    ) -> Result<(), ChromiumTopologyEventDriverError> {
+        let topology = self
+            .topology
+            .lock()
+            .map_err(|_| ChromiumCompositionError::TopologyStateUnavailable)?;
+        self.ensure_current_epoch(topology.topology().epoch())?;
+        self.observe_frame_url(topology.topology(), route, frame_id, url, fragment, name)
+    }
+
+    fn observe_frame_url(
+        &self,
+        topology: &pwright_backend_cdp::CdpTopology,
+        route: &SessionRoute,
+        frame_id: &str,
+        url: &str,
+        fragment: Option<&str>,
+        name: Option<&str>,
+    ) -> Result<(), ChromiumTopologyEventDriverError> {
+        let Some(observer) = &self.frame_urls else {
+            return Ok(());
+        };
+        let Some(frame) = topology.frame_object_id(frame_id) else {
+            return Ok(());
+        };
+        if topology.page_object_id_for_frame(frame)
+            != topology.page_object_id(&route.page_target_id)
+            || topology.frame_session_id(frame) != Some(route.session_id.as_str())
+        {
+            return Ok(());
+        }
+        match name {
+            Some(name) => observer.update_navigation(frame, url, fragment, name),
+            None => observer.update(frame, url, fragment),
+        }
+        .map_err(ChromiumTopologyEventDriverError::FrameUrlObserver)
+    }
+
+    fn observe_frame_tree(
+        &self,
+        topology: &pwright_backend_cdp::CdpTopology,
+        route: &SessionRoute,
+        tree: &page::FrameTree,
+    ) -> Result<(), ChromiumTopologyEventDriverError> {
+        if self.frame_urls.is_none() && self.frame_events.is_none() {
+            return Ok(());
+        }
+        let mut pending = vec![tree];
+        while let Some(node) = pending.pop() {
+            if let Some(observer) = &self.frame_events {
+                observer
+                    .initialize_frame(topology, &route.session_id, &node.frame)
+                    .map_err(ChromiumTopologyEventDriverError::FrameEventObserver)?;
+            }
+            self.observe_frame_url(
+                topology,
+                route,
+                &node.frame.id,
+                &node.frame.url,
+                node.frame.url_fragment.as_deref(),
+                Some(node.frame.name.as_deref().unwrap_or("")),
+            )?;
+            if let Some(children) = &node.child_frames {
+                pending.extend(children.iter().rev());
+            }
+        }
+        Ok(())
     }
 
     fn route_for_event_session(
@@ -2537,6 +3428,15 @@ where
 
 #[cfg(test)]
 mod tests {
+    mod committed_observer;
+    mod discovery_retirement;
+    mod document_navigation;
+    #[cfg(feature = "frame-lifecycle")]
+    mod lifecycle_observation;
+    #[cfg(feature = "frame-lifecycle")]
+    mod lifecycle_registry;
+    #[cfg(feature = "close-route-retirement")]
+    mod native_page_worlds;
     use std::collections::BTreeMap;
     use std::convert::Infallible;
     use std::future::{Future, Ready, ready};
@@ -2771,6 +3671,322 @@ mod tests {
         network_driver: Option<ChromiumNetworkEventDriver>,
     }
 
+    struct RecordingInitializer {
+        factory: Arc<RecordingSessionFactory>,
+        calls: Mutex<Vec<(String, CdpContextOwnership, bool)>>,
+        fail: bool,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct ScopedInitializationRecord {
+        session: String,
+        target: String,
+        page_target: String,
+        page: ObjectId,
+        context: ObjectId,
+        ownership: CdpContextOwnership,
+        kind: super::ChromiumSessionTargetKind,
+        page_was_published: bool,
+    }
+
+    struct ScopedInitializer {
+        topology: SharedChromiumTopology,
+        factory: Arc<RecordingSessionFactory>,
+        calls: Mutex<Vec<ScopedInitializationRecord>>,
+        fail: bool,
+    }
+
+    impl super::ChromiumSessionInitializer for ScopedInitializer {
+        fn initialize<'a>(
+            &'a self,
+            _session_id: &'a str,
+            _target_id: &'a str,
+            _ownership: CdpContextOwnership,
+            _is_page: bool,
+        ) -> super::ChromiumSessionInitializationFuture<'a> {
+            panic!("driver must use the identity-aware entry point")
+        }
+
+        fn initialize_scoped<'a>(
+            &'a self,
+            target: super::ChromiumSessionInitializationTarget<'a>,
+        ) -> super::ChromiumSessionInitializationFuture<'a> {
+            Box::pin(async move {
+                assert!(
+                    !self
+                        .factory
+                        .client(target.target_id)
+                        .method_names()
+                        .iter()
+                        .any(|method| method == "Runtime.runIfWaitingForDebugger")
+                );
+                let published = self
+                    .topology
+                    .try_lock()
+                    .expect("initializer must not hold topology lock")
+                    .topology()
+                    .page_object_id(target.page_target_id)
+                    .is_some();
+                self.calls.lock().unwrap().push(ScopedInitializationRecord {
+                    session: target.session_id.to_owned(),
+                    target: target.target_id.to_owned(),
+                    page_target: target.page_target_id.to_owned(),
+                    page: target.page,
+                    context: target.context,
+                    ownership: target.ownership,
+                    kind: target.kind,
+                    page_was_published: published,
+                });
+                if self.fail {
+                    return Err(std::io::Error::other("scoped settings rejected").into());
+                }
+                Ok(())
+            })
+        }
+    }
+
+    fn scoped_initializer(fixture: &DriverFixture, fail: bool) -> Arc<ScopedInitializer> {
+        Arc::new(ScopedInitializer {
+            topology: fixture.topology.clone(),
+            factory: fixture.factory.clone(),
+            calls: Mutex::new(Vec::new()),
+            fail,
+        })
+    }
+
+    #[tokio::test]
+    async fn scoped_initializer_receives_reserved_page_identity_before_publication() {
+        // Arrange
+        let mut fixture = discovery_fixture(8);
+        let initializer = scoped_initializer(&fixture, false);
+        fixture.driver = fixture.driver.with_session_initializer(initializer.clone());
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        let topology = fixture.topology.lock().unwrap();
+        let page = topology.topology().page_object_id("page-a").unwrap();
+        let context = topology
+            .topology()
+            .default_context_route()
+            .unwrap()
+            .object_id();
+        assert_eq!(
+            *initializer.calls.lock().unwrap(),
+            [ScopedInitializationRecord {
+                session: "session-a".into(),
+                target: "page-a".into(),
+                page_target: "page-a".into(),
+                page,
+                context,
+                ownership: CdpContextOwnership::Default,
+                kind: super::ChromiumSessionTargetKind::Page,
+                page_was_published: false,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_initializer_failure_keeps_reserved_page_unpublished_and_paused() {
+        // Arrange
+        let mut fixture = discovery_fixture(8);
+        let initializer = scoped_initializer(&fixture, true);
+        fixture.driver = fixture.driver.with_session_initializer(initializer.clone());
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        let result = fixture.driver.receive_once(&fixture.runtime).await;
+        // Assert
+        assert!(matches!(
+            result,
+            Err(ChromiumTopologyEventDriverError::SessionInitialization(_))
+        ));
+        assert_eq!(initializer.calls.lock().unwrap().len(), 1);
+        assert!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .page_object_id("page-a")
+                .is_none()
+        );
+        assert!(
+            !fixture
+                .factory
+                .client("page-a")
+                .method_names()
+                .iter()
+                .any(|method| method == "Runtime.runIfWaitingForDebugger")
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_oopif_initializer_inherits_owning_page_and_context_without_reinitializing_parent()
+     {
+        // Arrange
+        let mut fixture = fixture(8);
+        let initializer = scoped_initializer(&fixture, false);
+        fixture.driver = fixture.driver.with_session_initializer(initializer.clone());
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        assert_eq!(initializer.calls.lock().unwrap().len(), 1);
+        initializer.calls.lock().unwrap().clear();
+        fixture.factory.set_frame_tree(
+            "frame-oopif",
+            frame_tree(serde_json::json!({
+                "frame": frame_value("frame-oopif", Some("target-a"))
+            })),
+        );
+        fixture
+            .sender
+            .send(CdpEvent::new(
+                "Target.attachedToTarget".into(),
+                serde_json::json!({
+                    "sessionId": "session-oopif",
+                    "targetInfo": { "targetId": "frame-oopif", "type": "iframe", "title": "",
+                        "url": "https://other.example", "attached": true, "canAccessOpener": false,
+                        "parentFrameId": "target-a" },
+                    "waitingForDebugger": true
+                }),
+                Some("session-a".into()),
+            ))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert_eq!(
+            *initializer.calls.lock().unwrap(),
+            [ScopedInitializationRecord {
+                session: "session-oopif".into(),
+                target: "frame-oopif".into(),
+                page_target: "target-a".into(),
+                page: ObjectId::new(3),
+                context: ObjectId::new(2),
+                ownership: CdpContextOwnership::External,
+                kind: super::ChromiumSessionTargetKind::OutOfProcessFrame,
+                page_was_published: true,
+            }]
+        );
+        assert_eq!(fixture.driver.initialized_session_count(), 2);
+    }
+
+    impl super::ChromiumSessionInitializer for RecordingInitializer {
+        fn initialize<'a>(
+            &'a self,
+            _session_id: &'a str,
+            target_id: &'a str,
+            ownership: CdpContextOwnership,
+            is_page: bool,
+        ) -> super::ChromiumSessionInitializationFuture<'a> {
+            Box::pin(async move {
+                assert!(
+                    !self
+                        .factory
+                        .client(target_id)
+                        .method_names()
+                        .iter()
+                        .any(|method| method == "Runtime.runIfWaitingForDebugger"),
+                    "settings must be applied before resuming the target"
+                );
+                self.calls
+                    .lock()
+                    .unwrap()
+                    .push((target_id.to_owned(), ownership, is_page));
+                if self.fail {
+                    return Err(std::io::Error::other("fixture initializer failed").into());
+                }
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn selected_session_initializer_runs_before_resume_and_page_ready() {
+        // Arrange
+        let mut fixture = discovery_fixture(8);
+        fixture.factory.set_frame_tree(
+            "page-a",
+            frame_tree(serde_json::json!({
+                "frame": frame_value("page-a", None),
+            })),
+        );
+        let initializer = Arc::new(RecordingInitializer {
+            factory: fixture.factory.clone(),
+            calls: Mutex::new(Vec::new()),
+            fail: false,
+        });
+        fixture.driver = fixture.driver.with_session_initializer(initializer.clone());
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert_eq!(
+            *initializer.calls.lock().unwrap(),
+            [("page-a".to_owned(), CdpContextOwnership::Default, true)]
+        );
+        assert_eq!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .page_state("page-a"),
+            Some(&pwright_backend_cdp::CdpPageState::Ready)
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_session_initializer_prevents_resume_and_page_publication() {
+        // Arrange
+        let mut fixture = discovery_fixture(8);
+        let initializer = Arc::new(RecordingInitializer {
+            factory: fixture.factory.clone(),
+            calls: Mutex::new(Vec::new()),
+            fail: true,
+        });
+        fixture.driver = fixture.driver.with_session_initializer(initializer.clone());
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        let result = fixture.driver.receive_once(&fixture.runtime).await;
+        // Assert
+        assert!(matches!(
+            result,
+            Err(ChromiumTopologyEventDriverError::SessionInitialization(_))
+        ));
+        assert!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .page_object_id("page-a")
+                .is_none()
+        );
+        assert!(
+            !initializer
+                .factory
+                .client("page-a")
+                .method_names()
+                .iter()
+                .any(|method| method == "Runtime.runIfWaitingForDebugger")
+        );
+    }
+
     fn exact_limits(requirements: ResourceRequirements) -> ResourceLimits {
         let mut limits = ResourceLimits::deny_all(requirements.scopes, requirements.leases);
         for class in ResourceClass::ALL {
@@ -2856,7 +4072,36 @@ mod tests {
         event_channel_capacity: usize,
         utility_world: Option<ChromiumUtilityWorldProfile>,
     ) -> DriverFixture {
+        fixture_with_registration(event_channel_capacity, utility_world, false)
+    }
+
+    fn fixture_with_registration(
+        event_channel_capacity: usize,
+        utility_world: Option<ChromiumUtilityWorldProfile>,
+        parallel: bool,
+    ) -> DriverFixture {
+        fixture_with_startup(event_channel_capacity, utility_world, parallel, false)
+    }
+
+    fn fixture_with_startup(
+        event_channel_capacity: usize,
+        utility_world: Option<ChromiumUtilityWorldProfile>,
+        parallel: bool,
+        recursive: bool,
+    ) -> DriverFixture {
         let (profile, topology_events) = profiles(event_channel_capacity);
+        let topology_events = if recursive {
+            topology_events
+                .with_parallel_recursive_attachment()
+                .unwrap()
+        } else if parallel {
+            topology_events
+                .with_parallel_utility_world_registration()
+                .unwrap()
+        } else {
+            topology_events
+        };
+        let profile = profile.with_topology_events(topology_events);
         let profile = match utility_world {
             Some(utility_world) => profile.with_utility_world(utility_world),
             None => profile,
@@ -2950,7 +4195,40 @@ mod tests {
     }
 
     fn discovery_fixture(event_channel_capacity: usize) -> DriverFixture {
+        discovery_fixture_with_registration(event_channel_capacity, false)
+    }
+
+    fn discovery_fixture_with_registration(
+        event_channel_capacity: usize,
+        parallel: bool,
+    ) -> DriverFixture {
+        discovery_fixture_with_startup(event_channel_capacity, parallel, false)
+    }
+
+    fn discovery_fixture_with_startup(
+        event_channel_capacity: usize,
+        parallel: bool,
+        recursive: bool,
+    ) -> DriverFixture {
         let (profile, topology_events) = profiles(event_channel_capacity);
+        let utility_world =
+            (parallel || recursive).then_some(ChromiumUtilityWorldProfile::playwright_compatible());
+        let topology_events = if recursive {
+            topology_events
+                .with_parallel_recursive_attachment()
+                .unwrap()
+        } else if parallel {
+            topology_events
+                .with_parallel_utility_world_registration()
+                .unwrap()
+        } else {
+            topology_events
+        };
+        let profile = profile.with_topology_events(topology_events);
+        let profile = match utility_world {
+            Some(world) => profile.with_utility_world(world),
+            None => profile,
+        };
         let page_discovery = ChromiumPageDiscoveryProductionProfile::from_profiles(
             profile.connection(),
             profile.topology(),
@@ -2990,7 +4268,7 @@ mod tests {
             epoch,
             topology_events,
             Some(page_discovery),
-            None,
+            utility_world,
             &resources,
         )
         .expect("discovery driver should build");
@@ -3160,6 +4438,339 @@ mod tests {
         )
     }
 
+    #[derive(Default)]
+    struct UrlProjection(Mutex<BTreeMap<ObjectId, String>>);
+
+    impl super::ChromiumFrameUrlObserver for UrlProjection {
+        fn update(
+            &self,
+            frame: ObjectId,
+            url: &str,
+            fragment: Option<&str>,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            self.0
+                .lock()
+                .unwrap()
+                .insert(frame, format!("{url}{}", fragment.unwrap_or("")));
+            Ok(())
+        }
+
+        fn retain_live(
+            &self,
+            is_live: &dyn Fn(ObjectId) -> bool,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            self.0.lock().unwrap().retain(|frame, _| is_live(*frame));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn frame_url_observer_projects_initial_tree_including_fragment() {
+        // Arrange
+        let mut fixture = fixture(16);
+        let observer = Arc::new(UrlProjection::default());
+        fixture.driver = fixture.driver.with_frame_url_observer(observer.clone());
+        let mut frame = frame_value("target-a", None);
+        frame["url"] = serde_json::json!("https://initial.test/");
+        frame["urlFragment"] = serde_json::json!("#fragment");
+        fixture
+            .factory
+            .client("target-a")
+            .set_frame_tree(frame_tree(serde_json::json!({ "frame": frame })));
+        // Act
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        // Assert
+        assert_eq!(
+            observer.0.lock().unwrap().get(&ObjectId::new(4)).unwrap(),
+            "https://initial.test/#fragment"
+        );
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct NameObservation {
+        frame: ObjectId,
+        name: Option<String>,
+    }
+
+    #[derive(Default)]
+    struct NavigationProjection(Mutex<Vec<NameObservation>>);
+
+    impl super::ChromiumFrameUrlObserver for NavigationProjection {
+        fn update(
+            &self,
+            frame: ObjectId,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            self.0
+                .lock()
+                .unwrap()
+                .push(NameObservation { frame, name: None });
+            Ok(())
+        }
+        fn update_navigation(
+            &self,
+            frame: ObjectId,
+            _: &str,
+            _: Option<&str>,
+            name: &str,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            self.0.lock().unwrap().push(NameObservation {
+                frame,
+                name: Some(name.into()),
+            });
+            Ok(())
+        }
+        fn retain_live(
+            &self,
+            _: &dyn Fn(ObjectId) -> bool,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn initial_frame_tree_forwards_navigation_name() {
+        // Arrange
+        let mut fixture = fixture(16);
+        let observer = Arc::new(NavigationProjection::default());
+        fixture.driver = fixture.driver.with_frame_url_observer(observer.clone());
+        let mut frame = frame_value("target-a", None);
+        frame["name"] = serde_json::json!("initial-name");
+        fixture
+            .factory
+            .client("target-a")
+            .set_frame_tree(frame_tree(serde_json::json!({ "frame": frame })));
+        // Act
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        // Assert
+        assert_eq!(
+            *observer.0.lock().unwrap(),
+            vec![NameObservation {
+                frame: ObjectId::new(4),
+                name: Some("initial-name".into())
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn main_frame_navigation_with_missing_name_explicitly_clears_name() {
+        // Arrange
+        let mut fixture = fixture(16);
+        let observer = Arc::new(NavigationProjection::default());
+        fixture.driver = fixture.driver.with_frame_url_observer(observer.clone());
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        observer.0.lock().unwrap().clear();
+        fixture
+            .sender
+            .send(CdpEvent::new(
+                "Page.frameNavigated".into(),
+                serde_json::json!({ "frame": frame_value("main-new", None), "type": "Navigation" }),
+                Some("session-a".into()),
+            ))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert_eq!(
+            *observer.0.lock().unwrap(),
+            vec![NameObservation {
+                frame: ObjectId::new(4),
+                name: Some("".into())
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn same_document_navigation_does_not_report_a_name_change() {
+        // Arrange
+        let mut fixture = fixture(16);
+        let observer = Arc::new(NavigationProjection::default());
+        fixture.driver = fixture.driver.with_frame_url_observer(observer.clone());
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        observer.0.lock().unwrap().clear();
+        fixture.sender.send(CdpEvent::new("Page.navigatedWithinDocument".into(), serde_json::json!({ "frameId": "target-a", "url": "about:blank#new", "navigationType": "fragment" }), Some("session-a".into()))).unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert_eq!(
+            *observer.0.lock().unwrap(),
+            vec![NameObservation {
+                frame: ObjectId::new(4),
+                name: None
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn frame_url_observer_preserves_portable_identity_on_main_frame_replacement() {
+        // Arrange
+        let mut fixture = fixture(16);
+        let observer = Arc::new(UrlProjection::default());
+        fixture.driver = fixture.driver.with_frame_url_observer(observer.clone());
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        let mut frame = frame_value("main-new", None);
+        frame["url"] = serde_json::json!("https://replacement.test/");
+        fixture
+            .sender
+            .send(CdpEvent::new(
+                "Page.frameNavigated".into(),
+                serde_json::json!({ "frame": frame, "type": "Navigation" }),
+                Some("session-a".into()),
+            ))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert_eq!(
+            *observer.0.lock().unwrap(),
+            BTreeMap::from([(ObjectId::new(4), "https://replacement.test/".into())])
+        );
+        assert_eq!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .frame_object_id("main-new"),
+            Some(ObjectId::new(4))
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_signal_leaves_queued_url_events_for_the_bounded_fence() {
+        // Arrange
+        let mut fixture = fixture(16);
+        let observer = Arc::new(UrlProjection::default());
+        fixture.driver = fixture.driver.with_frame_url_observer(observer.clone());
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        fixture.sender.send(CdpEvent::new("Page.navigatedWithinDocument".into(), serde_json::json!({ "frameId": "target-a", "url": "about:blank#new", "navigationType": "fragment" }), Some("session-a".into()))).unwrap();
+        // Act
+        fixture
+            .driver
+            .receive_once_or_signal(&fixture.runtime, ready(()))
+            .await
+            .unwrap();
+        // Assert
+        assert_eq!(
+            observer.0.lock().unwrap().get(&ObjectId::new(4)).unwrap(),
+            "about:blank"
+        );
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 1)
+            .await
+            .unwrap();
+        assert_eq!(
+            observer.0.lock().unwrap().get(&ObjectId::new(4)).unwrap(),
+            "about:blank#new"
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_session_cannot_overwrite_a_live_frame_url() {
+        // Arrange
+        let mut fixture = fixture(16);
+        let observer = Arc::new(UrlProjection::default());
+        fixture.driver = fixture.driver.with_frame_url_observer(observer.clone());
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        fixture.sender.send(CdpEvent::new("Page.navigatedWithinDocument".into(), serde_json::json!({ "frameId": "target-a", "url": "about:blank#stale", "navigationType": "fragment" }), Some("retired-session".into()))).unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert_eq!(
+            observer.0.lock().unwrap().get(&ObjectId::new(4)).unwrap(),
+            "about:blank"
+        );
+    }
+
+    #[tokio::test]
+    async fn frame_url_observer_releases_active_entries_after_target_retirement() {
+        // Arrange
+        let mut fixture = fixture(16);
+        let observer = Arc::new(UrlProjection::default());
+        fixture.driver = fixture.driver.with_frame_url_observer(observer.clone());
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        fixture
+            .sender
+            .send(CdpEvent::new(
+                "Target.detachedFromTarget".into(),
+                serde_json::json!({ "sessionId": "session-a", "targetId": "target-a" }),
+                None,
+            ))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert!(observer.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn frame_url_observer_failure_propagates_instead_of_reporting_a_fresh_snapshot() {
+        struct Reject;
+        impl super::ChromiumFrameUrlObserver for Reject {
+            fn update(
+                &self,
+                _: ObjectId,
+                _: &str,
+                _: Option<&str>,
+            ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                Err(std::io::Error::other("metadata budget exhausted").into())
+            }
+            fn retain_live(
+                &self,
+                _: &dyn Fn(ObjectId) -> bool,
+            ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                Ok(())
+            }
+        }
+        // Arrange
+        let mut fixture = fixture(16);
+        fixture.driver = fixture.driver.with_frame_url_observer(Arc::new(Reject));
+        // Act
+        let result = fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await;
+        // Assert
+        assert!(matches!(
+            result,
+            Err(super::ChromiumTopologyEventDriverError::FrameUrlObserver(_))
+        ));
+    }
+
     #[tokio::test]
     async fn utility_world_recovers_only_a_proven_frame_disappearance() {
         // Arrange
@@ -3299,6 +4910,490 @@ mod tests {
                 .method_names()
                 .contains(&"Target.setAutoAttach".to_owned())
         );
+    }
+
+    #[tokio::test]
+    async fn recursive_attachment_discovery_preserves_settings_world_and_resume_fences() {
+        // Arrange
+        let mut fixture = discovery_fixture_with_startup(8, false, true);
+        let initializer = Arc::new(RecordingInitializer {
+            factory: fixture.factory.clone(),
+            calls: Mutex::new(Vec::new()),
+            fail: false,
+        });
+        fixture.driver = fixture.driver.with_session_initializer(initializer.clone());
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert_eq!(initializer.calls.lock().unwrap().len(), 1);
+        assert_eq!(
+            fixture.factory.client("page-a").method_names(),
+            [
+                "Page.enable",
+                "Page.getFrameTree",
+                "Runtime.enable",
+                "Page.addScriptToEvaluateOnNewDocument",
+                "Target.setAutoAttach",
+                "Page.createIsolatedWorld",
+                "Runtime.runIfWaitingForDebugger",
+            ]
+        );
+        assert_eq!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .page_state("page-a"),
+            Some(&pwright_backend_cdp::CdpPageState::Ready)
+        );
+    }
+
+    #[tokio::test]
+    async fn recursive_attachment_cannot_bypass_failed_context_settings() {
+        // Arrange
+        let mut fixture = discovery_fixture_with_startup(8, false, true);
+        fixture.driver = fixture
+            .driver
+            .with_session_initializer(Arc::new(RecordingInitializer {
+                factory: fixture.factory.clone(),
+                calls: Mutex::new(Vec::new()),
+                fail: true,
+            }));
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        let result = fixture.driver.receive_once(&fixture.runtime).await;
+        // Assert
+        assert!(matches!(
+            result,
+            Err(ChromiumTopologyEventDriverError::SessionInitialization(_))
+        ));
+        assert_eq!(
+            fixture.factory.client("page-a").method_names(),
+            ["Page.enable"]
+        );
+        assert!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .page_object_id("page-a")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn recursive_attachment_world_failure_does_not_resume_or_publish_page() {
+        // Arrange
+        let mut fixture = discovery_fixture_with_startup(8, false, true);
+        fixture
+            .factory
+            .create_session("session-a".into(), "page-a".into());
+        let client = fixture.factory.client("page-a");
+        client.set_create_isolated_world_errors([Some("world creation failed".into())]);
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        let result = fixture.driver.receive_once(&fixture.runtime).await;
+        // Assert
+        assert!(
+            matches!(result, Err(ChromiumTopologyEventDriverError::Cdp(CdpError::Protocol { ref message, .. })) if message == "world creation failed")
+        );
+        assert_eq!(
+            client
+                .method_names()
+                .iter()
+                .filter(|method| *method == "Target.setAutoAttach")
+                .count(),
+            1
+        );
+        assert!(
+            !client
+                .method_names()
+                .iter()
+                .any(|method| method == "Runtime.runIfWaitingForDebugger")
+        );
+        assert!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .page_object_id("page-a")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_isolated_world_creation_does_not_block_target_resume() {
+        // Arrange
+        let mut fixture = discovery_fixture_with_startup(8, false, true);
+        fixture
+            .factory
+            .create_session("session-a".into(), "page-a".into());
+        let client = fixture.factory.client("page-a");
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_create_isolated_world_gate(Some(gate.clone()));
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        let mut operation = Box::pin(fixture.driver.receive_once(&fixture.runtime));
+        // Act
+        std::future::poll_fn(|cx| {
+            assert!(operation.as_mut().poll(cx).is_pending());
+            std::task::Poll::Ready(())
+        })
+        .await;
+        // Assert: resume must be sent while world creation is still held.
+        assert!(
+            client
+                .method_names()
+                .iter()
+                .any(|name| name == "Runtime.runIfWaitingForDebugger")
+        );
+        gate.notify_one();
+        operation.await.unwrap();
+        assert_eq!(
+            client
+                .method_names()
+                .iter()
+                .filter(|name| *name == "Runtime.runIfWaitingForDebugger")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn untracked_parent_attachment_is_released_through_its_announcing_parent() {
+        // Arrange
+        let mut fixture = fixture(8);
+        fixture
+            .sender
+            .send(CdpEvent::new(
+                "Target.attachedToTarget".into(),
+                serde_json::json!({
+                    "sessionId": "unwanted-child", "waitingForDebugger": true,
+                    "targetInfo": {"targetId":"child-a", "type":"iframe", "title":"", "url":"",
+                        "attached":true, "canAccessOpener":false, "parentFrameId":"target-a"}
+                }),
+                Some("old-parent-session".into()),
+            ))
+            .unwrap();
+        // Act
+        let result = fixture.driver.receive_once(&fixture.runtime).await;
+        // Assert
+        result.unwrap();
+        assert!(fixture.browser.calls().iter().any(|(method, args)| method
+            == "Target.detachFromTargetInParent"
+            && *args
+                == vec![
+                    serde_json::json!("old-parent-session"),
+                    serde_json::json!("unwanted-child")
+                ]));
+    }
+
+    #[tokio::test]
+    async fn recursive_attachment_existing_routes_enable_once_with_or_without_worlds() {
+        for world in [
+            None,
+            Some(ChromiumUtilityWorldProfile::playwright_compatible()),
+        ] {
+            // Arrange
+            let mut fixture = fixture_with_startup(8, world, false, true);
+            // Act
+            fixture
+                .driver
+                .initialize_snapshot(&fixture.runtime, 0)
+                .await
+                .unwrap();
+            // Assert
+            let methods = fixture.factory.client("target-a").method_names();
+            let expected = if world.is_some() {
+                vec![
+                    "Page.enable",
+                    "Page.getFrameTree",
+                    "Runtime.enable",
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    "Target.setAutoAttach",
+                    "Page.createIsolatedWorld",
+                ]
+            } else {
+                vec![
+                    "Page.enable",
+                    "Page.getFrameTree",
+                    "Runtime.enable",
+                    "Target.setAutoAttach",
+                ]
+            };
+            assert_eq!(methods, expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn recursive_attachment_announcements_remain_queued_until_parent_publication() {
+        // Arrange
+        let mut fixture = discovery_fixture_with_startup(8, false, true);
+        fixture
+            .factory
+            .create_session("session-a".into(), "page-a".into());
+        fixture.factory.client("page-a").set_auto_attach_events(
+            fixture.sender.clone(),
+            [attached_page_event(
+                "page-b",
+                "session-b",
+                None,
+                Some("page-a"),
+            )],
+        );
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert: recursive wire delivery does not recursively publish a Page.
+        let topology = fixture.topology.lock().unwrap();
+        assert_eq!(
+            topology.topology().page_state("page-a"),
+            Some(&pwright_backend_cdp::CdpPageState::Ready)
+        );
+        assert!(topology.topology().page_object_id("page-b").is_none());
+        drop(topology);
+        assert!(!fixture.sender.is_empty());
+    }
+
+    #[tokio::test]
+    async fn parallel_registration_discovery_preserves_context_world_and_resume_fences() {
+        // Arrange
+        let mut fixture = discovery_fixture_with_registration(8, true);
+        let initializer = Arc::new(RecordingInitializer {
+            factory: fixture.factory.clone(),
+            calls: Mutex::new(Vec::new()),
+            fail: false,
+        });
+        fixture.driver = fixture.driver.with_session_initializer(initializer.clone());
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        assert_eq!(initializer.calls.lock().unwrap().len(), 1);
+        assert_eq!(
+            fixture.factory.client("page-a").method_names(),
+            [
+                "Page.enable",
+                "Page.getFrameTree",
+                "Runtime.enable",
+                "Page.addScriptToEvaluateOnNewDocument",
+                "Page.createIsolatedWorld",
+                "Target.setAutoAttach",
+                "Runtime.runIfWaitingForDebugger",
+            ]
+        );
+        assert_eq!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .page_state("page-a"),
+            Some(&pwright_backend_cdp::CdpPageState::Ready)
+        );
+    }
+
+    #[tokio::test]
+    async fn parallel_registration_world_failure_does_not_resume_or_publish_discovered_page() {
+        // Arrange
+        let mut fixture = discovery_fixture_with_registration(8, true);
+        fixture
+            .factory
+            .create_session("session-a".into(), "page-a".into());
+        let client = fixture.factory.client("page-a");
+        client.set_create_isolated_world_errors([Some("world creation failed".into())]);
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .unwrap();
+        // Act
+        let result = fixture.driver.receive_once(&fixture.runtime).await;
+        // Assert
+        assert!(
+            matches!(result, Err(ChromiumTopologyEventDriverError::Cdp(CdpError::Protocol { ref message, .. })) if message == "world creation failed")
+        );
+        assert!(!client.method_names().iter().any(|method| matches!(
+            method.as_str(),
+            "Runtime.runIfWaitingForDebugger" | "Target.setAutoAttach"
+        )));
+        assert!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .page_object_id("page-a")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn parallel_registration_existing_route_registers_once_and_preserves_frame_disappearance_check()
+     {
+        // Arrange
+        let mut fixture = fixture_with_registration(
+            8,
+            Some(ChromiumUtilityWorldProfile::playwright_compatible()),
+            true,
+        );
+        fixture
+            .factory
+            .create_session("session-a".into(), "target-a".into());
+        let client = fixture.factory.client("target-a");
+        client.set_frame_trees([
+            frame_tree(serde_json::json!({ "frame": frame_value("target-a", None), "childFrames": [{"frame": frame_value("vanished-child", Some("target-a"))}] })),
+            frame_tree(serde_json::json!({ "frame": frame_value("target-a", None) })),
+        ]);
+        client.set_create_isolated_world_errors([
+            None,
+            Some("No frame with given id found".into()),
+            None,
+        ]);
+        // Act
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        // Assert
+        assert_eq!(
+            client.method_names(),
+            [
+                "Page.enable",
+                "Page.getFrameTree",
+                "Runtime.enable",
+                "Page.addScriptToEvaluateOnNewDocument",
+                "Page.createIsolatedWorld",
+                "Page.createIsolatedWorld",
+                "Page.getFrameTree",
+                "Page.createIsolatedWorld",
+                "Target.setAutoAttach",
+            ]
+        );
+        assert!(
+            fixture
+                .topology
+                .lock()
+                .unwrap()
+                .topology()
+                .frame_object_id("vanished-child")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn parallel_registration_without_utility_capability_sends_no_world_commands() {
+        // Arrange
+        let mut fixture = fixture_with_registration(8, None, true);
+        // Act
+        fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await
+            .unwrap();
+        // Assert
+        assert_eq!(
+            fixture.factory.client("target-a").method_names(),
+            [
+                "Page.enable",
+                "Page.getFrameTree",
+                "Runtime.enable",
+                "Target.setAutoAttach",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn initial_snapshot_exposes_default_context_without_waiting_for_a_page_event() {
+        // Arrange
+        let mut fixture = discovery_fixture(8);
+
+        // Act
+        let outcome = fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await;
+
+        // Assert
+        assert!(outcome.is_ok());
+        let topology = fixture
+            .topology
+            .lock()
+            .expect("topology should be available");
+        assert!(topology.topology().default_context_route().is_some());
+        assert_eq!(topology.topology().page_session_routes().count(), 0);
+        assert_eq!(fixture.runtime.live_object_count(), Ok(2));
+    }
+
+    #[tokio::test]
+    async fn initial_snapshot_drains_preexisting_target_announcements() {
+        // Arrange
+        let mut fixture = discovery_fixture(8);
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .expect("Page attachment should enqueue");
+
+        // Act
+        let outcome = fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 1)
+            .await;
+
+        // Assert
+        assert!(outcome.is_ok());
+        let topology = fixture
+            .topology
+            .lock()
+            .expect("topology should be available");
+        assert_eq!(topology.topology().page_session_routes().count(), 1);
+        assert!(topology.topology().main_frame_object_id("page-a").is_some());
+        assert_eq!(fixture.runtime.live_object_count(), Ok(4));
+    }
+
+    #[tokio::test]
+    async fn initial_snapshot_fails_closed_when_event_budget_is_exceeded() {
+        // Arrange
+        let mut fixture = discovery_fixture(8);
+        fixture
+            .sender
+            .send(attached_page_event("page-a", "session-a", None, None))
+            .expect("Page attachment should enqueue");
+
+        // Act
+        let outcome = fixture
+            .driver
+            .initialize_snapshot(&fixture.runtime, 0)
+            .await;
+
+        // Assert
+        assert!(matches!(
+            outcome,
+            Err(ChromiumTopologyEventDriverError::InitialSnapshotLimitExceeded { limit: 0 })
+        ));
+        assert_eq!(fixture.driver.resync_required(), Some(1));
+        assert_eq!(fixture.runtime.live_object_count(), Ok(2));
     }
 
     #[tokio::test]
@@ -4146,6 +6241,51 @@ mod tests {
                 .topology()
                 .page_object_id("foreign-page"),
             None
+        );
+    }
+
+    #[tokio::test]
+    async fn playwright_context_fallback_attributes_foreign_page_without_owning_context() {
+        // Arrange
+        let mut fixture = discovery_fixture(8);
+        fixture.driver = fixture.driver.with_playwright_context_fallback();
+        fixture
+            .browser
+            .set_browser_contexts_response(vec!["foreign-context".to_owned()]);
+        fixture.factory.set_frame_tree(
+            "foreign-page",
+            frame_tree(serde_json::json!({
+                "frame": frame_value("foreign-page", None)
+            })),
+        );
+        fixture
+            .sender
+            .send(attached_page_event(
+                "foreign-page",
+                "foreign-session",
+                Some("foreign-context"),
+                None,
+            ))
+            .unwrap();
+        // Act
+        fixture.driver.receive_once(&fixture.runtime).await.unwrap();
+        // Assert
+        let topology = fixture.topology.lock().unwrap();
+        let topology = topology.topology();
+        assert!(topology.page_object_id("foreign-page").is_some());
+        assert!(topology.context_object_id("foreign-context").is_none());
+        let default = topology.default_context_route().unwrap().object_id();
+        assert!(
+            topology
+                .page_session_routes()
+                .any(|route| route.target_id() == "foreign-page"
+                    && route.browser_context_object_id() == default)
+        );
+        assert!(
+            !fixture
+                .browser
+                .method_names()
+                .contains(&"Target.detachFromTarget".to_owned())
         );
     }
 

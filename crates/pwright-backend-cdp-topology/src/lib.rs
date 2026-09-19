@@ -19,6 +19,12 @@ use pwright_core::{
     ResourceRequirements, ResourceScope,
 };
 
+mod frame_navigation;
+pub use frame_navigation::CdpFrameNavigationRoute;
+
+#[cfg(feature = "transition-reservations")]
+pub mod transition_reservations;
+
 /// Identifies one incarnation of a CDP connection.
 ///
 /// Every browser event must carry the epoch of the reader that produced it.
@@ -477,6 +483,7 @@ pub enum CdpTopologyEffect {
 
 #[cfg(test)]
 mod tests {
+    mod frame_world_routes;
     use pwright_browser_model::{
         BROWSER_CONTEXT_OBJECT_KIND, BROWSER_OBJECT_KIND_CATALOG, FRAME_OBJECT_KIND,
         PAGE_OBJECT_KIND,
@@ -512,6 +519,47 @@ mod tests {
                 CdpContextOwnership::Owned,
             )
             .expect("test context should register");
+    }
+
+    #[test]
+    fn frame_session_lookup_follows_remote_ancestors_and_rejects_swap_gaps() {
+        // Arrange
+        let mut topology = topology();
+        register_context(&mut topology, "context-a", 2);
+        attach_page(&mut topology, "target-a", "session-a", "context-a", 3, 4);
+        topology
+            .attach_frame(
+                EPOCH_ONE,
+                CdpFrameAttachment::remote("target-a", "remote", "target-a", "remote-session"),
+                ObjectId::new(5),
+            )
+            .unwrap();
+        topology
+            .attach_frame(
+                EPOCH_ONE,
+                CdpFrameAttachment::local("target-a", "local", "remote"),
+                ObjectId::new(6),
+            )
+            .unwrap();
+        // Act
+        let sessions = [4, 5, 6].map(|id| {
+            topology
+                .frame_session_id(ObjectId::new(id))
+                .map(str::to_owned)
+        });
+        // Assert
+        assert_eq!(
+            sessions,
+            [
+                Some("session-a".into()),
+                Some("remote-session".into()),
+                Some("remote-session".into())
+            ]
+        );
+        topology
+            .detach_target(EPOCH_ONE, "remote-session", Some("remote"))
+            .unwrap();
+        assert_eq!(topology.frame_session_id(ObjectId::new(5)), None);
     }
 
     #[test]
@@ -2436,6 +2484,13 @@ impl CdpTopology {
             if world.kind != kind {
                 return None;
             }
+            // A world can outlive its Frame's renderer handoff until the old
+            // Runtime destruction event arrives. Retain that observation for
+            // lifecycle accounting, but never export it as a current command
+            // route during a swap gap or through the previous session.
+            if self.frame_session_id(world.frame_object_id) != Some(key.session_id.as_str()) {
+                return None;
+            }
             let target_id = match self.sessions.get(&key.session_id)? {
                 SessionOwner::Page(target_id) => target_id.as_str(),
                 SessionOwner::Frame(frame_id) => frame_id.as_str(),
@@ -2505,6 +2560,34 @@ impl CdpTopology {
         self.frame_by_object
             .get(&frame_object_id)
             .map(String::as_str)
+    }
+
+    /// Enumerates materialized Frame ownership even during execution-world gaps.
+    /// This borrows the bounded topology and copies only portable object IDs.
+    pub fn frame_page_routes(&self) -> impl Iterator<Item = (ObjectId, ObjectId)> + '_ {
+        self.frame_by_object.keys().filter_map(|frame| {
+            self.page_object_id_for_frame(*frame)
+                .map(|page| (*frame, page))
+        })
+    }
+
+    /// Resolves the authoritative renderer session without requiring an
+    /// execution world. Local descendants inherit their nearest remote/Main
+    /// ancestor; a swap gap has no authoritative event source.
+    pub fn frame_session_id(&self, frame_object_id: ObjectId) -> Option<&str> {
+        let mut frame = self
+            .frames
+            .get(self.frame_by_object.get(&frame_object_id)?)?;
+        loop {
+            match &frame.host {
+                FrameHost::Main => {
+                    return self.pages.get(&frame.page_target_id)?.session_id.as_deref();
+                }
+                FrameHost::Remote { session_id } => return Some(session_id),
+                FrameHost::Local => frame = self.frames.get(frame.parent_frame_id.as_deref()?)?,
+                FrameHost::AwaitingLocalOrDetach | FrameHost::Unbound => return None,
+            }
+        }
     }
 
     /// Returns the portable parent Frame, or `None` for a main Frame.
@@ -3065,6 +3148,11 @@ impl CdpTopology {
             return Err(CdpTopologyError::FrameConflict {
                 frame_id: attachment.frame_id,
             });
+        }
+        if self.frame_session_id(frame.object_id) != Some(attachment.session_id.as_str()) {
+            // A delayed Runtime announcement from the previous renderer must
+            // not replace the world's current-session record after handoff.
+            return Ok(CdpTopologyUpdate::idempotent());
         }
         let key = WorldKey {
             session_id: attachment.session_id,
@@ -4949,15 +5037,15 @@ mod production_tests {
         topology
             .attach_world(
                 EPOCH_ONE,
-                CdpWorldAttachment::new("session", 7, "unique", "child", CdpWorldKind::Main),
+                CdpWorldAttachment::new("child-session", 7, "unique", "child", CdpWorldKind::Main),
             )
-            .expect("page session should reach its child frame");
+            .expect("the remote child's own renderer session supplies its world");
 
         // Assert
-        assert_eq!(topology.retained_native_bytes(), 156);
+        assert_eq!(topology.retained_native_bytes(), 162);
         assert_exact_accounting(&topology, &resources);
         topology
-            .clear_worlds(EPOCH_ONE, "session")
+            .clear_worlds(EPOCH_ONE, "child-session")
             .expect("world should clear");
         assert_eq!(topology.retained_native_bytes(), 143);
         assert_exact_accounting(&topology, &resources);

@@ -11,6 +11,44 @@ mod generated_capability;
 
 pub use generated_capability::*;
 
+#[cfg(feature = "frame-navigation")]
+#[doc(hidden)]
+#[rustfmt::skip]
+mod generated_capability_1_2;
+
+/// Explicit navigation 1.2 contracts. Root exports retain the 1.1 Page surface;
+/// selecting these types does not install a native service or advertise it.
+#[cfg(feature = "frame-navigation")]
+pub mod v1_2 {
+    pub use super::generated_capability_1_2::*;
+
+    impl GotoParams {
+        pub fn new(url: impl Into<String>) -> Self {
+            Self {
+                url: url.into(),
+                referrer: None,
+                wait_until: WaitUntil::Load,
+            }
+        }
+        pub fn with_referrer(mut self, referrer: impl Into<String>) -> Self {
+            self.referrer = Some(referrer.into());
+            self
+        }
+        pub const fn with_wait_until(mut self, wait_until: WaitUntil) -> Self {
+            self.wait_until = wait_until;
+            self
+        }
+    }
+}
+
+impl Default for ReloadParams {
+    fn default() -> Self {
+        Self {
+            wait_until: WaitUntil::Load,
+        }
+    }
+}
+
 impl BeginNavigationParams {
     pub fn new(url: impl Into<String>) -> Self {
         Self {
@@ -84,7 +122,7 @@ mod tests {
             Goto::TARGET_OBJECT_KINDS[0].as_str(),
             "pwright.browser.page"
         );
-        assert_eq!(NAVIGATION_COMMAND_DESCRIPTORS.len(), 2);
+        assert_eq!(NAVIGATION_COMMAND_DESCRIPTORS.len(), 3);
         assert_eq!(
             NAVIGATION_COMMAND_DESCRIPTORS[0].command(),
             BEGIN_NAVIGATION_COMMAND_ID

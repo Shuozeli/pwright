@@ -30,8 +30,79 @@ jobs:
       - run: cargo clippy --workspace --all-targets
       - name: Verify navigation-only dependency boundary
         run: bash scripts/check-v2-navigation-dependencies.sh
+      - name: Verify optional Rust extra HTTP header policy
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-network-model --features extra-headers
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-network-model --all-targets --features extra-headers -- -D warnings
+      - name: Verify opt-in Frame navigation 1.2 generated bindings
+        run: |
+          CARGO_INCREMENTAL=0 cargo run --release --locked -p pwright-schema-gen -- \
+            --input crates/pwright-cap-navigation/schema/navigation-1.2.yml \
+            --import crates/pwright-codec-common/schema/common.yml \
+            --previous crates/pwright-cap-navigation/schema/baselines/1.1/navigation.yml \
+            --output crates/pwright-codec-navigation/src/generated_schema_1_2.rs \
+            --capability-output crates/pwright-cap-navigation/src/generated_capability_1_2.rs \
+            --server-output crates/pwright-server-navigation/src/generated_server_1_2.rs --check
+      - name: Verify selected Frame navigation typed contracts
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-schema-gen -p pwright-cap-navigation -p pwright-codec-navigation -p pwright-client-navigation -p pwright-server-navigation --features pwright-server-navigation/frame-navigation,pwright-client-navigation/frame-navigation
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-cap-navigation -p pwright-codec-navigation -p pwright-client-navigation -p pwright-server-navigation --all-targets --features pwright-server-navigation/frame-navigation,pwright-client-navigation/frame-navigation -- -D warnings
+      - name: Verify selected Rust host and composable Node FFI navigation
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host --features frame-navigation --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-addon --all-targets --features frame-navigation -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-addon --all-targets --features drag-runtime,frame-navigation -- -D warnings
+          node packages/pwright/scripts/check-boundary.mjs
+      - name: Verify opt-in file-input preparation model
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-file-input-model -p pwright-file-input-source -p pwright-file-input-fs -p pwright-file-input-tokio -p pwright-backend-cdp-file-input -p pwright-composition-chromium-file-input -p pwright-cdp
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-file-input-model -p pwright-file-input-source -p pwright-file-input-fs -p pwright-file-input-tokio -p pwright-backend-cdp-file-input -p pwright-composition-chromium-file-input -p pwright-cdp --all-targets -- -D warnings
+          node scripts/check-v2-file-input-dependencies.mjs
+      - name: Verify independently bounded large CDP commands
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-cdp -p pwright-backend-cdp-file-input --features pwright-backend-cdp-file-input/large-commands
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-cdp -p pwright-backend-cdp-file-input --features pwright-backend-cdp-file-input/large-commands --all-targets -- -D warnings
+      - name: Verify independent persistent target marking
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-backend-cdp-file-input -p pwright-composition-chromium-file-input --features retained-target-marking --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-backend-cdp-file-input -p pwright-composition-chromium-file-input --features retained-target-marking --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-backend-cdp-file-input -p pwright-composition-chromium-file-input --features retained-target-marking,retained-preflight,pwright-backend-cdp-file-input/large-commands --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-backend-cdp-file-input -p pwright-composition-chromium-file-input --features retained-target-marking,retained-preflight,pwright-backend-cdp-file-input/large-commands --all-targets -- -D warnings
+      - name: Verify selected safe-host file-input integration
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host -p pwright-composition-chromium-file-input --features pwright-node-host/file-input --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-host --features file-input --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-addon --features file-input --all-targets -- -D warnings
+      - name: Verify optional native Handle publication and pending result ownership
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --features handles --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --features handles,file-input,concurrent-close,extra-headers,drag-runtime,frame-navigation --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-host --features handles --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-host --features handles,file-input,concurrent-close,extra-headers,drag-runtime,frame-navigation --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-addon --features handles --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-composition-chromium-handle-evaluation --features frame-value --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-composition-chromium-handle-evaluation --features handle-value --all-targets -- -D warnings
+      - name: Verify selected concurrent Node close driver
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host --features concurrent-close --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host --features concurrent-close,drag-runtime,frame-navigation,extra-headers --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-addon --all-targets --features concurrent-close,drag-runtime,frame-navigation,extra-headers -- -D warnings
       - name: Verify topology-only dependency boundary
         run: bash scripts/check-v2-topology-dependencies.sh
+      - name: Verify opt-in topology transition reservations
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-backend-cdp-topology --no-default-features --features transition-reservations --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-backend-cdp-topology --all-targets --no-default-features --features transition-reservations -- -D warnings
+          bash scripts/check-v2-topology-reservations-dependencies.sh
+      - name: Verify opt-in runtime disposal reservations
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-runtime --no-default-features --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-runtime --no-default-features --features disposal-reservations --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-runtime --no-default-features --features disposal-reservations,lifetime-handoff --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-runtime --no-default-features --features disposal-reservations --doc
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-runtime --all-targets --no-default-features --features disposal-reservations,lifetime-handoff -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-runtime --all-targets --no-default-features -- -D warnings
+          bash scripts/check-v2-runtime-reservations-dependencies.sh
       - name: Verify context-lifecycle-only dependency boundary
         run: bash scripts/check-v2-context-lifecycle-dependencies.sh
       - name: Verify Context-lifecycle composition dependency boundary
@@ -42,8 +113,39 @@ jobs:
         run: bash scripts/check-v2-page-creation-composition-dependencies.sh
       - name: Verify page-lifecycle-only dependency boundary
         run: bash scripts/check-v2-page-lifecycle-dependencies.sh
+      - name: Verify optional native close command and receipt phases
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-backend-cdp-page-lifecycle --features native-confirmation --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-backend-cdp-page-lifecycle --all-targets --features native-confirmation -- -D warnings
+          bash scripts/check-v2-native-close-dependencies.sh
+      - name: Verify opt-in native ancestor close authority
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium --features native-close-authority --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-composition-chromium --all-targets --features native-close-authority -- -D warnings
+          bash scripts/check-v2-native-close-authority-dependencies.sh
       - name: Verify Page-lifecycle composition dependency boundary
         run: bash scripts/check-v2-page-lifecycle-composition-dependencies.sh
+      - name: Verify opt-in bounded native close scheduler
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium --features native-close-scheduler --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-composition-chromium --all-targets --features native-close-scheduler -- -D warnings
+          bash scripts/check-v2-native-close-authority-dependencies.sh native-close-scheduler
+      - name: Verify opt-in deletion-only close route commit
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium --features close-route-retirement --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-composition-chromium --all-targets --features close-route-retirement -- -D warnings
+          bash scripts/check-v2-close-route-retirement-dependencies.sh
+      - name: Verify opt-in joined close capacity and native completion consumption
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium --features close-capacity --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium --features close-capacity,native-close-scheduler --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-composition-chromium --all-targets --features close-capacity,native-close-scheduler -- -D warnings
+          bash scripts/check-v2-close-capacity-dependencies.sh
+      - name: Verify native-proven synchronous close retirement
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium --features native-close-retirement --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-composition-chromium --all-targets --features native-close-retirement -- -D warnings
+          bash scripts/check-v2-native-close-retirement-dependencies.sh
       - name: Verify context-creation-only dependency boundary
         run: bash scripts/check-v2-context-creation-dependencies.sh
       - name: Verify page-creation-only dependency boundary
@@ -52,18 +154,73 @@ jobs:
         run: bash scripts/check-v2-handle-lifecycle-dependencies.sh
       - name: Verify Handle-lifecycle composition dependency boundary
         run: bash scripts/check-v2-handle-lifecycle-composition-dependencies.sh
+      - name: Verify optional native Handle release and exact route retirement
+        run: |
+          bash scripts/check-v2-native-handle-release-dependencies.sh
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-composition-chromium-handle-lifecycle --features native-release
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-composition-chromium-handle-lifecycle --features native-release --all-targets -- -D warnings
       - name: Verify Handle-evaluation composition dependency boundary
         run: bash scripts/check-v2-handle-evaluation-composition-dependencies.sh
+      - name: Verify optional staged native Handle creation
+        run: |
+          bash scripts/check-v2-native-handle-creation-dependencies.sh
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-composition-chromium-handle-evaluation --features native-creation
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-composition-chromium-handle-evaluation --features native-creation,pwright-composition-chromium-handle-lifecycle/native-release
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-composition-chromium-handle-evaluation --features native-creation --all-targets -- -D warnings
       - name: Verify ordered Handle delivery plugin dependency boundary
         run: bash scripts/check-v2-ordered-handle-delivery-dependencies.sh
       - name: Verify handle-evaluation-only dependency boundary
         run: bash scripts/check-v2-handle-evaluation-dependencies.sh
       - name: Verify input-only dependency boundary
         run: bash scripts/check-v2-input-dependencies.sh
+      - name: Verify optional Keyboard contract boundaries and generated outputs
+        run: node scripts/check-v2-keyboard-contracts.mjs
+      - name: Verify optional native Keyboard backend boundary
+        run: node scripts/check-v2-keyboard-backend.mjs
+      - name: Verify optional Keyboard wire composition boundary
+        run: node scripts/check-v2-keyboard-composition.mjs
+      - name: Verify optional Keyboard controlled runtime adapter
+        run: CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium-keyboard --features runtime --lib
+      - name: Verify optional Mouse contracts and generation
+        run: node scripts/check-v2-mouse-contracts.mjs
+      - name: Verify optional native Mouse backend boundary
+        run: node scripts/check-v2-mouse-backend.mjs
+      - name: Verify optional Mouse Page route boundary
+        run: node scripts/check-v2-mouse-composition.mjs
+      - name: Verify optional Mouse receipt-aware runtime adapter
+        run: CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium-mouse --features runtime --lib
       - name: Verify Locator-only dependency boundary
         run: bash scripts/check-v2-locator-dependencies.sh
       - name: Verify Locator-composition dependency boundary
         run: bash scripts/check-v2-locator-composition-dependencies.sh
+      - name: Verify Locator-resolution dependency boundaries
+        run: bash scripts/check-v2-locator-resolution-dependencies.sh
+      - name: Verify opt-in retained-reference group ownership
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-backend-cdp-locator-resolution -p pwright-composition-chromium-locator-resolution --features retained-reference --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-backend-cdp-locator-resolution -p pwright-composition-chromium-locator-resolution --features retained-reference --all-targets -- -D warnings
+      - name: Verify opt-in retained upload host and source identity
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-composition-chromium-handle-evaluation --features retained-reference --test retained_reference
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-composition-chromium-handle-evaluation --features retained-reference --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --features retained-file-input --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --all-features --lib retained_uploads_add_eight
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-host --features retained-file-input --all-targets -- -D warnings
+      - name: Verify opt-in Rust host persistent marker ownership
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --features retained-target-marking --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --features retained-target-marking,concurrent-close,extra-headers,drag-runtime,frame-navigation --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-host --features retained-target-marking --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-host --features retained-target-marking,concurrent-close,extra-headers,drag-runtime,frame-navigation --all-targets -- -D warnings
+      - name: Verify selected Node retained-upload preparation boundary
+        run: |
+          # Explicit --lib includes addon unit tests despite its library test=false setting.
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-addon --lib --features retained-file-input
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-addon --lib --features retained-file-input,concurrent-close,extra-headers,drag-runtime,frame-navigation
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-addon --features retained-file-input --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-addon --features retained-file-input,concurrent-close,extra-headers,drag-runtime,frame-navigation --all-targets -- -D warnings
+      - name: Verify Locator element-evaluation dependency boundary
+        run: bash scripts/check-v2-locator-evaluation-dependencies.sh
       - name: Verify page-events-only dependency boundary
         run: bash scripts/check-v2-page-events-dependencies.sh
       - name: Verify page-events composition dependency boundary

@@ -1,6 +1,7 @@
 pub mod client_trait;
 pub mod connection;
 pub mod domains;
+pub mod event_admission;
 pub mod event_fanout;
 pub mod events;
 pub mod generated;
@@ -15,5 +16,6 @@ pub use domains::browser::DownloadBehavior;
 pub use domains::input::{
     KeyEventType, KeyboardEventParams, MouseButton, MouseEventType, TouchEventType,
 };
+pub use event_admission::CdpEventAdmissionPolicy;
 pub use events::{CdpEvent, CdpEventReceiver, CdpEventRecvError, CdpEventTryRecvError};
 pub use session::{CdpSession, CdpSessionFactory};

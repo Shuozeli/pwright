@@ -8,7 +8,7 @@
 | --- | --- |
 | Kind | Capability |
 | Schema format | `1` |
-| Protocol version | `1.0` |
+| Protocol version | `1.1` |
 | Root type | `pwright.navigation` |
 | Imports | `pwright.common` |
 | Capability dependencies | — |
@@ -19,6 +19,7 @@
 | --- | --- | ---: | --- | --- | --- | --- | --- |
 | `begin_navigation` | `navigation.begin-document-navigation` | `65537` | `pwright.browser.page` | `pwright.navigation.begin_navigation_params` | `pwright.navigation.begin_navigation_result` | `pwright.navigation.error_details` | `begin_command` / `begin_result` |
 | `goto` | `navigation.goto` | `65538` | `pwright.browser.page` | `pwright.navigation.goto_params` | `pwright.navigation.goto_result` | `pwright.navigation.error_details` | `goto_command` / `goto_result` |
+| `reload` | `navigation.reload` | `65539` | `pwright.browser.page` | `pwright.navigation.reload_params` | `pwright.navigation.goto_result` | `pwright.navigation.error_details` | `reload_command` / `reload_result` |
 
 ## Types
 
@@ -34,6 +35,7 @@
 | `pwright.navigation.goto_params` | record | `GotoParams` |
 | `pwright.navigation.goto_result` | record | `GotoResult` |
 | `pwright.navigation.header` | record | `Header` |
+| `pwright.navigation.reload_params` | record | `ReloadParams` |
 | `pwright.navigation.response` | record | `NavigationResponse` |
 | `pwright.navigation.wait_until` | enum | `WaitUntil` |
 
@@ -45,6 +47,8 @@
 | `2` | `begin_result` | `call_id`: `u64` (required); `outcome`: `pwright.navigation.begin_outcome` (required) |
 | `3` | `goto_command` | `call_id`: `u64` (required); `object_id`: `u64` (required); `metadata`: `pwright.common.call_metadata` (required); `params`: `pwright.navigation.goto_params` (required) |
 | `4` | `goto_result` | `call_id`: `u64` (required); `outcome`: `pwright.navigation.goto_outcome` (required) |
+| `5` | `reload_command` | `call_id`: `u64` (required); `object_id`: `u64` (required); `metadata`: `pwright.common.call_metadata` (required); `params`: `pwright.navigation.reload_params` (required) |
+| `6` | `reload_result` | `call_id`: `u64` (required); `outcome`: `pwright.navigation.goto_outcome` (required) |
 
 ### `pwright.navigation.begin_navigation_params`
 
@@ -117,6 +121,12 @@
 | ---: | --- | --- | --- | --- |
 | 1 | `name` | `utf8` | required | — |
 | 2 | `value` | `utf8` | required | — |
+
+### `pwright.navigation.reload_params`
+
+| Position | Field | Type | Cardinality | Constraints |
+| ---: | --- | --- | --- | --- |
+| 1 | `wait_until` | `pwright.navigation.wait_until` | required | — |
 
 ### `pwright.navigation.response`
 

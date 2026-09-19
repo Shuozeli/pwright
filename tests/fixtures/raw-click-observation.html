@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head><title>Touchscreen Test</title></head>
+<body>
+  <div id="target" style="width:200px;height:200px;background:#eee;">
+    Tap me
+  </div>
+  <div id="result">No touch</div>
+  <script>
+    document.getElementById('target').addEventListener('touchstart', function(e) {
+      document.getElementById('result').textContent = 'touched';
+    });
+    document.getElementById('target').addEventListener('click', function(e) {
+      document.getElementById('result').textContent = 'touched';
+    });
+    // Diagnostic-only addition to touchscreen.html. Never used to implement a
+    // browser action, reset results, focus, schedule paint or retry a click.
+    // Event capture reads event fields only, not layout or hit testing.
+    const records = [];
+    let overflow = false;
+    for (const type of ['pointerover', 'pointerout', 'pointermove', 'pointerdown', 'pointerup', 'pointercancel', 'mousemove', 'mousedown', 'mouseup', 'click', 'touchstart']) {
+      document.addEventListener(type, event => {
+        if (records.length >= 64) { overflow = true; return; }
+        records.push({ type, target: event.target.id || event.target.nodeName,
+          x: event.clientX, y: event.clientY, screenX: event.screenX, screenY: event.screenY,
+          button: event.button, buttons: event.buttons, detail: event.detail,
+          pointerType: event.pointerType ?? null, pressure: event.pressure ?? null,
+          trusted: event.isTrusted, timestamp: event.timeStamp });
+      }, { capture: true, passive: true });
+    }
+    window.clickSnapshot = () => ({ records: records.slice(), overflow });
+  </script>
+</body>
+</html>

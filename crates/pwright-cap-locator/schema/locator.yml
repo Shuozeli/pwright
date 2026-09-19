@@ -1,7 +1,7 @@
 format: 1
 capability: pwright.locator
 display_name: Locator queries and actions
-version: { major: 1, minor: 22 }
+version: { major: 1, minor: 23 }
 root: pwright.locator
 imports:
   - pwright.common
@@ -157,6 +157,15 @@ commands:
     command: press_command
     result: press_result
     params_type: pwright.locator.press_params
+    result_type: pwright.locator.action_result
+    error_details_type: pwright.locator.error_details
+  - id: locator.press_sequentially
+    name: press_sequentially
+    method: 131095
+    targets: [pwright.browser.frame, pwright.browser.page]
+    command: press_sequentially_command
+    result: press_sequentially_result
+    params_type: pwright.locator.press_sequentially_params
     result_type: pwright.locator.action_result
     error_details_type: pwright.locator.error_details
   - id: locator.scroll_into_view_if_needed
@@ -481,6 +490,21 @@ types:
           - { name: selector, type: message, target: pwright.locator.selector }
       - tag: 44
         name: scroll_into_view_if_needed_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.locator.outcome }
+
+      - tag: 45
+        name: press_sequentially_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: selector, type: message, target: pwright.locator.selector }
+          - { name: text, type: utf8, constraints: { maximum_length: 1048576 } }
+          - { name: delay, type: message, target: pwright.common.duration, cardinality: optional }
+      - tag: 46
+        name: press_sequentially_result
         fields:
           - { name: call_id, type: u64 }
           - { name: outcome, type: message, target: pwright.locator.outcome }
@@ -960,6 +984,15 @@ types:
       - { name: selector, type: message, target: pwright.locator.selector }
       - { name: key, type: utf8, constraints: { maximum_length: 128 } }
       - { name: options, type: message, target: pwright.locator.press_options }
+
+  - kind: record
+    id: pwright.locator.press_sequentially_params
+    public_name: press_sequentially_params
+    public_external: true
+    fields:
+      - { name: selector, type: message, target: pwright.locator.selector }
+      - { name: text, type: utf8, constraints: { maximum_length: 1048576 } }
+      - { name: delay, type: message, target: pwright.common.duration, cardinality: optional }
 
   - kind: record
     id: pwright.locator.regex_matcher

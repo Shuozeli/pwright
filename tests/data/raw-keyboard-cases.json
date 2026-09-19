@@ -1,0 +1,16 @@
+[
+  { "id": "literal-lower", "actions": [{ "kind": "press", "value": "a" }] },
+  { "id": "physical-shift", "actions": [{ "kind": "press", "value": "Shift+KeyA" }] },
+  { "id": "literal-plus", "actions": [{ "kind": "press", "value": "+" }] },
+  { "id": "shift-plus", "actions": [{ "kind": "press", "value": "Shift++" }] },
+  { "id": "smart-modifier", "actions": [{ "kind": "press", "value": "ControlOrMeta+KeyA" }] },
+  { "id": "physical-repeat", "actions": [{ "kind": "down", "value": "a" }, { "kind": "down", "value": "KeyA" }, { "kind": "up", "value": "KeyA" }] },
+  { "id": "keyup-current-shift", "actions": [{ "kind": "down", "value": "KeyA" }, { "kind": "down", "value": "Shift" }, { "kind": "up", "value": "KeyA" }, { "kind": "up", "value": "Shift" }] },
+  { "id": "literal-held-shift", "actions": [{ "kind": "down", "value": "Shift" }, { "kind": "press", "value": "a" }, { "kind": "up", "value": "Shift" }] },
+  { "id": "unknown-prefix-state", "actions": [{ "kind": "press", "value": "Shift+NotAKey" }, { "kind": "press", "value": "KeyB" }, { "kind": "up", "value": "Shift" }] },
+  { "id": "keyup-not-held", "actions": [{ "kind": "up", "value": "KeyA" }] },
+  { "id": "keypad", "actions": [{ "kind": "press", "value": "Numpad1" }, { "kind": "press", "value": "NumpadEnter" }] },
+  { "id": "multiple-nonmodifier-tokens", "actions": [{ "kind": "press", "value": "a+b" }] },
+  { "id": "empty-key", "actions": [{ "kind": "press", "value": "" }] },
+  { "id": "empty-tail-prefix-state", "actions": [{ "kind": "press", "value": "Shift+" }, { "kind": "press", "value": "KeyB" }, { "kind": "up", "value": "Shift" }] }
+]

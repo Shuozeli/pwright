@@ -1,12 +1,31 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/pwright-backend-cdp-drag",
+    "crates/pwright-composition-chromium-mouse",
+    "crates/pwright-backend-cdp-mouse",
+    "crates/pwright-cap-mouse",
+    "crates/pwright-codec-mouse",
+    "crates/pwright-client-mouse",
+    "crates/pwright-server-mouse",
+    "crates/pwright-backend-cdp-keyboard",
+    "crates/pwright-composition-chromium-keyboard",
+    "crates/pwright-cap-keyboard",
+    "crates/pwright-codec-keyboard",
+    "crates/pwright-client-keyboard",
+    "crates/pwright-server-keyboard",
     "crates/pwright",
     "crates/pwright-core",
     "crates/pwright-input-model",
     "crates/pwright-process-metrics",
     "crates/pwright-browser-model",
     "crates/pwright-network-model",
+    "crates/pwright-file-input-model",
+    "crates/pwright-file-input-source",
+    "crates/pwright-file-input-fs",
+    "crates/pwright-file-input-tokio",
+    "crates/pwright-backend-cdp-file-input",
+    "crates/pwright-composition-chromium-file-input",
     "crates/pwright-trace-model",
     "crates/pwright-tracing-service",
     "crates/pwright-plugin-tracing-navigation",
@@ -155,12 +174,17 @@ members = [
     "crates/pwright-backend-cdp-content",
     "crates/pwright-backend-cdp-locator-screenshot",
     "crates/pwright-backend-cdp-selector-runtime",
+    "crates/pwright-backend-cdp-locator-resolution",
+    "crates/pwright-composition-chromium-locator-resolution",
+    "crates/pwright-composition-chromium-locator-evaluation",
     "crates/pwright-backend-cdp-selector-geometry",
     "crates/pwright-backend-cdp-dom-content",
     "crates/pwright-backend-cdp-evaluation",
     "crates/pwright-backend-cdp",
     "crates/pwright-cdp",
     "crates/pwright-js",
+    "crates/pwright-node-host",
+    "crates/pwright-node-addon",
     "crates/pwright-bridge",
     "crates/pwright-server",
     "crates/pwright-cli",
@@ -210,12 +234,31 @@ serde_yaml = "0.9"
 zeroize = "1"
 
 # Internal crate dependencies
+pwright-backend-cdp-keyboard = { path = "crates/pwright-backend-cdp-keyboard" }
+pwright-composition-chromium-keyboard = { path = "crates/pwright-composition-chromium-keyboard" }
+pwright-cap-keyboard = { path = "crates/pwright-cap-keyboard" }
+pwright-cap-mouse = { path = "crates/pwright-cap-mouse" }
+pwright-backend-cdp-mouse = { path = "crates/pwright-backend-cdp-mouse" }
+pwright-backend-cdp-drag = { path = "crates/pwright-backend-cdp-drag" }
+pwright-composition-chromium-mouse = { path = "crates/pwright-composition-chromium-mouse" }
+pwright-codec-mouse = { path = "crates/pwright-codec-mouse" }
+pwright-client-mouse = { path = "crates/pwright-client-mouse" }
+pwright-server-mouse = { path = "crates/pwright-server-mouse" }
+pwright-codec-keyboard = { path = "crates/pwright-codec-keyboard" }
+pwright-client-keyboard = { path = "crates/pwright-client-keyboard" }
+pwright-server-keyboard = { path = "crates/pwright-server-keyboard" }
 pwright = { path = "crates/pwright", default-features = false }
 pwright-core = { path = "crates/pwright-core" }
 pwright-input-model = { path = "crates/pwright-input-model" }
 pwright-process-metrics = { path = "crates/pwright-process-metrics" }
 pwright-browser-model = { path = "crates/pwright-browser-model" }
 pwright-network-model = { path = "crates/pwright-network-model" }
+pwright-file-input-model = { path = "crates/pwright-file-input-model" }
+pwright-file-input-source = { path = "crates/pwright-file-input-source" }
+pwright-file-input-fs = { path = "crates/pwright-file-input-fs" }
+pwright-file-input-tokio = { path = "crates/pwright-file-input-tokio" }
+pwright-backend-cdp-file-input = { path = "crates/pwright-backend-cdp-file-input" }
+pwright-composition-chromium-file-input = { path = "crates/pwright-composition-chromium-file-input" }
 pwright-trace-model = { path = "crates/pwright-trace-model" }
 pwright-tracing-service = { path = "crates/pwright-tracing-service" }
 pwright-plugin-tracing-navigation = { path = "crates/pwright-plugin-tracing-navigation" }
@@ -251,6 +294,9 @@ pwright-backend-cdp-content = { path = "crates/pwright-backend-cdp-content" }
 pwright-backend-cdp-locator-screenshot = { path = "crates/pwright-backend-cdp-locator-screenshot" }
 pwright-backend-cdp-locator = { path = "crates/pwright-backend-cdp-locator" }
 pwright-backend-cdp-selector-runtime = { path = "crates/pwright-backend-cdp-selector-runtime" }
+pwright-backend-cdp-locator-resolution = { path = "crates/pwright-backend-cdp-locator-resolution" }
+pwright-composition-chromium-locator-resolution = { path = "crates/pwright-composition-chromium-locator-resolution" }
+pwright-composition-chromium-locator-evaluation = { path = "crates/pwright-composition-chromium-locator-evaluation" }
 pwright-backend-cdp-selector-geometry = { path = "crates/pwright-backend-cdp-selector-geometry" }
 pwright-backend-cdp-dom-content = { path = "crates/pwright-backend-cdp-dom-content" }
 pwright-backend-cdp-evaluation = { path = "crates/pwright-backend-cdp-evaluation" }

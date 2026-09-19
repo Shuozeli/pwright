@@ -1,6 +1,131 @@
-<!-- agent-updated: 2026-09-05T20:53:09Z -->
+<!-- agent-updated: 2026-09-17T07:39:41Z -->
+
+NODE-167 implementation contract (2026-09-17): The native
+`owner_frame_native_id` path reads a retained node's current owner document,
+not its creation Frame. It acquires a temporary document-element Handle, uses
+direct raw `DOM.describeNode` to obtain the bounded native Frame ID, and retains
+evaluation admission through terminal native cleanup. The host maps the result
+through current, published topology within the source BrowserContext. Removed
+nodes can retain an owner; orphan documents produce no Frame.
+
+This ownerFrame-only acquisition validates and copies one receiver ID after
+evaluation admission. Raw acquisition rejects a source-alias success and skips
+the protected borrowed ID during malformed/exception compensation, still
+attempting every distinct new owner. Existing call paths remain unchanged;
+generic acquisition does not gain protection for arbitrary borrowed IDs, and
+the retained descriptor is not a release pin against concurrent source disposal.
+
+Scalar and batch publication now capture the immutable source-world fingerprint
+(Page ID, numeric context ID, `Arc<str>` unique context ID) within the existing
+16 KiB descriptor allowance. This metadata holds no client, receipt, permit or
+native lease. The host reports the canonical navigation error only when the
+same Ready Page has an observed replacement main world with changed numeric or
+unique ID, either before lookup or when refining ordinary TargetClosed. Missing
+worlds, crashes and closes are not classified by inference; Cleanup is unchanged.
+This implementation refinement makes no new live-pass claim.
+
+Raw callers must pre-own continuation capacity, retain the source and complete
+future, and admit temporary native ownership before I/O; dropping a future is
+not cleanup. The selected host uses the existing eight shared call slots and
+two transient `RemoteHandle` units per query, sixteen aggregate at pending scope
+`extension(154, 1)`, without consuming the 64 persistent-result slots. Its
+handles-only `ElementHandle.ownerFrame()` returns canonical JavaScript Frame
+identity, with resolver propagation through all Handle-producing descendants.
+Retained upload is not added. Unaddressable raw IDs/pre-owned groups and
+conservative Cleanup-versus-detach outcomes remain open.
+[Exact verification and remaining gates](pwright-node-handles.md) are canonical;
+this checkpoint makes no live-pass claim. NODE-166 and earlier entries below
+are historical checkpoints.
+
+NODE-166 (2026-09-17): Existing `native-creation` now adds the bounded staged
+property batch API. `stage_get_properties(target, metadata, maximum_results)`
+pre-admits N lifecycle routes and distinct ObjectIds before native work,
+returns unused capacity through downward-only `trim_to`, and transfers one
+unpublished owner. Source-world/target validation precedes every local commit;
+runtime identities and routes publish all-or-none. Busy lifecycle transactions
+retain the same batch without rerunning browser work. Primitive empty results
+permit N=0 without I/O; nonprimitive N=0 fails before I/O. Published siblings
+remain independently Frame-owned, with ObjectId rather than CallId cleanup keys.
+
+Property pipelines now retain the original evaluation lease through raw
+`Runtime.getProperties` settlement and carrier/failure releases. The explicit
+CDP method is fail-closed for custom clients that have not implemented it;
+ordinary CDP behavior and the shared pure parser remain unchanged. One carrier
+plus N+1 overflow-detection values is the normal transient native-wrapper bound,
+not the number of publishable results. Before parser copies, bounded-depth
+structural accounting checks actual String/Vec capacity, sparse map storage
+and simultaneous staging against the existing allowance. Raw incoming response
+allocation remains governed by CDP limits. Failure compensation attempts every
+addressable returned owner, including raw exceptions; unresolved IDs stay Cleanup.
+
+Caller-owned recovery must cover the retained future, N sibling cleanup tickets
+and aggregate unpublished compensation. The Node host separately retains its
+started-call continuation and shared call/name allowance; addon rollback revokes
+partially converted owners without waiting for GC. This adds no dependency
+package, feature or portable schema. Legacy portable `getProperties` still
+reserves routes after retrieval, and `Object.keys` browser allocation is not
+bounded by this host-storage contract. Unaddressable-ID pre-owned groups,
+conservative compensation-versus-detach results and full-corpus parity remain
+open. [Exact verification and follow-ups](pwright-node-handles.md) are canonical;
+the NODE-165 and earlier entries below record their historical scope.
+
+NODE-165 (2026-09-17): Retained-result acquisition now selects explicit raw
+CDP methods that preserve exception RemoteObjects and wait for settlement;
+ordinary evaluation and release helpers keep their previous contracts.
+The acquisition owner borrows at most two result/exception IDs, deduplicates
+them, attempts every addressable failure release while its evaluation lease
+is held, and transfers only a successfully parsed result. parse_response
+remains pure because property-snapshot and adoption callers already own their
+compensation. Bounded diagnostics and unresolved-ID Cleanup errors avoid
+claiming native reclamation without an addressable ID or acknowledgement.
+
+This addresses the earlier malformed-result parse-before-owner gap for
+addressable identities. It does not close Runtime.getProperties late replies,
+admission for the entire successful property pipeline, or cleanup of
+unaddressable IDs without a separately admitted pre-owned group. Node batch
+ownership and full-corpus compatibility also remain open.
+[Exact verification and pending gates](pwright-node-handles.md) are canonical;
+no new package, feature, wire schema or Node API is introduced.
+
+NODE-164 (2026-09-17): The portable HandleGetProperty command now uses the property snapshot backend rather than directly awaiting target[name], preserving Promise/thenable identity with route admission before I/O and shared result publication. This supersedes NODE-163's portable-command implementation gap. Abandoned Cleanup results remain failures; Node raw classes separately gain module-local TypeTag validation. [Exact verification and remaining gates](pwright-node-handles.md) are recorded canonically; this does not implement Node getProperties or its staged batch ownership.
+
+NODE-163: Selected native-creation adds Handle-targeted evaluateHandle and single-property staging. Results are Frame-owned, target/argument liveness is revalidated at publication, and route capacity is admitted before browser execution. Property reads must preserve Promise/thenable identity, unlike ordinary awaited evaluation. The Node host owns delivery, failure rollback and the bounded future; portable schemas and optional feature boundaries are unchanged. Batch staging remains future work; see pwright-node-handles.md for the identity discrepancy and final verification.
+
+NODE-162: Native programs support expression arguments without changing Handle evaluation 1.2 portable codecs. Frame staging/value paths accept the native program, and independent handle-value resolves target/reference worlds before by-value execution. Both expression and function Handle creation now use indirect global eval, matching value evaluation rather than exposing helper-local lexical state.
+
+NODE-161: The optional frame-value entry point evaluates Frame programs with native Handle references directly by value, reusing argument/adoption resolution and the existing value backend. It neither creates a temporary result Handle nor registers another wire protocol. The safe host supplies retained reference owners and session checks; string-expression reference arguments and unselected adoption remain open.
+
+NODE-160: The safe host now offers controlled retained jsonValue/function-evaluate reads, with session ownership checks and shared bounded call admission. The opt-in Node artifact exposes these reads plus staged Frame producers, using the existing deferred value converter. Owned nested Handle-reference conversion and additional producers remain absent.
+
+NODE-159: Safe-host Frame creation now consumes the staged native API. Typed release_native outcomes preserve primary failure separately so the host can validate exact world-retirement proof without string matching. Default commands remain unchanged; batch/Handle-targeted staging is still pending.
+
+NODE-158: Optional native-creation splits Frame.evaluateHandle native completion from local publication. Busy gates retain the result/reservation; every later commit revalidates source world and referenced Handles. Explicit rejection compensation preserves errors. See the Node Handle record for raw-owner obligations, tests, real Chrome evidence and remaining host integration.
 
 # Pwright Handle evaluation checkpoint
+
+## NODE-157: frozen source-world identity and typed release failure
+
+The raw service exposes `handle_world_identity` from the retained payload route,
+not the current Frame route, with no CDP operation. The host matches Page and
+both context identities against a budgeted world snapshot before retaining its
+native retirement witness. Native disposal now uses the existing common typed
+CDP classifier, preserving TargetClosed for a detached session rather than
+flattening it to Backend. No new transitive package is introduced. The source
+identity test first unbinds the old Frame route before replacing it; the initial
+fixture erroneously attempted duplicate registration. Final leaf validation
+passes 4 unit and 20 integration tests; 4 native tests remain ignored in that run.
+See [selected host integration and remaining creation/publication gaps](pwright-node-handles.md#node-157-host-release-coordinator-and-parent-retirement-evidence).
+
+## NODE-153: partial-failure batch cleanup
+
+The legacy in-process creation continuation now attempts every unobserved
+result after a dropped, started creation finishes, even if a previous disposal
+failed. It still reports failure, and failed native releases retain their route
+and resource lease for explicit retry; later successful releases are reclaimed.
+The remote ordered-delivery plugin already had this behavior and is unchanged.
+See [Node Handle prerequisites and regression evidence](pwright-node-handles.md#node-153-do-not-abandon-the-rest-of-a-cleanup-batch).
+This is not ownership of an already-returned result: direct callers must still
+own Ready results, and Node publication/retained-wrapper shutdown remain gated.
 
 ## Scope
 
@@ -21,6 +146,17 @@ composition. That primitive is now implemented and verified against Chrome;
 the public composition gates remain intentionally closed.
 
 ## Independent 1.2 composition leaf
+
+The backend request now also accepts an explicit native-only receiver through
+`CdpHandleEvaluationRequest::new_on_native_handle`. Existing portable receivers
+and exact execution-world checks are unchanged. This avoids fabricating a
+portable ObjectId for a privately retained selected element. It neither owns
+native disposal nor installs public Handle lifecycle; its caller must retain
+and budget the receiver through the operation and cleanup. The opt-in
+[Locator adoption/evaluation leaf](pwright-locator-evaluation.md#main-world-adoption-and-evaluation-checkpoint-2026-09-07)
+uses it for one value evaluation in main world, with original-group cleanup.
+Shared backend Handle release tests pass 17 cases; Node was rebuilt and all
+five differential lanes rerun. The public Node Locator method remains gated.
 
 `pwright-composition-chromium-handle-evaluation` now packages all six 1.2
 commands without the aggregate Chromium composition. It installs the smaller

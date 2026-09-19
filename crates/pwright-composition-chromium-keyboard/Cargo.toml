@@ -1,0 +1,32 @@
+[package]
+name = "pwright-composition-chromium-keyboard"
+description = "Optional bounded Page Keyboard route and wire composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+runtime = ["dep:pwright-runtime"]
+
+[dependencies]
+pwright-runtime = { workspace = true, optional = true }
+pwright-backend-cdp-keyboard = { workspace = true }
+pwright-backend-cdp-input = { workspace = true }
+pwright-cap-keyboard = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-codec-keyboard = { workspace = true }
+pwright-core = { workspace = true }
+pwright-server-keyboard = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-fake = { workspace = true }
+pwright-server-wire = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }

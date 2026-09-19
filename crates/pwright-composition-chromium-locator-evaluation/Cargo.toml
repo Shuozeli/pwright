@@ -1,0 +1,35 @@
+[package]
+name = "pwright-composition-chromium-locator-evaluation"
+description = "Group-owned Locator element adoption and single-use value evaluation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+pwright-backend-cdp-evaluation = { workspace = true }
+pwright-backend-cdp-handle-evaluation = { workspace = true }
+pwright-cap-evaluation = { workspace = true }
+pwright-cap-handle-evaluation = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-composition-chromium-locator-resolution = { workspace = true }
+pwright-core = { workspace = true }
+pwright-runtime = { workspace = true }
+pwright-selector-model = { workspace = true }
+pwright-backend-cdp-selector-runtime = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+pwright-browser-model = { workspace = true }
+pwright-backend-cdp = { workspace = true }
+pwright-codec-evaluation = { workspace = true }
+pwright-codec-locator = { workspace = true }
+pwright-composition-chromium = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+pwright-browser-provider = { workspace = true }
+pwright-fake = { workspace = true }
+pwright-provider-cdp = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

@@ -1,0 +1,24 @@
+[package]
+name = "pwright-backend-cdp-mouse"
+description = "Optional bounded Chromium Page Mouse services for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-common = { workspace = true }
+pwright-backend-cdp-input = { workspace = true }
+pwright-browser-backend = { workspace = true }
+pwright-cap-mouse = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+pwright-input-model = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }

@@ -1,0 +1,20 @@
+[
+  {"id":"local-escape","mode":"local","operation":"escape","oopif":false},
+  {"id":"local-chord","mode":"local","operation":"chord","oopif":false},
+  {"id":"local-sequential","mode":"local","operation":"sequential","oopif":false},
+  {"id":"local-timeout","mode":"local","operation":"timeout","oopif":false},
+  {"id":"local-detach","mode":"local","operation":"detach","oopif":false},
+  {"id":"sandbox-escape","mode":"sandbox","operation":"escape","oopif":true},
+  {"id":"sandbox-chord","mode":"sandbox","operation":"chord","oopif":true},
+  {"id":"sandbox-sequential","mode":"sandbox","operation":"sequential","oopif":true},
+  {"id":"sandbox-timeout","mode":"sandbox","operation":"timeout","oopif":true},
+  {"id":"sandbox-detach","mode":"sandbox","operation":"detach","oopif":true},
+  {"id":"local-detach-finish","mode":"local","operation":"detach-finish","oopif":false},
+  {"id":"sandbox-detach-finish","mode":"sandbox","operation":"detach-finish","oopif":true},
+  {"id":"local-page-close","mode":"local","operation":"page-close","oopif":false},
+  {"id":"sandbox-page-close","mode":"sandbox","operation":"page-close","oopif":true},
+  {"id":"local-context-close","mode":"local","operation":"context-close","oopif":false},
+  {"id":"sandbox-context-close","mode":"sandbox","operation":"context-close","oopif":true},
+  {"id":"local-before-focus","mode":"local","operation":"before-focus","oopif":false},
+  {"id":"sandbox-before-focus","mode":"sandbox","operation":"before-focus","oopif":true}
+]

@@ -277,6 +277,19 @@ async fn dispatch_key_press(
                 Some(def.virtual_key),
             )
             .await?;
+    } else if insert_printable_text
+        && key.chars().count() == 1
+        && key.chars().all(|ch| !ch.is_control())
+    {
+        // A printable Unicode scalar has no physical US keyboard code. Send
+        // the logical key as well as text so canvas keyboard listeners receive
+        // it, and let Chrome perform DOM insertion once (not insertText twice).
+        session
+            .input_dispatch_text_key_event(key, "", None, key)
+            .await?;
+        session
+            .input_dispatch_key_event(KeyEventType::KeyUp, key, "", None)
+            .await?;
     } else {
         session.input_insert_text(key).await?;
     }
@@ -503,6 +516,26 @@ mod tests {
         assert_eq!(events[0].args[0]["code"], "KeyX");
         assert_eq!(events[0].args[0]["text"], "x");
         assert_eq!(events[1].args[0]["type"], "keyUp");
+    }
+
+    #[tokio::test]
+    async fn test_press_unicode_scalar_dispatches_text_bearing_key_events() {
+        // Arrange
+        let mock = MockCdpClient::new();
+
+        // Act
+        press_key(&mock, "药").await.unwrap();
+
+        // Assert
+        assert!(mock.calls_for("Input.insertText").is_empty());
+        let events = mock.calls_for("Input.dispatchKeyEvent");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].args[0]["type"], "keyDown");
+        assert_eq!(events[0].args[0]["key"], "药");
+        assert_eq!(events[0].args[0]["code"], "");
+        assert_eq!(events[0].args[0]["text"], "药");
+        assert_eq!(events[1].args[0]["type"], "keyUp");
+        assert_eq!(events[1].args[0]["key"], "药");
     }
 
     #[tokio::test]

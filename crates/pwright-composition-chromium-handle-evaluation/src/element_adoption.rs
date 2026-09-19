@@ -225,6 +225,9 @@ where
                         "abandoned ElementHandle adoption cleanup failed: {error}"
                     ))
                 }),
+                Err(error) if error.kind() == FailureKind::Cleanup => Err(CleanupFailure::new(
+                    "abandoned ElementHandle adoption reported failed native compensation",
+                )),
                 Err(_) => Ok(()),
             }
         }));
@@ -443,6 +446,51 @@ mod tests {
         );
         assert_eq!(resources.metrics().unwrap().active_leases, 0);
         assert_eq!(continuation.metrics().unwrap().completed, 1);
+    }
+
+    #[tokio::test]
+    async fn abandoned_failed_adoption_preserves_native_compensation_failure() {
+        // Arrange
+        let continuation = CleanupQueue::new(1);
+        let (service, request, resources, client) = fixture(continuation.clone()).await;
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_adoption_gate(Some(gate.clone()));
+        client.set_adopted_node_response(
+            71,
+            29,
+            serde_json::json!({"object": {"objectId": "malformed-adoption"}}),
+        );
+        client.set_release_object_error(Some("release refused".into()));
+        let mut abandoned = Box::pin(service.call(request));
+        assert!(poll_now(abandoned.as_mut()).is_pending());
+        assert_eq!(
+            resources
+                .metrics()
+                .unwrap()
+                .class(ResourceClass::RemoteHandle)
+                .current,
+            1
+        );
+
+        // Act
+        drop(abandoned);
+        client.set_adoption_gate(None);
+        gate.notify_waiters();
+        let mut cleanup = continuation.try_take().unwrap().unwrap();
+        let outcome = poll_now(cleanup.as_mut());
+
+        // Assert: the failed inner acquisition has no batch to release, but its
+        // typed Cleanup must still fail the pre-admitted continuation job.
+        assert!(matches!(outcome, Poll::Ready(Err(_))));
+        let released = client
+            .calls()
+            .into_iter()
+            .filter(|(method, _)| method == "Runtime.releaseObject")
+            .map(|(_, arguments)| arguments[0].clone())
+            .collect::<Vec<_>>();
+        assert_eq!(released, [serde_json::json!("malformed-adoption")]);
+        assert_eq!(resources.metrics().unwrap().active_leases, 0);
+        assert_eq!(continuation.metrics().unwrap().failed, 1);
     }
 
     #[tokio::test]

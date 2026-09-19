@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll, Waker};
@@ -68,7 +69,9 @@ impl Error for TargetSchedulerError {}
 /// Bounded FIFO admission for commands keyed by target object.
 ///
 /// The scheduler creates no tasks. A permit is released explicitly or on
-/// `Drop`, which wakes exactly the next waiter for the same target.
+/// `Drop`, which wakes exactly the next waiter for the same target. The default
+/// is serial; an explicit per-target concurrency selection grants a bounded set
+/// of permits while retaining FIFO order for excess calls.
 #[derive(Clone)]
 pub struct TargetScheduler {
     shared: Arc<Mutex<TargetSchedulerState>>,
@@ -76,8 +79,12 @@ pub struct TargetScheduler {
 
 impl TargetScheduler {
     pub fn new(limits: TargetSchedulerLimits) -> Self {
+        Self::with_concurrency(limits, NonZeroUsize::MIN)
+    }
+
+    pub fn with_concurrency(limits: TargetSchedulerLimits, maximum: NonZeroUsize) -> Self {
         Self {
-            shared: Arc::new(Mutex::new(TargetSchedulerState::new(limits))),
+            shared: Arc::new(Mutex::new(TargetSchedulerState::new(limits, maximum))),
         }
     }
 
@@ -95,9 +102,10 @@ impl TargetScheduler {
         }
 
         let signal = Arc::new(AdmissionSignal::new());
-        if state.lanes.contains_key(&target) {
+        if let Some(lane) = state.lanes.get(&target) {
+            let can_grant = lane.active.len() < state.target_concurrency.get();
             let waiting_limit = state.limits.waiting_calls;
-            if state.waiting_calls >= waiting_limit {
+            if !can_grant && state.waiting_calls >= waiting_limit {
                 return Err(TargetSchedulerError::WaitingCallCapacityExceeded {
                     limit: waiting_limit,
                 });
@@ -106,22 +114,29 @@ impl TargetScheduler {
                 .lanes
                 .get_mut(&target)
                 .expect("target lane existence was checked");
-            lane.waiting.push_back(WaitingCall {
-                call_id,
-                signal: Arc::clone(&signal),
-            });
-            state.waiting_calls += 1;
-            state.peak_waiting_calls = state.peak_waiting_calls.max(state.waiting_calls);
+            if can_grant {
+                debug_assert!(lane.waiting.is_empty());
+                lane.active.insert(call_id);
+                signal.grant();
+            } else {
+                lane.waiting.push_back(WaitingCall {
+                    call_id,
+                    signal: Arc::clone(&signal),
+                });
+                state.waiting_calls += 1;
+                state.peak_waiting_calls = state.peak_waiting_calls.max(state.waiting_calls);
+            }
         } else {
             if state.lanes.len() >= state.limits.active_targets {
                 return Err(TargetSchedulerError::ActiveTargetCapacityExceeded {
                     limit: state.limits.active_targets,
                 });
             }
+            let maximum = state.target_concurrency;
             state.lanes.insert(
                 target,
                 TargetLane {
-                    active: call_id,
+                    active: ActiveCalls::new(call_id, maximum),
                     waiting: VecDeque::new(),
                 },
             );
@@ -167,13 +182,13 @@ impl TargetScheduler {
                 .lanes
                 .get_mut(&target)
                 .ok_or(TargetSchedulerError::InconsistentLane { call_id, target })?;
-            if lane.active == call_id {
+            if lane.active.remove(&call_id) {
                 match lane.waiting.pop_front() {
                     Some(next) => {
-                        lane.active = next.call_id;
+                        lane.active.insert(next.call_id);
                         (Some(next.signal), false, true)
                     }
-                    None => (None, true, false),
+                    None => (None, lane.active.is_empty(), false),
                 }
             } else {
                 let position = lane
@@ -202,6 +217,7 @@ impl TargetScheduler {
 
 struct TargetSchedulerState {
     limits: TargetSchedulerLimits,
+    target_concurrency: NonZeroUsize,
     lanes: BTreeMap<ObjectId, TargetLane>,
     calls: BTreeMap<CallId, ObjectId>,
     waiting_calls: usize,
@@ -210,9 +226,10 @@ struct TargetSchedulerState {
 }
 
 impl TargetSchedulerState {
-    fn new(limits: TargetSchedulerLimits) -> Self {
+    fn new(limits: TargetSchedulerLimits, target_concurrency: NonZeroUsize) -> Self {
         Self {
             limits,
+            target_concurrency,
             lanes: BTreeMap::new(),
             calls: BTreeMap::new(),
             waiting_calls: 0,
@@ -223,8 +240,59 @@ impl TargetSchedulerState {
 }
 
 struct TargetLane {
-    active: CallId,
+    active: ActiveCalls,
     waiting: VecDeque<WaitingCall>,
+}
+
+// Keep the serial default's active identity inline. Only the explicitly
+// concurrent profile allocates a bounded set of active target identities.
+enum ActiveCalls {
+    Serial(Option<CallId>),
+    Concurrent(BTreeSet<CallId>),
+}
+
+impl ActiveCalls {
+    fn new(first: CallId, maximum: NonZeroUsize) -> Self {
+        if maximum == NonZeroUsize::MIN {
+            Self::Serial(Some(first))
+        } else {
+            Self::Concurrent(BTreeSet::from([first]))
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Serial(call) => usize::from(call.is_some()),
+            Self::Concurrent(calls) => calls.len(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn insert(&mut self, call_id: CallId) {
+        match self {
+            Self::Serial(slot) => {
+                assert!(slot.is_none());
+                *slot = Some(call_id);
+            }
+            Self::Concurrent(calls) => {
+                assert!(calls.insert(call_id));
+            }
+        }
+    }
+
+    fn remove(&mut self, call_id: &CallId) -> bool {
+        match self {
+            Self::Serial(slot) if slot.as_ref() == Some(call_id) => {
+                *slot = None;
+                true
+            }
+            Self::Serial(_) => false,
+            Self::Concurrent(calls) => calls.remove(call_id),
+        }
+    }
 }
 
 struct WaitingCall {
@@ -429,6 +497,133 @@ mod tests {
                 peak_active_targets: 1,
                 peak_waiting_calls: 1,
             })
+        );
+    }
+
+    fn concurrent(waiters: usize) -> TargetScheduler {
+        TargetScheduler::with_concurrency(
+            TargetSchedulerLimits::new(1, waiters),
+            std::num::NonZeroUsize::new(2).unwrap(),
+        )
+    }
+
+    fn take_permit(future: &mut super::TargetPermitFuture) -> super::TargetPermit {
+        let wake = Arc::new(CountingWake {
+            wakes: AtomicUsize::new(0),
+        });
+        match poll_with_waker(Pin::new(future), wake) {
+            Poll::Ready(Ok(permit)) => permit,
+            _ => panic!("the selected call must have target admission"),
+        }
+    }
+
+    #[test]
+    fn concurrent_target_promotes_waiters_in_fifo_order_without_releasing_siblings() {
+        // Arrange
+        let scheduler = concurrent(2);
+        let mut first = scheduler.acquire(ObjectId::new(1), CallId::new(1)).unwrap();
+        let mut second = scheduler.acquire(ObjectId::new(1), CallId::new(2)).unwrap();
+        let mut third = scheduler.acquire(ObjectId::new(1), CallId::new(3)).unwrap();
+        let mut fourth = scheduler.acquire(ObjectId::new(1), CallId::new(4)).unwrap();
+        let first = take_permit(&mut first);
+        let second = take_permit(&mut second);
+        let wake = Arc::new(CountingWake {
+            wakes: AtomicUsize::new(0),
+        });
+        assert!(poll_with_waker(Pin::new(&mut third), wake.clone()).is_pending());
+        assert!(poll_with_waker(Pin::new(&mut fourth), wake.clone()).is_pending());
+        // Act
+        drop(first);
+        // Assert
+        assert_eq!(wake.wakes.load(Ordering::SeqCst), 1);
+        let third = take_permit(&mut third);
+        assert_eq!(third.call_id(), CallId::new(3));
+        assert!(poll_with_waker(Pin::new(&mut fourth), wake).is_pending());
+        assert_eq!(scheduler.metrics().unwrap().active_targets, 1);
+        drop(third);
+        let fourth = take_permit(&mut fourth);
+        assert_eq!(fourth.call_id(), CallId::new(4));
+        drop((second, fourth));
+        assert_eq!(scheduler.metrics().unwrap().active_targets, 0);
+        assert_eq!(scheduler.metrics().unwrap().waiting_calls, 0);
+    }
+
+    #[test]
+    fn concurrent_target_rejects_work_beyond_its_permit_and_waiting_bounds() {
+        // Arrange
+        let scheduler = concurrent(0);
+        let _first = scheduler.acquire(ObjectId::new(1), CallId::new(1)).unwrap();
+        let _second = scheduler.acquire(ObjectId::new(1), CallId::new(2)).unwrap();
+        // Act
+        let result = scheduler.acquire(ObjectId::new(1), CallId::new(3));
+        // Assert
+        assert!(matches!(
+            result,
+            Err(TargetSchedulerError::WaitingCallCapacityExceeded { limit: 0 })
+        ));
+        assert_eq!(scheduler.metrics().unwrap().waiting_calls, 0);
+    }
+
+    #[test]
+    fn concurrent_target_does_not_expand_the_target_count_limit() {
+        // Arrange
+        let scheduler = concurrent(0);
+        let _first = scheduler.acquire(ObjectId::new(1), CallId::new(1)).unwrap();
+        // Act
+        let result = scheduler.acquire(ObjectId::new(2), CallId::new(2));
+        // Assert
+        assert!(matches!(
+            result,
+            Err(TargetSchedulerError::ActiveTargetCapacityExceeded { limit: 1 })
+        ));
+    }
+
+    #[test]
+    fn dropping_an_unpolled_concurrent_grant_promotes_one_waiter() {
+        // Arrange
+        let scheduler = concurrent(1);
+        let first = scheduler.acquire(ObjectId::new(1), CallId::new(1)).unwrap();
+        let second = scheduler.acquire(ObjectId::new(1), CallId::new(2)).unwrap();
+        let mut third = scheduler.acquire(ObjectId::new(1), CallId::new(3)).unwrap();
+        // Act
+        drop(first);
+        // Assert
+        let third = take_permit(&mut third);
+        assert_eq!(scheduler.metrics().unwrap().waiting_calls, 0);
+        drop((second, third));
+        assert_eq!(scheduler.metrics().unwrap().active_targets, 0);
+    }
+
+    #[test]
+    fn dropping_a_concurrent_waiter_preserves_the_next_fifo_position() {
+        // Arrange
+        let scheduler = concurrent(2);
+        let first = scheduler.acquire(ObjectId::new(1), CallId::new(1)).unwrap();
+        let second = scheduler.acquire(ObjectId::new(1), CallId::new(2)).unwrap();
+        let third = scheduler.acquire(ObjectId::new(1), CallId::new(3)).unwrap();
+        let mut fourth = scheduler.acquire(ObjectId::new(1), CallId::new(4)).unwrap();
+        // Act
+        drop(third);
+        // Assert
+        assert_eq!(scheduler.metrics().unwrap().waiting_calls, 1);
+        drop(first);
+        let fourth = take_permit(&mut fourth);
+        assert_eq!(fourth.call_id(), CallId::new(4));
+        drop((second, fourth));
+        assert_eq!(scheduler.metrics().unwrap().active_targets, 0);
+    }
+
+    #[test]
+    fn concurrent_identity_cannot_be_reused_on_another_target() {
+        // Arrange
+        let scheduler = concurrent(1);
+        let _first = scheduler.acquire(ObjectId::new(1), CallId::new(1)).unwrap();
+        let _second = scheduler.acquire(ObjectId::new(1), CallId::new(2)).unwrap();
+        // Act
+        let result = scheduler.acquire(ObjectId::new(2), CallId::new(2));
+        // Assert
+        assert!(
+            matches!(result, Err(TargetSchedulerError::DuplicateCall { call_id }) if call_id == CallId::new(2))
         );
     }
 

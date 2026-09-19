@@ -204,9 +204,15 @@ macro_rules! impl_navigation_cancellation {
 
 impl_navigation_cancellation!(BeginNavigation);
 impl_navigation_cancellation!(Goto);
+impl_navigation_cancellation!(pwright_cap_navigation::Reload);
 
-pub type ChromiumNavigationHandlers =
-    NavigationServerHandlers<ChromiumNavigationPage, ChromiumNavigationPage>;
+mod reload;
+
+pub type ChromiumNavigationHandlers = NavigationServerHandlers<
+    ChromiumNavigationPage,
+    ChromiumNavigationPage,
+    ChromiumNavigationPage,
+>;
 
 /// A fully bound navigation-only server leaf. It is inert until the caller
 /// drives the returned handlers with its chosen transport and executor.
@@ -253,6 +259,7 @@ impl ChromiumNavigationInstallation {
             NavigationServerServices {
                 begin_navigation: Arc::clone(&self.page),
                 goto: Arc::clone(&self.page),
+                reload: Arc::clone(&self.page),
             },
         )
     }

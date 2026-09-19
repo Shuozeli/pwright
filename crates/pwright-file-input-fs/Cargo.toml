@@ -1,0 +1,16 @@
+[package]
+name = "pwright-file-input-fs"
+description = "Optional bounded filesystem preparation for Pwright file input"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core.workspace = true
+pwright-file-input-model.workspace = true
+pwright-file-input-source.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

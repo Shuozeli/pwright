@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn generated_chain_advertises_the_complete_locator_capability() {
         // Arrange
-        let version = ProtocolVersion::new(1, 22);
+        let version = ProtocolVersion::new(1, 23);
         let frame_limits = FrameLimits::new(1_024, 0, 0, 1_024);
         let protocol = Arc::new(WireProtocol::new_exact_directional(
             LocatorCodec::new(LocatorCodecLimits::new(256)),
@@ -217,6 +217,7 @@ mod tests {
                     is_enabled: Arc::new(()),
                     is_visible: Arc::new(()),
                     press: Arc::new(()),
+                    press_sequentially: Arc::new(()),
                     scroll_into_view_if_needed: Arc::new(()),
                     select_option: Arc::new(()),
                     set_checked: Arc::new(()),
@@ -246,7 +247,7 @@ mod tests {
     #[test]
     fn generated_v2_chain_advertises_only_the_complete_locator_v2_track() {
         // Arrange
-        let version = ProtocolVersion::new(2, 5);
+        let version = ProtocolVersion::new(2, 6);
         let frame_limits = FrameLimits::new(1_024, 0, 0, 1_024);
         let protocol = Arc::new(WireProtocol::new_exact_directional(
             LocatorV2Codec::new(LocatorCodecLimits::new(256)),
@@ -277,6 +278,7 @@ mod tests {
                     is_enabled: Arc::new(()),
                     is_visible: Arc::new(()),
                     press: Arc::new(()),
+                    press_sequentially: Arc::new(()),
                     scroll_into_view_if_needed: Arc::new(()),
                     select_option: Arc::new(()),
                     set_checked: Arc::new(()),

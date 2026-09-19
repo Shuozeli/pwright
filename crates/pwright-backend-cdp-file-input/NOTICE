@@ -1,0 +1,8 @@
+Pwright Chromium file-input payload helper includes adaptations of Playwright's
+injected setInputFiles helper, pinned at ce480a952553175eae75342aad2c5e86cdf2cbba.
+
+Copyright (c) Microsoft Corporation.
+Licensed under the Apache License, Version 2.0. See LICENSE.playwright.
+
+Pwright modifications provide bounded, typed payload preparation and explicit
+resource ownership around the adapted browser-side helper.

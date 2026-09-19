@@ -27,7 +27,9 @@ fn cdp_to_status(e: CdpError) -> Status {
         CdpError::ElementNotFound { .. } => Status::not_found(e.to_string()),
         CdpError::NavigationFailed { .. } => Status::internal(e.to_string()),
         CdpError::WebSocket(_) => Status::unavailable(e.to_string()),
-        CdpError::PageClosed => Status::failed_precondition(e.to_string()),
+        CdpError::PageClosed | CdpError::SessionDetached => {
+            Status::failed_precondition(e.to_string())
+        }
         CdpError::TabNotFound(_) => Status::not_found(e.to_string()),
         CdpError::HttpFailed(_) => Status::unavailable(e.to_string()),
         CdpError::JsException(_) => Status::internal(e.to_string()),

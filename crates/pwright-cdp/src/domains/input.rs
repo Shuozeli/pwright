@@ -96,6 +96,17 @@ impl TouchEventType {
 }
 
 impl CdpSession {
+    /// Complete typed native mouse payload, including wheel deltas and pressure.
+    /// Kept separate from the legacy convenience signature for compatibility.
+    pub async fn input_dispatch_pointer_event(
+        &self,
+        params: cdp_gen::DispatchMouseEventParams,
+    ) -> Result<()> {
+        self.send("Input.dispatchMouseEvent", serde_json::to_value(params)?)
+            .await?;
+        Ok(())
+    }
+
     pub async fn input_dispatch_keyboard_event(
         &self,
         params: KeyboardEventParams<'_>,

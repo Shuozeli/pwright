@@ -4,7 +4,7 @@ use pwright_core::{CommandId, MethodTag, ProtocolVersion};
 
 pub use pwright_codec_common::{PwrightCommonCallMetadata, PWRIGHT_COMMON_CALL_METADATA_SCHEMA, PwrightCommonDuration, PWRIGHT_COMMON_DURATION_SCHEMA, PwrightCommonFailureKind, PWRIGHT_COMMON_FAILURE_KIND_SCHEMA};
 
-use pwright_cap_navigation::{BeginNavigationParams as PublicBeginNavigationParams, BeginNavigationResult as PublicBeginNavigationResult, NavigationErrorDetails as PublicNavigationErrorDetails, GotoParams as PublicGotoParams, GotoResult as PublicGotoResult, Header as PublicHeader, NavigationResponse as PublicNavigationResponse, WaitUntil as PublicWaitUntil};
+use pwright_cap_navigation::{BeginNavigationParams as PublicBeginNavigationParams, BeginNavigationResult as PublicBeginNavigationResult, NavigationErrorDetails as PublicNavigationErrorDetails, GotoParams as PublicGotoParams, GotoResult as PublicGotoResult, Header as PublicHeader, ReloadParams as PublicReloadParams, NavigationResponse as PublicNavigationResponse, WaitUntil as PublicWaitUntil};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PwrightNavigation {
@@ -25,6 +25,16 @@ pub enum PwrightNavigation {
         params: PwrightNavigationGotoParams,
     },
     GotoResult {
+        call_id: u64,
+        outcome: PwrightNavigationGotoOutcome,
+    },
+    ReloadCommand {
+        call_id: u64,
+        object_id: u64,
+        metadata: PwrightCommonCallMetadata,
+        params: PwrightNavigationReloadParams,
+    },
+    ReloadResult {
         call_id: u64,
         outcome: PwrightNavigationGotoOutcome,
     },
@@ -110,6 +120,11 @@ pub struct PwrightNavigationHeader {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PwrightNavigationReloadParams {
+    pub wait_until: PwrightNavigationWaitUntil,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PwrightNavigationResponse {
     pub url: String,
     pub status: i64,
@@ -144,6 +159,16 @@ pub enum PwrightNavigationRef<'a> {
         params: PwrightNavigationGotoParamsRef<'a>,
     },
     GotoResult {
+        call_id: u64,
+        outcome: PwrightNavigationGotoOutcomeRef<'a>,
+    },
+    ReloadCommand {
+        call_id: u64,
+        object_id: u64,
+        metadata: PwrightCommonCallMetadata,
+        params: PwrightNavigationReloadParams,
+    },
+    ReloadResult {
         call_id: u64,
         outcome: PwrightNavigationGotoOutcomeRef<'a>,
     },
@@ -258,6 +283,20 @@ impl BinaryEncode for PwrightNavigation {
                     <PwrightNavigationGotoOutcome as BinaryEncode>::encode_binary(outcome, writer, context)?;
                     Ok(())
                 }
+                Self::ReloadCommand { call_id, object_id, metadata, params } => {
+                    writer.u8(5)?;
+                    writer.u64(*call_id)?;
+                    writer.u64(*object_id)?;
+                    <PwrightCommonCallMetadata as BinaryEncode>::encode_binary(metadata, writer, context)?;
+                    <PwrightNavigationReloadParams as BinaryEncode>::encode_binary(params, writer, context)?;
+                    Ok(())
+                }
+                Self::ReloadResult { call_id, outcome } => {
+                    writer.u8(6)?;
+                    writer.u64(*call_id)?;
+                    <PwrightNavigationGotoOutcome as BinaryEncode>::encode_binary(outcome, writer, context)?;
+                    Ok(())
+                }
             }
         })
     }
@@ -303,6 +342,26 @@ impl BinaryDecode for PwrightNavigation {
                     let call_id = reader.u64()?;
                     let outcome = <PwrightNavigationGotoOutcome as BinaryDecode>::decode_binary(reader, context)?;
                     Ok(Self::GotoResult {
+                        call_id,
+                        outcome,
+                    })
+                },
+                5 => {
+                    let call_id = reader.u64()?;
+                    let object_id = reader.u64()?;
+                    let metadata = <PwrightCommonCallMetadata as BinaryDecode>::decode_binary(reader, context)?;
+                    let params = <PwrightNavigationReloadParams as BinaryDecode>::decode_binary(reader, context)?;
+                    Ok(Self::ReloadCommand {
+                        call_id,
+                        object_id,
+                        metadata,
+                        params,
+                    })
+                },
+                6 => {
+                    let call_id = reader.u64()?;
+                    let outcome = <PwrightNavigationGotoOutcome as BinaryDecode>::decode_binary(reader, context)?;
+                    Ok(Self::ReloadResult {
                         call_id,
                         outcome,
                     })
@@ -635,6 +694,26 @@ impl BinaryDecode for PwrightNavigationHeader {
     }
 }
 
+impl BinaryEncode for PwrightNavigationReloadParams {
+    fn encode_binary(&self, writer: &mut BinaryWriter, context: &mut BinaryValueContext) -> Result<(), BinaryValueEncodeError> {
+        context.within_message("pwright.navigation.reload_params", |context| {
+            <PwrightNavigationWaitUntil as BinaryEncode>::encode_binary(&self.wait_until, writer, context)?;
+            Ok(())
+        })
+    }
+}
+
+impl BinaryDecode for PwrightNavigationReloadParams {
+    fn decode_binary(reader: &mut BinaryReader<'_>, context: &mut BinaryValueContext) -> Result<Self, BinaryValueDecodeError> {
+        context.within_message("pwright.navigation.reload_params", |context| {
+            let wait_until = <PwrightNavigationWaitUntil as BinaryDecode>::decode_binary(reader, context)?;
+            Ok(Self {
+                wait_until,
+            })
+        })
+    }
+}
+
 impl BinaryEncode for PwrightNavigationResponse {
     fn encode_binary(&self, writer: &mut BinaryWriter, context: &mut BinaryValueContext) -> Result<(), BinaryValueEncodeError> {
         context.within_message("pwright.navigation.response", |context| {
@@ -727,6 +806,20 @@ impl BinaryEncode for PwrightNavigationRef<'_> {
                 }
                 Self::GotoResult { call_id, outcome } => {
                     writer.u8(4)?;
+                    writer.u64(*call_id)?;
+                    <PwrightNavigationGotoOutcomeRef as BinaryEncode>::encode_binary(outcome, writer, context)?;
+                    Ok(())
+                }
+                Self::ReloadCommand { call_id, object_id, metadata, params } => {
+                    writer.u8(5)?;
+                    writer.u64(*call_id)?;
+                    writer.u64(*object_id)?;
+                    <PwrightCommonCallMetadata as BinaryEncode>::encode_binary(metadata, writer, context)?;
+                    <PwrightNavigationReloadParams as BinaryEncode>::encode_binary(params, writer, context)?;
+                    Ok(())
+                }
+                Self::ReloadResult { call_id, outcome } => {
+                    writer.u8(6)?;
                     writer.u64(*call_id)?;
                     <PwrightNavigationGotoOutcomeRef as BinaryEncode>::encode_binary(outcome, writer, context)?;
                     Ok(())
@@ -1025,6 +1118,22 @@ impl From<PublicHeader> for PwrightNavigationHeader {
     }
 }
 
+impl From<PwrightNavigationReloadParams> for PublicReloadParams {
+    fn from(value: PwrightNavigationReloadParams) -> Self {
+        Self {
+            wait_until: value.wait_until.into(),
+        }
+    }
+}
+
+impl From<PublicReloadParams> for PwrightNavigationReloadParams {
+    fn from(value: PublicReloadParams) -> Self {
+        Self {
+            wait_until: value.wait_until.into(),
+        }
+    }
+}
+
 impl From<PwrightNavigationResponse> for PublicNavigationResponse {
     fn from(value: PwrightNavigationResponse) -> Self {
         Self {
@@ -1093,21 +1202,35 @@ const TYPE_0_VARIANT_3_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("outcome", "pwright.navigation.goto_outcome", BinaryCardinality::Required),
 ];
 
+const TYPE_0_VARIANT_4_FIELDS: &[BinaryFieldSchema] = &[
+    BinaryFieldSchema::new("call_id", BinaryFieldKind::U64, BinaryCardinality::Required),
+    BinaryFieldSchema::new("object_id", BinaryFieldKind::U64, BinaryCardinality::Required),
+    BinaryFieldSchema::message("metadata", "pwright.common.call_metadata", BinaryCardinality::Required),
+    BinaryFieldSchema::message("params", "pwright.navigation.reload_params", BinaryCardinality::Required),
+];
+
+const TYPE_0_VARIANT_5_FIELDS: &[BinaryFieldSchema] = &[
+    BinaryFieldSchema::new("call_id", BinaryFieldKind::U64, BinaryCardinality::Required),
+    BinaryFieldSchema::message("outcome", "pwright.navigation.goto_outcome", BinaryCardinality::Required),
+];
+
 const TYPE_0_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "begin_command", TYPE_0_VARIANT_0_FIELDS),
     BinaryVariantSchema::new(2, "begin_result", TYPE_0_VARIANT_1_FIELDS),
     BinaryVariantSchema::new(3, "goto_command", TYPE_0_VARIANT_2_FIELDS),
     BinaryVariantSchema::new(4, "goto_result", TYPE_0_VARIANT_3_FIELDS),
+    BinaryVariantSchema::new(5, "reload_command", TYPE_0_VARIANT_4_FIELDS),
+    BinaryVariantSchema::new(6, "reload_result", TYPE_0_VARIANT_5_FIELDS),
 ];
 
-pub const PWRIGHT_NAVIGATION_SCHEMA: BinarySchema = BinarySchema::new("pwright.navigation", ProtocolVersion::new(1, 0), TYPE_0_VARIANTS);
+pub const PWRIGHT_NAVIGATION_SCHEMA: BinarySchema = BinarySchema::new("pwright.navigation", ProtocolVersion::new(1, 1), TYPE_0_VARIANTS);
 
 const TYPE_1_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("url", BinaryFieldKind::Utf8, BinaryCardinality::Required),
     BinaryFieldSchema::new("referrer", BinaryFieldKind::Utf8, BinaryCardinality::Optional),
 ];
 
-pub const PWRIGHT_NAVIGATION_BEGIN_NAVIGATION_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.begin_navigation_params", ProtocolVersion::new(1, 0), TYPE_1_FIELDS);
+pub const PWRIGHT_NAVIGATION_BEGIN_NAVIGATION_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.begin_navigation_params", ProtocolVersion::new(1, 1), TYPE_1_FIELDS);
 
 const TYPE_2_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("frame_id", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -1116,7 +1239,7 @@ const TYPE_2_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("is_download", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_NAVIGATION_BEGIN_NAVIGATION_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.begin_navigation_result", ProtocolVersion::new(1, 0), TYPE_2_FIELDS);
+pub const PWRIGHT_NAVIGATION_BEGIN_NAVIGATION_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.begin_navigation_result", ProtocolVersion::new(1, 1), TYPE_2_FIELDS);
 
 const TYPE_3_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.navigation.begin_navigation_result", BinaryCardinality::Required),
@@ -1131,7 +1254,7 @@ const TYPE_3_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_3_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_NAVIGATION_BEGIN_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.navigation.begin_outcome", ProtocolVersion::new(1, 0), TYPE_3_VARIANTS);
+pub const PWRIGHT_NAVIGATION_BEGIN_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.navigation.begin_outcome", ProtocolVersion::new(1, 1), TYPE_3_VARIANTS);
 
 const TYPE_4_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("failure_kind", "pwright.common.failure_kind", BinaryCardinality::Required),
@@ -1139,7 +1262,7 @@ const TYPE_4_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("details", "pwright.navigation.error_details", BinaryCardinality::Optional),
 ];
 
-pub const PWRIGHT_NAVIGATION_ERROR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.error", ProtocolVersion::new(1, 0), TYPE_4_FIELDS);
+pub const PWRIGHT_NAVIGATION_ERROR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.error", ProtocolVersion::new(1, 1), TYPE_4_FIELDS);
 
 const TYPE_5_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("message", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -1164,7 +1287,7 @@ const TYPE_5_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(3, "backend", TYPE_5_VARIANT_3_FIELDS),
 ];
 
-pub const PWRIGHT_NAVIGATION_ERROR_DETAILS_SCHEMA: BinarySchema = BinarySchema::new("pwright.navigation.error_details", ProtocolVersion::new(1, 0), TYPE_5_VARIANTS);
+pub const PWRIGHT_NAVIGATION_ERROR_DETAILS_SCHEMA: BinarySchema = BinarySchema::new("pwright.navigation.error_details", ProtocolVersion::new(1, 1), TYPE_5_VARIANTS);
 
 const TYPE_6_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.navigation.goto_result", BinaryCardinality::Required),
@@ -1179,7 +1302,7 @@ const TYPE_6_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_6_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_NAVIGATION_GOTO_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.navigation.goto_outcome", ProtocolVersion::new(1, 0), TYPE_6_VARIANTS);
+pub const PWRIGHT_NAVIGATION_GOTO_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.navigation.goto_outcome", ProtocolVersion::new(1, 1), TYPE_6_VARIANTS);
 
 const TYPE_7_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("url", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -1187,7 +1310,7 @@ const TYPE_7_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("wait_until", "pwright.navigation.wait_until", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_NAVIGATION_GOTO_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.goto_params", ProtocolVersion::new(1, 0), TYPE_7_FIELDS);
+pub const PWRIGHT_NAVIGATION_GOTO_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.goto_params", ProtocolVersion::new(1, 1), TYPE_7_FIELDS);
 
 const TYPE_8_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("frame_id", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -1197,39 +1320,47 @@ const TYPE_8_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("response", "pwright.navigation.response", BinaryCardinality::Optional),
 ];
 
-pub const PWRIGHT_NAVIGATION_GOTO_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.goto_result", ProtocolVersion::new(1, 0), TYPE_8_FIELDS);
+pub const PWRIGHT_NAVIGATION_GOTO_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.goto_result", ProtocolVersion::new(1, 1), TYPE_8_FIELDS);
 
 const TYPE_9_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("name", BinaryFieldKind::Utf8, BinaryCardinality::Required),
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_NAVIGATION_HEADER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.header", ProtocolVersion::new(1, 0), TYPE_9_FIELDS);
+pub const PWRIGHT_NAVIGATION_HEADER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.header", ProtocolVersion::new(1, 1), TYPE_9_FIELDS);
 
 const TYPE_10_FIELDS: &[BinaryFieldSchema] = &[
+    BinaryFieldSchema::enumeration("wait_until", "pwright.navigation.wait_until", BinaryCardinality::Required),
+];
+
+pub const PWRIGHT_NAVIGATION_RELOAD_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.reload_params", ProtocolVersion::new(1, 1), TYPE_10_FIELDS);
+
+const TYPE_11_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("url", BinaryFieldKind::Utf8, BinaryCardinality::Required),
     BinaryFieldSchema::new("status", BinaryFieldKind::I64, BinaryCardinality::Required),
     BinaryFieldSchema::new("status_text", BinaryFieldKind::Utf8, BinaryCardinality::Required),
     BinaryFieldSchema::message("headers", "pwright.navigation.header", BinaryCardinality::Repeated),
 ];
 
-pub const PWRIGHT_NAVIGATION_RESPONSE_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.response", ProtocolVersion::new(1, 0), TYPE_10_FIELDS);
+pub const PWRIGHT_NAVIGATION_RESPONSE_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.navigation.response", ProtocolVersion::new(1, 1), TYPE_11_FIELDS);
 
-const TYPE_11_VARIANTS: &[BinaryEnumVariantSchema] = &[
+const TYPE_12_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "commit"),
     BinaryEnumVariantSchema::new(1, "dom_content_loaded"),
     BinaryEnumVariantSchema::new(2, "load"),
     BinaryEnumVariantSchema::new(3, "network_idle"),
 ];
 
-pub const PWRIGHT_NAVIGATION_WAIT_UNTIL_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.navigation.wait_until", ProtocolVersion::new(1, 0), TYPE_11_VARIANTS);
+pub const PWRIGHT_NAVIGATION_WAIT_UNTIL_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.navigation.wait_until", ProtocolVersion::new(1, 1), TYPE_12_VARIANTS);
 
 pub const COMMAND_NAVIGATION_BEGIN_DOCUMENT_NAVIGATION_SCHEMA: BinaryCommandSchema = BinaryCommandSchema::new(CommandId::new("navigation.begin-document-navigation"), MethodTag::new(65537), 1, 2);
 pub const COMMAND_NAVIGATION_GOTO_SCHEMA: BinaryCommandSchema = BinaryCommandSchema::new(CommandId::new("navigation.goto"), MethodTag::new(65538), 3, 4);
+pub const COMMAND_NAVIGATION_RELOAD_SCHEMA: BinaryCommandSchema = BinaryCommandSchema::new(CommandId::new("navigation.reload"), MethodTag::new(65539), 5, 6);
 
 pub const COMMANDS: &[BinaryCommandSchema] = &[
     COMMAND_NAVIGATION_BEGIN_DOCUMENT_NAVIGATION_SCHEMA,
     COMMAND_NAVIGATION_GOTO_SCHEMA,
+    COMMAND_NAVIGATION_RELOAD_SCHEMA,
 ];
 
 const TYPES: &[BinaryTypeSchema] = &[
@@ -1246,6 +1377,7 @@ const TYPES: &[BinaryTypeSchema] = &[
     BinaryTypeSchema::Record(PWRIGHT_NAVIGATION_GOTO_PARAMS_SCHEMA),
     BinaryTypeSchema::Record(PWRIGHT_NAVIGATION_GOTO_RESULT_SCHEMA),
     BinaryTypeSchema::Record(PWRIGHT_NAVIGATION_HEADER_SCHEMA),
+    BinaryTypeSchema::Record(PWRIGHT_NAVIGATION_RELOAD_PARAMS_SCHEMA),
     BinaryTypeSchema::Record(PWRIGHT_NAVIGATION_RESPONSE_SCHEMA),
     BinaryTypeSchema::Enumeration(PWRIGHT_NAVIGATION_WAIT_UNTIL_SCHEMA),
 ];

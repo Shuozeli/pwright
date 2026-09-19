@@ -1,3 +1,5 @@
+<!-- agent-updated: 2026-09-09T21:32:56Z -->
+
 # Known Issues
 
 ## Open
@@ -32,6 +34,18 @@ in `tab_locks`. Very slow growth, only matters for long-running servers.
 ---
 
 ## Fixed
+
+### Legacy CLI Unicode input into keyboard-driven canvases (2026-09-09)
+
+Previously `press 药` used only `Input.insertText`, while ASCII emitted key
+events. Bevy/egui's canvas keyboard listener therefore saw no Chinese text.
+Printable Unicode scalars now send one text-bearing key-down and one key-up,
+without a second insertion. Arbitrary multi-character key strings are unchanged.
+The regression failed before the fix; all 159 bridge unit tests pass afterward.
+A real XLQY Chrome medicine editor accepts `不存在的测试药` through the rebuilt
+CLI. OS IME composition and Node FFI compatibility are separate, unproven scopes.
+The local Chrome DOM/canvas fixture also verifies `药é` arrives exactly once in
+the DOM input and reaches the canvas listener, with trusted keyboard/input events.
 
 | Issue | Severity | Fix |
 |-------|----------|-----|

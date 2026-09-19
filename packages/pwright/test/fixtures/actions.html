@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Pwright actions</title>
+<style>body{font:16px sans-serif}button{width:140px;height:50px}.hidden{display:none}#far{margin-top:1600px}</style>
+<button id="button">Click</button><button class="duplicate">one</button><button class="duplicate">two</button>
+<button id="disabled" disabled>Disabled</button><button id="hidden" class="hidden">Hidden</button>
+<label for="input" id="input-label">Name</label><input id="input" value="old"><input id="other" value="other">
+<textarea id="area">old</textarea><div id="editable" contenteditable>old</div><input id="date" type="date">
+<input id="check" type="checkbox"><label for="check" id="check-label">Check me</label>
+<input id="radio" type="radio" name="group" checked><input id="radio2" type="radio" name="group">
+<select id="select"><option value="a">Alpha</option><option value="b">Beta</option><option value="c">Gamma</option></select>
+<select id="multiple" multiple><option value="a">Alpha</option><option value="b">Beta</option><option value="c">Gamma</option></select>
+<a id="link" href="index.html?action=click">Navigate</a>
+<form action="index.html" method="get"><input id="submit-input" name="q" value="press"></form>
+<div id="plain">Not focusable</div><button id="far">Far away</button>
+<script>
+window.events=[];
+for(const name of ['click','dblclick','input','change','focus','blur','keydown','keyup','mouseenter']) {
+  document.addEventListener(name,event=>{
+    if(!event.target.id) return;
+    events.push({type:name,id:event.target.id,trusted:event.isTrusted,composed:event.composed,
+      ...(name==='keydown'||name==='keyup'?{key:event.key,code:event.code,shift:event.shiftKey,meta:event.metaKey}:{}),
+      ...(name==='click'?{detail:event.detail,shift:event.shiftKey,button:event.button}:{}),
+      ...(name==='input'?{inputType:event.inputType}:{}),
+    });
+  },true);
+}
+</script></html>

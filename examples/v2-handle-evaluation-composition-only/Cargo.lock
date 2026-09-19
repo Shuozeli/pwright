@@ -725,6 +725,7 @@ dependencies = [
 name = "pwright-composition-chromium-handle-evaluation"
 version = "0.1.0"
 dependencies = [
+ "pwright-backend-cdp-common",
  "pwright-backend-cdp-evaluation",
  "pwright-backend-cdp-handle-evaluation",
  "pwright-cap-handle-evaluation",
@@ -1158,6 +1159,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

@@ -7,8 +7,22 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+close-route-retirement = []
+native-close-retirement = ["close-capacity", "close-route-retirement", "native-close-scheduler"]
+close-capacity = ["dep:pwright-backend-cdp-topology", "pwright-backend-cdp-topology/transition-reservations", "pwright-runtime/disposal-reservations"]
+native-close-authority = ["pwright-backend-cdp-page-lifecycle/native-confirmation", "dep:pwright-backend-cdp-common"]
+native-close-scheduler = ["native-close-authority"]
+frame-lifecycle = ["dep:pwright-backend-cdp-navigation", "pwright-backend-cdp-navigation/frame-lifecycle"]
+
 [dependencies]
+pwright-backend-cdp-topology = { workspace = true, optional = true }
+pwright-backend-cdp-common = { workspace = true, optional = true }
+pwright-backend-cdp-navigation = { workspace = true, optional = true }
+pwright-backend-cdp-input = { workspace = true }
 pwright-backend-cdp = { workspace = true }
+pwright-backend-cdp-page-lifecycle = { workspace = true }
 pwright-browser-backend = { workspace = true }
 pwright-browser-model = { workspace = true }
 pwright-browser-provider = { workspace = true }
@@ -75,6 +89,8 @@ serde_json = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
+futures-util = { workspace = true }
+tokio-tungstenite = { workspace = true }
 pwright-client = { workspace = true }
 pwright-client-context-lifecycle = { workspace = true }
 pwright-client-content = { workspace = true }

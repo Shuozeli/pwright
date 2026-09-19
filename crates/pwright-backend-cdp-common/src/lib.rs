@@ -15,7 +15,9 @@ pub fn classify_cdp_failure(error: &CdpError) -> FailureKind {
         CdpError::WebSocket(_) | CdpError::Closed | CdpError::ChannelDropped => {
             FailureKind::TransportClosed
         }
-        CdpError::PageClosed | CdpError::TabNotFound(_) => FailureKind::TargetClosed,
+        CdpError::PageClosed | CdpError::SessionDetached | CdpError::TabNotFound(_) => {
+            FailureKind::TargetClosed
+        }
         CdpError::Protocol { message, .. } if protocol_reports_closed_target(message) => {
             FailureKind::TargetClosed
         }
@@ -54,6 +56,16 @@ mod tests {
     use pwright_core::FailureKind;
 
     use super::classify_cdp_failure;
+
+    #[test]
+    fn native_session_detach_is_target_local_not_transport_loss() {
+        // Arrange
+        let error = CdpError::SessionDetached;
+        // Act
+        let kind = classify_cdp_failure(&error);
+        // Assert
+        assert_eq!(kind, FailureKind::TargetClosed);
+    }
 
     #[test]
     fn classifies_closed_session_protocol_errors_as_target_closed() {

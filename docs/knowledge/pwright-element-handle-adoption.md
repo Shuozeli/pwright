@@ -1,6 +1,73 @@
-<!-- agent-updated: 2026-09-05T19:52:03Z -->
+<!-- agent-updated: 2026-09-17T12:49:00Z -->
 
 # ElementHandle adoption
+
+## NODE-178 retained-input prevalidation ownership (2026-09-17)
+
+The file-input backend/composition now offer default-off `retained-preflight`.
+Composition selects `retained-reference` and accepts only an independently
+owned utility group with settlement release. The new read-only
+`ResolvedElement::uses_settlement_release()` accessor identifies that policy;
+ordinary selector-owned groups are rejected before the derived query, not
+silently upgraded. The borrowed persistent source remains outside this group.
+
+Prevalidation retains the exact retargeted input separately from the original
+adopted receiver. Its two additional native-wrapper units, bounded backing,
+route and extra cleanup reservation survive a parked ready owner, dropped
+started query and partially polled explicit release through group cleanup.
+Ready-owner Drop schedules owned cleanup; field-drop order alone is not an
+acknowledgement. Cleanup failure closes admission, while a discarded/timed-out
+executor job cannot prove that native objects were reclaimed.
+
+Offline verification recorded **32 file-input composition tests**, including
+15 new lifecycle tests, and **49 retained-resolution backend tests**. Historical
+browser evidence below does not validate this new phase. No Node integration,
+target marking, raw carrier projection, instrumentation/deadline integration,
+late utility serialization or public retained upload is claimed here. Selected
+commands and exact evidence are routed through the
+[canonical NODE-178 checkpoint](pwright-node-handles.md#node-178-owned-native-file-input-prevalidation)
+and the [composition README](../../crates/pwright-composition-chromium-file-input/README.md#node-178-selected-retained-input-prevalidation).
+
+## NODE-169 host-only retained-upload integration (2026-09-17)
+
+The safe host selects this adoption path only with default-off
+`retained-file-input`, combining Handles and file input without an addon opt-in
+or public Node retained-upload API. Its source is a borrowed retained descriptor,
+not a native-use pin. The host preserves the original creation Frame/world and
+adopts into that Frame's utility context; the current DOM owner is not a
+replacement execution target. Source/world checks run before adoption and again
+before upload submission.
+
+Separate admitted, untimed phase continuations keep native acquisition and
+group release owned after abandonment. Cancelling adoption must not advance
+into a previously unsubmitted mutation; submitted upload cleanup is independent.
+[Canonical NODE-169 contract, exact verification and remaining gates](pwright-node-handles.md#node-169-safe-host-retained-upload-and-pinned-ingress-oracle)
+own the evidence, including the offline pinned ingress characterization. This
+checkpoint claims no live pass; earlier entries retain their historical scope.
+
+## NODE-168 retained-reference ownership checkpoint (2026-09-17)
+
+The backend and composition Locator-resolution leaves now expose a default-off
+`retained-reference` path. It adopts the exact retained source into a separately
+admitted temporary group without querying a selector, returning a real
+`ResolvedElement` and then a continuation-owned `OwnedElement`. Source and
+target must share the exact CDP client; caller-owned source/route admission
+survives acquisition and cleanup. Numeric and unique utility-world IDs come
+from one authoritative Frame snapshot, not separate observations.
+
+Numeric-only `DOM.resolveNode` can race context-ID reuse. The new group therefore
+has no destruction proof until a constant by-value probe accepts the adopted
+argument in the exact unique world. Once group acquisition starts, failure
+before that validation explicitly releases the group through settlement; the
+expected old world's destruction cannot excuse cleanup. Legacy Handle-adoption
+abandonment also now preserves
+Cleanup as continuation failure rather than converting it to success.
+
+Public Node retained upload remains absent; preparation-ticket/deferred-ingress
+integration and exact verification are recorded in the
+[canonical NODE-168 checkpoint](pwright-node-handles.md#node-168-group-owned-retained-adoption-and-deferred-upload-ingress).
+This source checkpoint makes no live-pass claim. Earlier decisions and evidence
+below retain their historical scope.
 
 ## Upstream contract
 
@@ -85,6 +152,22 @@ clients implement them without adding a capability, runtime, transport, or
 browser dependency.
 
 ## Execution-world route checkpoint
+
+The Locator evaluation prerequisite also exposes an optional native-reference
+request constructor and caller-owned `objectGroup`. The constructor copies
+only a bounded native element ID and does not transfer its owner's lifecycle.
+The optional group is validated before DOM I/O and forwarded to resolveNode;
+the original no-group API is unchanged. The caller must retain that group and
+separately budget the additional adopted wrapper until group release.
+
+`pwright-composition-chromium-locator-evaluation` is that explicit group owner:
+it consumes a retained selection, reserves another RemoteHandle and cleanup
+continuation before adoption, and releases the original group after one value
+evaluation. This also compensates unknown native IDs in malformed resolve
+responses. Its exact 15-package closure does not select portable Handle
+lifecycle or publish a Handle. See [its resource and real-Chrome proofs](pwright-locator-evaluation.md#main-world-adoption-and-evaluation-checkpoint-2026-09-07).
+Production topology/Node integration is still pending; this is not a newly
+enabled public cross-world or Locator API.
 
 `CdpFrameExecutionRoute` now exposes both the numeric `executionContextId` and
 stable `uniqueContextId` already owned by topology. The bounded Chromium Handle

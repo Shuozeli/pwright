@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><title>Context defaults</title></head><body><script>
+// Capture at document initialization, before any independent observer can
+// attach and change focus or media emulation on this target.
+document.body.textContent = JSON.stringify({
+  width: innerWidth, height: innerHeight, scale: devicePixelRatio,
+  window: { width: outerWidth, height: outerHeight },
+  screen: { width: screen.width, height: screen.height },
+  focused: document.hasFocus(),
+  dark: matchMedia('(prefers-color-scheme: dark)').matches,
+  reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+  forcedColors: matchMedia('(forced-colors: active)').matches,
+  contrast: matchMedia('(prefers-contrast: more)').matches,
+});
+</script></body></html>

@@ -27,10 +27,18 @@ const BEGIN_COMMAND: u8 = 1;
 const BEGIN_RESULT: u8 = 2;
 const GOTO_COMMAND: u8 = 3;
 const GOTO_RESULT: u8 = 4;
+const RELOAD_COMMAND: u8 = 5;
+const RELOAD_RESULT: u8 = 6;
+
+mod reload;
 
 #[doc(hidden)]
 #[rustfmt::skip]
 pub mod generated_schema;
+
+/// Explicitly selected 1.2 values and typed codecs. Root bindings remain 1.1.
+#[cfg(feature = "frame-navigation")]
+pub mod v1_2;
 
 pub use generated_schema::{
     CATALOG as NAVIGATION_SCHEMA_CATALOG, COMMANDS as NAVIGATION_COMMAND_SCHEMAS,
@@ -91,6 +99,10 @@ impl NavigationCodec {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NavigationCodecError {
     WrongRoute(FrameRoute),
+    RouteIdentityMismatch {
+        outer: FrameRoute,
+        inner: FrameRoute,
+    },
     WrongMethod {
         expected: MethodTag,
         actual: MethodTag,
@@ -150,6 +162,10 @@ impl Display for NavigationCodecError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::WrongRoute(route) => write!(formatter, "navigation payload arrived on {route:?}"),
+            Self::RouteIdentityMismatch { outer, inner } => write!(
+                formatter,
+                "navigation payload route {inner:?} differs from envelope {outer:?}"
+            ),
             Self::WrongMethod { expected, actual } => {
                 write!(
                     formatter,
@@ -733,6 +749,8 @@ fn navigation_wire_kind(value: &PwrightNavigation) -> u8 {
         PwrightNavigation::BeginResult { .. } => BEGIN_RESULT,
         PwrightNavigation::GotoCommand { .. } => GOTO_COMMAND,
         PwrightNavigation::GotoResult { .. } => GOTO_RESULT,
+        PwrightNavigation::ReloadCommand { .. } => RELOAD_COMMAND,
+        PwrightNavigation::ReloadResult { .. } => RELOAD_RESULT,
     }
 }
 
@@ -801,7 +819,9 @@ fn map_generated_decode(error: BinaryValueDecodeError, expected: u8) -> Navigati
             "pwright.navigation.wait_until" => NavigationCodecError::InvalidWaitUntil(value),
             "pwright.common.failure_kind" => NavigationCodecError::InvalidFailureKind(value),
             "pwright.navigation.error_details" => NavigationCodecError::InvalidErrorDetails(value),
-            "pwright.navigation.begin_outcome" | "pwright.navigation.goto_outcome" => {
+            "pwright.navigation.begin_outcome"
+            | "pwright.navigation.goto_outcome"
+            | "pwright.navigation.frame_goto_outcome" => {
                 NavigationCodecError::InvalidOutcome(value)
             }
             _ => NavigationCodecError::WrongPayloadKind {

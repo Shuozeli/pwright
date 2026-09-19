@@ -16,21 +16,32 @@ use pwright_browser_backend::{
     BackendDescriptor, BackendFeatureDescriptor, BackendFeatureId, BackendId,
     BackendImplementation, BackendProtocolId, BrowserBackend, BrowserEngine,
 };
-use pwright_cap_dom_content::{DOM_CONTENT_CAPABILITY_ID, FRAME_CONTENT_COMMAND_ID};
+use pwright_cap_dom_content::{
+    DOM_CONTENT_CAPABILITY_ID, FRAME_CONTENT_COMMAND_ID, FRAME_TITLE_COMMAND_ID,
+};
 use pwright_core::ProtocolVersion;
 
 pub const CHROMIUM_CDP_DOM_CONTENT_BACKEND_ID: BackendId =
     BackendId::new("pwright.backend.chromium-cdp.dom-content");
 pub const CHROMIUM_CDP_PROTOCOL_ID: BackendProtocolId = BackendProtocolId::new("cdp");
 pub const CDP_FRAME_CONTENT_FEATURE: BackendFeatureId = BackendFeatureId::new("frame.content");
-pub const CHROMIUM_CDP_DOM_CONTENT_FEATURES: &[BackendFeatureDescriptor] =
-    &[BackendFeatureDescriptor::new(
+pub const CDP_FRAME_TITLE_FEATURE: BackendFeatureId = BackendFeatureId::new("frame.title");
+pub const CHROMIUM_CDP_DOM_CONTENT_FEATURES: &[BackendFeatureDescriptor] = &[
+    BackendFeatureDescriptor::new(
         CDP_FRAME_CONTENT_FEATURE,
         DOM_CONTENT_CAPABILITY_ID,
         ProtocolVersion::new(1, 0),
         FRAME_CONTENT_COMMAND_ID,
         BackendImplementation::Emulated,
-    )];
+    ),
+    BackendFeatureDescriptor::new(
+        CDP_FRAME_TITLE_FEATURE,
+        DOM_CONTENT_CAPABILITY_ID,
+        ProtocolVersion::new(1, 1),
+        FRAME_TITLE_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
+];
 
 pub enum ChromiumCdpDomContentBackend {}
 
@@ -51,7 +62,7 @@ mod tests {
     use super::ChromiumCdpDomContentBackend;
 
     #[test]
-    fn descriptor_contains_only_emulated_frame_content() {
+    fn descriptor_contains_only_fixed_dom_reads() {
         // Arrange
         let descriptor = ChromiumCdpDomContentBackend::DESCRIPTOR;
 
@@ -65,7 +76,10 @@ mod tests {
         // Assert
         assert_eq!(
             features,
-            [("frame.content", BackendImplementation::Emulated)]
+            [
+                ("frame.content", BackendImplementation::Emulated),
+                ("frame.title", BackendImplementation::Emulated)
+            ]
         );
         assert!(descriptor.event_features.is_empty());
     }

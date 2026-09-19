@@ -1,3 +1,8 @@
+#![allow(
+    clippy::result_large_err,
+    reason = "tonic-generated service traits fix the error type as tonic::Status"
+)]
+
 use anyhow::Result;
 use clap::Parser;
 use tonic::transport::Server;

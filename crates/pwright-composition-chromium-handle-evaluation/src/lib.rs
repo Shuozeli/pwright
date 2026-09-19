@@ -7,6 +7,18 @@
 //! `pwright-composition-chromium-handle-lifecycle`.
 
 mod element_adoption;
+#[cfg(feature = "frame-value")]
+mod frame_value;
+#[cfg(feature = "handle-value")]
+mod handle_value;
+#[cfg(feature = "native-creation")]
+pub mod native_creation;
+#[cfg(feature = "handle-value")]
+mod owner_frame;
+#[cfg(feature = "retained-reference")]
+mod retained_reference;
+#[cfg(feature = "retained-reference")]
+pub use retained_reference::ChromiumRetainedElementSource;
 
 use std::collections::BTreeMap;
 use std::convert::Infallible;
@@ -30,9 +42,9 @@ pub use pwright_backend_cdp_handle_evaluation::{
     CdpElementHandleAdoptionBatchService, CdpElementHandleAdoptionInstallError,
     CdpElementHandleAdoptionProductionProfile, CdpElementHandleAdoptionRequest,
     CdpElementHandleAdoptionService, CdpElementHandleAdoptionSetupError, CdpEvaluatedHandle,
-    CdpHandleEvaluationLimits, CdpHandleEvaluationRequest, CdpHandleEvaluationService,
-    CdpHandleKind, CdpHandlePropertiesService, CdpHandlePropertyLimitError,
-    CdpHandlePropertyLimits, CdpHandleValueEvaluationService,
+    CdpHandleEvaluationLimits, CdpHandleEvaluationProgram, CdpHandleEvaluationRequest,
+    CdpHandleEvaluationService, CdpHandleKind, CdpHandlePropertiesService,
+    CdpHandlePropertyLimitError, CdpHandlePropertyLimits, CdpHandleValueEvaluationService,
 };
 use pwright_cap_handle_evaluation::{
     EvaluateHandle, EvaluateHandleParams, GetPropertiesOptions, GetPropertyParams, HandleEvaluate,
@@ -44,6 +56,7 @@ use pwright_cap_handle_lifecycle::{HandleDispose, HandleLifecycleErrorDetails};
 use pwright_cdp::CdpClient;
 use pwright_codec_handle_evaluation::HandleEvaluationCodec;
 pub use pwright_codec_handle_evaluation::HandleEvaluationCodecLimits;
+use pwright_composition_chromium_handle_lifecycle::ChromiumHandleRouteReservation;
 pub use pwright_composition_chromium_handle_lifecycle::{
     ChromiumHandleDisposeCommandService, ChromiumHandleDisposer, ChromiumHandleLifecycleBindings,
     ChromiumHandleLifecycleHandlers, ChromiumHandleLifecycleInstallError,
@@ -366,6 +379,32 @@ impl ChromiumHandleEvaluationRoute {
 
     pub const fn service(&self) -> &CdpEvaluationService {
         &self.service
+    }
+}
+
+impl ChromiumHandleEvaluationCommandService {
+    /// Backend world identity for exact native-lifetime composition. This does
+    /// not expose a RemoteObject ID or install another route registry.
+    pub fn handle_world_identity(
+        &self,
+        object_id: ObjectId,
+    ) -> Result<
+        Option<ChromiumHandleEvaluationRouteIdentity>,
+        OperationError<HandleEvaluationErrorDetails>,
+    > {
+        self.handle_routes
+            .snapshot::<ChromiumEvaluatedHandleRoute>(object_id)
+            .map_err(map_route_error)
+            .map(|route| {
+                route.map(|route| {
+                    let payload = route.payload();
+                    ChromiumHandleEvaluationRouteIdentity {
+                        page_id: route.owner_page(),
+                        execution_context_id: payload.source_execution_context_id,
+                        unique_context_id: payload.source_unique_context_id.clone(),
+                    }
+                })
+            })
     }
 }
 
@@ -738,7 +777,7 @@ impl ChromiumHandleDisposer for ChromiumEvaluatedHandleRoute {
         Box::pin(async move {
             self.native.release().await.map_err(|error| {
                 OperationError::new(
-                    FailureKind::Backend,
+                    pwright_backend_cdp_common::classify_cdp_failure(&error),
                     format!("CDP Runtime.releaseObject failed: {error}"),
                     Some(HandleLifecycleErrorDetails::Backend(error.to_string())),
                 )
@@ -772,6 +811,12 @@ struct HandleCreationRoute {
     owner_page: ObjectId,
     evaluation: CdpEvaluationService,
     current_handles: Vec<ObjectId>,
+}
+
+struct ResolvedFrameCreation {
+    route: HandleCreationRoute,
+    request: CdpHandleEvaluationRequest,
+    adopted: Option<Box<dyn AdoptedArgumentBatch>>,
 }
 
 struct ResolvedArguments {
@@ -852,6 +897,19 @@ impl ChromiumHandleEvaluationCommandService {
         metadata: CallMetadata,
         params: EvaluateHandleParams,
     ) -> Result<HandleInitializer, OperationError<HandleEvaluationErrorDetails>> {
+        let creation = self
+            .resolve_frame_creation(frame_id, metadata, params.into())
+            .await?;
+        self.create_handle(creation.route, creation.request, creation.adopted)
+            .await
+    }
+
+    async fn resolve_frame_creation(
+        &self,
+        frame_id: ObjectId,
+        metadata: CallMetadata,
+        params: CdpHandleEvaluationProgram,
+    ) -> Result<ResolvedFrameCreation, OperationError<HandleEvaluationErrorDetails>> {
         validate_metadata(metadata, "Frame.evaluateHandle")?;
         validate_live(&self.runtime, frame_id, "Frame")?;
         let evaluation = self.frame_route(frame_id)?;
@@ -867,17 +925,16 @@ impl ChromiumHandleEvaluationCommandService {
             )
             .await?;
         let ResolvedArguments { arguments, adopted } = arguments;
-        self.create_handle(
-            HandleCreationRoute {
+        Ok(ResolvedFrameCreation {
+            route: HandleCreationRoute {
                 owner_frame: frame_id,
                 owner_page: evaluation.page_id,
                 evaluation: evaluation.service,
                 current_handles: handle_ids,
             },
-            CdpHandleEvaluationRequest::new(params, arguments),
+            request: CdpHandleEvaluationRequest::new_program(params, None, arguments),
             adopted,
-        )
-        .await
+        })
     }
 
     async fn evaluate_value(
@@ -978,15 +1035,30 @@ impl ChromiumHandleEvaluationCommandService {
                 )),
             ));
         }
-        self.evaluate_handle_for_handle(
-            target_id,
-            CallMetadata::default(),
-            HandleEvaluateParams::function(
-                "(target, name) => target[name]",
-                pwright_cap_handle_evaluation::HandleEvaluationValue::String(
-                    params.name().to_owned(),
-                ),
-            ),
+        validate_live(&self.runtime, target_id, "Handle")?;
+        let resolved = self.resolve_handle(target_id, &[]).await?;
+        let object_id = next_id(&self.object_ids)?;
+        // The persistent result is admitted before the backend creates even its
+        // temporary snapshot. Property values must not be awaited directly.
+        let reservation = self.handle_routes.reserve().map_err(map_route_error)?;
+        let native = CdpHandlePropertiesService::from_evaluation(
+            resolved.evaluation.clone(),
+            self.native_id_bytes,
+            self.preview_bytes,
+            self.property_limits,
+        )
+        .call_property_on_handle(target_id, resolved.target, params.name())
+        .await?;
+        self.publish_handle(
+            HandleCreationRoute {
+                owner_frame: resolved.owner_frame,
+                owner_page: resolved.owner_page,
+                evaluation: resolved.evaluation,
+                current_handles: vec![target_id],
+            },
+            object_id,
+            reservation,
+            native,
         )
         .await
     }
@@ -1030,17 +1102,28 @@ impl ChromiumHandleEvaluationCommandService {
     ) -> Result<HandleInitializer, OperationError<HandleEvaluationErrorDetails>> {
         let object_id = next_id(&self.object_ids)?;
         let reservation = self.handle_routes.reserve().map_err(map_route_error)?;
-        let evaluation = route.evaluation.clone();
         let outcome = CdpHandleEvaluationService::from_evaluation(
-            route.evaluation,
+            route.evaluation.clone(),
             self.native_id_bytes,
             self.preview_bytes,
         )
         .call(request)
         .await;
         let native = finish_adopted_handle_creation(outcome, adopted).await?;
+        self.publish_handle(route, object_id, reservation, native)
+            .await
+    }
+
+    async fn publish_handle(
+        &self,
+        route: HandleCreationRoute,
+        object_id: ObjectId,
+        reservation: ChromiumHandleRouteReservation,
+        native: CdpEvaluatedHandle,
+    ) -> Result<HandleInitializer, OperationError<HandleEvaluationErrorDetails>> {
+        let evaluation = &route.evaluation;
         if let Err(error) = self
-            .ensure_current_frame_route(route.owner_frame, route.owner_page, &evaluation)
+            .ensure_current_frame_route(route.owner_frame, route.owner_page, evaluation)
             .and_then(|()| self.ensure_current_handles(route.owner_page, &route.current_handles))
         {
             return release_failed(native, error).await;
@@ -1560,10 +1643,16 @@ where
             let handles = match inner.await {
                 Ok(result) => match result.into_outcome() {
                     Ok(value) => Spec::created_handles(&value),
+                    Err(error) if error.kind() == FailureKind::Cleanup => {
+                        return Err(CleanupFailure::new(
+                            "abandoned Handle evaluation reported failed native compensation",
+                        ));
+                    }
                     Err(_) => return Ok(()),
                 },
                 Err(never) => match never {},
             };
+            let mut cleanup_failed = false;
             for initializer in handles {
                 let result = match dispose
                     .call(Command::<HandleDispose>::new(
@@ -1577,13 +1666,17 @@ where
                     Ok(result) => result,
                     Err(never) => match never {},
                 };
-                if result.into_outcome().is_err() {
-                    return Err(CleanupFailure::new(
-                        "abandoned Handle evaluation result could not be disposed",
-                    ));
-                }
+                // Every result owns an independent route. One refused release
+                // must not strand later handles in an unobserved batch.
+                cleanup_failed |= result.into_outcome().is_err();
             }
-            Ok(())
+            if cleanup_failed {
+                Err(CleanupFailure::new(
+                    "abandoned Handle evaluation result could not be disposed",
+                ))
+            } else {
+                Ok(())
+            }
         }));
     }
 }

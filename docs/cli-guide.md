@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-03T21:46:51Z -->
+<!-- agent-updated: 2026-09-09T21:32:56Z -->
 
 # CLI Guide
 
@@ -72,6 +72,12 @@ All actions use **refs** from `pwright snapshot` (e.g., `e0`, `e1`, `e5`).
 | `pwright drag <ref> --dx N --dy N` | Drag element by offset |
 | `pwright upload <ref> <files...>` | Upload files to file input |
 | `pwright download <ref> [--dest path]` | Click + capture download |
+
+Single printable Unicode scalars in the legacy CLI `press`/`type` path now send
+text-bearing key-down/key-up events with no invented physical key code. This
+reaches canvas keyboard listeners as well as ordinary DOM inputs. Multi-character
+unknown key strings retain the legacy `Input.insertText` fallback. This is not
+an OS IME/composition implementation and does not change Node FFI key semantics.
 
 ### Coordinate-Based Actions
 

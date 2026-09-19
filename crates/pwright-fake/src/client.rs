@@ -44,20 +44,28 @@ pub struct FakeCdpClient {
     evaluate_responses: Mutex<VecDeque<Value>>,
     evaluate_errors: Mutex<VecDeque<String>>,
     evaluate_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
+    get_properties_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     release_object_error: Mutex<Option<String>>,
+    release_object_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
+    release_object_group_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     /// Configurable response for Page.navigate.
     navigate_response: Mutex<Option<Value>>,
+    frame_navigate_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     screenshot_response: Mutex<String>,
     screenshot_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     frame_owner_responses: Mutex<HashMap<String, i64>>,
     backend_box_model_responses: Mutex<HashMap<i64, Value>>,
     object_backend_nodes: Mutex<HashMap<String, i64>>,
+    object_node_descriptions: Mutex<HashMap<String, Value>>,
+    describe_node_error: Mutex<Option<String>>,
+    describe_node_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     adopted_node_responses: Mutex<HashMap<(i64, i64), Value>>,
     adoption_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     main_frame_id: Mutex<String>,
     frame_tree_response: Mutex<Option<cdp_page::FrameTree>>,
     frame_tree_responses: Mutex<VecDeque<cdp_page::FrameTree>>,
     create_isolated_world_errors: Mutex<VecDeque<Option<String>>>,
+    create_isolated_world_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     create_browser_context_response: Mutex<String>,
     create_browser_context_error: Mutex<Option<String>>,
     create_browser_context_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
@@ -66,12 +74,16 @@ pub struct FakeCdpClient {
     target_create_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     target_close_error: Mutex<Option<String>>,
     target_close_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
+    target_detach_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
+    target_detach_errors: Mutex<VecDeque<Option<String>>>,
     target_responses: Mutex<VecDeque<Vec<TargetInfo>>>,
     browser_contexts_response: Mutex<Vec<String>>,
     input_errors: Mutex<VecDeque<Option<String>>>,
+    pointer_gates: Mutex<VecDeque<Option<Arc<tokio::sync::Notify>>>>,
     auto_attach_event_sink: Mutex<Option<tokio::sync::broadcast::Sender<pwright_cdp::CdpEvent>>>,
     auto_attach_events: Mutex<VecDeque<pwright_cdp::CdpEvent>>,
     page_enable_events: Mutex<VecDeque<Vec<pwright_cdp::CdpEvent>>>,
+    reload_events: Mutex<Vec<pwright_cdp::CdpEvent>>,
     network_errors: Mutex<VecDeque<Option<String>>>,
     network_gate: Mutex<Option<Arc<tokio::sync::Notify>>>,
     /// Event broadcast channel.
@@ -81,6 +93,31 @@ pub struct FakeCdpClient {
 }
 
 impl FakeCdpClient {
+    async fn resolve_node_for_adoption(
+        &self,
+        backend_node_id: i64,
+        execution_context_id: i64,
+        object_group: Option<&str>,
+    ) -> CdpResult<Value> {
+        let mut params = serde_json::json!({
+            "backendNodeId": backend_node_id,
+            "executionContextId": execution_context_id,
+        });
+        if let Some(group) = object_group {
+            params["objectGroup"] = group.into();
+        }
+        self.record("DOM.resolveNode", vec![params]);
+        let gate = self.adoption_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        self.adopted_node_responses.lock().unwrap()
+            .get(&(backend_node_id, execution_context_id)).cloned()
+            .ok_or_else(|| pwright_cdp::connection::CdpError::Other(format!(
+                "No adopted node configured for backend node {backend_node_id} in context {execution_context_id}"
+            )))
+    }
+
     /// Create a fake browser from an HTML string.
     pub fn from_html(html: &str) -> Self {
         let dom = builder::parse_html(html);
@@ -93,19 +130,27 @@ impl FakeCdpClient {
             evaluate_responses: Mutex::new(VecDeque::new()),
             evaluate_errors: Mutex::new(VecDeque::new()),
             evaluate_gate: Mutex::new(None),
+            get_properties_gate: Mutex::new(None),
             release_object_error: Mutex::new(None),
+            release_object_gate: Mutex::new(None),
+            release_object_group_gate: Mutex::new(None),
             navigate_response: Mutex::new(None),
+            frame_navigate_gate: Mutex::new(None),
             screenshot_response: Mutex::new("bW9jaw==".to_owned()),
             screenshot_gate: Mutex::new(None),
             frame_owner_responses: Mutex::new(HashMap::new()),
             backend_box_model_responses: Mutex::new(HashMap::new()),
             object_backend_nodes: Mutex::new(HashMap::new()),
+            object_node_descriptions: Mutex::new(HashMap::new()),
+            describe_node_error: Mutex::new(None),
+            describe_node_gate: Mutex::new(None),
             adopted_node_responses: Mutex::new(HashMap::new()),
             adoption_gate: Mutex::new(None),
             main_frame_id: Mutex::new("fake-frame-1".to_string()),
             frame_tree_response: Mutex::new(None),
             frame_tree_responses: Mutex::new(VecDeque::new()),
             create_isolated_world_errors: Mutex::new(VecDeque::new()),
+            create_isolated_world_gate: Mutex::new(None),
             create_browser_context_response: Mutex::new("fake-browser-context-1".to_string()),
             create_browser_context_error: Mutex::new(None),
             create_browser_context_gate: Mutex::new(None),
@@ -114,12 +159,16 @@ impl FakeCdpClient {
             target_create_gate: Mutex::new(None),
             target_close_error: Mutex::new(None),
             target_close_gate: Mutex::new(None),
+            target_detach_gate: Mutex::new(None),
+            target_detach_errors: Mutex::new(VecDeque::new()),
             target_responses: Mutex::new(VecDeque::new()),
             browser_contexts_response: Mutex::new(Vec::new()),
             input_errors: Mutex::new(VecDeque::new()),
+            pointer_gates: Mutex::new(VecDeque::new()),
             auto_attach_event_sink: Mutex::new(None),
             auto_attach_events: Mutex::new(VecDeque::new()),
             page_enable_events: Mutex::new(VecDeque::new()),
+            reload_events: Mutex::new(Vec::new()),
             network_errors: Mutex::new(VecDeque::new()),
             network_gate: Mutex::new(None),
             event_tx,
@@ -150,15 +199,33 @@ impl FakeCdpClient {
         *self.release_object_error.lock().unwrap() = message;
     }
 
+    pub fn set_release_object_gate(&self, gate: Option<Arc<tokio::sync::Notify>>) {
+        *self.release_object_gate.lock().unwrap() = gate;
+    }
+
+    pub fn set_release_object_group_gate(&self, gate: Option<Arc<tokio::sync::Notify>>) {
+        *self.release_object_group_gate.lock().unwrap() = gate;
+    }
+
     /// Blocks Runtime.evaluate calls until notified. Clearing the gate restores
     /// immediate fake responses.
     pub fn set_evaluate_gate(&self, gate: Option<Arc<tokio::sync::Notify>>) {
         *self.evaluate_gate.lock().unwrap() = gate;
     }
 
+    /// Pause property reads after recording the exact native command attempt.
+    pub fn set_get_properties_gate(&self, gate: Option<Arc<tokio::sync::Notify>>) {
+        *self.get_properties_gate.lock().unwrap() = gate;
+    }
+
     /// Set a custom response for `Page.navigate`.
     pub fn set_navigate_response(&self, response: Value) {
         *self.navigate_response.lock().unwrap() = Some(response);
+    }
+
+    /// Hold a Frame-targeted navigation reply after recording its dispatch.
+    pub fn set_frame_navigate_gate(&self, gate: Option<Arc<tokio::sync::Notify>>) {
+        *self.frame_navigate_gate.lock().unwrap() = gate;
     }
 
     pub fn set_screenshot_response(&self, response: impl Into<String>) {
@@ -190,6 +257,23 @@ impl FakeCdpClient {
             .insert(object_id.into(), backend_node_id);
     }
 
+    /// Configure an unmodified raw `DOM.describeNode` result for one object ID.
+    pub fn set_object_node_description(&self, object_id: impl Into<String>, response: Value) {
+        self.object_node_descriptions
+            .lock()
+            .unwrap()
+            .insert(object_id.into(), response);
+    }
+
+    pub fn set_describe_node_error(&self, message: Option<String>) {
+        *self.describe_node_error.lock().unwrap() = message;
+    }
+
+    /// Blocks raw object-ID descriptions after recording the exact request.
+    pub fn set_describe_node_gate(&self, gate: Option<Arc<tokio::sync::Notify>>) {
+        *self.describe_node_gate.lock().unwrap() = gate;
+    }
+
     pub fn set_adopted_node_response(
         &self,
         backend_node_id: i64,
@@ -218,6 +302,11 @@ impl FakeCdpClient {
         *self.frame_tree_response.lock().unwrap() = Some(frame_tree);
     }
 
+    /// Emit these native lifecycle events during the next Page.reload call.
+    pub fn set_reload_events(&self, events: impl IntoIterator<Item = pwright_cdp::CdpEvent>) {
+        *self.reload_events.lock().unwrap() = events.into_iter().collect();
+    }
+
     /// Set ordered frame-tree snapshots consumed by successive reads.
     pub fn set_frame_trees(&self, frame_trees: impl IntoIterator<Item = cdp_page::FrameTree>) {
         *self.frame_tree_responses.lock().unwrap() = frame_trees.into_iter().collect();
@@ -230,6 +319,30 @@ impl FakeCdpClient {
         errors: impl IntoIterator<Item = Option<String>>,
     ) {
         *self.create_isolated_world_errors.lock().unwrap() = errors.into_iter().collect();
+    }
+
+    pub fn set_create_isolated_world_gate(&self, gate: Option<Arc<tokio::sync::Notify>>) {
+        *self.create_isolated_world_gate.lock().unwrap() = gate;
+    }
+
+    async fn finish_target_detach(&self) -> CdpResult<()> {
+        let gate = self.target_detach_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self
+            .target_detach_errors
+            .lock()
+            .unwrap()
+            .pop_front()
+            .flatten()
+        {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        Ok(())
     }
 
     pub fn set_create_browser_context_response(&self, response: impl Into<String>) {
@@ -246,10 +359,25 @@ impl FakeCdpClient {
         *self.input_errors.lock().unwrap() = errors.into_iter().collect();
     }
 
+    /// Ordered native pointer reply gates. Calls record/capture their error at
+    /// submission; each optional gate delays only that call's acknowledgement.
+    pub fn set_pointer_gates(
+        &self,
+        gates: impl IntoIterator<Item = Option<Arc<tokio::sync::Notify>>>,
+    ) {
+        *self.pointer_gates.lock().unwrap() = gates.into_iter().collect();
+    }
+
     /// Configure ordered Network-domain outcomes. `None` succeeds; `Some`
     /// returns a deterministic CDP protocol error after recording the call.
     pub fn set_network_errors(&self, errors: impl IntoIterator<Item = Option<String>>) {
         *self.network_errors.lock().unwrap() = errors.into_iter().collect();
+    }
+    pub fn set_target_detach_gate(&self, gate: Option<Arc<tokio::sync::Notify>>) {
+        *self.target_detach_gate.lock().unwrap() = gate;
+    }
+    pub fn set_target_detach_errors(&self, errors: impl IntoIterator<Item = Option<String>>) {
+        *self.target_detach_errors.lock().unwrap() = errors.into_iter().collect();
     }
 
     /// Blocks Network enable/disable calls until notified. Clearing the gate
@@ -492,6 +620,31 @@ impl CdpClient for FakeCdpClient {
         Ok(())
     }
 
+    async fn page_navigate_in_frame(
+        &self,
+        frame_id: &str,
+        url: &str,
+        referrer: Option<&str>,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Page.navigate",
+            vec![serde_json::json!({"frameId": frame_id,
+            "url": url, "referrer": referrer, "referrerPolicy": "unsafeUrl"})],
+        );
+        let gate = self.frame_navigate_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        Ok(self
+            .navigate_response
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(
+                || serde_json::json!({"frameId": frame_id, "loaderId": "frame-loader"}),
+            ))
+    }
+
     async fn page_enable(&self) -> CdpResult<()> {
         self.record("Page.enable", vec![]);
         if let Some(events) = self.page_enable_events.lock().unwrap().pop_front() {
@@ -577,6 +730,10 @@ impl CdpClient for FakeCdpClient {
                 "grantUniveralAccess": grant_universal_access,
             })],
         );
+        let gate = self.create_isolated_world_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
         if let Some(Some(message)) = self
             .create_isolated_world_errors
             .lock()
@@ -593,6 +750,9 @@ impl CdpClient for FakeCdpClient {
 
     async fn page_reload(&self) -> CdpResult<()> {
         self.record("Page.reload", vec![]);
+        for event in self.reload_events.lock().unwrap().drain(..) {
+            let _ = self.event_tx.send(event);
+        }
         Ok(())
     }
 
@@ -741,32 +901,62 @@ impl CdpClient for FakeCdpClient {
             })
     }
 
+    async fn dom_describe_node_by_object_id_raw(&self, object_id: &str) -> CdpResult<Value> {
+        self.record(
+            "DOM.describeNode",
+            vec![serde_json::json!({"objectId": object_id})],
+        );
+        let gate = self.describe_node_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self.describe_node_error.lock().unwrap().clone() {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        self.object_node_descriptions
+            .lock()
+            .unwrap()
+            .get(object_id)
+            .cloned()
+            .ok_or_else(|| {
+                pwright_cdp::connection::CdpError::Other(format!(
+                    "No raw node description configured for object {object_id}"
+                ))
+            })
+    }
+
     async fn dom_resolve_backend_node_in_execution_context(
         &self,
         backend_node_id: i64,
         execution_context_id: i64,
     ) -> CdpResult<Value> {
-        self.record(
-            "DOM.resolveNode",
-            vec![serde_json::json!({
-                "backendNodeId": backend_node_id,
-                "executionContextId": execution_context_id,
-            })],
-        );
-        let gate = self.adoption_gate.lock().unwrap().clone();
-        if let Some(gate) = gate {
-            gate.notified().await;
-        }
-        self.adopted_node_responses
-            .lock()
-            .unwrap()
-            .get(&(backend_node_id, execution_context_id))
-            .cloned()
-            .ok_or_else(|| {
-                pwright_cdp::connection::CdpError::Other(format!(
-                    "No adopted node configured for backend node {backend_node_id} in context {execution_context_id}"
-                ))
-            })
+        self.resolve_node_for_adoption(backend_node_id, execution_context_id, None)
+            .await
+    }
+
+    async fn dom_resolve_backend_node_in_execution_context_group(
+        &self,
+        backend_node_id: i64,
+        execution_context_id: i64,
+        object_group: &str,
+    ) -> CdpResult<Value> {
+        self.resolve_node_for_adoption(backend_node_id, execution_context_id, Some(object_group))
+            .await
+    }
+
+    async fn dom_resolve_node_in_group_to_settlement(
+        &self,
+        backend_node_id: i64,
+        execution_context_id: i64,
+        object_group: &str,
+    ) -> CdpResult<Value> {
+        // The adoption gate records before blocking and retains the raw fixture;
+        // it does not synthesize success or parse away malformed native owners.
+        self.resolve_node_for_adoption(backend_node_id, execution_context_id, Some(object_group))
+            .await
     }
 
     async fn dom_enable(&self) -> CdpResult<()> {
@@ -851,6 +1041,22 @@ impl CdpClient for FakeCdpClient {
     }
 
     // ── Input domain (recording only) ──
+
+    async fn input_dispatch_pointer_event(
+        &self,
+        params: pwright_cdp::generated::input::DispatchMouseEventParams,
+    ) -> CdpResult<()> {
+        self.record(
+            "Input.dispatchMouseEvent",
+            vec![serde_json::to_value(params)?],
+        );
+        let result = self.take_input_error();
+        let gate = self.pointer_gates.lock().unwrap().pop_front().flatten();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        result
+    }
 
     async fn input_dispatch_mouse_event(
         &self,
@@ -1031,6 +1237,42 @@ impl CdpClient for FakeCdpClient {
         self.runtime_evaluate(expression).await
     }
 
+    async fn runtime_evaluate_as_object_to_settlement(&self, expression: &str) -> CdpResult<Value> {
+        // The fake has no command timer. Keep the same recorded wire operation
+        // and unfiltered response fixtures; transport settlement is tested in CDP.
+        self.runtime_evaluate_as_object(expression).await
+    }
+
+    async fn runtime_evaluate_with_user_gesture(
+        &self,
+        expression: &str,
+        unique_context_id: Option<&str>,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Runtime.evaluate",
+            vec![serde_json::json!({
+                "expression": expression, "uniqueContextId": unique_context_id, "userGesture": true,
+            })],
+        );
+        let gate = self.evaluate_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self.evaluate_errors.lock().unwrap().pop_front() {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        if let Some(configured) = self.evaluate_responses.lock().unwrap().pop_front() {
+            return Ok(configured);
+        }
+        if let Some(configured) = self.evaluate_response.lock().unwrap().clone() {
+            return Ok(configured);
+        }
+        Ok(serde_json::json!({"result": {"value": ""}}))
+    }
+
     async fn runtime_evaluate_as_object_in_unique_context(
         &self,
         expression: &str,
@@ -1105,6 +1347,98 @@ impl CdpClient for FakeCdpClient {
         Ok(serde_json::json!({"result": {"type": "undefined"}}))
     }
 
+    async fn runtime_call_function_as_object_in_unique_context_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+    ) -> CdpResult<Value> {
+        self.runtime_call_function_as_object_in_unique_context(
+            unique_context_id,
+            function_declaration,
+            arguments,
+        )
+        .await
+    }
+
+    async fn runtime_call_function_as_object_in_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+        user_gesture: bool,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Runtime.callFunctionOn",
+            vec![serde_json::json!({
+                "uniqueContextId": unique_context_id,
+                "functionDeclaration": function_declaration,
+                "arguments": arguments,
+                "returnByValue": false,
+                "awaitPromise": false,
+                "objectGroup": object_group,
+                "userGesture": user_gesture,
+            })],
+        );
+        let gate = self.evaluate_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self.evaluate_errors.lock().unwrap().pop_front() {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        if let Some(configured) = self.evaluate_responses.lock().unwrap().pop_front() {
+            return Ok(configured);
+        }
+        if let Some(configured) = self.evaluate_response.lock().unwrap().clone() {
+            return Ok(configured);
+        }
+        Ok(serde_json::json!({"result": {"type": "undefined"}}))
+    }
+
+    async fn runtime_call_function_raw_in_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+        user_gesture: bool,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Runtime.callFunctionOn",
+            vec![serde_json::json!({
+                "uniqueContextId": unique_context_id,
+                "functionDeclaration": function_declaration,
+                "arguments": arguments,
+                "returnByValue": true,
+                "awaitPromise": true,
+                "objectGroup": object_group,
+                "userGesture": user_gesture,
+            })],
+        );
+        let gate = self.evaluate_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self.evaluate_errors.lock().unwrap().pop_front() {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        if let Some(configured) = self.evaluate_responses.lock().unwrap().pop_front() {
+            return Ok(configured);
+        }
+        if let Some(configured) = self.evaluate_response.lock().unwrap().clone() {
+            return Ok(configured);
+        }
+        Ok(serde_json::json!({"result": {"type": "undefined"}}))
+    }
+
     async fn runtime_call_function_by_value_in_unique_context(
         &self,
         unique_context_id: &str,
@@ -1140,11 +1474,107 @@ impl CdpClient for FakeCdpClient {
         Ok(serde_json::json!({"result": {"value": {"ok": true, "value": {"t": "u"}}}}))
     }
 
+    async fn runtime_call_function_by_value_in_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Runtime.callFunctionOn",
+            vec![serde_json::json!({
+                "uniqueContextId": unique_context_id,
+                "functionDeclaration": function_declaration,
+                "arguments": arguments,
+                "returnByValue": true,
+                "awaitPromise": true,
+                "objectGroup": object_group,
+            })],
+        );
+        let gate = self.evaluate_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self.evaluate_errors.lock().unwrap().pop_front() {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        if let Some(configured) = self.evaluate_responses.lock().unwrap().pop_front() {
+            return Ok(configured);
+        }
+        if let Some(configured) = self.evaluate_response.lock().unwrap().clone() {
+            return Ok(configured);
+        }
+        Ok(serde_json::json!({"result": {"value": {"ok": true, "value": {"t": "u"}}}}))
+    }
+
+    async fn runtime_call_function_by_value_in_large_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+    ) -> CdpResult<Value> {
+        self.runtime_call_function_by_value_in_group_to_settlement(
+            unique_context_id,
+            function_declaration,
+            arguments,
+            object_group,
+        )
+        .await
+    }
+
+    async fn runtime_call_function_by_value_in_large_group_with_user_gesture_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+        user_gesture: bool,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Runtime.callFunctionOn",
+            vec![serde_json::json!({
+                "uniqueContextId": unique_context_id,
+                "functionDeclaration": function_declaration,
+                "arguments": arguments,
+                "returnByValue": true,
+                "awaitPromise": true,
+                "objectGroup": object_group,
+                "userGesture": user_gesture,
+            })],
+        );
+        let gate = self.evaluate_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self.evaluate_errors.lock().unwrap().pop_front() {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        if let Some(configured) = self.evaluate_responses.lock().unwrap().pop_front() {
+            return Ok(configured);
+        }
+        if let Some(configured) = self.evaluate_response.lock().unwrap().clone() {
+            return Ok(configured);
+        }
+        Ok(serde_json::json!({"result": {}}))
+    }
+
     async fn runtime_get_properties(&self, object_id: &str) -> CdpResult<Value> {
         self.record(
             "Runtime.getProperties",
             vec![Value::String(object_id.to_owned())],
         );
+        let gate = self.get_properties_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
         if let Some(message) = self.evaluate_errors.lock().unwrap().pop_front() {
             return Err(pwright_cdp::connection::CdpError::Protocol {
                 code: -32000,
@@ -1160,11 +1590,19 @@ impl CdpClient for FakeCdpClient {
         Ok(serde_json::json!({"result": []}))
     }
 
+    async fn runtime_get_properties_to_settlement(&self, object_id: &str) -> CdpResult<Value> {
+        self.runtime_get_properties(object_id).await
+    }
+
     async fn runtime_release_object(&self, object_id: &str) -> CdpResult<()> {
         self.record(
             "Runtime.releaseObject",
             vec![Value::String(object_id.to_string())],
         );
+        let gate = self.release_object_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
         if let Some(message) = self.release_object_error.lock().unwrap().clone() {
             return Err(pwright_cdp::connection::CdpError::Protocol {
                 code: -32000,
@@ -1172,6 +1610,67 @@ impl CdpClient for FakeCdpClient {
             });
         }
         Ok(())
+    }
+
+    async fn runtime_release_object_to_settlement(&self, object_id: &str) -> CdpResult<()> {
+        self.runtime_release_object(object_id).await
+    }
+
+    async fn runtime_query_object_in_group(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        object_group: &str,
+    ) -> CdpResult<Value> {
+        self.record(
+            "Runtime.callFunctionOn",
+            vec![serde_json::json!({
+                "uniqueContextId": unique_context_id, "functionDeclaration": function_declaration,
+                "objectGroup": object_group, "returnByValue": false, "awaitPromise": false,
+            })],
+        );
+        let gate = self.evaluate_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self.evaluate_errors.lock().unwrap().pop_front() {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        if let Some(response) = self.evaluate_responses.lock().unwrap().pop_front() {
+            return Ok(response);
+        }
+        if let Some(response) = self.evaluate_response.lock().unwrap().clone() {
+            return Ok(response);
+        }
+        Ok(serde_json::json!({"result": {"type": "number", "value": 0}}))
+    }
+
+    async fn runtime_release_object_group(&self, object_group: &str) -> CdpResult<()> {
+        self.record(
+            "Runtime.releaseObjectGroup",
+            vec![Value::String(object_group.to_owned())],
+        );
+        let gate = self.release_object_group_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            gate.notified().await;
+        }
+        if let Some(message) = self.release_object_error.lock().unwrap().clone() {
+            return Err(pwright_cdp::connection::CdpError::Protocol {
+                code: -32000,
+                message,
+            });
+        }
+        Ok(())
+    }
+
+    async fn runtime_release_object_group_to_settlement(
+        &self,
+        object_group: &str,
+    ) -> CdpResult<()> {
+        self.runtime_release_object_group(object_group).await
     }
 
     async fn runtime_enable(&self) -> CdpResult<()> {
@@ -1417,7 +1916,26 @@ impl CdpClient for FakeCdpClient {
             "Target.detachFromTarget",
             vec![Value::String(session_id.to_string())],
         );
-        Ok(())
+        self.finish_target_detach().await
+    }
+
+    async fn target_detach_in_parent(
+        &self,
+        parent_session_id: Option<&str>,
+        session_id: &str,
+    ) -> CdpResult<()> {
+        if parent_session_id.is_none() {
+            return self.target_detach(session_id).await;
+        }
+        // Record the explicit port arguments, not fabricated wire parameters.
+        self.record(
+            "Target.detachFromTargetInParent",
+            vec![
+                Value::String(parent_session_id.expect("checked parent").to_owned()),
+                Value::String(session_id.to_owned()),
+            ],
+        );
+        self.finish_target_detach().await
     }
 
     async fn target_set_auto_attach(

@@ -473,6 +473,7 @@ check_profile \
 check_profile \
   pwright-v2-umbrella-chromium-locator \
   pwright \
+  pwright-backend-cdp-common \
   pwright-backend-cdp-input \
   pwright-backend-cdp-locator \
   pwright-backend-cdp-selector-runtime \

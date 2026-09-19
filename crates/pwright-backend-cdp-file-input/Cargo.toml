@@ -1,0 +1,37 @@
+[package]
+name = "pwright-backend-cdp-file-input"
+description = "Optional Chromium file-input payload mutation over exact resolved elements"
+version.workspace = true
+edition.workspace = true
+license = "MIT AND Apache-2.0"
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+large-commands = ["pwright-cdp/large-commands"]
+retained-preflight = []
+retained-target-marking = ["pwright-backend-cdp-locator-resolution/retained-reference"]
+retained-serialized-payload-mutation = ["large-commands"]
+
+[dependencies]
+base64.workspace = true
+pwright-core.workspace = true
+pwright-cdp.workspace = true
+pwright-backend-cdp-locator-resolution.workspace = true
+pwright-file-input-model.workspace = true
+pwright-file-input-source.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+pwright-browser-provider.workspace = true
+pwright-provider-cdp.workspace = true
+pwright-composition-chromium-locator-resolution.workspace = true
+pwright-runtime.workspace = true
+pwright-fake.workspace = true
+pwright-selector-model.workspace = true
+pwright-file-input-fs.workspace = true
+pwright-file-input-tokio.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

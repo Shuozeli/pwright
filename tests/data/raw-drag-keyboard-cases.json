@@ -1,0 +1,12 @@
+[
+  {"id":"idle-escape-press","drag":false,"keys":[{"kind":"press","key":"Escape"}]},
+  {"id":"drag-escape-press","drag":true,"keys":[{"kind":"press","key":"Escape"}]},
+  {"id":"drag-escape-repeat-preserves-logical-state","drag":true,"keys":[{"kind":"down","key":"Escape"},{"kind":"down","key":"Escape"},{"kind":"up","key":"Escape"}]},
+  {"id":"drag-control-escape-chord","drag":true,"keys":[{"kind":"press","key":"Control+Escape"}]},
+  {"id":"drag-escape-keyup-does-not-cancel","drag":true,"keys":[{"kind":"up","key":"Escape"}]},
+  {"id":"idle-locator-escape","drag":false,"keys":[{"kind":"locatorpress","key":"Escape"}]},
+  {"id":"drag-locator-escape","drag":true,"keys":[{"kind":"locatorpress","key":"Escape"}]},
+  {"id":"drag-locator-control-escape","drag":true,"keys":[{"kind":"locatorpress","key":"Control+Escape"}]},
+  {"id":"idle-locator-sequential","drag":false,"keys":[{"kind":"locatorsequential","text":"a中"}]},
+  {"id":"drag-locator-timeout-keeps-logical-key","drag":true,"keys":[{"kind":"locatorpress","key":"Escape","timeout":true},{"kind":"down","key":"Escape"},{"kind":"up","key":"Escape"}]}
+]

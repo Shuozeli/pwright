@@ -1,6 +1,871 @@
-<!-- agent-updated: 2026-09-05T22:05:06Z -->
+<!-- agent-updated: 2026-09-19T20:42:42Z -->
+
+NODE-191 is the first selected retained-upload phase that performs browser
+mutation, but it is still an internal terminal coordinator rather than a public
+API. `prepareMutatedTarget` resumes the same Node progress and FFI ticket at
+`PayloadImported`. Rust atomically takes the exact validated owner and
+move-once graph; the composition owner then retains both through one backend
+call and through acknowledged object-group release.
+
+The backend accepts only the package-produced file-payload serialization shape
+and validates it before native I/O. It uses the retained utility-world client,
+object group and already-retargeted object ID in exactly one large
+`Runtime.callFunctionOn` request with `userGesture: true`. The embedded helper
+reconstructs `File` objects, assigns a `DataTransfer.files`, dispatches `input`
+then `change`, and deliberately ignores the helper's string return for a late
+non-file target. It contains no selector, retarget, Handle adoption or
+`DOM.setFileInputFiles` path.
+
+Success is reported only after group settlement. The addon briefly re-parks
+the typed result so the Node-thread callback can recheck exact session/ticket
+authority, commits `PayloadImported -> Mutated`, and terminally removes the
+entry. That releases the original 1 MiB FFI permit without encoding success as
+abort or waiting for GC. Dropping an unpolled operation sends no browser call;
+dropping a started waiter transfers mutation and cleanup into a pre-reserved
+continuation. [Canonical NODE-191
+checkpoint](knowledge/pwright-node-handles.md#node-191-terminal-rust-owned-serialized-payload-mutation).
+
+NODE-190 introduces a transport-staging boundary, not browser execution. The
+explicit `retained-serialized-payload-import` selection composes the NODE-189
+serializer with a host-owned admission. After exact-session and `Serialized`
+validation, Rust reserves the entire worst-case owner allowance; only then does
+the addon synchronously import the inaccessible package-created graph. A
+successful commit replaces eleven V8 roots with zero and stores one
+`RetainedSerializedPayload` beside the same target/progress owner at
+`PayloadImported`.
+
+This is intentionally a copy boundary: JavaScript language semantics remain in
+the pinned Node serializer, while Rust gains bounded ownership suitable for the
+next transport phase. The import does not retarget the element, issue CDP,
+mutate the INPUT or publish events. NODE-191 must consume the move-once graph
+from this same owner and perform the non-retargeting Rust/CDP mutation.
+[Canonical NODE-190 checkpoint](knowledge/pwright-node-handles.md#node-190-bounded-rust-ownership-for-the-serialized-payload-graph).
+
+NODE-189 keeps the late Playwright call-argument traversal as an independently
+selectable addon leaf. Rust remains authoritative for the retained target,
+session, phase and root lifetime; a narrow Node adapter supplies JavaScript's
+own getter, realm, `toJSON` and cycle semantics. The serialized graph remains a
+Node-thread root until a later Rust-owned mutation capability consumes it, so
+this leaf neither embeds a driver nor makes Node responsible for browser I/O.
+
+NODE-188: The addon-only `retained-input-instrumentation` leaf adds a phase
+boundary after retained DOM prevalidation without adding browser logic to Node.
+Rust owns exact-session transitions from `Prevalidated` through
+`WaitingInputAction` to `Instrumented`; the validated target and its complete
+cleanup chain remain in the same parked typed FFI result. Node awaits a narrow
+internal port under the existing deadline and passes the original receiver root,
+not the retargeted native target.
+
+The default port is an awaited no-op because tracing, debugger, recorder and
+screencast are not installed capabilities. Those future capabilities may plug
+into this seam explicitly; the leaf does not create a public listener registry.
+Hook failure, timeout or close revokes the existing ticket. Late serialization,
+mutation/events and public error/API composition remain downstream.
+[Canonical NODE-188 checkpoint](knowledge/pwright-node-handles.md#node-188-awaited-input-action-instrumentation-boundary).
+
+NODE-187: The explicit `retained-target-prevalidation` composition leaf adapts
+the existing preflight operation to consume `OwnedMarkedElement` directly.
+`OwnedValidatedMarkedFileInput` nests that exact move-only owner, so the marker
+call admission, original adopted object group and derived preflight wrappers
+share one terminal cleanup path. There is no intermediate group release,
+selector requery or re-adoption.
+
+After `Projected`, the addon resumes the same `FfiPreparation`, rechecks the
+same session/phase, moves the marked owner into Rust prevalidation and parks the
+result back on the original one-command admission. The existing Node deadline
+races this asynchronous phase. Success stores only the Rust validated owner,
+keeps the ten existing Node roots unchanged and commits `Prevalidated`.
+Instrumentation, late utility serialization, mutation/cleanup publication and
+public `ElementHandle.setInputFiles` remain later phases.
+[Canonical NODE-187 checkpoint](knowledge/pwright-node-handles.md#node-187-same-owner-retained-dom-prevalidation).
+
+NODE-186: Successful target marking now returns a move-only Rust owner for the
+exact adopted element. The selected Node completion parks that owner beside the
+same FFI preparation rather than releasing its object group at `Marked`.
+`prepareProjectedTarget` then runs the actual synchronous carrier-projection
+kernel while that owner and the existing Node deadline remain live, rechecks
+the phase after observable getters/coercion, replaces six roots with ten and
+stores only the resulting `multiple`/`directoryUpload` truth flags in Rust.
+
+Abort, environment teardown or owner drop follows the already-reserved native
+cleanup continuation; there is no release/re-adopt gap and no second command or
+FFI permit. This is still an internal `Projected` stop point. Native retained
+prevalidation must consume this exact owner before instrumentation, late byte
+serialization, mutation/cleanup and public error wrapping can expose
+`ElementHandle.setInputFiles`.
+[Canonical NODE-186 checkpoint](knowledge/pwright-node-handles.md#node-186-retained-marked-owner-and-same-ticket-carrier-projection).
+
+NODE-185: The selected internal upload path now allocates a monotonic `call@N`
+inside each exact NativeSession preparation scope after server schema validation
+and before the awaited instrumentation checkpoint. After that checkpoint, Rust
+revalidates source registration and exposes the raw timeout; one Node timer then
+races materialization and same-ticket target marking. Target marking derives its
+ID from retained Rust state and cannot accept a replacement JS identity. Node
+owns timeout delivery and its Error; Rust starts no parallel clock.
+
+This completes the call/deadline envelope only. The old raw driver may still
+stop at Materialized, while `prepareMarkedTarget` is an internal composed path.
+Carrier projection, retained DOM prevalidation, input instrumentation, late
+utility serialization, mutation/cleanup and public error wrapping remain absent,
+so public `ElementHandle.setInputFiles` is still gated. Exact limits and evidence
+are in the [canonical NODE-185 checkpoint](knowledge/pwright-node-handles.md#node-185-session-call-identity-and-one-node-deadline).
+
+NODE-184: A default-off addon `retained-target-marking` profile now promotes an
+actual `Materialized` Node preparation on its original FFI admission. The Node
+registry keeps the six roots and a weak running revoker; the Rust worker alone
+upgrades the bound original Handle, performs host marking and returns typed
+completion plus a publication fence. The callback parks the same ticket before
+publication, drops temporary strong completion ownership before reentry, checks
+the exact entry afterward and commits `Marked` only on success. Every failure or
+scope close removes the entry and reaches the running or parked owner without a
+registry borrow.
+
+This is an internal raw-session phase, not automatic public upload. It starts no
+new deadline and currently accepts a caller-supplied bounded call ID. Public
+composition still requires connection-wide identity and a deadline established
+before materialization, followed by projection, DOM prevalidation,
+instrumentation, late serialization and mutation. Exact ownership, resources,
+verification and remaining races are recorded in the
+[canonical NODE-184 checkpoint](knowledge/pwright-node-handles.md#node-184-same-admission-node-target-marking-handoff).
+
+NODE-183: Default-off host `retained-target-marking` now selects the retained
+upload prerequisites and native marker composition. The Rust-only
+`HostSession::handle_mark_target` phase adopts the original retained node,
+marks it with the caller's call ID, then settles its temporary group. It does
+not substitute the runtime command ID or start a fresh action timeout.
+
+The host cache keys exact Page/Frame, client allocation and utility unique ID,
+with 64 current/creating worlds, eight retiring predecessors and eight admitted
+lookup/call leases. Concurrent same-world initialization is coalesced. Each
+persistent marker gets a separately admitted utility-only snapshot and lifetime
+receipt; that backing contains no source Handle, paired adoption receipt or
+running work token. Per-call ownership separately retains those short-lived
+resources and its marker lease through target-group cleanup.
+
+The serialized topology driver prunes removed/replaced worlds and observes
+retirement-completion notifications without needing another user acquisition.
+Currentness is rechecked before publication and marking; generations reject
+stale receipts. Route callbacks, owner drops and notifications occur outside
+cache locks. Cleanup failure closes admission. This is not addon/Node selection,
+actual-ticket Weak upgrade/promotion, deadline/instrumentation integration or
+public retained upload; Node still stops at Materialized. Exact verification
+and remaining gates belong to the [canonical NODE-183 checkpoint](knowledge/pwright-node-handles.md#node-183-host-owned-utility-world-marker-cache).
+No new live-test pass is asserted here; earlier checkpoints remain historical.
+
+NODE-182: Default-off retained-target-marking now supplies a real owned-world
+marker primitive in the existing file-input backend/composition. A private
+plain object stores persistent marking state in its own exact-utility-world
+group. Each call borrows that state while marking the original adopted node;
+possible transient result/exception wrappers belong to the separately owned
+temporary target group. Target cleanup does not clear persistent marking state,
+and this path performs no selector requery or eager INPUT/connected check.
+
+Backend admission separates persistent state/init from per-call native and
+byte allowances. The composition reserves cleanup before native work, retains
+state/route ownership through in-flight marking, and keeps call admission with
+the adopted target through terminal group cleanup. Dynamic utility-realm
+Set/CustomEvent/dispatch semantics remain observable; browser DOM graph memory
+is not bounded by Rust administrative leases.
+
+The primitive supplies no scheduler, world registry, browser launch or host/
+addon selection. Existing Node preparation still stops at Materialized. Original
+action deadlines, connection-wide call IDs, instrumentation, same-ticket typed
+native handoff, late utility serialization and public retained upload remain
+separate integration work. Offline and isolated owned-world browser evidence
+are recorded in the [canonical NODE-182 checkpoint](knowledge/pwright-node-handles.md#node-182-persistent-native-target-marking),
+not inferred as proof of those missing paths. Earlier checkpoints below retain
+their historical scope.
+
+NODE-181: Selected preparation now captures an inert Weak binding to the actual
+NativeHandle state supplied at ingress, after FFI and creation-phase admission.
+Every record/snapshot replacement preserves that binding independently of the
+arbitrary JavaScript receiver. Capture and clone neither upgrade nor inspect
+the state, check disposal, acquire native authority or add a strong native pin.
+The existing language stages and Materialized stop point remain unchanged.
+The concrete record/snapshot overlap now has compile-time checks against both
+the existing 1 MiB call admission and the independent 16 KiB synchronous-phase
+reservation, which survives reentrant revocation. Neither allowance increases.
+
+This is identity plumbing, not native execution. Same-entry typed progress,
+session-bound revocation registration and completion/publication ownership must
+still be integrated. Future marking needs persistent, separately admitted
+remote state for the exact utility world, not an operation-group substitute;
+the original target must be marked before carrier projection. Connection-wide
+call identity, a deadline beginning before materialization, recoverable-versus-
+fatal marking errors and late serialization remain future design constraints.
+No marker service, marking, prevalidation selection or public upload is added.
+Actual-ticket browser results and observation limits are recorded canonically;
+they do not prove later Weak upgrade, collected-wrapper behavior or upload.
+[Canonical contract and verification](knowledge/pwright-node-handles.md#node-181-original-native-wrapper-binding).
+
+NODE-180: The selected safe host now owns an eight-slot weak FFI revocation
+registry, with a separate 4 KiB administrative admission. Exact session/source
+metadata and registry generation bind its move-only registration; neither the
+hook nor the receipt pins a native Handle, task, FFI result or HostSession.
+Register immediately before the first native handoff and retain the receipt
+through cleanup, not during the existing 32-entry language-only preparation.
+The embedding must still prove its Node preparation scope before supplying a
+revoker; source identity is not proof of that foreign receipt or native liveness.
+
+Session shutdown cancels outside locks, crosses the shared admission-state
+barrier and detaches hooks, then closes the operation tracker outside locks.
+Revocation runs before both caller-operation and Handle-owner drains. Raw-peer
+and teardown fallbacks also revoke without waiting for a Node callback.
+Handle-owner tracker closure now likewise wakes outside its own lock after
+sealing admission; the outer session lock is not held during Handle closure.
+Armed detached batches retain administrative admission through callouts.
+Both native-retirement failure branches also clone the connection under the
+session lock and request disconnect only after unlocking, because disconnect
+synchronously wakes CDP callers. The original retirement error and drain order
+are preserved. This fix is source-reviewed; recompilation evidence belongs to
+the canonical checkpoint, not an assembled HostSession failure-path regression.
+
+This completes a host cancellation prerequisite, not actual Node promotion,
+native marking, NODE-178 prevalidation selection or public upload. Active lease
+counts do not bound stale weak-allocation backing or establish browser cleanup.
+Final verification is recorded in the canonical checkpoint; no new browser
+result is claimed. [Canonical contract and verification](knowledge/pwright-node-handles.md#node-180-session-bound-revocation-before-native-drains).
+
+NODE-179: The existing retained-file-input selection now supports typed FFI
+parking/resumption in the original entry: the successful result, lane and base
+byte permit stay admitted without a running token across foreign waiting.
+Resume atomically registers work before extracting that same result type;
+callers must immediately reserve/run the next native future. Weak per-entry
+revocation cancels Running work without releasing its allowance before future
+destruction, and reclaims idle results outside locks. This is not session
+authority or proof of browser cleanup.
+
+A separate Rust raw-carrier projection diagnostic preserves property order,
+short-circuit raw falsy values and native truth flags without payload traversal,
+serialization or persistent roots. Neither prerequisite is connected to the
+Node preparation: it still stops at Materialized with `FfiPreparation<()>`.
+NODE-178 host selection, native marking and public retained upload remain absent.
+Next, register bounded exact-session weak revokers before Handle-owner drain,
+and admit persistent exact-utility-world marker state independently of temporary
+groups. Preserve a deadline originating before materialization and the later
+instrumentation/serialization boundaries. No browser pass is implied.
+[Canonical contract and verification](knowledge/pwright-node-handles.md#node-179-same-admission-ffi-handoff-and-raw-carrier-projection).
+
+NODE-178: New default-off retained-preflight features in the existing file-input
+backend/composition split native DOM validation from later payload conversion.
+An adopted settlement-owned group yields a separately admitted exact retargeted
+input owner, with cancellation-safe whole-group cleanup. No marking, Node
+carrier projection, mutation or host/addon selection is added. The raw CDP call
+preserves result/exception wrappers and explicitly selects userGesture=true for
+this synchronous precheck. Keep target marking and the late utility serializer
+as distinct future phases; the existing typed mutation path is not an equivalent
+continuation. [Canonical contract and verification](knowledge/pwright-node-handles.md#node-178-owned-native-file-input-prevalidation).
+
+NODE-177: Selected retained preparation now has two Rust registration gates:
+exact owner-ticket and creation-Page membership, not current world or retired
+Handle/Frame runtime membership. A thin continuation schedules with setImmediate,
+checks before server schema, awaits an empty instrumentation checkpoint, then
+checks again before materialization. The driver resolves undefined at the
+internal Materialized stop point; the caller retains its ticket. No new roots,
+dependencies, classes, budgets or native pins are introduced, and no public
+retained-upload API is claimed. Full instrumentation, error transport and native
+execution remain separate. Future execution must preserve target marking,
+carrier projection, DOM checks/retargeting, onBeforeInputAction, late utility
+serialization and browser atob/File order; eager PreparedFileInput conversion
+is not equivalent. [Canonical contract and verification](knowledge/pwright-node-handles.md#node-177-deferred-registration-gates-before-materialization).
+
+NODE-176: The optional retained-upload addon now has distinct server-direction
+validation and raw payload materialization kernels. Internal ticket phases retain
+six roots across the outer JS await; no execution/native authority is acquired.
+Dispatcher scheduling/identity, public upload and native submission remain open.
+[Canonical contract and current evidence](knowledge/pwright-node-handles.md#node-176-server-direction-validation-and-raw-payload-materialization).
+
+NODE-175 (2026-09-17): The selected preparation adds synchronous Rust
+raw-buffer channel validation after ArgumentsReady. Success replaces root six
+and advances to ChannelReady, with no extra await, root, FFI execution promotion
+or native submission. Rust follows schema order: payloads (name, optional
+mimeType, buffer), localDirectory, directoryStream, localPaths, streams, then
+timeout. Optional fields retain their optional behavior. Frozen JavaScript
+ports supply language primitives only; observable map/raw results, boxed
+valueOf's raw result, ordinary inherited-setter assignment and Buffer identity
+are preserved rather than normalized, copied or serialized.
+
+Three no-capture/ZST native callback specializations use static typed dispatch
+and receive current Env/path/ports per invocation, never scoped N-API values
+or registry/native authority. This avoids new Rust callback-Box allocation and
+its construction-failure leak; N-API/V8 callback backing and escaped JS graphs
+remain outside administrative RSS bounds. This slice models normal
+non-isUnderTest mode. No WritableStream
+producer/brand exists: observe the first `_object` read and fail closed with
+the expected-channel error; valid-stream support remains a missing capability.
+Existing preparation/scratch/metadata, feature, dependency and class budgets
+do not increase. Public API error prefix/stack, deferred server bytes/path
+preparation, float deadlines, typed move-only FfiPreparation promotion/native
+authority and public ElementHandle.setInputFiles remain open. Offline
+verification is recorded in the canonical checkpoint; actual-ticket/browser/
+public gates remain open. Shared CDP is blocked without restart permission
+and no new browser pass is claimed. [Canonical contract and exact evidence](knowledge/pwright-node-handles.md)
+own verification; earlier checkpoints below remain historical.
+
+NODE-174 (2026-09-17): Selected sessions now issue canonical Context/Page
+timeout metadata from published membership. Production Page bindings combine
+exact weak Handle-owner identity with immutable creation-Page proof; they do
+not use the DOM's current owner Frame. Every facade Frame forwards its creation
+Page ID, never a JS-cached settings object. Rust captures the canonical policy
+lookup Result after FFI admission and defers lookup errors through normal
+source/argument materialization before host execution. Neither idle wrappers
+nor Handle callers query metadata in JavaScript; lifecycle preparation before
+membership commit and closed-Page conversion ordering stay separate. Native
+Handle publication validates and stores the
+binding, and Rust propagates it through evaluateHandle, getProperty and every
+getProperties result, including generic JSHandles. Preparation captures this
+binding before language conversion; `assembleArguments(ports)` no longer takes
+caller-selected late settings. This supersedes NODE-173's association gap.
+
+JavaScript freezes the three raw debug environment values at module import.
+Rust selects the first defined PWDEBUG/npm_config/npm_package_config value;
+empty, `0`, `false` and `console` are not inspector mode. Selected connection
+initialization precedes Browser publication and compensates a failed setup.
+Older profiles keep their original Handle-creation path.
+
+Cells and fresh scoped bindings share 1024 admitted 512-byte slots; 16 KiB
+administration plus sixteen 16 KiB session indexes bring the metadata ceiling
+to 784 KiB. Scoped clones retain metadata/provenance, not the session index,
+HostSession, native-use pin or task. No feature, profile, dependency or raw
+class is added. Public default setters/arbitrary JS default state, channel
+validation, deferred bytes/paths, native deadline/submission integration and
+public retained upload remain open. [Canonical scope and exact verification](knowledge/pwright-node-handles.md#node-174-canonical-creation-page-timeout-binding)
+own the remaining gates; no new browser pass is claimed here. Earlier
+checkpoints below retain their historical scope.
+
+NODE-173 (2026-09-17): Rust now orders post-conversion argument assembly:
+converted spread, options spread, then live timeout resolution. JavaScript
+supplies only narrow spread/member-read ports; assembly runs in the immediate
+conversion continuation without another await. The selected raw preparation's
+`assembleArguments(typedSettings, ports)` moves Ready to ArgumentsReady,
+replacing the converted value with params in the sixth root. The six-root,
+32-preparation and 512 KiB synchronous-phase ceilings do not expand.
+
+Selected Rust client metadata models a live Context root and Page child with
+numeric optional defaults and inherited injected debug classification. Its
+independent 1024-cell budget adds 528 KiB including administration, but no JS
+roots, session, native-use authority or task. Module-local, safely published
+`NativeFileInputTimeoutSettings` is an internal class, not a public timeout
+setter. Creation-Frame association is still caller-selected metadata, not an
+automatically bound or validated relationship. Production facade/default/debug
+integration, channel validation/errors, deferred bytes/paths, native deadline
+domain, promotion/submission and public retained upload remain open.
+No feature, profile, package, dependency or server is added.
+[Canonical NODE-173 contract and verification](knowledge/pwright-node-handles.md#node-173-rust-owned-argument-assembly-and-live-timeout-settings)
+owns exact evidence; this checkpoint claims no browser or completed API parity.
+Earlier checkpoints below retain their historical scope.
+
+NODE-172 (2026-09-17): The selected preparation boundary now runs the
+synchronous owner/context/array-size kernel in Rust. Frozen JavaScript ports
+perform individual language operations; Rust owns their order, branching and
+size policy. Context lookup occurs after the owner await but outside the async
+converter. That converter returns an ordinary `{ payloads }` carrier, preserving
+its observable async-return assimilation rather than assimilating private
+metadata.
+
+Phase-checked weak guards allow no N-API call inside a registry borrow. Pure
+`RootSnapshot` inspection clones weak source metadata and an `Rc<NodeReference>`;
+reference lookup happens afterward and drops the temporary Rc before user
+JavaScript. Initial `creation_phase` and later construction/replacement phases
+pre-admit independent scratch before N-API allocation. The selected registry
+shares at most 32 synchronous phases, each with a 16 KiB administrative allowance
+(512 KiB aggregate), separate from its unchanged table and FFI entry budgets.
+This increases the selected resource total; it adds no FFI Command/task or
+native authority. Weak scope/registry guards retain scratch through callback
+abort/finalization until the raw synchronous phase ends, not arbitrary Promise
+waits. Callbacks are followed by liveness checks before further allocation,
+and replacement rejects revocation. The registry retains the revocable record,
+growing its private root array through 3/4/5/6 values; abort or close removes it
+even while a guard survives. Arbitrary V8 graphs, scoped handles and opaque
+allocator backing are not byte-bounded by these reservations. No native work
+token is promoted. Paths are classified then explicitly unsupported by
+the parent boundary; stat/read, byte copying, options/channel validation,
+submission and public `ElementHandle.setInputFiles` remain absent. Raw
+closed/cancelled phase ordering still needs public alignment. Stateless
+diagnostics exercise the same kernel without session/native authority or
+persistent roots, not the actual ticket or complete API. No new feature,
+dependency or artifact profile is added, and no browser verification is claimed.
+[Canonical preflight contract and evidence](knowledge/pwright-node-handles.md#node-172-rust-owned-preflight-and-reentrant-language-phases).
+Earlier checkpoints below retain their historical scope.
+
+NODE-171 (2026-09-17): The default-off addon `retained-file-input` selection
+adds a Node-thread preparation registry above the existing host preparation
+permit. A module-local `NativeFileInputPreparation` is a weak, exact-session
+receipt; private roots for receiver/files/options are installed only after
+admission, with no getters, Buffer conversion or native I/O. Immutable weak
+Handle source metadata survives disposal but grants no native-use authority.
+Scope close, NativeSession Drop and environment cleanup revoke entries; roots
+drop on the Node thread outside registry borrows before the FFI drain.
+
+Delivered terminal publication also revokes its scope. Without a watcher,
+raw-session peer-close cleanup can await later publication, explicit close,
+wrapper Drop or environment shutdown; arbitrary entrypoints do not guarantee
+revocation. The new standalone/combined artifact profiles leave the thirteen
+older profiles unchanged. Public `ElementHandle.setInputFiles`, conversion,
+promotion and native submission are still unwired; no browser verification is
+claimed. [Canonical registry contract and verification](knowledge/pwright-node-handles.md#node-171-session-bound-node-preparation-registry).
+Earlier checkpoints below retain their historical scope.
+
+NODE-170 (2026-09-17): Selected FFI preparation separates revocable slot/byte admission from tracked execution. Arbitrary JavaScript waiting may hold only preparation; atomic promotion creates the work token under shutdown's lock. The environment-wide budget is not session/source authority, and the Node registry is not yet implemented.
+[Canonical preparation contract](knowledge/pwright-node-handles.md#node-170-revocable-ffi-preparation-before-execution).
+
+NODE-169 (2026-09-17): The host-only retained-file-input selection composes exact retained-source validation, the existing upload leaf and an independent untimed adoption executor. Native acquisition and submitted mutation retain separate cancellation owners; abandoning acquisition must never later submit a mutation. Creation Frame utility routing is distinct from the client ownerFrame conversion Context.
+[Canonical contract and evidence](knowledge/pwright-node-handles.md#node-169-safe-host-retained-upload-and-pinned-ingress-oracle).
+
+NODE-168 (2026-09-17): The default-off retained-reference resolver entrypoint
+adopts an exact borrowed native node into a newly admitted object group,
+verifies it in the requested unique utility world, and returns the existing
+ResolvedElement/OwnedElement ownership types. No selector is fabricated. The
+caller-selected continuation retains the route and acquisition through native
+settlement and group cleanup; no worker, driver or package is added. Utility
+numeric and unique identities now come from the same authoritative snapshot.
+Node preparation tickets, deferred Buffer/path ingress and upload integration
+remain separate work. [Canonical design and evidence](knowledge/pwright-node-handles.md#node-168-group-owned-retained-adoption-and-deferred-upload-ingress).
+
+NODE-167 (2026-09-17): Selected ElementHandle.ownerFrame queries the actual
+node's current document in Rust, owns a temporary document-element receiver,
+releases it, and maps native identity through current Context-scoped topology.
+Node only retrieves the canonical Frame wrapper. A tracked read shares the
+existing eight-call budget, reserves temporary native ownership and transfers
+started cancellation to an admitted continuation; its world snapshot remains
+registered through shutdown. Lightweight creation-world metadata distinguishes
+an observed navigation replacement from Page close without retaining native
+services or reclassifying Cleanup. No new worker, browser, driver or package.
+[Contract, upload preparation design and evidence](knowledge/pwright-node-handles.md).
+
+NODE-166 (2026-09-17): Opt-in Node getProperties forwards one command to the
+Rust host. The staged leaf pre-admits routes, returns an owned native batch,
+and atomically publishes siblings at an existing driver boundary. The host
+tracks exact ObjectIds, independent cleanup tickets and one shared call budget;
+N-API/JS conversion owns all-or-cleanup publication. Raw Runtime.getProperties
+keeps carrier and response ownership through native settlement under the same
+evaluation lease. Confirmed Page target absence also promotes that exact
+Page's native-world receipt in the route/topology close transaction. No new
+package, feature, driver, browser process or worker is introduced.
+[Canonical contract, limits and verification](knowledge/pwright-node-handles.md).
+
+NODE-165 (2026-09-17): The existing CDP boundary now has explicit raw retained-
+result acquisition and release-to-settlement methods. Handle acquisition
+selects these methods so late replies and exception RemoteObject IDs reach
+its owned compensation boundary; ordinary CDP methods retain their existing
+behavior. Custom clients fail closed unless they implement the explicit
+contract. A backend acquisition helper borrows and deduplicates at most two
+native IDs, keeps the existing evaluation lease through failure cleanup,
+and leaves the shared semantic parser pure to avoid double cleanup by its
+other callers.
+
+No package, feature edge, portable schema, public Node API, worker or browser
+process is added. [The canonical checkpoint](knowledge/pwright-node-handles.md)
+records exact verification. Runtime.getProperties settlement/full-pipeline
+admission, pre-owned groups for unaddressable IDs, Node batch publication and
+full-corpus compatibility remain open.
+
+NODE-165 shutdown composition: only Handle-enabled shutdown changes order.
+After sealing admissions, draining caller operations and revoking publication,
+it retires this connection's owned inspector sessions before draining untimed
+Handle work. Native retirement remains serialized with topology mutation;
+detach failure is preserved and triggers transport disconnect before drain.
+Shared Chrome and borrowed Pages acquire no new ownership or close authority.
+The compensation-versus-detach race still fails conservatively when the
+failure carries no actual frozen route/client identity to match a retirement
+receipt; a generic Cleanup plus pre-call host snapshot is not proof.
+See [the canonical shutdown boundary and evidence](knowledge/pwright-node-handles.md#node-165-retained-acquisition-owns-failure-cleanup-and-shutdown-settlement).
+
+NODE-164 (2026-09-17): A crate-wide lexical N-API facade supplies module-local TypeTag values to every raw native class while retaining the real N-API traits and conversion checks. The dependency key becomes napi_runtime for the same package/version/features; no graph package, runtime or browser component is added. Portable HandleGetProperty now shares snapshot identity, pre-admission and publication logic with the repaired property path. The priority isolation implementation gap is superseded; [canonical status](knowledge/pwright-node-handles.md) records exact verification, remaining gates, and the unfinished Node getProperties and broader compatibility work.
+
+NODE-163: Single-result Handle producers reuse the selected Rust staging/driver publication path and exact Frame-world receipts. Browser algorithms remain in Rust; the JS facade adds only forwarding, wrapper identity and explicit rollback if wrapper publication fails. No new transport, browser process, package dependency or feature edge is added. getProperties requires a separate atomic batch-owner design.
+
+NODE-162: CdpHandleEvaluationProgram separates native execution mode from the portable validation projection without rewriting user source or nesting argument graphs. Staged Frame producers and optional Frame/Handle value entrypoints reuse existing ownership; the Handle runtime now evaluates indirectly in the exact global world. Wire commands remain unchanged.
+
+NODE-161: N-API sidecars share the Handle wrapper's Live/Disposed state; they introduce no back-reference to JS and no independent descriptor owner. A module-local native tag rejects other loaded addons before casting their unstable Rust sidecar layout. The bounded converter retains Rust-owned slots through execution. An independently selected frame-value leaf reuses Frame/world resolution and value-returning CDP evaluation without allocating a temporary result Handle.
+
+NODE-160: The opt-in Node handles artifact publishes an owned native wrapper through the existing FFI settlement path. Retained value reads reuse the controlled runtime and existing leaf. Disposal replaces the live descriptor with a completion-only receipt; no new runtime, browser, worker or transport is introduced.
+
+NODE-159: The selected host connects staged native Frame creation to an eight-entry inbox owned by the existing topology driver. Publication registers a revocable PendingHandle cleanup ticket before any reply. Native envelope drop schedules pre-admitted compensation; no new worker or runtime is created.
+
+NODE-158: The optional native-creation leaf returns an unpublished native owner and consumes it at a caller-serialized commit boundary. The default raw command path remains synchronous after native completion. No scheduler, inbox, worker or language wrapper is installed by this leaf; host coordination remains next.
+
+NODE-157: Selected Handle native I/O runs in the existing cleanup executor; eight admitted completions park for local commits in the existing topology driver. Shutdown continues native event/receipt processing. Existing world-lifetime receipts distinguish parent destruction from unproved detach errors. No new worker or route registry is added.
+
+NODE-156: Optional native-release separates object-local native I/O from short route/runtime retirement. Move-only receipts retain exact route resource owners and cannot match reused IDs; native waits hold no lifecycle gate. This leaf installs no executor, retry loop or parallel registry and is not yet selected by host/addon.
+
+NODE-155: The existing opt-in disposal-reservations runtime feature now offers an in-process profile without a control outbox. Busy preparation can return its original admission owner for a later serialized boundary. No new worker, scheduler, transport or dependency is selected; host native-release/commit integration remains pending.
+
+NODE-154: The selected host prepares owned pending Handles through the existing controlled dispatcher and raw Handle leaf. A bounded session-owned ticket table covers Ready-result abandonment; a separate work fence drains native cleanup while callers retain only portable descriptors. It is not another native route registry and is not yet a public Node Handle wrapper.
+
+NODE-152: The safe host has an opt-in handles installation using the existing lifecycle/evaluation leaves and live topology. Ordinary installation is unchanged. Node Handle creation/publication remains gated; this is native assembly, not an exposed JS API.
+
+NODE-151: Payload mutation now accepts an exact borrowed native target independent of Locator resolution, with the old entry point delegating to it. The view owns no native lifetime. Node Handle integration must reuse the existing lifecycle/evaluation leaves and live topology, not add a parallel registry or substitute a selector.
+
+NODE-150: Page/Frame uploads now pass exact Frame identity to one selected native entry point. Temporary query/projection values remain Rust-owned and reuse Locator upload composition; JS only shapes options and values.
+[Page/Frame upload contract and verification](knowledge/pwright-file-input.md#node-150-page-and-frame-selector-taking-upload-apis).
+
+NODE-149: The selected Node addon now delegates Locator.setInputFiles to the safe host. JS contributes only public options and a Buffer type port; preparation, mutation, timing and cleanup remain Rust-owned.
+[Selected Node upload boundary and verification](knowledge/pwright-file-input.md#node-149-selected-node-buffer-ingress-and-public-locator-uploads).
+
+NODE-148: The selected safe host now routes buffered/file-path uploads through its existing Frame runtime and shared Locator resolver. A single upload cleanup queue drains after native retirement and before shared cleanup. No new server/runtime or ordinary dependency is introduced.
+Failed retirement requests disconnection of this host's transport before upload drain, preserving the failure rather than waiting indefinitely or claiming browser destruction.
+[Selected safe-host upload contract](knowledge/pwright-file-input.md#node-148-selected-safe-host-upload-integration).
+
+NODE-147: The optional large-commands transport pool independently admits exceptional outgoing payloads and writes bounded WebSocket fragments. The file-input backend explicitly selects it; ordinary commands and inbound limits are unchanged. Public Node upload remains unwired.
+[Large outbound admission and remaining gates](knowledge/pwright-file-input.md#node-147-independently-admitted-large-outbound-commands).
+
+NODE-146: Optional pwright-composition-chromium-file-input owns one source/resolved element through a single mutation and group cleanup. Dropping a started waiter transfers the operation to a pre-reserved caller-driven executor; no new runtime or mutation retry is added. The payload CDP path waits for protocol settlement without changing ordinary command deadlines.
+[Upload continuation and remaining gates](knowledge/pwright-file-input.md#node-146-single-use-upload-continuations).
+
+NODE-145: pwright-backend-cdp-file-input applies prepared payloads to an exact group-owned resolved element in its utility world. One synchronous DOM helper retargets labels, validates properties and creates File/DataTransfer values; Rust verifies the returned target snapshot using UploadPlan. No selector retry or native directory action is hidden in this primitive.
+[Payload backend boundary](knowledge/pwright-file-input.md#node-145-chromium-payload-mutation).
+
+NODE-144: pwright-file-input-tokio now submits bounded path preparation to an injected Tokio Handle. Queue admission and raw input storage precede spawn_blocking; generic filesystem/MIME services stay injected. Caller/worker shared ownership keeps task slots through pending IO and buffered unconsumed results. The ordinary Node host/addon still select none of these file-input leaves.
+[Executor and cancellation boundary](knowledge/pwright-file-input.md#node-144-admitted-blocking-executor).
+
+NODE-143: New pwright-file-input-fs composes explicit base-path, FileSystem and MimeLookup services with the source/model leaves. It preserves raw-path stat then lexical resolution, native directory/local routes and bounded separate-browser content transfer. The production Unix provider uses nonblocking open plus descriptor type validation. No executor or Node method is selected.
+[Filesystem preparation contract](knowledge/pwright-file-input.md#node-143-filesystem-preparation-and-pinned-mime).
+
+NODE-142: Optional pwright-file-input-source materializes borrowed bytes or finite opened readers into a non-cloneable batch with one atomic count/metadata/content lease. It depends only on core and the file-input model, performs synchronous bounded reads, and spawns no workers. Filesystem preparation and an admitted embedding executor remain separate unfinished boundaries.
+[Content ownership contract](knowledge/pwright-file-input.md#node-142-ledger-admitted-content-ownership).
+
+NODE-141: New zero-dependency file-input preparation model selects payload/read/native-path/directory routes from supplied metadata. It performs no IO or browser work and is not linked into current host/addon profiles. Materialization, native action, cancellation and public FFI wiring remain distinct implementation tasks.
+[File-input policy, evidence and remaining work](knowledge/pwright-file-input.md).
+
+NODE-139: The Rust Frame navigation executor releases route/registration owners before publication but retains Page lifetime through that await and bounded result projection. Existing Page and registry terminal signals race the fence without a new driver or JavaScript cancellation policy.
+[Page lifetime publication contract and verification](knowledge/pwright-frame-navigation.md#node-139-page-lifetime-through-navigation-publication).
+
+NODE-138: The selected Node host wires one caller-polled close scheduler into its existing topology driver. Native completions park through creation/reconciliation transactions, then commit locally and notify outside host locks. No per-close task or JS automation logic is added.
+[Node close-driver integration and final verification](knowledge/pwright-close-cascade.md#node-138-opt-in-node-close-driver-integration).
+
+NODE-137: The selected retirement API joins native validation with topology/runtime/Handle/route/network retirement, then returns notifications that can leave the outer host-session lock. It sends no native command and starts no worker. The Node driver still awaits its old close services.
+[Native local retirement and post-lock notification contract](knowledge/pwright-close-cascade.md#node-137-native-proven-local-retirement-and-post-session-lock-notification).
+
+NODE-136: The opt-in close-capacity bundle joins topology, runtime and publication admission without freezing lifecycle state. Native completions can move the payload into a synchronous native-proof callback. Node integration and the route/Handle/network/publication transaction remain unfinished.
+[Joined close capacity and native completion contract](knowledge/pwright-close-cascade.md#node-136-joined-close-capacity-and-consuming-native-completions).
+
+NODE-135: Reserved runtime disposal can execute preflighted local publication under the same runtime mutex as retirement. This closes the runtime transport-invalidation window for selecting compositions, complements the native/topology scope and still defers notifications until outer locks are released. Node selection and the full multi-owner transaction remain unfinished.
+[Runtime-locked publication/disposal contract and evidence](knowledge/pwright-close-cascade.md#node-135-runtime-locked-local-publication-and-disposal).
+
+NODE-134: Runtime close construction can independently install preallocated control-message and lease buffers before reservations/native work. Storage admission follows RuntimeStore rather than the close pool. This addresses outbox growth during commit, not graph/table scratch, publication or Node scheduler integration.
+[Preallocated runtime outbox contract and evidence](knowledge/pwright-close-cascade.md#node-134-preallocated-runtime-control-outbox-storage).
+
+NODE-133: The topology driver now connects actual Page target destruction to selected retained-world receipts using frozen owning-Page identity. This is a native cleanup fact, not a route/runtime/publication transaction; concurrent Node close scheduling is still unwired.
+[Native Page world-retirement contract and evidence](knowledge/pwright-close-cascade.md#node-133-retained-worlds-follow-exact-native-page-destruction).
+
+NODE-132: The attached composition exposes with_native_close_topology for scheduler evidence. It checks exact connection/topology identity, then validates proof and invokes a short local commit under one topology mutex. The complete runtime/route/Handle/network/publication transaction remains caller-owned and unfinished.
+[Native close commit-scope contract and evidence](knowledge/pwright-close-cascade.md#node-132-attachment-bound-native-close-commit-scope).
+
+NODE-131: Runtime disposal reservations can explicitly select deferred commits: graph/cancellation state commits synchronously, while a leased result retains records and notification ownership until outer locks are released. Ordinary services retain immediate notifications. This supplies the runtime phase, not the complete native-close coordinator.
+[Deferred runtime close commit contract and evidence](knowledge/pwright-close-cascade.md#node-131-deferred-runtime-disposal-notifications).
+
+NODE-130: Optional close-route-retirement supplies a borrowed deletion-only route commit without rebuilding provider tables. It validates the surviving Page/Frame/world view, holds route/network guards for a short commit and returns an explicit wake port. Native evidence, topology/runtime/handle retirement and public publication remain separate.
+[Deletion-only close route contract and evidence](knowledge/pwright-close-cascade.md#node-130-deletion-only-close-route-retirement).
+
+NODE-129: The opt-in native-close-scheduler owns bounded concurrent native Page/Context phases from one attachment. It permits Context dispatch while Page destruction waits, retains written child commands, and hands off revalidatable native evidence. Short current-state retirement commits and Node driver selection remain next.
+[Bounded native scheduler contract and evidence](knowledge/pwright-close-cascade.md#node-129-bounded-native-close-scheduler).
+
+NODE-128: The native-close-authority feature binds a domain to one attachment/epoch, captures current owned Page ancestry and mints Context receipts only after native success. Certification preserves exact identity and uses no mutation gate during waits. Bounded native scheduling and serialized retirement integration are next.
+[Native ancestor authority contract and evidence](knowledge/pwright-close-cascade.md#node-128-exact-native-context-ancestor-authority).
+
+NODE-127: The selected native Page-close leaf now separates a fully pre-admitted command future from a destruction-wait owner returned only after native acknowledgement. It installs no scheduler; the Node host still uses the existing serial path. Exact ancestor receipt authority and bounded coordination remain next.
+[Native close phase contract and evidence](knowledge/pwright-close-cascade.md#node-127-native-command-and-destruction-wait-phases).
+
+NODE-126: Close observers now offer explicit deferred capacity admission, separate from short latest-view preparation and the existing strict commit. Ordinary constructors and default scheduling are unchanged; native intent coordination still needs integration.
+[Deferred publication contract and evidence](knowledge/pwright-close-cascade.md#node-126-deferred-close-publication-capacity).
+
+NODE-125: Adds optional runtime disposal/outbox reservation without holding a lifecycle gate during native waits. Queue capacity and EventItem ownership are admitted before waiting; preparation reads current state, then reuses ordinary disposal/cancellation semantics. Feature-off layouts remain unchanged. Both topology and runtime storage prerequisites now exist, but bounded native scheduling, publication rebasing and complete peak ownership derivation are still required before Node selection.
+[Runtime reservation contract and evidence](knowledge/pwright-close-cascade.md#node-125-opt-in-runtime-disposal-and-outbox-reservations).
+
+NODE-124: Implements the optional topology capacity-reservation half of close-intent separation. Reservations retain no snapshot or mutation gate; preparation validates owner/epoch and derives an exclusive candidate from current state. Existing ordinary constructors/layouts remain unchanged. Runtime disposal reservations, bounded native intent scheduling and publication rebasing are next; the host/addon do not yet select this feature.
+[Topology reservation contract and evidence](knowledge/pwright-close-cascade.md#node-124-opt-in-topology-transition-reservations).
+
+NODE-123: Evidence shows the host's awaited Page-close service and retained exclusive topology/runtime transactions block ancestor Context disposal. The next design separates admitted native close intents/receipts from serialized latest-state retirement commits; it is not wired. Implemented Rust fixes preserve Context interruption semantics and seal admission on reply-producer/request-queue loss before terminal settlement. Ordinary closed-object replies and queue backpressure do not stop live connections. Existing v1 construction and JS language-only boundaries remain intact.
+[Close cascade design](knowledge/pwright-close-cascade.md).
+
+NODE-122: The Node Events selection composes an executor-neutral native close-confirmation capability inside existing transaction/continuation ownership. It subscribes independently of the blocked topology loop, enables connection-local Page discovery, and commits only after exact native destruction. Ordinary polling constructors stay unchanged. Rust terminal settlement owns the final publication fence; JS remains the language adapter.
+[Native confirmation contract and evidence](knowledge/pwright-page-close.md#node-122-selected-native-destruction-confirmation).
+
+NODE-120: HostSession.close joins a retained native driver result; a close API error may originate in earlier topology work. Private phase attribution lives in the Rust host. The loopback CDP gate and close trace are diagnostic-only, with no production JS driver, dependency or timing-policy changes.
+[Close attribution contract and evidence](knowledge/pwright-browser-close.md#node-120-attribute-retained-native-driver-failures).
+
+NODE-119: The selected Node Events composition now joins native PageReady/PopupLinked causes, masked collection revisions and the existing dispatcher. Discovery alone does not expose a Page. Per-Page Rust acknowledgement state preserves dependent popup suppression across transaction boundaries; ordinary and terminal-only compositions stay narrower.
+[Native ready-source contract and evidence](knowledge/pwright-node-lifecycle-events.md#node-119-native-ready-and-popup-source).
+
+NODE-118: The environment-thread publication port now understands ready/popup conversion without adding a native source. It first asks for missing JS identities, binds only those admitted metadata descriptors, and commits Rust state before installing caches/emitting. Lifecycle selection and browser policy remain in Rust.
+[Creation-conversion contract and evidence](knowledge/pwright-node-lifecycle-events.md#node-118-precommit-creation-wrapper-conversion).
+
+NODE-117: The Node close-event composition now consumes committed external disposal effects on the existing native driver. It uses an independently pre-admitted close pool and the existing Node dispatcher, with no new transport, worker or subscription. Ordinary safe-host and terminal-only selections remain narrower.
+[External-close source contract and evidence](knowledge/pwright-node-lifecycle-events.md#node-117-pre-admitted-external-close-source).
+
+NODE-116: The selected Node close-event composition now joins pre-admitted native explicit-close observers to the existing metadata queue. Ordinary safe-host and terminal-only constructors retain their narrower selection; no new transport, driver or subscription is installed.
+[Explicit-close source contract and evidence](knowledge/pwright-node-lifecycle-events.md#node-116-explicit-close-source-integration).
+
+NODE-115: The Node composition now selects native terminal events. One environment-owned, bounded publication-port registry supplies explicit per-Session ports to Session, Locator, watch and deferred-evaluation bindings. Workers carry only native fences; Node conversion commits Rust state before JS dispatch.
+[Terminal dispatcher contract and evidence](knowledge/pwright-node-lifecycle-events.md#node-115-environment-thread-terminal-dispatch).
 
 # Composable architecture v2 (discussion draft)
+
+NODE-114: The actual native SessionTeardown/FrameTrees clear path can now select pre-admitted terminal lifecycle production. An experimental Rust connection entry point selects it before topology initialization; the ordinary Node connection remains collection-only.
+[Terminal source contract and evidence](knowledge/pwright-node-lifecycle-events.md#node-114-pre-admitted-native-terminal-source).
+
+NODE-113: The existing Rust metadata queue now accepts pre-admitted dependent lifecycle groups. Conversion, visible-state commit and synchronous acknowledgement are separate lock-free-facing steps. Native source selection and Node delivery remain unwired.
+[Group contract and evidence](knowledge/pwright-node-lifecycle-events.md#node-113-bounded-dependent-publication-groups).
+
+NODE-112: An opt-in decorator now admits explicit native close receipts before CDP and
+completes them after all local/network commits, outside those locks. Ordinary
+service fields remain unchanged. Node journal selection and foreign delivery
+remain separate integration work.
+[NODE-112 close receipt contract and verification](knowledge/pwright-node-lifecycle-events.md#node-112-pre-admitted-explicit-close-receipts).
+
+NODE-111: The selected native observer now borrows per-transaction effects before outer
+driver aggregation. It remains a metadata-only hook under the topology lock;
+explicit-close/terminal inputs, admitted groups and foreign dispatch remain
+separate work.
+[NODE-111 source contract and verification](knowledge/pwright-node-lifecycle-events.md#node-111-borrowed-committed-driver-effects).
+
+NODE-110 characterizes dependent notification failure groups and adds a scoped
+Rust-to-Node exception port for existing Browser disconnected callbacks. Browser
+policy remains in Rust; the JS boundary forwards the original listener value.
+Native cause groups and the lifecycle callback cursor remain unimplemented.
+[NODE-110 contracts, fix and verification](knowledge/pwright-node-lifecycle-events.md#node-110-listener-failure-boundaries-and-scoped-exception-reporting).
+
+NODE-109 adds a metadata-only exclusive Rust drain over a pre-admitted queue.
+It advances one internal change at a fixed watermark; it does not define an
+atomic Playwright event transaction. Node still uses full-fence publication.
+Native cause journals, intermediate visibility transactions and foreign callback
+dispatch remain separate composition work.
+[NODE-109 contract and verification](knowledge/pwright-node-lifecycle-events.md#node-109-exclusive-fixed-watermark-publication-owner).
+
+NODE-107 adds validated cross-revision visibility rebasing in Rust. The view
+preserves visible survivors, hides additions and rejects missing/reordered or
+changed identities and foreign domains; it creates no union or event sequence.
+Full-fence publication remains unchanged until an admitted step owner is wired.
+[NODE-107 contracts and evidence](knowledge/pwright-node-lifecycle-events.md#node-107-validated-cross-revision-visibility-rebasing).
+
+NODE-106 adds a metadata-only immutable CollectionView over admitted revisions.
+Selected published readers now use ordered borrowed masked membership; the current
+whole fence still installs full views. Native APIs and opt-in feature closures
+remain unchanged. A lifecycle step owner and unlocked callback dispatch are not
+implemented by this foundation.
+[Representation and remaining integration](knowledge/pwright-node-lifecycle-events.md#node-106-immutable-single-revision-visibility-foundation).
+
+NODE-103 connects typed composition membership iterators to a selected Rust
+producer and published addon collection reads. A batch watermark makes Page-close
+and membership publication atomic; native Host APIs remain separate. Creation
+pre-admits revision/retirement capacity, and retained metadata owns no runtime.
+No new driver, transport, feature or JS lifecycle state is added. Both rebuilt
+profiles pass the seven-case collection gate; earlier red/unwired notes are historical.
+[Architecture and measured contracts](knowledge/pwright-frame-publication.md#node-103-rust-collection-producers-and-published-node-reads).
+
+NODE-102 adds typed Rust collection reservations/revisions to the existing
+metadata publication queue. Immutable membership retains only charged Context
+settings and Page/Frame metadata, not execution ownership. Fixed fences and the
+terminal/discard path publish/reclaim it without another driver or subscriber.
+This is storage integration only: native lifecycle producers and Node collection
+reads remain to be connected; current browser compatibility is still NODE-101 RED.
+[Architecture, ownership and integration gate](knowledge/pwright-frame-publication.md#node-102-bounded-rust-collection-revision-storage).
+
+NODE-100 distinguishes native connection admission from published Browser state
+inside the existing Rust metadata owner. JavaScript invokes a synchronous Rust
+one-shot publication port and emits the existing event; rebuilt artifacts need
+no JS lifecycle flag. No additional runtime or backend capability is selected.
+[Architecture and verification](knowledge/pwright-browser-close.md#node-100-rust-owned-browser-disconnect-publication).
+
+NODE-099 routes Page.isClosed synchronously through retained Rust Page-tree
+metadata. Native retirement and language-visible closure are separate; existing
+publication fences, not a JS flag, advance the latter. Per-Page terminal permits
+reuse the shared metadata queue and Node watch. No new backend capability,
+transport, task or event subscriber is installed, and v1 remains unchanged.
+[Publication architecture and bounded ownership](knowledge/pwright-page-close.md#node-099-rust-owned-page-close-publication).
+
+NODE-095 adds selected reader-level pending-session retirement, so initialization
+can stop on actual detach without waiting for its own queued topology event.
+No new driver/task is introduced; default/v1 behavior remains unselected.
+[Contract and evidence](knowledge/pwright-chromium-topology-events.md#node-095-native-detach-before-an-initialization-response).
+
+NODE-094 corrects the selected Playwright Context fallback before native Page
+initialization: unregistered Contexts use the default view even when discovery
+snapshots are stale. Strict callers and owned Context routing are unchanged.
+[Contract](knowledge/pwright-chromium-topology-events.md#node-094-queued-attachments-from-disposed-contexts).
+
+NODE-092 keeps parent-scoped child cleanup in Rust and accepts the exact native
+already-detached receipt after a successful resume. Other errors still propagate;
+there is no production Node workaround or retry loop.
+[Native sequence](knowledge/pwright-chromium-topology-events.md#node-092-child-disappears-between-resume-and-detach).
+
+NODE-091 composes selected header-close observation with the existing Frame
+observer. Ordered native detach/crash events wake bounded Rust request watches;
+main and child errors have different semantics. The optional header observer
+does not select lifecycle domains, and production Node remains a language/FFI
+facade. [Boundary](knowledge/pwright-extra-http-headers.md#node-091-native-session-closure-during-header-fanout).
+
+NODE-090 separates discovered-Page native initialization from publication. An
+exact typed missing-session receipt abandons an unpublished attempt or retires
+an already-routed session through the existing transaction. Explicit reservation
+cleanup handles never-initialized owners; unrelated failures remain errors.
+No Node automation policy or production dependency is added.
+[Boundary](knowledge/pwright-chromium-topology-events.md#node-090-missing-session-retirement-before-page-publication).
+
+NODE-089 refines header dispatch into sequential Context Page groups with
+concurrent native sessions inside each Page. Only the first Page's value is
+captured synchronously; later groups observe then-current desired metadata.
+Early public failure and retained drainage still use the existing Rust driver.
+[Corrected boundary](knowledge/pwright-extra-http-headers.md#node-089-native-receipt-gates-and-context-page-sequencing).
+
+NODE-088 adds optional caller-polled header fanout/jobs rather than another
+runtime task. The existing topology task polls jobs alongside pinned native
+transactions; first-error delivery is independent of retained compensation drain.
+Completion notifications wake reconciliation without interrupting initialization.
+[Architecture and verification limits](knowledge/pwright-extra-http-headers.md#node-088-caller-polled-native-jobs-and-early-primary-rejection).
+
+NODE-087 separates selected Node header/navigation invocation preparation from
+asynchronous native completion. Rust owns queue admission, metadata publication,
+frozen dispatch plans and Page-only navigation policy before N-API schedules a
+future. A short host metadata lock makes plan admission atomic to initializers;
+it never crosses native awaits. The existing driver still serializes native
+transactions, so concurrent fanout and early settlement remain future work.
+[Boundary, budgets and verification](knowledge/pwright-extra-http-headers.md#node-087-synchronous-rust-preparation-and-frozen-dispatch).
+
+NODE-050 exposes a separate optional Node addon profile for the existing Rust
+drag/input/lifecycle composition. Build, loader and reporters share fixed profile
+paths; a compiled capability verifies selection. The default artifact remains
+unchanged, and Node contains no browser driver or automation state machine.
+[Native/public verification and limits](knowledge/pwright-chromium-drag.md#node-050-native-lifetime-gates-and-selected-node-addon).
+
+NODE-049 separates immutable command identity/admission from a one-shot optional
+lifecycle owner. The selected Rust host commits Frame-to-Page cancellation
+handoff after Locator focus through an injected synchronous leaf port; the
+runtime feature is default-off with no new package dependency. Original target
+permits, deadline and exact native binding remain owned until completion, and
+signal storage has a last-reference byte lease.
+[Contract and native evidence](knowledge/pwright-chromium-drag.md#node-049-optional-frame-to-page-lifetime-handoff).
+
+The optional input leaf now exposes named raw key down/up and caller-polled
+chord press. These reuse Page state without any Locator/focus dependency; no
+new task, transport or normal dependency is introduced into that primitive leaf.
+The separate optional Keyboard backend injects the installed Page coordinator,
+clock and driver platform, with factory-wide bounded operation admission before
+polling. Keyboard 1.0 capability/client/codec/generated server remain independent
+of it. A separate optional single-Page wire composition now provides identity
+validation, retained route storage leases and irreversible admission revocation.
+Aggregate host lifecycle routing/FFI remain pending; revocation is not cancellation
+of an already-polled native operation.
+An explicit `runtime` feature now adapts all five distinct parameter types into
+the existing controlled dispatcher. The operation borrows the exact bound Page
+and cancellation retains that same Arc; both validate its identity. No route
+re-resolution or second runtime is introduced. Host publication and FFI remain
+separate pending integrations.
+The aggregate root now independently selects Page input policy and retained-state
+capacity with `with_page_input`. Locator inherits that selected Page policy;
+coordinator clones and active transactions retain admission after route removal.
+The Node host source selects this resource, but Keyboard command routing/FFI is
+not installed at that earlier checkpoint. The subsequent host integration now
+projects one exact Page client/input and retains its budget with cancellation.
+All five public Keyboard methods run through N-API and pass **24/24** paired
+cases on the rebuilt addon. JS only validates/converts/delegates.
+[Contract and typed/Node integration gates](knowledge/pwright-raw-keyboard.md).
+
+The optional navigation leaf now has a native `reload` primitive that sends
+`Page.reload`, correlates a new main document and reuses the lifecycle state
+machine. Navigation 1.1 now exposes a distinct Reload command, client/server
+bindings and typed runtime route through Node FFI. It adds no driver/task/normal
+dependency; JavaScript only forwards options and wraps Response. The held-response
+Page-close gate remains red. [Boundary and evidence](knowledge/pwright-page-reload.md).
+
+The optional input leaf now composes sequential literal typing through an
+existing Page transaction and an injected delay-future factory. The independent
+input model validates a borrowed 1 MiB UTF-8 view; no new clock/task/selector or
+Node dependency is introduced. Public Locator/Node integration now uses one
+typed sequential-text command, independent client/server mappings for 1.23/2.6,
+strict selection-reset focus and the existing action resource/FFI boundaries.
+JS only marshals arguments; no navigation barrier or per-character deadline is
+added. Node now explicitly selects an interleaved Page policy: physical state
+updates before native dispatch, each event is serialized, but selector retries
+and caller delays hold no input gate. Action timeout retains Page keys; input
+cleanup is not a native-retirement receipt. Existing Rust callers retain the
+exclusive policy. New public gates pass 30/30 typing and 27/27 actions; broader
+native cancellation, physical-code modifier races and Frame changes remain open.
+Temporary modifier transitions now preserve left-key location using rich typed
+CDP dispatch. [Boundary and verification](knowledge/pwright-sequential-typing.md).
+
+Node host attachment explicitly selects a fixed same-session prerequisite join
+including recursive auto-attach. Page enable and Context settings precede it;
+all four replies precede world creation, debugger resume and Page publication.
+This changes no cross-Page publication order and introduces no new task or
+dependency. Other profiles retain their prior sequencing and declared resource
+requirements. [Opt-in resource and verification contract](node-ffi-compatibility-design.md#node-013-recursive-attachment-prerequisite-join-2026-09-07).
+
+The Node recipe additionally selects the existing optional Page screenshot
+capability, an opt-in viewport intersection policy and a finite host-owned
+per-Page queue. JS marshals options; capture/decode/ordering stay in Rust, with
+an admitted host-copy then Node Buffer-copy boundary. Default Rust screenshot
+semantics and dependency isolation remain unchanged. See [the screenshot checkpoint](node-ffi-compatibility-design.md#node-page-screenshot-binding-and-ownership-checkpoint-2026-09-07).
+
+The safe Node host now explicitly installs paired Locator selection/adoption and
+single-use evaluation as one controlled Frame command. Native ownership stays
+inside that call through delayed caller conversion, evaluation and cleanup;
+only the resolution deadline ends at preparation. This replaces the proposed
+escaped-owner/two-command handoff. Optional native-destruction receipts now fix
+the reproduced Context-close cleanup gate (NODE-026). Public Locator.evaluate
+now adds an admitted Node-thread conversion rendezvous over that Rust command.
+Its running-Worker cancellation cleanup gate now passes via acknowledged owned-
+session retirement (NODE-027), including borrowed Page/Promise survival. The
+final full lane passes 23/23; other compatibility discrepancies remain open.
+No prepared native token escapes into Node. See
+[the host ownership contract](knowledge/pwright-locator-evaluation.md#host-owned-evaluation-continuation-2026-09-07).
+
+NODE-027 now has an opt-in independent Rust retirement-receipt boundary, verified
+with acknowledged owned-session detachment while the borrowed Page and user
+Promise survive. It retires the native wait separately from group ownership;
+the latter has its own defaulted object-retirement proof. No ordinary cancel,
+detach event or transport failure is promoted to proof. Actual host shutdown
+inventory/epoch/fence integration is now selected by the host: admission and
+receipt registration seal before exact native detach acknowledgements, and
+group cleanup waits for in-flight acknowledgements before interpreting failure.
+See [the host integration](node-ffi-compatibility-design.md#node-027-host-integration-and-worker-verification-2026-09-07).
+
+The Node profile now explicitly selects a stateless
+[CDP event-admission policy](knowledge/pwright-cdp-event-admission.md). It omits
+only well-formed foreign non-default Frame-world creation announcements before
+retained payload admission; default CDP/aggregate profiles remain unfiltered.
+The transport owns no Chromium naming logic, and the composition owns no new
+event queue/task. Exact route validation and lifecycle events are unchanged.
+This addresses the observed irrelevant-world pressure boundary, not native
+world reclamation, general attachment timing or full Node compatibility.
+
+The opt-in [Locator evaluation foundation](knowledge/pwright-locator-evaluation.md)
+now separates one utility-world element-resolution attempt from caller-owned
+continuation cleanup. It returns a group-owned temporary element, not a public
+Handle or an implicit evaluation capability. Ordinary Locator-only profiles do
+not select it; the broad Node host now does. Optional strict waiting composes injected
+Frame-world readiness, retry pacing and one original termination future, with
+bounded admission and cancellation-safe release. A separate 15-package
+`pwright-composition-chromium-locator-evaluation` leaf now adopts the selected
+node into main world and consumes it for one value evaluation through the
+existing Rust serializer. Both native wrappers stay in the original temporary
+group through evaluation and cleanup. Production topology/lifecycle integration,
+delayed Node argument conversion and public paired cases now exist; clean
+cancellation of a running evaluation remains a required gate. The production
+composition now exposes a separately budgeted `ChromiumFrameWorldAccess`
+port that atomically snapshots both observed Frame worlds and reports their
+invalidation through existing topology notifications. It does not create an
+atomic browser document lease or bypass controlled-runtime cancellation.
+
+The independent evaluation leaf now also composes strict selection and
+main-world adoption through injected paired routes, one original stop future
+and retry pacing. A pair's resource owner survives through the selected element
+and native cleanup, including cancellation; a finished preparation is consumed
+by a separate single-use evaluation. Its production-port integration is tested
+with the real topology driver and now installed by the Node host; authoritative
+native destruction uses bounded opt-in receipts, while deferred FFI conversion
+and broader session-retirement races remain gates. No normal
+dependency on the aggregate root or new browser/cleanup task is introduced.
+
+`ControlledDispatcher::dispatch_with` now lets a separately installed typed
+handler share the installed commands' actual graph, pending table, schedulers,
+deadlines and cleanup owner. Ordinary dispatch uses that same path; there is no
+second runtime or implicit capability registration. A real Chrome preparation
+fixture verifies shared Frame queuing and deadlines. Production Node installation
+keeps prepared ownership inside the call. General Node regression and the new
+Context-close cleanup regression remain separate requirements; see
+[the checkpoint](node-ffi-compatibility-design.md#host-owned-locator-evaluation-checkpoint-2026-09-07).
 
 > Status: design discussion with exploratory foundation slices authorized on
 > 2026-09-01. The slices validate core mechanics only; broader crate
@@ -1352,9 +2217,10 @@ rules:
   and deadline expiry retain operation-completion-first race semantics;
 - an uncontrolled direct dispatcher must refuse to dispose a subtree that
   still owns pending calls because it has no backend cancellation hook;
-- a standard-library-only `TargetScheduler` admits at most one active command
-  per target, preserves FIFO order for that target, and permits independent
-  targets to progress concurrently;
+- a standard-library-only `TargetScheduler` defaults to one active command per
+  target and permits independent targets to progress concurrently. Explicit
+  `ControlledRuntimeConfig` may select a nonzero per-target concurrency bound;
+  excess calls retain FIFO admission, not completion ordering;
 - target lanes and queued waiters have explicit hard limits. Duplicate call
   IDs and capacity exhaustion fail before a capability handler runs;
 - dropping a queued acquisition removes that waiter, while dropping or
@@ -1463,19 +2329,64 @@ finishes only after the Browser runtime tree reaches zero live objects.
 Per-target serialization does not cap the aggregate work of many independent
 pages. The next runtime slice therefore composes two executor-neutral permits:
 
-1. a command first becomes the FIFO head for its target;
-2. that target head then enters a connection-wide FIFO for one of a fixed
+1. a command first obtains a target permit (one by default, or an explicitly
+   selected bounded number in a controlled runtime);
+2. that admitted call then enters a connection-wide FIFO for one of a fixed
    number of active backend-command permits;
 3. both permits remain owned until operation completion or cancellation cleanup
    finishes.
 
 This order prevents followers for one busy target from reserving scarce global
-capacity while waiting behind their target head. Connection fairness is thus
-FIFO among admitted target heads, not absolute submission order across all
+capacity while waiting for target admission. Connection fairness is thus
+FIFO among admitted target calls, not absolute submission order across all
 commands. Cancellation, deadlines, lifecycle disposal, transport closure, and
 future drop may interrupt either admission stage and must release every permit
 already held. No backend cancellation hook runs until the backend operation has
 actually started.
+
+The Node compatibility profile explicitly selects eight target permits, without
+increasing its eight active-command or sixteen pending-call limits. DOM reads
+also opt into eight concurrent reads per Frame within their existing shared
+eight-read/byte budget. Default constructors and the direct dispatcher retain
+serial target behavior. The scheduler creates no executor, task, timer, or
+capability dependency; backend-specific limits and Page-owned input transaction
+ordering remain authoritative. See
+[NODE-020](node-ffi-compatibility-design.md#node-020-bounded-concurrency-contract)
+for differential evidence and remaining ordering boundaries.
+
+The Node user-facing getBy constructors now adapt into the existing typed
+semantic selector model, including role options and RegExp source/flags.
+Rust retains query composition, per-value admission, command cloning and
+browser resolution; JS only projects API argument shapes. The command-free
+selector runtime's version/symbol are shared constants used by every Locator
+wrapper. Its version-7 name-from-content/title-priority correction therefore
+reaches all consumers without adding a Node-specific browser algorithm.
+The aggregate host remains broad; this binding does not prove a narrow native
+distribution or full accessible-name/selector equivalence.
+
+Node command completion separately synchronizes possible URL/topology effects
+with its existing lifecycle driver. After authoritative TargetClosed, the
+retirement owner already controls publication; an interrupted command must not
+re-admit a redundant fence. Otherwise ten cancelled reads can overflow the
+eight-entry driver queue and replace a closed result with ResourceExhausted
+(NODE-023). The shared host completion policy skips only this terminal case
+or an already disconnected host. Nonterminal outcomes retain publication and
+its errors, without new queues, tasks or larger limits. This does not provide
+execution-world readiness after navigation (NODE-021).
+
+Execution-world readiness is a separate opt-in Chromium composition component.
+The Node profile selects it for DOM content/title, by-value evaluation and the
+ordinary Locator routes, inside the controlled operation's original deadline,
+admission and cancellation lifetime. A live Frame without its required world
+waits; an absent capability remains unsupported. The existing topology driver
+is still the sole event owner. Committed route replacement wakes bounded
+caller-polled waiters after releasing the route lock; every waiter registers
+before rechecking the exact current world. No task, timer, input replay, CDP
+command or JavaScript retry is added. Default profiles retain immediate route
+snapshots at call construction. This is an entry precondition, not an atomic
+document lease covering later navigation during backend dispatch. See the
+[NODE-021 contract](node-ffi-compatibility-design.md#node-021-bounded-execution-world-readiness)
+and [resource accounting](resource-boundaries-v2.md#execution-world-readiness).
 
 The connection scheduler has fixed active and waiting limits, rejects duplicate
 call IDs and zero active capacity, reports current/peak counters, and starts no
@@ -2376,6 +3287,16 @@ non-editable element kinds, and malformed constrained values are terminal typed
 `InvalidTarget` or `InvalidValue` failures. Direct calls reject fill values over
 1 MiB before JavaScript evaluation; encoded calls also obey the configured
 wire string limit.
+
+The Node action integration exposed that this Fill path had bypassed the
+existing Page input coordinator. It now holds that shared gate across each
+focus/selection and final insertion attempt, releasing it before retry delays
+or selector-runtime reinstalls. Empty Fill tracks acknowledged Delete key state
+using the browser platform marker and repairs failed key-up before returning.
+Both Locator-major cancellation hooks drain pending input cleanup. Release
+tests prove exclusion behind an already-held Page transaction and exact key-up
+repair. This adds no queue, task, retained DOM object, capability dependency,
+or independently additive input peak.
 
 The semantic selector runtime is installed lazily into the current page
 execution context with one `Runtime.evaluate`; cloned services share a
@@ -3947,8 +4868,10 @@ layout or depend on delivery surfaces such as CLI and gRPC.
 
 One runtime owns each browser connection and is the sole writer to its backend
 transport. It stores compact state records keyed by `ObjectId`; public handles
-never own backend sessions directly. Command execution is ordered per target,
-while an explicitly bounded scheduler permits parallel work across targets.
+never own backend sessions directly. Command execution is serial per target by
+default. Controlled runtime compositions may explicitly admit bounded parallel
+work on a target as well as across targets; all work still shares the
+connection-wide command limit and each capability's resource admission.
 
 The runtime must not create one Tokio task per API object. Tasks belong to
 connections and active operations. Events use bounded queues with a declared
@@ -4200,6 +5123,19 @@ remain usable without the umbrella.
    a separate opt-in component, and managed downloading is not implied by it.
 9. Managed download requires a separate crate, an explicit one-use permission,
    an exact package/integrity request, and direct pipeline invocation.
+
+## Optional session initialization concurrency
+
+The Chromium topology driver offers serial, paired Frame Tree/Runtime enable,
+and three-way empty utility-world registration profiles. The Node host selects
+the third explicitly; independent v2 consumers retain the serial default.
+Each join is fixed-width and caller-polled, never a task or cross-session queue.
+Page enable and Context defaults precede it; actual world creation, recursive
+attachment, debugger resume and ready publication remain behind all replies.
+Production admission requires the declared pending-command slots and response
+expansions. This changes initialization scheduling, not browser ownership,
+capability closure, Node API coverage or the existing attachment deadline. See
+[the topology contract](knowledge/pwright-chromium-topology-events.md#session-initialization).
 
 ## Migration strategy
 

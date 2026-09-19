@@ -22,7 +22,7 @@ impl LocatorV2Codec {
     pub const fn new(limits: LocatorCodecLimits) -> Self {
         Self {
             inner: LocatorCodec::new(limits),
-            capability_version: ProtocolVersion::new(2, 5),
+            capability_version: ProtocolVersion::new(2, 6),
         }
     }
 
@@ -189,12 +189,13 @@ delegate_v2_command_codec!(locator_v2::WaitFor, WaitFor);
 delegate_v2_result_codec!(locator_v2::WaitFor, WaitFor);
 
 macro_rules! delegate_v2_versioned_codec {
-    ($v2:ty, $v1:ty, $require:ident) => {
+    ($v2:ty, $v1:ty, $require:ident $(, $validate:ident)?) => {
         impl WireCodec<Command<$v2>> for LocatorV2Codec {
             type Error = LocatorCodecError;
 
             fn encode_parts(&self, command: &Command<$v2>) -> Result<EncodedParts, Self::Error> {
                 $require(self.capability_version)?;
+                $($validate(self, command.params())?;)?
                 let command = Command::<$v1>::new(
                     command.call_id(),
                     command.object_id(),
@@ -252,6 +253,35 @@ fn require_v2_press(version: ProtocolVersion) -> Result<(), LocatorCodecError> {
         Err(LocatorCodecError::PressUnsupported { version })
     }
 }
+
+fn require_v2_press_sequentially(version: ProtocolVersion) -> Result<(), LocatorCodecError> {
+    if version.satisfies(ProtocolVersion::new(2, 6)) {
+        Ok(())
+    } else {
+        Err(LocatorCodecError::PressSequentiallyUnsupported { version })
+    }
+}
+
+fn validate_sequential_text_capacity(
+    codec: &LocatorV2Codec,
+    params: &pwright_cap_locator::PressSequentiallyParams,
+) -> Result<(), LocatorCodecError> {
+    let limit = pwright_cap_locator::INPUT_TEXT_MAX_BYTES.min(codec.limits().string_bytes);
+    if params.text.capacity() > limit {
+        return Err(LocatorCodecError::StringTooLong {
+            actual: params.text.capacity(),
+            limit,
+        });
+    }
+    Ok(())
+}
+
+delegate_v2_versioned_codec!(
+    locator_v2::PressSequentially,
+    pwright_cap_locator::PressSequentially,
+    require_v2_press_sequentially,
+    validate_sequential_text_capacity
+);
 
 fn require_v2_set_checked(version: ProtocolVersion) -> Result<(), LocatorCodecError> {
     if version.satisfies(ProtocolVersion::new(2, 3)) {

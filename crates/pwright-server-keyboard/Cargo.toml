@@ -1,0 +1,19 @@
+[package]
+name = "pwright-server-keyboard"
+description = "Optional raw Page Keyboard server layer for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-keyboard = { workspace = true }
+pwright-codec-keyboard = { workspace = true }
+pwright-server-wire = { workspace = true }
+pwright-transport = { workspace = true }
+
+[dev-dependencies]
+pwright-browser-model = { workspace = true }
+pwright-core = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -1,7 +1,7 @@
 format: 1
 capability: pwright.dom_content
 display_name: Read-only DOM content
-version: { major: 1, minor: 0 }
+version: { major: 1, minor: 1 }
 root: pwright.dom_content
 imports:
   - pwright.common
@@ -13,6 +13,15 @@ commands:
     command: frame_content_command
     result: frame_content_result
     params_type: pwright.dom_content.params
+    result_type: pwright.dom_content.data
+    error_details_type: pwright.dom_content.error_details
+  - id: frame.title
+    name: frame_title
+    method: 393218
+    targets: [pwright.browser.frame]
+    command: frame_title_command
+    result: frame_title_result
+    params_type: pwright.dom_content.title_params
     result_type: pwright.dom_content.data
     error_details_type: pwright.dom_content.error_details
 types:
@@ -28,6 +37,18 @@ types:
           - { name: params, type: message, target: pwright.dom_content.params }
       - tag: 2
         name: frame_content_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.dom_content.outcome }
+      - tag: 3
+        name: frame_title_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.dom_content.title_params }
+      - tag: 4
+        name: frame_title_result
         fields:
           - { name: call_id, type: u64 }
           - { name: outcome, type: message, target: pwright.dom_content.outcome }
@@ -83,5 +104,11 @@ types:
   - kind: record
     id: pwright.dom_content.params
     public_name: dom_content_params
+    public_external: true
+    fields: []
+
+  - kind: record
+    id: pwright.dom_content.title_params
+    public_name: title_params
     public_external: true
     fields: []

@@ -202,6 +202,9 @@ pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
     }
     if (value instanceof Error) {
       const record = errorRecord(value);
+      const header = record.name + ': ' + record.message;
+      if (typeof value.stack !== 'string' || !value.stack.startsWith(header))
+        record.stack = clipped(header + '\n' + value.stack);
       claimString(record.name);
       claimString(record.message);
       if (record.stack !== null) claimString(record.stack);
@@ -246,9 +249,10 @@ pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
   }
   let result;
   try {
-    if (c.mode === 'expression') result = await eval(c.source);
+    // Indirect evaluation runs in the selected main world, not this wrapper's scope.
+    if (c.mode === 'expression') result = await globalThis.eval(c.source);
     else {
-      const fn = eval('(' + c.source + ')');
+      const fn = globalThis.eval('(' + c.source + ')');
       if (typeof fn !== 'function') throw new TypeError('evaluation source is not a function');
       if (c.receiverSlot === null) result = await fn(argument);
       else {
@@ -324,6 +328,7 @@ impl Default for CdpEvaluationLimits {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CdpEvaluationProductionProfile {
+    user_gesture: bool,
     scope: ResourceScope,
     limits: CdpEvaluationLimits,
     max_concurrent_operations: usize,
@@ -352,6 +357,7 @@ impl CdpEvaluationProductionProfile {
         };
         Self {
             scope,
+            user_gesture: false,
             limits,
             max_concurrent_operations,
             max_context_routes: 0,
@@ -360,6 +366,13 @@ impl CdpEvaluationProductionProfile {
             maximum_route_retained_bytes: 0,
             requirements,
         }
+    }
+
+    /// Select Playwright-style transient activation only for user evaluations.
+    /// Default profiles and internal CDP reads retain their original behavior.
+    pub fn with_user_gesture(mut self, enabled: bool) -> Self {
+        self.user_gesture = enabled;
+        self
     }
 
     /// Adds the persistent route budget required to target Frame execution
@@ -737,7 +750,15 @@ impl Service<EvaluateParams> for CdpEvaluationService {
         Box::pin(async move {
             let _lease = lease;
             let script = script?;
-            let response = if let Some(unique_context_id) = &self.unique_context_id {
+            let response = if self
+                .resources
+                .as_ref()
+                .is_some_and(|resources| resources.profile.user_gesture)
+            {
+                self.client
+                    .runtime_evaluate_with_user_gesture(&script, self.unique_context_id.as_deref())
+                    .await
+            } else if let Some(unique_context_id) = &self.unique_context_id {
                 self.client
                     .runtime_evaluate_in_unique_context(&script, unique_context_id.as_ref())
                     .await
@@ -1496,6 +1517,28 @@ mod tests {
                 ],
             }
         );
+    }
+
+    #[tokio::test]
+    async fn selected_user_gesture_keeps_the_exact_context_and_resource_contract() {
+        // Arrange
+        let baseline = production_profile(1);
+        let profile = baseline.with_user_gesture(true);
+        assert_eq!(profile.requirements(), baseline.requirements());
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(json!({"result":{"value":{"ok":true,"value":{"t":"null"}}}}));
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+        // Act
+        let result = service.call(EvaluateParams::expression("null")).await;
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(client.method_names(), ["Runtime.evaluate"]);
+        assert_eq!(client.calls()[0].1[0]["userGesture"], true);
+        assert_eq!(client.calls()[0].1[0]["uniqueContextId"], "exact-world");
     }
 
     #[tokio::test]

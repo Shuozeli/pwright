@@ -1,7 +1,7 @@
 //! Opt-in typed navigation methods for `pwright-client` page handles.
 //!
 //! Import [`PageNavigationExt`] for the portable backend primitive or
-//! [`PageGotoExt`] for the Playwright-shaped operation. The extension traits
+//! [`PageGotoExt`] or [`PageReloadExt`] for Playwright-shaped operations. The extension traits
 //! are independent, so neither navigation surface becomes a dependency of the
 //! base client or of consumers that install only the other command.
 
@@ -12,6 +12,69 @@ use pwright_cap_navigation::{
 use pwright_client::{CallIdSource, CommandFuture, Page};
 use pwright_core::{CallMetadata, Command, CommandResult, Service};
 use std::convert::Infallible;
+
+/// Frame-only typed dispatch for the optional navigation 1.2 contract.
+#[cfg(feature = "frame-navigation")]
+pub trait FrameGotoExt {
+    fn goto(
+        &self,
+        params: pwright_cap_navigation::v1_2::GotoParams,
+        metadata: CallMetadata,
+    ) -> CommandFuture<
+        pwright_cap_navigation::v1_2::FrameGotoResult,
+        pwright_cap_navigation::v1_2::NavigationErrorDetails,
+    >;
+}
+
+#[cfg(feature = "frame-navigation")]
+impl<Channel, Ids> FrameGotoExt for pwright_client::Frame<Channel, Ids>
+where
+    Channel: Service<
+            Command<pwright_cap_navigation::v1_2::FrameGoto>,
+            Response = CommandResult<pwright_cap_navigation::v1_2::FrameGoto>,
+            Error = Infallible,
+        > + 'static,
+    Ids: CallIdSource,
+{
+    fn goto(
+        &self,
+        params: pwright_cap_navigation::v1_2::GotoParams,
+        metadata: CallMetadata,
+    ) -> CommandFuture<
+        pwright_cap_navigation::v1_2::FrameGotoResult,
+        pwright_cap_navigation::v1_2::NavigationErrorDetails,
+    > {
+        self.as_remote()
+            .dispatch::<pwright_cap_navigation::v1_2::FrameGoto>(params, metadata)
+    }
+}
+
+pub trait PageReloadExt {
+    fn reload(
+        &self,
+        params: pwright_cap_navigation::ReloadParams,
+        metadata: CallMetadata,
+    ) -> CommandFuture<GotoResult, NavigationErrorDetails>;
+}
+
+impl<Channel, Ids> PageReloadExt for Page<Channel, Ids>
+where
+    Channel: Service<
+            Command<pwright_cap_navigation::Reload>,
+            Response = CommandResult<pwright_cap_navigation::Reload>,
+            Error = Infallible,
+        > + 'static,
+    Ids: CallIdSource,
+{
+    fn reload(
+        &self,
+        params: pwright_cap_navigation::ReloadParams,
+        metadata: CallMetadata,
+    ) -> CommandFuture<GotoResult, NavigationErrorDetails> {
+        self.as_remote()
+            .dispatch::<pwright_cap_navigation::Reload>(params, metadata)
+    }
+}
 
 pub trait PageNavigationExt {
     fn begin_navigation(
@@ -163,6 +226,69 @@ mod tests {
                 }),
             )))
         }
+    }
+
+    #[cfg(feature = "frame-navigation")]
+    impl Service<Command<pwright_cap_navigation::v1_2::FrameGoto>> for RecordingChannel {
+        type Response = CommandResult<pwright_cap_navigation::v1_2::FrameGoto>;
+        type Error = Infallible;
+        type Future<'a> = Ready<Result<Self::Response, Self::Error>>;
+        fn call(
+            &self,
+            command: Command<pwright_cap_navigation::v1_2::FrameGoto>,
+        ) -> Self::Future<'_> {
+            self.calls.lock().unwrap().push(RecordedCommand {
+                call_id: command.call_id(),
+                target: command.object_id(),
+                metadata: command.metadata(),
+                url: command.params().url.clone(),
+            });
+            ready(Ok(CommandResult::new(
+                self.response_call_id.unwrap_or(command.call_id()),
+                Ok(pwright_cap_navigation::v1_2::FrameGotoResult {
+                    frame_id: command.object_id().get(),
+                    response: None,
+                }),
+            )))
+        }
+    }
+
+    #[cfg(feature = "frame-navigation")]
+    #[test]
+    fn frame_extension_dispatches_selected_frame_and_metadata_without_page_fallback() {
+        use super::FrameGotoExt;
+        use pwright_client::FrameKind;
+        // Arrange
+        let (client, calls) = recording_client(32, false, None);
+        let page = page(&client);
+        let frame = page
+            .frame(RemoteInitializer::new(
+                ObjectId::new(9),
+                Some(ObjectId::new(7)),
+                FrameKind::OBJECT_KIND,
+            ))
+            .unwrap();
+        let metadata = CallMetadata::new(
+            Some(std::time::Duration::from_secs(2)),
+            Some(CancellationId::new(21)),
+        );
+        // Act
+        let mut call = frame.goto(
+            pwright_cap_navigation::v1_2::GotoParams::new("about:blank"),
+            metadata,
+        );
+        let result = poll_ready(call.as_mut()).unwrap();
+        // Assert
+        assert_eq!(result.frame_id, 9);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [RecordedCommand {
+                call_id: CallId::new(32),
+                target: ObjectId::new(9),
+                metadata,
+                url: "about:blank".into()
+            }]
+        );
     }
 
     struct ReadyNavigationService;
@@ -413,5 +539,49 @@ mod tests {
         // Assert
         assert_eq!(result.frame_id, "frame");
         assert_eq!(result.loader_id.as_deref(), Some("loader"));
+    }
+
+    #[test]
+    fn reload_extension_dispatches_without_importing_a_browser_or_wire_codec() {
+        use super::PageReloadExt;
+        use pwright_cap_navigation::{ReloadParams, WaitUntil};
+        struct ReloadService(Arc<Mutex<Option<ReloadParams>>>);
+        impl Service<ReloadParams> for ReloadService {
+            type Response = GotoResult;
+            type Error = OperationError<NavigationErrorDetails>;
+            type Future<'a> = Ready<Result<Self::Response, Self::Error>>;
+            fn call(&self, params: ReloadParams) -> Self::Future<'_> {
+                *self.0.lock().unwrap() = Some(params);
+                ready(Ok(GotoResult {
+                    frame_id: "f".into(),
+                    loader_id: Some("new".into()),
+                    url: "about:blank".into(),
+                    same_document: false,
+                    response: None,
+                }))
+            }
+        }
+        // Arrange
+        let observed = Arc::new(Mutex::new(None));
+        let dispatcher = DirectDispatcher::with_object_kinds(
+            ReloadService(observed.clone()),
+            RuntimeLimits::new(1, 1),
+            BROWSER_OBJECT_KIND_CATALOG,
+        )
+        .unwrap();
+        dispatcher
+            .register_object(ObjectId::new(7), None, ObjectKindTag::new(3))
+            .unwrap();
+        let client = Client::new(dispatcher, AtomicCallIdSource::new(1));
+        let page = page(&client);
+        let params = ReloadParams {
+            wait_until: WaitUntil::NetworkIdle,
+        };
+        // Act
+        let mut operation = page.reload(params.clone(), CallMetadata::default());
+        let result = poll_ready(operation.as_mut()).unwrap();
+        // Assert
+        assert_eq!(*observed.lock().unwrap(), Some(params));
+        assert_eq!(result.loader_id.as_deref(), Some("new"));
     }
 }

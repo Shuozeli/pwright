@@ -7,11 +7,56 @@
 
 mod all_capabilities_recipe;
 mod attach_factory;
+#[cfg(feature = "close-capacity")]
+mod close_capacity;
+mod close_confirmation;
+mod close_observer;
+#[cfg(feature = "close-capacity")]
+pub use close_capacity::{
+    ChromiumCloseCapacityBundle, ChromiumCloseCapacityBundleError, ChromiumCloseCapacityParts,
+};
+#[cfg(feature = "close-route-retirement")]
+pub mod close_route_retirement;
+#[cfg(feature = "native-close-authority")]
+pub mod native_close_authority;
+pub use close_confirmation::{
+    ConfirmedAttachedPageCloseService, ConfirmedChromiumPageCloseCommandService,
+};
+mod frame_navigation;
+mod frame_world_access;
 mod handle_operations;
+mod locator_keyboard;
+#[cfg(feature = "native-close-retirement")]
+pub mod native_close_retirement;
+mod native_world_retirement;
 mod navigation_recipe;
 mod network_events;
+mod page_utility_worlds;
 mod remote_connection;
+mod session_prerequisites;
 mod topology_events;
+mod world_event_admission;
+mod world_readiness;
+
+pub use close_observer::{
+    ChromiumCloseCapacity, ChromiumCloseObserver, ChromiumClosePlan, ChromiumCloseReservation,
+    ChromiumCloseTarget, ObservedAttachedContextCloseService, ObservedAttachedPageCloseService,
+    ObservedChromiumCloseCommandService,
+};
+pub use frame_navigation::{
+    ChromiumFrameNavigationAccess, ChromiumFrameNavigationProfile, ChromiumFrameNavigationSnapshot,
+    FrameNavigationAccessError,
+};
+pub use locator_keyboard::ChromiumLocatorKeyboardRoute;
+pub use native_world_retirement::ChromiumNativeWorldLifetime;
+pub use page_utility_worlds::{
+    ChromiumNativeUtilityWorldLifetime, ChromiumPageUtilityWorldSnapshot,
+    ChromiumUtilityWorldSnapshot,
+};
+pub use world_event_admission::chromium_frame_world_event_admission;
+
+pub use world_readiness::ChromiumExecutionWorldReadinessProfile;
+use world_readiness::ExecutionWorldReadiness;
 
 pub use all_capabilities_recipe::{
     ChromiumAllCapabilitiesApplication, ChromiumAllCapabilitiesApplicationInstallError,
@@ -21,6 +66,10 @@ pub use all_capabilities_recipe::{
     ChromiumAllCapabilitiesRuntimeInstaller,
 };
 pub use attach_factory::{ChromiumAttachFactory, ChromiumAttachFactoryError};
+pub use frame_world_access::{
+    ChromiumFrameWorldAccess, ChromiumFrameWorldAccessProfile, ChromiumFrameWorldSnapshot,
+    FrameWorldAccessError,
+};
 pub use handle_operations::{
     ChromiumHandleOperationCommandService, ContinuableHandleOperationCommandService,
     ContinuableHandleOperationFuture, OrderedHandleOperationCommandService,
@@ -72,10 +121,17 @@ pub use pwright_composition_chromium_page_events::{
     ChromiumTopologyPageEventPublication, ChromiumTopologyPageEventPublishError,
     ChromiumTopologyPageEventPublisher, SharedChromiumPageEventTopology,
 };
+mod frame_event_observer;
+pub use frame_event_observer::{ChromiumFrameEventObserver, FrameObservationResult};
+#[cfg(feature = "frame-lifecycle")]
+pub mod frame_lifecycle;
 pub use topology_events::{
-    ChromiumCdpLivenessBackend, ChromiumCdpLivenessBackendError,
-    ChromiumEventfulCdpLivenessBackend, ChromiumEventfulCdpLivenessBackendError,
-    ChromiumPageDiscoveryProductionProfile, ChromiumTopologyConnectionPump,
+    ChromiumCdpLivenessBackend, ChromiumCdpLivenessBackendError, ChromiumCommittedFrameOwnership,
+    ChromiumContextMembership, ChromiumEventfulCdpLivenessBackend,
+    ChromiumEventfulCdpLivenessBackendError, ChromiumFrameOwnership, ChromiumFrameOwnershipView,
+    ChromiumFrameUrlObserver, ChromiumPageDiscoveryProductionProfile, ChromiumPageMembership,
+    ChromiumSessionInitializationFuture, ChromiumSessionInitializationTarget,
+    ChromiumSessionInitializer, ChromiumSessionTargetKind, ChromiumTopologyConnectionPump,
     ChromiumTopologyConnectionPumpConfigurationError, ChromiumTopologyConnectionPumpError,
     ChromiumTopologyConnectionPumpOutcome, ChromiumTopologyConnectionPumpShutdownError,
     ChromiumTopologyConnectionPumpTermination, ChromiumTopologyEventDriver,
@@ -85,6 +141,10 @@ pub use topology_events::{
     ChromiumTopologyServerBackendError, ChromiumUtilityWorldProfile,
 };
 
+use pwright_backend_cdp_input::CdpInputAdmissionError;
+pub use pwright_backend_cdp_input::{
+    CdpInputPolicy, CdpInputProductionProfile, CdpInputServiceFactory,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
 use std::error::Error;
@@ -134,6 +194,7 @@ use pwright_cap_context_lifecycle::{
 };
 use pwright_cap_dom_content::{
     DomContentCapability, DomContentData, DomContentErrorDetails, DomContentParams, FrameContent,
+    FrameTitle, TitleParams,
 };
 use pwright_cap_evaluation::{
     EvaluateParams, EvaluateResult, EvaluateValue, EvaluationCapability, EvaluationErrorDetails,
@@ -1231,23 +1292,16 @@ impl ChromiumHandleRouteProductionProfile {
         max_native_id_bytes: usize,
         max_preview_bytes: usize,
     ) -> Self {
-        let handles = u64::try_from(max_handles).unwrap_or(u64::MAX);
-        let bytes_per_handle = u64::try_from(max_native_id_bytes)
-            .unwrap_or(u64::MAX)
-            .saturating_add(u64::try_from(max_preview_bytes).unwrap_or(u64::MAX));
-        let maximum_retained_bytes = handles.saturating_mul(bytes_per_handle);
-        let requirements = if max_handles == 0 {
-            ResourceRequirements::none()
-        } else {
-            ResourceRequirements::none()
-                .with_class(ResourceClass::RemoteHandle, handles, handles)
-                .with_class(
-                    ResourceClass::BackendStateBytes,
-                    maximum_retained_bytes,
-                    maximum_retained_bytes,
-                )
-                .with_metadata(1, max_handles)
-        };
+        // Keep selected leaf ownership accounting authoritative, including
+        // independently enabled native-release identity storage.
+        let requirements = ChromiumHandleLeafRouteProfile::new(
+            resource_scope,
+            max_handles,
+            max_native_id_bytes,
+            max_preview_bytes,
+        )
+        .requirements();
+        let maximum_retained_bytes = requirements.class(ResourceClass::BackendStateBytes).global;
         Self {
             resource_scope,
             max_handles,
@@ -1671,8 +1725,10 @@ pub struct ChromiumAttachProductionProfile {
     topology_events: Option<ChromiumTopologyEventDriverProductionProfile>,
     page_discovery: Option<ChromiumPageDiscoveryProductionProfile>,
     utility_world: Option<ChromiumUtilityWorldProfile>,
+    world_readiness: Option<ChromiumExecutionWorldReadinessProfile>,
     page_routes: CdpPageRouteProductionProfile,
     runtime: RuntimeLimits,
+    controlled_target_concurrency: std::num::NonZeroUsize,
     supervisor: ServerSupervisorLimits,
     remote_handshake: Option<ChromiumRemoteHandshakeProfile>,
     remote_control: Option<ChromiumRemoteControlProfile>,
@@ -1692,9 +1748,11 @@ pub struct ChromiumAttachProductionProfile {
     navigation: Option<NavigationInstallationProfile>,
     network_events: Option<ChromiumNetworkEventsProductionProfile>,
     locator: Option<LocatorInstallationProfile>,
+    page_input: Option<CdpInputProductionProfile>,
     locator_screenshot: Option<LocatorScreenshotInstallationProfile>,
     page_events: bool,
     extension_requirements: ResourceRequirements,
+    extension_event_subscribers: usize,
 }
 
 impl ChromiumAttachProductionProfile {
@@ -1711,8 +1769,10 @@ impl ChromiumAttachProductionProfile {
             topology_events: None,
             page_discovery: None,
             utility_world: None,
+            world_readiness: None,
             page_routes,
             runtime,
+            controlled_target_concurrency: std::num::NonZeroUsize::MIN,
             supervisor,
             remote_handshake: None,
             remote_control: None,
@@ -1732,10 +1792,37 @@ impl ChromiumAttachProductionProfile {
             navigation: None,
             network_events: None,
             locator: None,
+            page_input: None,
             locator_screenshot: None,
             page_events: false,
             extension_requirements: ResourceRequirements::none(),
+            extension_event_subscribers: 0,
         }
+    }
+
+    /// Selects bounded per-target parallelism for controlled runtimes only.
+    /// Direct runtimes and the default profile remain serial. Connection-wide
+    /// command/pending limits and each backend's admission are unchanged.
+    pub const fn with_controlled_target_concurrency(
+        mut self,
+        maximum: std::num::NonZeroUsize,
+    ) -> Self {
+        self.controlled_target_concurrency = maximum;
+        self
+    }
+
+    pub const fn controlled_target_concurrency(&self) -> std::num::NonZeroUsize {
+        self.controlled_target_concurrency
+    }
+
+    /// Waits for installed execution worlds inside already-admitted commands.
+    /// The caller must keep the selected topology event driver polled.
+    pub const fn with_execution_world_readiness(
+        mut self,
+        profile: ChromiumExecutionWorldReadinessProfile,
+    ) -> Self {
+        self.world_readiness = Some(profile);
+        self
     }
 
     pub const fn with_context_creation(
@@ -1838,6 +1925,17 @@ impl ChromiumAttachProductionProfile {
         self
     }
 
+    /// Independently selects retained Page input state. When Locator is also
+    /// selected, this single Page policy overrides its legacy per-factory policy.
+    pub const fn with_page_input(mut self, profile: CdpInputProductionProfile) -> Self {
+        self.page_input = Some(profile);
+        self
+    }
+
+    pub const fn page_input(&self) -> Option<CdpInputProductionProfile> {
+        self.page_input
+    }
+
     pub fn with_locator_screenshot(
         mut self,
         mut profile: LocatorScreenshotInstallationProfile,
@@ -1861,6 +1959,19 @@ impl ChromiumAttachProductionProfile {
     pub fn with_extension_requirements(mut self, requirements: ResourceRequirements) -> Self {
         self.extension_requirements = self.extension_requirements.combine_concurrent(requirements);
         self
+    }
+
+    /// Advertise event cursors owned by explicitly installed outer components.
+    /// Derive the fanout after adding extensions; validation rejects a stale
+    /// previously-derived capacity. This neither subscribes nor installs a task.
+    pub fn with_extension_event_subscribers(mut self, additional: usize) -> Result<Self, CdpError> {
+        self.extension_event_subscribers = self
+            .extension_event_subscribers
+            .checked_add(additional)
+            .ok_or(CdpError::InvalidConfiguration(
+                "extension event subscriber capacity overflow",
+            ))?;
+        Ok(self)
     }
 
     /// Installs caller-driven CDP topology-event ingestion. This adds no
@@ -2115,10 +2226,13 @@ impl ChromiumAttachProductionProfile {
     fn effective_locator_backend(&self) -> Option<CdpLocatorProductionProfile> {
         let topology_limits = self.topology.limits();
         self.locator.map(|selected| {
+            let backend = self.page_input.map_or(selected.backend, |input| {
+                selected.backend.with_input_policy(input.policy())
+            });
             if self.dom_content.is_some() {
-                selected.backend.without_context_routes()
+                backend.without_context_routes()
             } else {
-                selected.backend.with_context_routes(
+                backend.with_context_routes(
                     topology_limits.frames.min(topology_limits.worlds),
                     topology_limits.native_id_bytes,
                 )
@@ -2151,6 +2265,7 @@ impl ChromiumAttachProductionProfile {
             .saturating_add(network)
             .saturating_add(navigation)
             .saturating_add(locator)
+            .saturating_add(self.extension_event_subscribers)
     }
 
     /// Selects prompt event reclamation using a subscriber bound derived from
@@ -2179,6 +2294,12 @@ impl ChromiumAttachProductionProfile {
             );
         if let Some(topology_events) = self.topology_events {
             requirements = requirements.combine_concurrent(topology_events.requirements());
+        }
+        if let Some(input) = self.page_input {
+            requirements = requirements.combine_concurrent(input.requirements());
+        }
+        if let Some(readiness) = self.world_readiness {
+            requirements = requirements.combine_concurrent(readiness.requirements());
         }
         if let Some(network_events) = self.network_events {
             requirements = requirements.combine_concurrent(network_events.requirements());
@@ -2340,6 +2461,12 @@ impl ChromiumAttachProductionProfile {
         }
         if self.utility_world.is_some() && self.topology_events.is_none() {
             return Err(ChromiumCompositionError::UtilityWorldRequiresTopologyEvents);
+        }
+        if let Some(readiness) = self.world_readiness
+            && (self.topology_events.is_none()
+                || readiness.max_frames() != self.topology.limits().frames)
+        {
+            return Err(ChromiumCompositionError::InvalidWorldReadinessProfile);
         }
         if self.dom_content.is_some() && self.utility_world.is_none() {
             return Err(ChromiumCompositionError::DomContentRequiresUtilityWorld);
@@ -2748,6 +2875,12 @@ impl ChromiumAttachProductionProfile {
             }
         }
         validate_extension_scope("page routing", self.page_routes.resource_scope())?;
+        if let Some(input) = self.page_input {
+            validate_extension_scope("Page input", input.scope())?;
+            if input.states() < self.page_routes.max_pages() {
+                return Err(ChromiumCompositionError::PageInputCapacityTooSmall);
+            }
+        }
         if self.page_routes.max_pages() != self.topology.limits().pages
             || self.page_routes.max_native_id_bytes() != self.topology.limits().native_id_bytes
         {
@@ -2757,6 +2890,9 @@ impl ChromiumAttachProductionProfile {
             self.topology.resource_scope(),
             self.page_routes.resource_scope(),
         ];
+        if let Some(input) = self.page_input {
+            scopes.push(input.scope());
+        }
         if let Some(topology_events) = self.topology_events {
             validate_extension_scope("topology events", topology_events.resource_scope())?;
             scopes.push(topology_events.resource_scope());
@@ -2965,10 +3101,12 @@ pub enum ChromiumCompositionError {
     InvalidHandleSetup(String),
     InvalidNetworkEventsSetup(String),
     PageRouteProfileMismatch,
+    PageInputCapacityTooSmall,
     HandleRouteProfileMismatch,
     TopologyEventProfileMismatch,
     PageDiscoveryRequiresTopologyEvents,
     UtilityWorldRequiresTopologyEvents,
+    InvalidWorldReadinessProfile,
     DomContentRequiresUtilityWorld,
     PageDiscoveryProfileMismatch,
     DuplicateExtensionScope,
@@ -3156,6 +3294,7 @@ impl Display for ChromiumCompositionError {
             Self::PageRouteProfileMismatch => formatter.write_str(
                 "page-route limits must exactly match topology page and native-ID limits",
             ),
+            Self::PageInputCapacityTooSmall => formatter.write_str("Page input state capacity is smaller than the topology Page capacity"),
             Self::HandleRouteProfileMismatch => formatter.write_str(
                 "Handle evaluation native-ID and preview limits must exactly match the shared Handle lifecycle route profile",
             ),
@@ -3168,6 +3307,8 @@ impl Display for ChromiumCompositionError {
             Self::UtilityWorldRequiresTopologyEvents => formatter.write_str(
                 "Chromium utility worlds require the caller-driven topology-event component",
             ),
+            Self::InvalidWorldReadinessProfile => formatter.write_str(
+                "world readiness requires topology events and the exact topology Frame limit"),
             Self::DomContentRequiresUtilityWorld => {
                 formatter.write_str("DOM content requires the Chromium utility-world component")
             }
@@ -3321,10 +3462,23 @@ struct CdpPageServiceEntry {
     evaluation: Option<Arc<CdpEvaluationService>>,
     handle_evaluation: Option<Arc<CdpEvaluationService>>,
     navigation: Option<Arc<CdpNavigationService>>,
-    locator_input: Option<CdpInputCoordinator>,
+    page_input: Option<CdpInputCoordinator>,
     locator: Option<Arc<CdpLocatorService>>,
     locator_screenshot_capture: Option<Arc<CdpScreenshotService>>,
     crashed: bool,
+}
+
+/// Narrow snapshot from one Page route; never resolves through a Frame/world.
+/// The input clone retains its state admission. The embedding owner must budget
+/// retained native-client storage and lifecycle before taking this snapshot.
+pub struct CdpPageInputBinding {
+    client: Arc<dyn CdpClient>,
+    input: CdpInputCoordinator,
+}
+impl CdpPageInputBinding {
+    pub fn into_parts(self) -> (Arc<dyn CdpClient>, CdpInputCoordinator) {
+        (self.client, self.input)
+    }
 }
 
 #[derive(Clone)]
@@ -3347,6 +3501,8 @@ struct CdpResolvedEvaluationRoute {
 struct CdpFrameContextEntry {
     target_id: String,
     session_id: String,
+    client: Arc<dyn CdpClient>,
+    execution_context_id: i64,
     unique_context_id: Arc<str>,
     locator: Option<Arc<CdpLocatorService>>,
     dom_content: Option<Arc<CdpDomContentService>>,
@@ -3369,16 +3525,29 @@ struct CdpLocatorScreenshotContextEntry {
 
 #[derive(Default)]
 struct CdpServiceRoutes {
+    epoch: Option<pwright_backend_cdp::ConnectionEpoch>,
+    frame_navigation: Option<frame_navigation::Table>,
+    native_world_retirement: Option<Arc<native_world_retirement::Registry>>,
     browser_contexts: BTreeSet<ObjectId>,
     pages: BTreeMap<ObjectId, Arc<CdpPageServiceEntry>>,
     frame_evaluations: BTreeMap<ObjectId, Arc<CdpFrameEvaluationEntry>>,
     frame_handle_evaluations: BTreeMap<ObjectId, Arc<CdpFrameEvaluationEntry>>,
     frame_contexts: BTreeMap<ObjectId, Arc<CdpFrameContextEntry>>,
+    readiness_frames: Vec<(ObjectId, ObjectId)>,
     locator_screenshot_contexts: BTreeMap<ObjectId, Arc<CdpLocatorScreenshotContextEntry>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CdpPageRouteError {
+    FrameNavigation(FrameNavigationAccessError),
+    NativeRetirementSealed,
+    WorldTargetClosed {
+        object_id: ObjectId,
+    },
+    WorldReadinessCapacityExceeded {
+        limit: usize,
+    },
+    WorldReadinessResource(pwright_core::ResourceError),
     CapacityExceeded {
         actual: usize,
         limit: usize,
@@ -3398,6 +3567,7 @@ pub enum CdpPageRouteError {
     LocatorInputOwnerUnavailable {
         frame_object_id: ObjectId,
     },
+    InputAdmission(CdpInputAdmissionError),
     LocatorScreenshotParentUnavailable {
         frame_object_id: ObjectId,
         parent_frame_object_id: ObjectId,
@@ -3441,6 +3611,18 @@ pub enum CdpPageRouteError {
 impl Display for CdpPageRouteError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FrameNavigation(error) => Display::fmt(error, formatter),
+            Self::NativeRetirementSealed => {
+                formatter.write_str("native session retirement is permanently sealed")
+            }
+            Self::WorldTargetClosed { object_id } => {
+                write!(formatter, "world owner `{object_id}` has been closed")
+            }
+            Self::WorldReadinessCapacityExceeded { limit } => write!(
+                formatter,
+                "execution-world wait capacity exceeded ({limit})"
+            ),
+            Self::WorldReadinessResource(error) => Display::fmt(error, formatter),
             Self::CapacityExceeded { actual, limit } => {
                 write!(formatter, "page route count {actual} exceeds limit {limit}")
             }
@@ -3460,6 +3642,7 @@ impl Display for CdpPageRouteError {
                 formatter,
                 "Frame `{frame_object_id}` has no Page-scoped input coordinator"
             ),
+            Self::InputAdmission(error) => Display::fmt(error, formatter),
             Self::LocatorScreenshotParentUnavailable {
                 frame_object_id,
                 parent_frame_object_id,
@@ -3514,6 +3697,7 @@ impl Error for CdpPageRouteError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::NetworkSubscriptions(error) => Some(error),
+            Self::InputAdmission(error) => Some(error),
             Self::Resources(error) => Some(error),
             Self::Resource(error) => Some(error),
             _ => None,
@@ -3524,6 +3708,11 @@ impl Error for CdpPageRouteError {
 impl From<ProductionResourceError> for CdpPageRouteError {
     fn from(error: ProductionResourceError) -> Self {
         Self::Resources(error)
+    }
+}
+impl From<CdpInputAdmissionError> for CdpPageRouteError {
+    fn from(error: CdpInputAdmissionError) -> Self {
+        Self::InputAdmission(error)
     }
 }
 
@@ -4563,6 +4752,7 @@ pub struct CdpPageServices {
     handle_evaluation: Option<CdpEvaluationServiceFactory>,
     navigation: Option<CdpNavigationServiceFactory>,
     locator: Option<CdpLocatorServiceFactory>,
+    page_input: Option<CdpInputServiceFactory>,
     locator_screenshot_locator: Option<CdpLocatorServiceFactory>,
     locator_screenshot_capture: Option<CdpScreenshotServiceFactory>,
     dom_content: Option<CdpDomContentServiceFactory>,
@@ -4575,6 +4765,7 @@ pub struct CdpPageServices {
     handle_leaf_routes: Option<ChromiumHandleLeafLifecycleRoutes>,
     profile: CdpPageRouteProductionProfile,
     routes: Arc<Mutex<CdpServiceRoutes>>,
+    world_readiness: Option<Arc<ExecutionWorldReadiness>>,
     _route_resource: Option<Arc<ResourceLease>>,
     _evaluation_route_resource: Option<Arc<ResourceLease>>,
     _handle_evaluation_route_resource: Option<Arc<ResourceLease>>,
@@ -4587,14 +4778,26 @@ struct PreparedCdpPageRoutes<'a> {
     current: MutexGuard<'a, CdpServiceRoutes>,
     next: CdpServiceRoutes,
     network_subscriptions: Option<ChromiumNetworkSubscriptionRegistry>,
+    world_readiness: Option<Arc<ExecutionWorldReadiness>>,
 }
 
 impl PreparedCdpPageRoutes<'_> {
     fn commit(mut self) {
+        if let (Some(current), Some(next)) = (
+            &mut self.current.frame_navigation,
+            &mut self.next.frame_navigation,
+        ) {
+            current.replace(next);
+        }
         if let Some(subscriptions) = &self.network_subscriptions {
             subscriptions.retain_current_routes(&self.next);
         }
         *self.current = self.next;
+        drop(self.current);
+        // Waking arbitrary caller wakers must never hold the route-table lock.
+        if let Some(readiness) = &self.world_readiness {
+            readiness.committed();
+        }
     }
 }
 
@@ -4728,6 +4931,12 @@ impl CdpPageServices {
             .transpose()?;
         Ok(Self {
             session_factory,
+            page_input: profile
+                .page_input
+                .map(|selected| {
+                    CdpInputServiceFactory::new_with_production_resources(selected, resources)
+                })
+                .transpose()?,
             screenshot,
             evaluation,
             handle_evaluation,
@@ -4745,6 +4954,10 @@ impl CdpPageServices {
             handle_leaf_routes: None,
             profile: profile.page_routes,
             routes: Arc::new(Mutex::new(CdpServiceRoutes::default())),
+            world_readiness: profile
+                .world_readiness
+                .map(|selected| ExecutionWorldReadiness::new(selected, resources).map(Arc::new))
+                .transpose()?,
             _route_resource: route_resource,
             _evaluation_route_resource: evaluation_route_resource,
             _handle_evaluation_route_resource: handle_evaluation_route_resource,
@@ -4794,7 +5007,26 @@ impl CdpPageServices {
             .routes
             .lock()
             .map_err(|_| CdpPageRouteError::StatePoisoned)?;
-        let mut next = CdpServiceRoutes::default();
+        let mut next = CdpServiceRoutes {
+            epoch: Some(topology.epoch()),
+            native_world_retirement: current.native_world_retirement.clone(),
+            ..CdpServiceRoutes::default()
+        };
+        if let Some(readiness) = &self.world_readiness {
+            next.readiness_frames
+                .reserve_exact(readiness.profile.max_frames());
+            for (frame, page) in topology.frame_page_routes() {
+                if next.readiness_frames.len() >= readiness.profile.max_frames() {
+                    return Err(CdpPageRouteError::CapacityExceeded {
+                        actual: next.readiness_frames.len().saturating_add(1),
+                        limit: readiness.profile.max_frames(),
+                    });
+                }
+                next.readiness_frames.push((frame, page));
+            }
+            next.readiness_frames
+                .sort_unstable_by_key(|(frame, _)| *frame);
+        }
         let mut retained_bytes = 0_u64;
         next.browser_contexts.extend(
             topology
@@ -4837,21 +5069,24 @@ impl CdpPageServices {
                 .pages
                 .get(&route.object_id())
                 .filter(|entry| {
-                    entry.target_id == route.target_id()
+                    current.epoch == Some(topology.epoch())
+                        && entry.target_id == route.target_id()
                         && entry.session_id == route.session_id()
                         && entry.browser_context_object_id == route.browser_context_object_id()
                         && entry.main_frame_object_id == main_frame_object_id
                         && entry.screenshot.is_some() == self.screenshot.is_some()
                         && entry.evaluation.is_some() == self.evaluation.is_some()
                         && entry.handle_evaluation.is_some() == self.handle_evaluation.is_some()
-                        && entry.locator_input.is_some() == self.locator.is_some()
+                        && entry.page_input.is_some()
+                            == (self.page_input.is_some() || self.locator.is_some())
                         && entry.locator.is_some() == locator_should_exist
                         && entry.locator_screenshot_capture.is_some()
                             == self.locator_screenshot_capture.is_some()
                         && entry.crashed == crashed
                 })
                 .cloned()
-                .unwrap_or_else(|| {
+                .map(Ok)
+                .unwrap_or_else(|| -> Result<_, CdpPageRouteError> {
                     let mut target_id = route.target_id().to_owned();
                     let mut session_id = route.session_id().to_owned();
                     target_id.shrink_to_fit();
@@ -4859,21 +5094,44 @@ impl CdpPageServices {
                     let client = self
                         .session_factory
                         .create_session(session_id.clone(), target_id.clone());
-                    let locator_input = self.locator.as_ref().map(|_| CdpInputCoordinator::new());
+                    // Frame/world rebinding does not replace Page input identity.
+                    // A different connection/session/context or crash generation does.
+                    let page_input = current
+                        .pages
+                        .get(&route.object_id())
+                        .filter(|entry| {
+                            current.epoch == Some(topology.epoch())
+                                && entry.target_id == route.target_id()
+                                && entry.session_id == route.session_id()
+                                && entry.browser_context_object_id
+                                    == route.browser_context_object_id()
+                                && entry.crashed == crashed
+                        })
+                        .and_then(|entry| entry.page_input.clone());
+                    let page_input = match page_input {
+                        Some(input) => Some(input),
+                        None => match &self.page_input {
+                            Some(factory) => Some(factory.create()?),
+                            None => self
+                                .locator
+                                .as_ref()
+                                .map(CdpLocatorServiceFactory::create_input_coordinator),
+                        },
+                    };
                     let locator = self.locator.as_ref().and_then(|factory| {
                         (!self.locator_uses_utility_world).then(|| {
                             Arc::new(
                                 factory.bind_with_input(
                                     Arc::clone(&client),
-                                    locator_input
+                                    page_input
                                         .as_ref()
-                                        .expect("selected locator owns input")
+                                        .expect("selected Page input owner")
                                         .clone(),
                                 ),
                             )
                         })
                     });
-                    Arc::new(CdpPageServiceEntry {
+                    Ok(Arc::new(CdpPageServiceEntry {
                         main_frame_object_id,
                         browser_context_object_id: route.browser_context_object_id(),
                         target_id,
@@ -4894,7 +5152,7 @@ impl CdpPageServices {
                             .navigation
                             .as_ref()
                             .map(|factory| Arc::new(factory.bind(Arc::clone(&client)))),
-                        locator_input,
+                        page_input,
                         locator,
                         locator_screenshot_capture: self.locator_screenshot_capture.as_ref().map(
                             |factory| {
@@ -4902,8 +5160,8 @@ impl CdpPageServices {
                             },
                         ),
                         crashed,
-                    })
-                });
+                    }))
+                })?;
             let entry_bytes = u64::try_from(entry.target_id.capacity())
                 .unwrap_or(u64::MAX)
                 .saturating_add(u64::try_from(entry.session_id.capacity()).unwrap_or(u64::MAX));
@@ -5165,7 +5423,7 @@ impl CdpPageServices {
                         next.pages
                             .values()
                             .find(|entry| entry.target_id == page_target_id)
-                            .and_then(|entry| entry.locator_input.clone())
+                            .and_then(|entry| entry.page_input.clone())
                             .ok_or(CdpPageRouteError::LocatorInputOwnerUnavailable {
                                 frame_object_id: route.object_id(),
                             })?,
@@ -5173,77 +5431,81 @@ impl CdpPageServices {
                 } else {
                     None
                 };
-                let entry =
-                    current
-                        .frame_contexts
-                        .get(&route.object_id())
-                        .filter(|entry| {
-                            entry.target_id == route.target_id()
-                                && entry.session_id == route.session_id()
-                                && entry.unique_context_id.as_ref() == route.unique_context_id()
-                                && entry.locator.is_some() == self.locator.is_some()
-                                && entry.dom_content.is_some() == self.dom_content.is_some()
-                                && entry.page_crashed == page_crashed
-                                && input.as_ref().is_none_or(|input| {
-                                    entry.locator.as_ref().is_some_and(|service| {
-                                        service.uses_input_coordinator(input)
-                                    })
-                                })
-                        })
-                        .cloned()
-                        .unwrap_or_else(|| {
-                            let mut target_id = route.target_id().to_owned();
-                            let mut session_id = route.session_id().to_owned();
-                            let mut unique_context_id = route.unique_context_id().to_owned();
-                            target_id.shrink_to_fit();
-                            session_id.shrink_to_fit();
-                            unique_context_id.shrink_to_fit();
-                            let unique_context_id: Arc<str> = Arc::from(unique_context_id);
-                            let client = next
-                                .pages
-                                .values()
-                                .find(|entry| {
-                                    entry.target_id == target_id && entry.session_id == session_id
-                                })
-                                .map(|entry| Arc::clone(&entry.client))
-                                .unwrap_or_else(|| {
-                                    self.session_factory
-                                        .create_session(session_id.clone(), target_id.clone())
-                                });
-                            let locator = self.locator.as_ref().map(|factory| {
-                                Arc::new(
-                                    factory.bind_shared_unique_context_with_input(
-                                        Arc::clone(&client),
-                                        Arc::clone(&unique_context_id),
-                                        input
-                                            .as_ref()
-                                            .expect("selected locator owns Frame input")
-                                            .clone(),
-                                    ),
-                                )
-                            });
-                            let dom_content = self.dom_content.as_ref().map(|factory| {
-                                Arc::new(factory.bind_shared_unique_context(
-                                    client,
-                                    Arc::clone(&unique_context_id),
-                                ))
-                            });
-                            Arc::new(CdpFrameContextEntry {
-                                target_id,
-                                session_id,
-                                locator,
-                                dom_content,
-                                unique_context_id,
-                                page_crashed,
+                let entry = current
+                    .frame_contexts
+                    .get(&route.object_id())
+                    .filter(|entry| {
+                        entry.target_id == route.target_id()
+                            && entry.session_id == route.session_id()
+                            && entry.execution_context_id == route.execution_context_id()
+                            && entry.unique_context_id.as_ref() == route.unique_context_id()
+                            && entry.locator.is_some() == self.locator.is_some()
+                            && entry.dom_content.is_some() == self.dom_content.is_some()
+                            && entry.page_crashed == page_crashed
+                            && input.as_ref().is_none_or(|input| {
+                                entry
+                                    .locator
+                                    .as_ref()
+                                    .is_some_and(|service| service.uses_input_coordinator(input))
                             })
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        let mut target_id = route.target_id().to_owned();
+                        let mut session_id = route.session_id().to_owned();
+                        let mut unique_context_id = route.unique_context_id().to_owned();
+                        target_id.shrink_to_fit();
+                        session_id.shrink_to_fit();
+                        unique_context_id.shrink_to_fit();
+                        let unique_context_id: Arc<str> = Arc::from(unique_context_id);
+                        let client = next
+                            .pages
+                            .values()
+                            .find(|entry| {
+                                entry.target_id == target_id && entry.session_id == session_id
+                            })
+                            .map(|entry| Arc::clone(&entry.client))
+                            .unwrap_or_else(|| {
+                                self.session_factory
+                                    .create_session(session_id.clone(), target_id.clone())
+                            });
+                        let locator = self.locator.as_ref().map(|factory| {
+                            Arc::new(
+                                factory.bind_shared_unique_context_with_input(
+                                    Arc::clone(&client),
+                                    Arc::clone(&unique_context_id),
+                                    input
+                                        .as_ref()
+                                        .expect("selected locator owns Frame input")
+                                        .clone(),
+                                ),
+                            )
                         });
+                        let dom_content = self.dom_content.as_ref().map(|factory| {
+                            Arc::new(factory.bind_shared_unique_context(
+                                client.clone(),
+                                Arc::clone(&unique_context_id),
+                            ))
+                        });
+                        Arc::new(CdpFrameContextEntry {
+                            target_id,
+                            session_id,
+                            client,
+                            execution_context_id: route.execution_context_id(),
+                            locator,
+                            dom_content,
+                            unique_context_id,
+                            page_crashed,
+                        })
+                    });
                 let entry_bytes = u64::try_from(entry.target_id.capacity())
                     .unwrap_or(u64::MAX)
                     .saturating_add(u64::try_from(entry.session_id.capacity()).unwrap_or(u64::MAX))
                     .saturating_mul(2)
                     .saturating_add(
                         u64::try_from(entry.unique_context_id.len()).unwrap_or(u64::MAX),
-                    );
+                    )
+                    .saturating_add(std::mem::size_of::<i64>() as u64);
                 frame_context_retained_bytes =
                     frame_context_retained_bytes.saturating_add(entry_bytes);
                 next.frame_contexts.insert(route.object_id(), entry);
@@ -5449,10 +5711,17 @@ impl CdpPageServices {
                 .validate_effective_routes(&next)
                 .map_err(CdpPageRouteError::NetworkSubscriptions)?;
         }
+        next.frame_navigation = current
+            .frame_navigation
+            .as_ref()
+            .map(|table| table.prepare(self, topology, &next))
+            .transpose()
+            .map_err(CdpPageRouteError::FrameNavigation)?;
         Ok(PreparedCdpPageRoutes {
             current,
             next,
             network_subscriptions: self.network_subscriptions.clone(),
+            world_readiness: self.world_readiness.clone(),
         })
     }
 
@@ -5475,6 +5744,37 @@ impl CdpPageServices {
             .lock()
             .map(|routes| routes.pages.get(&object_id).cloned())
             .map_err(|_| CdpPageRouteError::StatePoisoned)
+    }
+
+    /// Returns the selected Page input owner, never a Frame-local replacement.
+    /// Clones retain production state admission even after route removal.
+    pub fn page_input(
+        &self,
+        page: ObjectId,
+    ) -> Result<Option<CdpInputCoordinator>, CdpPageRouteError> {
+        let entry = self.route(page)?;
+        if entry.as_ref().is_some_and(|entry| entry.crashed) {
+            return Err(CdpPageRouteError::PageCrashed { object_id: page });
+        }
+        Ok(entry.and_then(|entry| entry.page_input.clone()))
+    }
+
+    /// Select client and admitted input from the same immutable route snapshot.
+    /// Does not retain the other services or native-identity strings in the route.
+    pub fn page_input_binding(
+        &self,
+        page: ObjectId,
+    ) -> Result<Option<CdpPageInputBinding>, CdpPageRouteError> {
+        let Some(entry) = self.route(page)? else {
+            return Ok(None);
+        };
+        if entry.crashed {
+            return Err(CdpPageRouteError::PageCrashed { object_id: page });
+        }
+        Ok(entry.page_input.clone().map(|input| CdpPageInputBinding {
+            client: entry.client.clone(),
+            input,
+        }))
     }
 
     fn exact_network_client(
@@ -6035,6 +6335,16 @@ fn missing_content_route(object_id: ObjectId) -> OperationError<ContentErrorDeta
     )
 }
 
+fn world_route_failure_kind(error: &CdpPageRouteError) -> FailureKind {
+    match error {
+        CdpPageRouteError::WorldTargetClosed { .. } => FailureKind::TargetClosed,
+        CdpPageRouteError::WorldReadinessCapacityExceeded { .. }
+        | CdpPageRouteError::WorldReadinessResource(_) => FailureKind::ResourceExhausted,
+        CdpPageRouteError::PageCrashed { .. } => FailureKind::BrowserCrashed,
+        _ => FailureKind::Cleanup,
+    }
+}
+
 fn missing_dom_content_route(object_id: ObjectId) -> OperationError<DomContentErrorDetails> {
     OperationError::new(
         FailureKind::UnsupportedCapability,
@@ -6128,7 +6438,7 @@ fn dom_content_route_state_error(
         );
     }
     OperationError::new(
-        FailureKind::Cleanup,
+        world_route_failure_kind(&error),
         error.to_string(),
         Some(DomContentErrorDetails::Backend(
             "Frame utility-world route state is unavailable".to_owned(),
@@ -6171,28 +6481,34 @@ impl TargetedService<LocatorScreenshotParams> for CdpPageServices {
     }
 }
 
-impl TargetedService<DomContentParams> for CdpPageServices {
-    type Response = DomContentData;
-    type Error = OperationError<DomContentErrorDetails>;
-    type Future<'a> =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
+macro_rules! impl_dom_read_route {
+    ($params:ty) => {
+        impl TargetedService<$params> for CdpPageServices {
+            type Response = DomContentData;
+            type Error = OperationError<DomContentErrorDetails>;
+            type Future<'a> =
+                Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
-    fn call_for(&self, object_id: ObjectId, params: DomContentParams) -> Self::Future<'_> {
-        let service = self
-            .dom_content_route(object_id)
-            .map_err(dom_content_route_state_error);
-        Box::pin(async move {
-            let service = service?.ok_or_else(|| missing_dom_content_route(object_id))?;
-            service.call(params).await
-        })
-    }
+            fn call_for(&self, object_id: ObjectId, params: $params) -> Self::Future<'_> {
+                let route = self.ready_dom_content_route(object_id);
+                Box::pin(async move {
+                    let service = route.await.map_err(dom_content_route_state_error);
+                    let service = service?.ok_or_else(|| missing_dom_content_route(object_id))?;
+                    service.call(params).await
+                })
+            }
+        }
+    };
 }
+
+impl_dom_read_route!(DomContentParams);
+impl_dom_read_route!(TitleParams);
 
 fn evaluation_route_state_error(
     error: CdpPageRouteError,
 ) -> OperationError<EvaluationErrorDetails> {
     OperationError::new(
-        FailureKind::Cleanup,
+        world_route_failure_kind(&error),
         error.to_string(),
         Some(EvaluationErrorDetails::Backend(
             "page route state is unavailable".to_owned(),
@@ -6202,7 +6518,7 @@ fn evaluation_route_state_error(
 
 fn locator_route_state_error(error: CdpPageRouteError) -> OperationError<LocatorErrorDetails> {
     OperationError::new(
-        FailureKind::Cleanup,
+        world_route_failure_kind(&error),
         error.to_string(),
         Some(LocatorErrorDetails::Backend(
             "page route state is unavailable".to_owned(),
@@ -6235,10 +6551,9 @@ impl TargetedService<EvaluateParams> for CdpPageServices {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
     fn call_for(&self, object_id: ObjectId, params: EvaluateParams) -> Self::Future<'_> {
-        let service = self
-            .evaluation_route(object_id)
-            .map_err(evaluation_route_state_error);
+        let route = self.ready_evaluation_route(object_id);
         Box::pin(async move {
+            let service = route.await.map_err(evaluation_route_state_error);
             let service = service?.ok_or_else(|| missing_evaluation_route(object_id))?;
             service.service.call(params).await
         })
@@ -6263,6 +6578,8 @@ impl TargetedService<GotoParams> for CdpPageServices {
     }
 }
 
+mod navigation_reload;
+
 impl TargetedService<ClickParams> for CdpPageServices {
     type Response = ();
     type Error = OperationError<LocatorErrorDetails>;
@@ -6270,10 +6587,9 @@ impl TargetedService<ClickParams> for CdpPageServices {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
     fn call_for(&self, object_id: ObjectId, params: ClickParams) -> Self::Future<'_> {
-        let service = self
-            .locator_route(object_id)
-            .map_err(locator_route_state_error);
+        let route = self.ready_locator_route(object_id);
         Box::pin(async move {
+            let service = route.await.map_err(locator_route_state_error);
             let service = service?.ok_or_else(|| missing_locator_route(object_id))?;
             service.call(params).await
         })
@@ -6287,10 +6603,9 @@ impl TargetedService<ClickParamsV2> for CdpPageServices {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
     fn call_for(&self, object_id: ObjectId, params: ClickParamsV2) -> Self::Future<'_> {
-        let service = self
-            .locator_route(object_id)
-            .map_err(locator_route_state_error);
+        let route = self.ready_locator_route(object_id);
         Box::pin(async move {
+            let service = route.await.map_err(locator_route_state_error);
             let service = service?.ok_or_else(|| missing_locator_route(object_id))?;
             service.call(params).await
         })
@@ -6304,10 +6619,9 @@ impl TargetedService<CountParams> for CdpPageServices {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
     fn call_for(&self, object_id: ObjectId, params: CountParams) -> Self::Future<'_> {
-        let service = self
-            .locator_route(object_id)
-            .map_err(locator_route_state_error);
+        let route = self.ready_locator_route(object_id);
         Box::pin(async move {
+            let service = route.await.map_err(locator_route_state_error);
             let service = service?.ok_or_else(|| missing_locator_route(object_id))?;
             service.call(params).await
         })
@@ -6321,10 +6635,9 @@ impl TargetedService<FillParams> for CdpPageServices {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
     fn call_for(&self, object_id: ObjectId, params: FillParams) -> Self::Future<'_> {
-        let service = self
-            .locator_route(object_id)
-            .map_err(locator_route_state_error);
+        let route = self.ready_locator_route(object_id);
         Box::pin(async move {
+            let service = route.await.map_err(locator_route_state_error);
             let service = service?.ok_or_else(|| missing_locator_route(object_id))?;
             service.call(params).await
         })
@@ -6340,10 +6653,9 @@ macro_rules! impl_locator_state_route {
                 Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
             fn call_for(&self, object_id: ObjectId, params: $params) -> Self::Future<'_> {
-                let service = self
-                    .locator_route(object_id)
-                    .map_err(locator_route_state_error);
+                let route = self.ready_locator_route(object_id);
                 Box::pin(async move {
+                    let service = route.await.map_err(locator_route_state_error);
                     let service = service?.ok_or_else(|| missing_locator_route(object_id))?;
                     service.call(params).await
                 })
@@ -6360,6 +6672,7 @@ impl_locator_state_route!(BlurParams, ());
 impl_locator_state_route!(FocusParams, ());
 impl_locator_state_route!(HoverParams, ());
 impl_locator_state_route!(PressParams, ());
+impl_locator_state_route!(pwright_cap_locator::PressSequentiallyParams, ());
 impl_locator_state_route!(ScrollIntoViewIfNeededParams, ());
 impl_locator_state_route!(SelectOptionParams, SelectOptionResult);
 impl_locator_state_route!(SetCheckedParams, ());
@@ -6378,10 +6691,9 @@ impl TargetedService<IsVisibleParams> for CdpPageServices {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
     fn call_for(&self, object_id: ObjectId, params: IsVisibleParams) -> Self::Future<'_> {
-        let service = self
-            .locator_route(object_id)
-            .map_err(locator_route_state_error);
+        let route = self.ready_locator_route(object_id);
         Box::pin(async move {
+            let service = route.await.map_err(locator_route_state_error);
             let service = service?.ok_or_else(|| missing_locator_route(object_id))?;
             service.call(params).await
         })
@@ -6445,6 +6757,12 @@ impl_page_cancellation!(
     CdpNavigationService,
     navigation_route_state_error
 );
+impl_page_cancellation!(
+    pwright_cap_navigation::Reload,
+    navigation,
+    CdpNavigationService,
+    navigation_route_state_error
+);
 
 macro_rules! impl_locator_cancellation {
     ($command:ty) => {
@@ -6495,6 +6813,7 @@ impl_locator_cancellation!(Focus);
 impl_locator_cancellation!(GetAttribute);
 impl_locator_cancellation!(Hover);
 impl_locator_cancellation!(Press);
+impl_locator_cancellation!(pwright_cap_locator::PressSequentially);
 impl_locator_cancellation!(ScrollIntoViewIfNeeded);
 impl_locator_cancellation!(SelectOption);
 impl_locator_cancellation!(SetChecked);
@@ -6515,6 +6834,7 @@ impl_locator_cancellation!(locator_v2::Fill);
 impl_locator_cancellation!(locator_v2::GetAttribute);
 impl_locator_cancellation!(locator_v2::Hover);
 impl_locator_cancellation!(locator_v2::Press);
+impl_locator_cancellation!(locator_v2::PressSequentially);
 impl_locator_cancellation!(locator_v2::ScrollIntoViewIfNeeded);
 impl_locator_cancellation!(locator_v2::SelectOption);
 impl_locator_cancellation!(locator_v2::SetChecked);
@@ -6582,18 +6902,33 @@ impl CommandCancellation<LocatorScreenshot> for CdpPageServices {
     }
 }
 
-impl CommandCancellation<FrameContent> for CdpPageServices {
-    type Future<'a> = Pin<
-        Box<dyn Future<Output = Result<(), OperationError<DomContentErrorDetails>>> + Send + 'a>,
-    >;
+macro_rules! impl_dom_read_cancellation {
+    ($command:ty) => {
+        impl CommandCancellation<$command> for CdpPageServices {
+            type Future<'a> = Pin<
+                Box<
+                    dyn Future<Output = Result<(), OperationError<DomContentErrorDetails>>>
+                        + Send
+                        + 'a,
+                >,
+            >;
 
-    fn cancel(&self, _context: OperationContext, _reason: CancellationReason) -> Self::Future<'_> {
-        // CDP has no operation-local cancellation primitive for Runtime.evaluate.
-        // Dropping the call releases DOM-content admission and discards any
-        // late renderer result without affecting unrelated Frame work.
-        Box::pin(async { Ok(()) })
-    }
+            fn cancel(
+                &self,
+                _context: OperationContext,
+                _reason: CancellationReason,
+            ) -> Self::Future<'_> {
+                // CDP has no operation-local cancellation primitive for Runtime.evaluate.
+                // Dropping the call releases DOM-content admission and discards any
+                // late renderer result without affecting unrelated Frame work.
+                Box::pin(async { Ok(()) })
+            }
+        }
+    };
 }
+
+impl_dom_read_cancellation!(FrameContent);
+impl_dom_read_cancellation!(FrameTitle);
 
 impl CommandCancellation<EvaluateValue> for CdpPageServices {
     type Future<'a> = Pin<
@@ -6667,47 +7002,43 @@ pub struct PreparedChromiumHandleRouteRetirement<'a> {
 
 impl PreparedChromiumHandleRouteRetirement<'_> {
     fn commit(mut self) -> usize {
-        let mut removed = 0usize;
-        let mut retained_bytes = 0_u64;
-        for object_id in &self.object_ids {
-            if let Some(route) = self.state.routes.remove(object_id) {
-                removed = removed.saturating_add(1);
-                retained_bytes = retained_bytes.saturating_add(route.retained_bytes);
-            }
-        }
-        self.state.metrics.current = self.state.metrics.current.saturating_sub(removed);
-        self.state.metrics.retained_bytes = self
-            .state
-            .metrics
-            .retained_bytes
-            .saturating_sub(retained_bytes);
-        let removed = u64::try_from(removed).unwrap_or(u64::MAX);
-        match self.reason {
-            ChromiumHandleRetirementReason::ExplicitDispose => {
-                self.state.metrics.explicitly_disposed = self
-                    .state
-                    .metrics
-                    .explicitly_disposed
-                    .saturating_add(removed);
-            }
-            ChromiumHandleRetirementReason::ParentDestroyed => {
-                self.state.metrics.parent_retired =
-                    self.state.metrics.parent_retired.saturating_add(removed);
-            }
-            ChromiumHandleRetirementReason::TopologyInvalidated => {
-                self.state.metrics.topology_retired =
-                    self.state.metrics.topology_retired.saturating_add(removed);
-            }
-            ChromiumHandleRetirementReason::ConnectionClosed => {
-                self.state.metrics.connection_retired = self
-                    .state
-                    .metrics
-                    .connection_retired
-                    .saturating_add(removed);
-            }
-        }
-        usize::try_from(removed).unwrap_or(usize::MAX)
+        retire_handle_routes(&mut self.state, &self.object_ids, self.reason)
     }
+}
+
+fn retire_handle_routes(
+    state: &mut ChromiumHandleRouteState,
+    object_ids: &[ObjectId],
+    reason: ChromiumHandleRetirementReason,
+) -> usize {
+    let mut removed = 0usize;
+    let mut retained_bytes = 0_u64;
+    for object_id in object_ids {
+        if let Some(route) = state.routes.remove(object_id) {
+            removed = removed.saturating_add(1);
+            retained_bytes = retained_bytes.saturating_add(route.retained_bytes);
+        }
+    }
+    state.metrics.current = state.metrics.current.saturating_sub(removed);
+    state.metrics.retained_bytes = state.metrics.retained_bytes.saturating_sub(retained_bytes);
+    let removed = u64::try_from(removed).unwrap_or(u64::MAX);
+    match reason {
+        ChromiumHandleRetirementReason::ExplicitDispose => {
+            state.metrics.explicitly_disposed =
+                state.metrics.explicitly_disposed.saturating_add(removed);
+        }
+        ChromiumHandleRetirementReason::ParentDestroyed => {
+            state.metrics.parent_retired = state.metrics.parent_retired.saturating_add(removed);
+        }
+        ChromiumHandleRetirementReason::TopologyInvalidated => {
+            state.metrics.topology_retired = state.metrics.topology_retired.saturating_add(removed);
+        }
+        ChromiumHandleRetirementReason::ConnectionClosed => {
+            state.metrics.connection_retired =
+                state.metrics.connection_retired.saturating_add(removed);
+        }
+    }
+    usize::try_from(removed).unwrap_or(usize::MAX)
 }
 
 impl ChromiumHandleRoutes {
@@ -8812,7 +9143,7 @@ impl Service<Command<PageClose>> for ChromiumPageCloseCommandService {
     fn call(&self, command: Command<PageClose>) -> Self::Future<'_> {
         let (call_id, object_id, metadata, ()) = command.into_parts();
         Box::pin(async move {
-            let outcome = self.close(object_id, metadata).await;
+            let outcome = self.close(object_id, metadata, None, None).await;
             Ok(CommandResult::new(call_id, outcome))
         })
     }
@@ -8823,6 +9154,8 @@ impl ChromiumPageCloseCommandService {
         &self,
         object_id: ObjectId,
         metadata: CallMetadata,
+        observer: Option<&dyn ChromiumCloseObserver>,
+        confirmation: Option<&dyn pwright_backend_cdp_page_lifecycle::CdpPageCloseConfirmation>,
     ) -> Result<(), OperationError<PageLifecycleErrorDetails>> {
         validate_page_lifecycle_metadata(metadata, "Page.close")?;
         validate_live_page(&self.runtime, object_id)?;
@@ -8841,13 +9174,27 @@ impl ChromiumPageCloseCommandService {
             .prepare_object_disposal(object_id)
             .map_err(map_runtime_page_close_error)?;
 
-        CdpPageCloseService::close_route(
-            self.browser_client.as_ref(),
-            prepared_topology.target_id(),
-            self.limits.confirmation_attempts,
-            self.poll.as_ref(),
+        let observation = close_observer::prepare(
+            observer,
+            ChromiumCloseTarget::Page(object_id),
+            prepared_topology.update(),
         )
-        .await?;
+        .map_err(map_page_close_observation_error)?;
+
+        if let Some(confirmation) = confirmation {
+            confirmation
+                .prepare(prepared_topology.target_id())?
+                .start()?
+                .await?;
+        } else {
+            CdpPageCloseService::close_route(
+                self.browser_client.as_ref(),
+                prepared_topology.target_id(),
+                self.limits.confirmation_attempts,
+                self.poll.as_ref(),
+            )
+            .await?;
+        }
 
         let handle_retirement = self
             .handle_routes
@@ -8873,7 +9220,7 @@ impl ChromiumPageCloseCommandService {
         };
 
         let publish = || {
-            {
+            let update = {
                 let mut topology = self
                     .topology
                     .lock()
@@ -8882,25 +9229,39 @@ impl ChromiumPageCloseCommandService {
                     .page_services
                     .prepare_synchronization(prepared_topology.topology())
                     .map_err(map_page_route_close_error)?;
-                prepared_topology
+                // Exact native target disappearance was confirmed above. Keep
+                // that ownership receipt even when no targetDestroyed event
+                // has been consumed before retained snapshots reach shutdown.
+                prepared_routes
+                    .observe_native_destruction(native_world_retirement::Destruction::PageTarget(
+                        prepared_topology.target_id(),
+                    ))
+                    .map_err(map_page_route_close_error)?;
+                let update = prepared_topology
                     .commit(&mut topology)
                     .map_err(map_topology_page_close_error)?;
                 prepared_routes.commit();
-            }
+                update
+            };
             prepared_runtime
                 .commit()
                 .map_err(map_runtime_page_close_error)?;
             if let Some(handle_retirement) = handle_retirement {
                 handle_retirement.commit();
             }
-            Ok(())
+            Ok(update)
         };
-        match &self.network_registration {
+        let update = match &self.network_registration {
             Some(registration) => registration
                 .commit_page_retirement(object_id, publish)
                 .map_err(map_network_page_close_error)?
-                .map(|_| ())?,
+                .map(|(update, _)| update)?,
             None => publish()?,
+        };
+        if let Some(observation) = observation {
+            observation
+                .committed(update.effects())
+                .map_err(map_page_close_observation_error)?;
         }
         Ok(())
     }
@@ -9006,7 +9367,7 @@ impl Service<Command<BrowserContextClose>> for ChromiumBrowserContextCloseComman
     fn call(&self, command: Command<BrowserContextClose>) -> Self::Future<'_> {
         let (call_id, object_id, metadata, ()) = command.into_parts();
         Box::pin(async move {
-            let outcome = self.close(object_id, metadata).await;
+            let outcome = self.close(object_id, metadata, None).await;
             Ok(CommandResult::new(call_id, outcome))
         })
     }
@@ -9017,6 +9378,7 @@ impl ChromiumBrowserContextCloseCommandService {
         &self,
         object_id: ObjectId,
         metadata: CallMetadata,
+        observer: Option<&dyn ChromiumCloseObserver>,
     ) -> Result<(), OperationError<ContextLifecycleErrorDetails>> {
         if metadata != CallMetadata::default() {
             return Err(OperationError::new(
@@ -9066,7 +9428,14 @@ impl ChromiumBrowserContextCloseCommandService {
             .prepare_object_disposal(object_id)
             .map_err(map_runtime_context_close_error)?;
 
-        CdpBrowserContextCloseService::close_route(
+        let observation = close_observer::prepare(
+            observer,
+            ChromiumCloseTarget::BrowserContext(object_id),
+            prepared_topology.update(),
+        )
+        .map_err(map_context_close_observation_error)?;
+
+        let native_outcome = CdpBrowserContextCloseService::close_route_with_outcome(
             self.browser_client.as_ref(),
             prepared_topology.browser_context_id(),
             prepared_topology.ownership(),
@@ -9097,7 +9466,7 @@ impl ChromiumBrowserContextCloseCommandService {
         };
 
         let publish = || {
-            {
+            let update = {
                 let mut topology = self.topology.lock().map_err(|_| {
                     OperationError::new(
                         FailureKind::Cleanup,
@@ -9113,30 +9482,66 @@ impl ChromiumBrowserContextCloseCommandService {
                     .map(|services| services.prepare_synchronization(prepared_topology.topology()))
                     .transpose()
                     .map_err(map_context_page_route_close_error)?;
-                prepared_topology
+                if native_outcome
+                    == pwright_backend_cdp::CdpContextCloseOutcome::AcknowledgedDestruction
+                    && let Some(routes) = &prepared_routes
+                {
+                    routes
+                        .observe_native_destruction(native_world_retirement::Destruction::Context(
+                            object_id,
+                        ))
+                        .map_err(map_context_page_route_close_error)?;
+                }
+                let update = prepared_topology
                     .commit(&mut topology)
                     .map_err(map_topology_context_close_error)?;
                 if let Some(prepared_routes) = prepared_routes {
                     prepared_routes.commit();
                 }
-            }
+                update
+            };
             prepared_runtime
                 .commit()
                 .map_err(map_runtime_context_close_error)?;
             if let Some(handle_retirement) = handle_retirement {
                 handle_retirement.commit();
             }
-            Ok(())
+            Ok(update)
         };
-        match &self.network_registration {
+        let update = match &self.network_registration {
             Some(registration) => registration
                 .commit_browser_context_retirement(object_id, publish)
                 .map_err(map_network_context_close_error)?
-                .map(|_| ())?,
+                .map(|(update, _)| update)?,
             None => publish()?,
+        };
+        if let Some(observation) = observation {
+            observation
+                .committed(update.effects())
+                .map_err(map_context_close_observation_error)?;
         }
         Ok(())
     }
+}
+
+fn map_page_close_observation_error(
+    error: OperationError<()>,
+) -> OperationError<PageLifecycleErrorDetails> {
+    OperationError::new(
+        error.kind(),
+        "Page close observation failed",
+        Some(PageLifecycleErrorDetails::Backend(error.to_string())),
+    )
+}
+
+fn map_context_close_observation_error(
+    error: OperationError<()>,
+) -> OperationError<ContextLifecycleErrorDetails> {
+    OperationError::new(
+        error.kind(),
+        "BrowserContext close observation failed",
+        Some(ContextLifecycleErrorDetails::Backend(error.to_string())),
+    )
 }
 
 /// Remote-only decorator that makes lifecycle application precede a
@@ -10091,26 +10496,43 @@ fn page_close_ordering_failure(
 type PageCloseFutureOutput = Result<CommandResult<PageClose>, Infallible>;
 type BoxPageCloseFuture = Pin<Box<dyn Future<Output = PageCloseFutureOutput> + Send + 'static>>;
 
-pub struct ContinuablePageCloseFuture<Reservation>
+/// Classifies owner retirement after an abandoned public call. It never changes
+/// the operation result or commits native topology on failure.
+pub trait PageCloseRetirement: Send + Sync + 'static {
+    fn retired(outcome: &Result<(), OperationError<PageLifecycleErrorDetails>>) -> bool;
+}
+
+pub struct RequirePageCloseSuccess;
+impl PageCloseRetirement for RequirePageCloseSuccess {
+    fn retired(outcome: &Result<(), OperationError<PageLifecycleErrorDetails>>) -> bool {
+        outcome.is_ok()
+    }
+}
+
+pub struct ContinuablePageCloseFuture<Reservation, Retirement = RequirePageCloseSuccess>
 where
     Reservation: CleanupReservation,
+    Retirement: PageCloseRetirement,
 {
     inner: Option<BoxPageCloseFuture>,
     reservation: Option<Reservation>,
     started: bool,
+    _retirement: std::marker::PhantomData<fn() -> Retirement>,
 }
 
-impl<Reservation> Unpin for ContinuablePageCloseFuture<Reservation> where
-    Reservation: CleanupReservation
-{
-}
-
-impl<Reservation> Future for ContinuablePageCloseFuture<Reservation>
+impl<Reservation, Retirement> Unpin for ContinuablePageCloseFuture<Reservation, Retirement>
 where
     Reservation: CleanupReservation,
+    Retirement: PageCloseRetirement,
+{
+}
+
+impl<Reservation, Retirement> Future for ContinuablePageCloseFuture<Reservation, Retirement>
+where
+    Reservation: CleanupReservation,
+    Retirement: PageCloseRetirement,
 {
     type Output = PageCloseFutureOutput;
-
     fn poll(
         mut self: Pin<&mut Self>,
         context: &mut std::task::Context<'_>,
@@ -10130,9 +10552,10 @@ where
     }
 }
 
-impl<Reservation> Drop for ContinuablePageCloseFuture<Reservation>
+impl<Reservation, Retirement> Drop for ContinuablePageCloseFuture<Reservation, Retirement>
 where
     Reservation: CleanupReservation,
+    Retirement: PageCloseRetirement,
 {
     fn drop(&mut self) {
         if !self.started {
@@ -10146,7 +10569,7 @@ where
         };
         reservation.submit(Box::pin(async move {
             match inner.await {
-                Ok(result) if result.outcome().is_ok() => Ok(()),
+                Ok(result) if Retirement::retired(result.outcome()) => Ok(()),
                 Ok(_) => Err(CleanupFailure::new(
                     "abandoned Page.close continuation failed",
                 )),
@@ -10156,9 +10579,14 @@ where
     }
 }
 
-pub struct ContinuablePageCloseCommandService<Inner, Continuation> {
+pub struct ContinuablePageCloseCommandService<
+    Inner,
+    Continuation,
+    Retirement = RequirePageCloseSuccess,
+> {
     service: Arc<Inner>,
     continuation: Continuation,
+    _retirement: std::marker::PhantomData<fn() -> Retirement>,
 }
 
 impl<Inner, Continuation> ContinuablePageCloseCommandService<Inner, Continuation> {
@@ -10166,24 +10594,35 @@ impl<Inner, Continuation> ContinuablePageCloseCommandService<Inner, Continuation
         Self {
             service,
             continuation,
+            _retirement: std::marker::PhantomData,
+        }
+    }
+    pub const fn with_retirement_policy<Retirement: PageCloseRetirement>(
+        service: Arc<Inner>,
+        continuation: Continuation,
+    ) -> ContinuablePageCloseCommandService<Inner, Continuation, Retirement> {
+        ContinuablePageCloseCommandService {
+            service,
+            continuation,
+            _retirement: std::marker::PhantomData,
         }
     }
 }
 
-impl<Inner, Continuation> Service<Command<PageClose>>
-    for ContinuablePageCloseCommandService<Inner, Continuation>
+impl<Inner, Continuation, Retirement> Service<Command<PageClose>>
+    for ContinuablePageCloseCommandService<Inner, Continuation, Retirement>
 where
     Inner: Service<Command<PageClose>, Response = CommandResult<PageClose>, Error = Infallible>
         + 'static,
     Continuation: ReservedCleanupExecutor,
+    Retirement: PageCloseRetirement,
 {
     type Response = CommandResult<PageClose>;
     type Error = Infallible;
     type Future<'a>
-        = ContinuablePageCloseFuture<Continuation::Reservation>
+        = ContinuablePageCloseFuture<Continuation::Reservation, Retirement>
     where
         Self: 'a;
-
     fn call(&self, command: Command<PageClose>) -> Self::Future<'_> {
         let call_id = command.call_id();
         let reservation = match self.continuation.try_reserve() {
@@ -10195,6 +10634,7 @@ where
                     )))),
                     reservation: None,
                     started: false,
+                    _retirement: std::marker::PhantomData,
                 };
             }
         };
@@ -10203,6 +10643,7 @@ where
             inner: Some(Box::pin(async move { service.call(command).await })),
             reservation: Some(reservation),
             started: false,
+            _retirement: std::marker::PhantomData,
         }
     }
 }
@@ -10267,6 +10708,12 @@ fn map_context_page_route_close_error(
     error: CdpPageRouteError,
 ) -> OperationError<ContextLifecycleErrorDetails> {
     let kind = match &error {
+        CdpPageRouteError::FrameNavigation(error) => error.kind(),
+        CdpPageRouteError::WorldTargetClosed { .. } | CdpPageRouteError::NativeRetirementSealed => {
+            FailureKind::TargetClosed
+        }
+        CdpPageRouteError::WorldReadinessCapacityExceeded { .. }
+        | CdpPageRouteError::WorldReadinessResource(_) => FailureKind::ResourceExhausted,
         CdpPageRouteError::CapacityExceeded { .. }
         | CdpPageRouteError::RetainedBytesInvariant { .. }
         | CdpPageRouteError::EvaluationCapacityExceeded { .. }
@@ -10279,6 +10726,7 @@ fn map_context_page_route_close_error(
             ChromiumNetworkSubscriptionStateError::PageLaneCapacityExceeded { .. }
             | ChromiumNetworkSubscriptionStateError::BrowserContextCapacityExceeded { .. },
         )
+        | CdpPageRouteError::InputAdmission(_)
         | CdpPageRouteError::Resources(_)
         | CdpPageRouteError::Resource(_) => FailureKind::ResourceExhausted,
         CdpPageRouteError::NativeIdTooLong { .. }
@@ -10369,6 +10817,12 @@ fn map_page_route_close_error(
     error: CdpPageRouteError,
 ) -> OperationError<PageLifecycleErrorDetails> {
     let kind = match &error {
+        CdpPageRouteError::FrameNavigation(error) => error.kind(),
+        CdpPageRouteError::WorldTargetClosed { .. } | CdpPageRouteError::NativeRetirementSealed => {
+            FailureKind::TargetClosed
+        }
+        CdpPageRouteError::WorldReadinessCapacityExceeded { .. }
+        | CdpPageRouteError::WorldReadinessResource(_) => FailureKind::ResourceExhausted,
         CdpPageRouteError::CapacityExceeded { .. }
         | CdpPageRouteError::RetainedBytesInvariant { .. }
         | CdpPageRouteError::EvaluationCapacityExceeded { .. }
@@ -10381,6 +10835,7 @@ fn map_page_route_close_error(
             ChromiumNetworkSubscriptionStateError::PageLaneCapacityExceeded { .. }
             | ChromiumNetworkSubscriptionStateError::BrowserContextCapacityExceeded { .. },
         )
+        | CdpPageRouteError::InputAdmission(_)
         | CdpPageRouteError::Resources(_)
         | CdpPageRouteError::Resource(_) => FailureKind::ResourceExhausted,
         CdpPageRouteError::NativeIdTooLong { .. }
@@ -10575,12 +11030,29 @@ pub fn transact_topology_update<Runtime>(
 where
     Runtime: ChromiumTopologyRuntime,
 {
+    transact_topology_update_with_destruction(topology, runtime, apply, None)
+}
+
+fn transact_topology_update_with_destruction<Runtime>(
+    topology: &mut ProductionCdpTopology,
+    runtime: &Runtime,
+    apply: impl FnOnce(
+        &mut pwright_backend_cdp::CdpTopology,
+    ) -> Result<CdpTopologyUpdate, pwright_backend_cdp::CdpTopologyError>,
+    destruction: Option<native_world_retirement::Destruction<'_>>,
+) -> Result<CdpTopologyUpdate, ChromiumCompositionError>
+where
+    Runtime: ChromiumTopologyRuntime,
+{
     let prepared = topology.prepare_transition(apply)?;
     let mut handle_retirement =
         prepare_aggregate_handle_topology_retirement(runtime.page_services(), prepared.output())?;
     let routes = runtime
         .page_services()
         .prepare_synchronization(prepared.topology())?;
+    if let Some(destruction) = destruction {
+        routes.observe_native_destruction(destruction)?;
+    }
     let mut lifecycle = handle_retirement
         .as_ref()
         .into_iter()
@@ -10920,7 +11392,7 @@ pub type ChromiumRemoteHandleHandlers<
 );
 
 /// Locator handlers assembled from one service that implements every selected
-/// Locator command. The generated server layer keeps the twenty-two command
+/// Locator command. The generated server layer keeps the twenty-three command
 /// services independently typed; this composition alias records the deliberate
 /// all-capabilities recipe choice to reuse one backend service for all of them.
 pub type ChromiumLocatorServerHandlers<Service> = LocatorServerHandlers<
@@ -10938,6 +11410,7 @@ pub type ChromiumLocatorServerHandlers<Service> = LocatorServerHandlers<
         Service,
     >,
     LocatorServerHandlersRight<
+        Service,
         Service,
         Service,
         Service,
@@ -10967,6 +11440,7 @@ pub type ChromiumLocatorV2ServerHandlers<Service> = LocatorV2ServerHandlers<
         Service,
     >,
     LocatorV2ServerHandlersRight<
+        Service,
         Service,
         Service,
         Service,
@@ -11089,6 +11563,7 @@ impl PreparedChromiumAttach {
         }
         if profile.dom_content.is_some() {
             inventory.register::<FrameContent>()?;
+            inventory.register::<FrameTitle>()?;
         }
         if profile.context_lifecycle.is_some() {
             inventory.register::<BrowserContextClose>()?;
@@ -11120,6 +11595,7 @@ impl PreparedChromiumAttach {
         if profile.navigation.is_some() {
             inventory.register::<BeginNavigation>()?;
             inventory.register::<Goto>()?;
+            inventory.register::<pwright_cap_navigation::Reload>()?;
         }
         if profile.network_events.is_some() {
             inventory.register_event::<NetworkRequest>()?;
@@ -11136,6 +11612,7 @@ impl PreparedChromiumAttach {
             inventory.register::<Fill>()?;
             inventory.register::<Focus>()?;
             inventory.register::<Press>()?;
+            inventory.register::<pwright_cap_locator::PressSequentially>()?;
             inventory.register::<ScrollIntoViewIfNeeded>()?;
             inventory.register::<SelectOption>()?;
             inventory.register::<SetChecked>()?;
@@ -11187,6 +11664,7 @@ impl PreparedChromiumAttach {
             locator_v2_inventory.register::<locator_v2::Fill>()?;
             locator_v2_inventory.register::<locator_v2::Focus>()?;
             locator_v2_inventory.register::<locator_v2::Press>()?;
+            locator_v2_inventory.register::<locator_v2::PressSequentially>()?;
             locator_v2_inventory.register::<locator_v2::ScrollIntoViewIfNeeded>()?;
             locator_v2_inventory.register::<locator_v2::SelectOption>()?;
             locator_v2_inventory.register::<locator_v2::SetChecked>()?;
@@ -11836,13 +12314,14 @@ impl PreparedChromiumAttach {
     pub fn dom_content_handlers<Service>(
         &self,
         service: Arc<Service>,
-    ) -> Result<Option<DomContentServerHandlers<Service>>, ProductionResourceError> {
+    ) -> Result<Option<DomContentServerHandlers<Service, Service>>, ProductionResourceError> {
         self.dom_content_protocol().map(|protocol| {
             protocol.map(|protocol| {
                 dom_content_server_handlers(
                     Arc::new(protocol),
                     DomContentServerServices {
-                        frame_content: service,
+                        frame_content: Arc::clone(&service),
+                        frame_title: service,
                     },
                 )
             })
@@ -11880,7 +12359,7 @@ impl PreparedChromiumAttach {
         &self,
         service: Arc<Service>,
         accepted: &AcceptedServerHandshake<Authorization>,
-    ) -> Result<Option<DomContentServerHandlers<Service>>, ProductionResourceError> {
+    ) -> Result<Option<DomContentServerHandlers<Service, Service>>, ProductionResourceError> {
         if accepted_dom_content_version(accepted.hello()).is_none() {
             return Ok(None);
         }
@@ -11894,7 +12373,8 @@ impl PreparedChromiumAttach {
                 Ok(dom_content_server_handlers(
                     Arc::new(protocol),
                     DomContentServerServices {
-                        frame_content: service,
+                        frame_content: Arc::clone(&service),
+                        frame_title: service,
                     },
                 ))
             })
@@ -12013,14 +12493,16 @@ impl PreparedChromiumAttach {
     pub fn navigation_handlers<Service>(
         &self,
         service: Arc<Service>,
-    ) -> Result<Option<NavigationServerHandlers<Service, Service>>, ProductionResourceError> {
+    ) -> Result<Option<NavigationServerHandlers<Service, Service, Service>>, ProductionResourceError>
+    {
         self.navigation_protocol().map(|protocol| {
             protocol.map(|protocol| {
                 navigation_server_handlers(
                     Arc::new(protocol),
                     NavigationServerServices {
                         begin_navigation: Arc::clone(&service),
-                        goto: service,
+                        goto: Arc::clone(&service),
+                        reload: service,
                     },
                 )
             })
@@ -12218,7 +12700,8 @@ impl PreparedChromiumAttach {
         &self,
         service: Arc<Service>,
         accepted: &AcceptedServerHandshake<Authorization>,
-    ) -> Result<Option<NavigationServerHandlers<Service, Service>>, ProductionResourceError> {
+    ) -> Result<Option<NavigationServerHandlers<Service, Service, Service>>, ProductionResourceError>
+    {
         if accepted_capability_version(
             accepted.hello(),
             pwright_cap_navigation::NAVIGATION_CAPABILITY_ID,
@@ -12237,7 +12720,8 @@ impl PreparedChromiumAttach {
                     Arc::new(protocol),
                     NavigationServerServices {
                         begin_navigation: Arc::clone(&service),
-                        goto: service,
+                        goto: Arc::clone(&service),
+                        reload: service,
                     },
                 ))
             })
@@ -12274,6 +12758,7 @@ impl PreparedChromiumAttach {
                             is_enabled: Arc::clone(&service),
                             is_visible: Arc::clone(&service),
                             press: Arc::clone(&service),
+                            press_sequentially: Arc::clone(&service),
                             scroll_into_view_if_needed: Arc::clone(&service),
                             select_option: Arc::clone(&service),
                             set_checked: Arc::clone(&service),
@@ -12384,6 +12869,7 @@ impl PreparedChromiumAttach {
                             is_enabled: Arc::clone(&service),
                             is_visible: Arc::clone(&service),
                             press: Arc::clone(&service),
+                            press_sequentially: Arc::clone(&service),
                             scroll_into_view_if_needed: Arc::clone(&service),
                             select_option: Arc::clone(&service),
                             set_checked: Arc::clone(&service),
@@ -12450,6 +12936,7 @@ impl PreparedChromiumAttach {
                                 is_enabled: Arc::clone(&service),
                                 is_visible: Arc::clone(&service),
                                 press: Arc::clone(&service),
+                                press_sequentially: Arc::clone(&service),
                                 scroll_into_view_if_needed: Arc::clone(&service),
                                 select_option: Arc::clone(&service),
                                 set_checked: Arc::clone(&service),
@@ -12500,6 +12987,7 @@ impl PreparedChromiumAttach {
                                 is_enabled: Arc::clone(&service),
                                 is_visible: Arc::clone(&service),
                                 press: Arc::clone(&service),
+                                press_sequentially: Arc::clone(&service),
                                 scroll_into_view_if_needed: Arc::clone(&service),
                                 select_option: Arc::clone(&service),
                                 set_checked: Arc::clone(&service),
@@ -12553,7 +13041,8 @@ impl PreparedChromiumAttach {
             service,
             cancellation,
             deadlines,
-            self.profile.runtime,
+            pwright_runtime::ControlledRuntimeConfig::new(self.profile.runtime)
+                .with_target_concurrency(self.profile.controlled_target_concurrency),
             cleanup,
             BROWSER_OBJECT_KIND_CATALOG,
             ObjectTopologyMode::Complete,
@@ -15175,7 +15664,7 @@ impl AttachedChromiumComposition {
         &self,
         service: Arc<Service>,
         accepted: &AcceptedServerHandshake<Authorization>,
-    ) -> Result<Option<DomContentServerHandlers<Service>>, ProductionResourceError> {
+    ) -> Result<Option<DomContentServerHandlers<Service, Service>>, ProductionResourceError> {
         self.prepared.remote_dom_content_handlers(service, accepted)
     }
 
@@ -15185,7 +15674,8 @@ impl AttachedChromiumComposition {
         &self,
         service: Arc<Service>,
         accepted: &AcceptedServerHandshake<Authorization>,
-    ) -> Result<Option<NavigationServerHandlers<Service, Service>>, ProductionResourceError> {
+    ) -> Result<Option<NavigationServerHandlers<Service, Service, Service>>, ProductionResourceError>
+    {
         self.prepared.remote_navigation_handlers(service, accepted)
     }
 
@@ -15254,6 +15744,15 @@ impl AttachedChromiumComposition {
 
 #[cfg(test)]
 mod tests {
+    mod close_observer;
+    mod close_observer_live;
+    #[cfg(feature = "close-route-retirement")]
+    pub(crate) mod close_route_retirement;
+    mod frame_navigation;
+    #[cfg(feature = "native-close-retirement")]
+    mod native_close_retirement;
+    mod page_input;
+    mod world_readiness;
     use std::collections::{BTreeMap, VecDeque};
     use std::convert::Infallible;
     use std::future::{Future, Ready, ready};
@@ -15295,7 +15794,7 @@ mod tests {
     use pwright_cap_content::{PageScreenshot, ScreenshotFormat, ScreenshotOptions};
     use pwright_cap_context_creation::BrowserNewContext;
     use pwright_cap_context_lifecycle::BrowserContextClose;
-    use pwright_cap_dom_content::{DomContentParams, FrameContent};
+    use pwright_cap_dom_content::{DomContentParams, FrameContent, FrameTitle, TitleParams};
     use pwright_cap_evaluation::{
         EvaluateParams, EvaluateValue, EvaluationValue, EvaluationValueLimits,
     };
@@ -15511,7 +16010,7 @@ mod tests {
     );
 
     #[derive(Default)]
-    struct RecordingSessionFactory {
+    pub(crate) struct RecordingSessionFactory {
         created: Mutex<Vec<(String, String)>>,
         clients: Mutex<BTreeMap<String, Arc<FakeCdpClient>>>,
         client_history: Mutex<Vec<(String, Arc<FakeCdpClient>)>>,
@@ -15783,6 +16282,23 @@ mod tests {
 
     fn base_profile() -> ChromiumAttachProductionProfile {
         base_profile_with_runtime(RuntimeLimits::new(16, 4).with_active_commands(2))
+    }
+
+    #[test]
+    fn controlled_target_concurrency_is_opt_in_without_increasing_shared_budgets() {
+        // Arrange
+        let serial = base_profile();
+        let requirements = serial.requirements();
+        let limits = serial.runtime;
+        // Act
+        let concurrent = serial
+            .clone()
+            .with_controlled_target_concurrency(std::num::NonZeroUsize::new(8).unwrap());
+        // Assert
+        assert_eq!(serial.controlled_target_concurrency().get(), 1);
+        assert_eq!(concurrent.controlled_target_concurrency().get(), 8);
+        assert_eq!(concurrent.runtime, limits);
+        assert_eq!(concurrent.requirements(), requirements);
     }
 
     fn base_profile_with_runtime(runtime: RuntimeLimits) -> ChromiumAttachProductionProfile {
@@ -16760,7 +17276,10 @@ mod tests {
         .expect("ClientHello should fit handshake limits")
     }
 
-    fn dom_content_remote_client_hello(handshake: ChromiumRemoteHandshakeProfile) -> WireFrame {
+    fn dom_content_remote_client_hello(
+        handshake: ChromiumRemoteHandshakeProfile,
+        version: ProtocolVersion,
+    ) -> WireFrame {
         let codec = HandshakeCodec::new(handshake.negotiation_limits());
         let dom_content = WireCapabilityId::new(
             pwright_cap_dom_content::DOM_CONTENT_CAPABILITY_ID.as_str(),
@@ -16771,10 +17290,7 @@ mod tests {
             VersionPolicy::exact(ProtocolVersion::new(1, 0)),
             dom_content_profile().wire().receive_limits(),
             CapabilityRequest::new(
-                vec![CapabilityRequirement::new(
-                    dom_content,
-                    ProtocolVersion::new(1, 0),
-                )],
+                vec![CapabilityRequirement::new(dom_content, version)],
                 Vec::new(),
                 codec.limits(),
             )
@@ -17471,6 +17987,62 @@ mod tests {
         assert_eq!(profile.connection().reclaiming_event_subscribers(), Some(4));
         PreparedChromiumAttach::new(profile.clone(), exact_limits(profile.requirements()))
             .expect("derived event capacity should pass production preflight");
+    }
+
+    #[test]
+    fn extension_event_cursors_are_included_and_stale_fanout_is_rejected() {
+        // Arrange
+        let base = base_profile().with_navigation(navigation_profile());
+        let initial = base.required_reclaiming_event_subscribers();
+        // Act
+        let extended = base
+            .clone()
+            .with_derived_reclaiming_event_fanout()
+            .unwrap()
+            .with_extension_event_subscribers(32)
+            .unwrap();
+        let stale =
+            PreparedChromiumAttach::new(extended.clone(), exact_limits(extended.requirements()));
+        let configured = base
+            .with_extension_event_subscribers(32)
+            .unwrap()
+            .with_derived_reclaiming_event_fanout()
+            .unwrap();
+        // Assert
+        assert_eq!(
+            configured.required_reclaiming_event_subscribers(),
+            initial + 32
+        );
+        assert_eq!(
+            configured.connection().reclaiming_event_subscribers(),
+            Some(initial + 32)
+        );
+        assert!(matches!(
+            stale,
+            Err(ChromiumCompositionError::ReclaimingEventSubscriberCapacityTooSmall { .. })
+        ));
+        assert!(
+            PreparedChromiumAttach::new(
+                configured.clone(),
+                exact_limits(configured.requirements())
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn extension_event_cursor_count_overflow_is_rejected_before_installation() {
+        // Arrange
+        let profile = base_profile()
+            .with_extension_event_subscribers(usize::MAX)
+            .unwrap();
+        // Act
+        let overflow = profile.with_extension_event_subscribers(1);
+        // Assert
+        assert!(matches!(
+            overflow,
+            Err(pwright_cdp::connection::CdpError::InvalidConfiguration(_))
+        ));
     }
 
     #[test]
@@ -18833,8 +19405,10 @@ mod tests {
         );
     }
 
+    macro_rules! negotiated_dom_read_test {
+        ($name:ident, $command:ty, $params:expr, $minor:expr, $text:expr, $source:expr) => {
     #[tokio::test]
-    async fn negotiated_dom_content_transfers_one_budgeted_utf8_attachment() {
+    async fn $name() {
         // Arrange a negotiated DOM-content endpoint and one utility-world Frame.
         let handshake = content_remote_handshake_profile();
         let dom_content = dom_content_profile();
@@ -18857,7 +19431,7 @@ mod tests {
             .remote_handshake_parts()
             .expect("remote handshake should be installed");
         let transport = ProductionMemoryTransport::new(
-            [dom_content_remote_client_hello(handshake)],
+            [dom_content_remote_client_hello(handshake, ProtocolVersion::new(1, $minor))],
             prepared.resources(),
             handshake.transport_requirements(),
         );
@@ -18920,7 +19494,7 @@ mod tests {
         .unwrap();
         services.synchronize(&topology).unwrap();
         factory.client("target-a").set_evaluate_response(
-            serde_json::json!({"result":{"value":"<!DOCTYPE html><html></html>"}}),
+            serde_json::json!({"result":{"value":$text}}),
         );
         let runtime = Arc::new(
             prepared
@@ -18959,11 +19533,11 @@ mod tests {
             dom_content.wire().send_limits(),
             dom_content.wire().receive_limits(),
         );
-        let command = Command::<FrameContent>::new(
+        let command = Command::<$command>::new(
             CallId::new(45),
             ObjectId::new(4),
             CallMetadata::default(),
-            DomContentParams,
+            $params,
         );
         let command_frame = client_protocol.encode(&command).unwrap();
         let handlers = prepared
@@ -18979,7 +19553,7 @@ mod tests {
             .expect("DOM-content handler should complete");
         let frames = server_transport.sent_frames();
         let result = client_protocol
-            .decode::<CommandResult<FrameContent>>(
+            .decode::<CommandResult<$command>>(
                 frames.last().expect("result frame should be sent").clone(),
             )
             .expect("UTF-8 result attachment should decode");
@@ -18990,11 +19564,11 @@ mod tests {
         assert_eq!(result_frame.attachments().len(), 1);
         assert_eq!(
             result_frame.attachments()[0].as_bytes(),
-            b"<!DOCTYPE html><html></html>"
+            $text.as_bytes()
         );
         assert_eq!(
             result.outcome().as_ref().unwrap().as_str(),
-            "<!DOCTYPE html><html></html>"
+            $text
         );
         assert_eq!(
             client_ledger
@@ -19002,7 +19576,7 @@ mod tests {
                 .unwrap()
                 .class(ResourceClass::DomContentBytes)
                 .current,
-            28
+            u64::try_from($text.len()).unwrap()
         );
         drop(result);
         assert_eq!(
@@ -19013,7 +19587,30 @@ mod tests {
                 .current,
             0
         );
+        let calls = factory.client("target-a").calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1[0]["uniqueContextId"], "utility-context");
+        assert!(calls[0].1[0]["expression"].as_str().unwrap().contains($source));
     }
+        };
+    }
+
+    negotiated_dom_read_test!(
+        negotiated_dom_content_transfers_one_budgeted_utf8_attachment,
+        FrameContent,
+        DomContentParams,
+        0,
+        "<!DOCTYPE html><html></html>",
+        "XMLSerializer"
+    );
+    negotiated_dom_read_test!(
+        negotiated_title_transfers_one_budgeted_utf8_attachment,
+        FrameTitle,
+        TitleParams,
+        1,
+        "A utility title",
+        "document.title"
+    );
 
     #[tokio::test]
     async fn unnegotiated_dom_content_installs_no_handler_and_reaches_no_cdp_backend() {
@@ -19649,7 +20246,7 @@ mod tests {
                 .capability_manifest()
                 .support_major(&WireCapabilityId::new("pwright.locator", 128).unwrap(), 2,),
             Some(VersionPolicy::compatible_through(ProtocolVersion::new(
-                2, 5
+                2, 6
             )))
         );
     }
@@ -22506,13 +23103,13 @@ mod tests {
         assert_eq!(
             prepared.capability_manifest().support_major(&locator, 1),
             Some(VersionPolicy::compatible_through(ProtocolVersion::new(
-                1, 22
+                1, 23
             )))
         );
         assert_eq!(
             prepared.capability_manifest().support_major(&locator, 2),
             Some(VersionPolicy::compatible_through(ProtocolVersion::new(
-                2, 5
+                2, 6
             )))
         );
         assert!(
@@ -24323,7 +24920,11 @@ mod tests {
     #[tokio::test]
     async fn locator_routes_page_main_local_and_oopif_to_exact_utility_worlds() {
         // Arrange
-        let base = base_profile().with_locator(locator_profile());
+        let mut locator = locator_profile();
+        locator.backend = locator
+            .backend
+            .with_input_policy(pwright_backend_cdp_input::CdpInputPolicy::Interleaved);
+        let base = base_profile().with_locator(locator);
         let topology_events = ChromiumTopologyEventDriverProductionProfile::from_profiles(
             ResourceScope::extension(7, 8),
             base.connection(),
@@ -24466,6 +25067,83 @@ mod tests {
                 serde_json::json!("utility-oopif"),
                 serde_json::json!("utility-oopif")
             ]
+        );
+        // Arrange: each Frame keeps its selector client, while all keyboard
+        // snapshots must retain the exact original root Page native client.
+        struct PageKeyboard(Arc<dyn CdpClient>);
+        impl pwright_backend_cdp_input::CdpKeyDownInterceptor for PageKeyboard {
+            fn intercept(
+                self: Arc<Self>,
+                client: Arc<dyn CdpClient>,
+                _code: &'static str,
+            ) -> Option<pwright_backend_cdp_input::KeyDownInterceptionFuture> {
+                assert!(Arc::ptr_eq(&self.0, &client));
+                None
+            }
+        }
+        let (page_client, _) = services
+            .page_input_binding(ObjectId::new(3))
+            .unwrap()
+            .unwrap()
+            .into_parts();
+        for object_id in [3, 4, 5, 6].map(ObjectId::new) {
+            let fake = factory.client(if object_id == ObjectId::new(6) {
+                "remote-child"
+            } else {
+                "target-a"
+            });
+            fake.set_evaluate_responses([
+                serde_json::json!({"result":{"value":{"status":"done","isMac":false}}}),
+            ]);
+            // Act
+            let route = services
+                .locator_keyboard_route(object_id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(route.page_id(), ObjectId::new(3));
+            assert!(Arc::ptr_eq(route.keyboard_client(), &page_client));
+            let route = route
+                .select(Arc::new(PageKeyboard(page_client.clone())))
+                .unwrap();
+            route
+                .service()
+                .call(pwright_cap_locator::PressParams::new(
+                    Selector::css("input").unwrap(),
+                    pwright_cap_locator::PressKey::new("Escape").unwrap(),
+                    pwright_cap_locator::PressOptions::new().with_no_wait_after(true),
+                ))
+                .await
+                .unwrap();
+            // Assert
+            assert_eq!(
+                fake.calls()
+                    .iter()
+                    .rev()
+                    .find(|(method, _)| method == "Runtime.evaluate")
+                    .unwrap()
+                    .1[0]["uniqueContextId"],
+                match object_id.get() {
+                    3 | 4 => "utility-main",
+                    5 => "utility-local",
+                    _ => "utility-oopif",
+                }
+            );
+        }
+        assert_eq!(
+            factory
+                .client("target-a")
+                .method_names()
+                .iter()
+                .filter(|method| **method == "Input.dispatchKeyEvent")
+                .count(),
+            8
+        );
+        assert!(
+            !factory
+                .client("remote-child")
+                .method_names()
+                .contains(&"Input.dispatchKeyEvent".to_string())
         );
         let routes = services.routes.lock().expect("route state should lock");
         let main = &routes

@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub use pwright_backend_cdp_dom_content::{
     CdpDomContentProductionProfile, CdpDomContentService, CdpDomContentServiceFactory,
 };
-use pwright_cap_dom_content::{DomContentErrorDetails, FrameContent};
+use pwright_cap_dom_content::{DomContentErrorDetails, FrameContent, FrameTitle};
 use pwright_cdp::CdpClient;
 use pwright_codec_dom_content::DomContentCodec;
 pub use pwright_codec_dom_content::DomContentCodecLimits;
@@ -219,44 +219,60 @@ impl ChromiumDomContentFrame {
     }
 }
 
-impl Service<Command<FrameContent>> for ChromiumDomContentFrame {
-    type Response = CommandResult<FrameContent>;
-    type Error = Infallible;
-    type Future<'a> =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
+macro_rules! impl_dom_read_frame {
+    ($command:ty) => {
+        impl Service<Command<$command>> for ChromiumDomContentFrame {
+            type Response = CommandResult<$command>;
+            type Error = Infallible;
+            type Future<'a> =
+                Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
-    fn call(&self, command: Command<FrameContent>) -> Self::Future<'_> {
-        let (call_id, object_id, _metadata, params) = command.into_parts();
-        let route = (object_id == self.frame_id)
-            .then_some(())
-            .ok_or_else(|| self.wrong_target(object_id));
-        Box::pin(async move {
-            let outcome = match route {
-                Ok(()) => self.backend.call(params).await,
-                Err(error) => Err(error),
-            };
-            Ok(CommandResult::new(call_id, outcome))
-        })
-    }
+            fn call(&self, command: Command<$command>) -> Self::Future<'_> {
+                let (call_id, object_id, _metadata, params) = command.into_parts();
+                let route = (object_id == self.frame_id)
+                    .then_some(())
+                    .ok_or_else(|| self.wrong_target(object_id));
+                Box::pin(async move {
+                    let outcome = match route {
+                        Ok(()) => self.backend.call(params).await,
+                        Err(error) => Err(error),
+                    };
+                    Ok(CommandResult::new(call_id, outcome))
+                })
+            }
+        }
+
+        impl CommandCancellation<$command> for ChromiumDomContentFrame {
+            type Future<'a> = Pin<
+                Box<
+                    dyn Future<Output = Result<(), OperationError<DomContentErrorDetails>>>
+                        + Send
+                        + 'a,
+                >,
+            >;
+
+            fn cancel(
+                &self,
+                context: OperationContext,
+                _reason: CancellationReason,
+            ) -> Self::Future<'_> {
+                let route = (context.object_id() == self.frame_id)
+                    .then_some(())
+                    .ok_or_else(|| self.wrong_target(context.object_id()));
+                // CDP has no operation-local cancellation primitive for
+                // Runtime.evaluate. Dropping the read releases admission and discards
+                // the late serialization without terminating unrelated JavaScript.
+                Box::pin(async move { route })
+            }
+        }
+    };
 }
 
-impl CommandCancellation<FrameContent> for ChromiumDomContentFrame {
-    type Future<'a> = Pin<
-        Box<dyn Future<Output = Result<(), OperationError<DomContentErrorDetails>>> + Send + 'a>,
-    >;
+impl_dom_read_frame!(FrameContent);
+impl_dom_read_frame!(FrameTitle);
 
-    fn cancel(&self, context: OperationContext, _reason: CancellationReason) -> Self::Future<'_> {
-        let route = (context.object_id() == self.frame_id)
-            .then_some(())
-            .ok_or_else(|| self.wrong_target(context.object_id()));
-        // CDP has no operation-local cancellation primitive for
-        // Runtime.evaluate. Dropping the read releases admission and discards
-        // the late serialization without terminating unrelated JavaScript.
-        Box::pin(async move { route })
-    }
-}
-
-pub type ChromiumDomContentHandlers = DomContentServerHandlers<ChromiumDomContentFrame>;
+pub type ChromiumDomContentHandlers =
+    DomContentServerHandlers<ChromiumDomContentFrame, ChromiumDomContentFrame>;
 
 /// A fully bound DOM-content-only server leaf. It is inert until the caller
 /// drives the returned handler with its chosen transport and executor.
@@ -330,6 +346,7 @@ impl ChromiumDomContentInstallation {
             Arc::clone(&self.protocol),
             DomContentServerServices {
                 frame_content: Arc::clone(&self.frame),
+                frame_title: Arc::clone(&self.frame),
             },
         )
     }

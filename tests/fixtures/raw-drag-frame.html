@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pwright child Frame keyboard fixture</title>
+<input id="keyboard" aria-label="Child keyboard">
+<script>
+  window.frameFixture = { keys: [], overflow: false };
+  for (const type of ['keydown', 'keyup']) addEventListener(type, event => {
+    if (frameFixture.keys.length === 32) frameFixture.overflow = true;
+    else frameFixture.keys.push({ type, code: event.code, repeat: event.repeat,
+      shift: event.shiftKey, control: event.ctrlKey, alt: event.altKey, meta: event.metaKey });
+  });
+  window.frameSnapshot = () => ({ ...frameFixture, value: document.querySelector('#keyboard').value,
+    focused: document.activeElement.id === 'keyboard' });
+</script>

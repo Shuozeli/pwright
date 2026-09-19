@@ -15,6 +15,11 @@ use pwright_cdp::CdpClient;
 use pwright_cdp::connection::CdpError;
 use pwright_core::{FailureKind, OperationError, Service};
 
+mod confirmation;
+pub use confirmation::{CdpPageCloseConfirmation, CdpPreparedPageClose, PageCloseFuture};
+#[cfg(feature = "native-confirmation")]
+pub mod native_confirmation;
+
 pub trait CdpPageClosePoll: Send + Sync + 'static {
     fn wait(&self, completed_checks: usize) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }

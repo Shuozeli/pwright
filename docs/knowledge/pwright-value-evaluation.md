@@ -1,6 +1,37 @@
-<!-- agent-updated: 2026-09-05T11:51:32Z -->
+<!-- agent-updated: 2026-09-08T07:10:00Z -->
 
 # Playwright-aligned value evaluation design
+
+## Explicit Node user-script activation
+
+NODE-055 reproduces and fixes a public `window.open()` mismatch: upstream
+evaluation supplied transient user activation while Pwright's value evaluator
+did not. The Node host now selects
+`CdpEvaluationProductionProfile::with_user_gesture(true)`. Only that selected
+value-evaluation path uses the new optional CDP client port, with typed
+`Runtime.evaluate` parameters and the same unique context, Promise/value and
+exception semantics. Unselected backend profiles/internal reads are unchanged.
+This changes no resource requirement and introduces no navigation retry or
+browser-global setting. Function and expression activation and actual popup
+creation now match the pinned oracle. Locator/Handle evaluation activation is
+not covered by this flag and remains a separate parity gate.
+[Reproduction, protocol reference and artifact evidence](pwright-frame-publication.md#node-055-admitted-page-descriptors-and-cache-aware-enumeration).
+
+## Optional Node execution-world precondition
+
+The Node Chromium profile now waits for an explicitly published main-world
+evaluation route, including for the main Frame, instead of selecting an
+implicit default execution context during a world gap. The wait is a bounded,
+caller-polled Rust composition precondition under existing runtime admission
+and cancellation; the evaluator, value codec and JavaScript facade do not
+implement navigation retries. Utility-world publication alone cannot satisfy
+a main-world operation, or vice versa. Default Rust profiles retain their
+existing lookup/fallback and call-construction snapshot timing.
+
+Public evaluate does not acquire a new action timeout. A document replacement
+after the exact route has been selected can still race dispatch; committed
+input and arbitrary evaluation are never replayed. See the
+[NODE-021 contract](../node-ffi-compatibility-design.md#node-021-bounded-execution-world-readiness).
 
 > Status: implemented and verified for value-only Page, local Frame, and
 > out-of-process Frame evaluation.
@@ -230,3 +261,41 @@ its main world. The portable child-Frame command then executes in that session
 via its `uniqueContextId` while the external browser survives cleanup. The
 driver boundary is recorded separately in
 `pwright-chromium-topology-events.md`.
+
+## Node-FFI differential follow-up (2026-09-06)
+
+The Node host now explicitly installs this capability for public Page/main-Frame
+`evaluate`, using smaller declared source/value limits and a separate FFI result
+reservation. It delegates to the same service; no Node-side browser evaluator or
+remote object is added. See [the Node design](../node-ffi-compatibility-design.md)
+for the incomplete compatibility profile and its limits.
+
+Paired execution against installed Playwright 1.58.2 found that the runtime's
+direct `eval` executed inside its strict wrapper. A global `var` disappeared,
+arrow `this` was wrong, and private `c`/`handles` were visible. The backend now
+uses `globalThis.eval` in both source modes, matching the oracle's global
+evaluation while retaining the exact selected execution context. A returned
+Error also gains the oracle's name/message prefix when its custom stack lacks
+that prefix, within the existing bounded error envelope. These are fixes to
+the shared by-value backend, not facade patches or extra capability activation.
+
+The initial 16-case Node evaluation lane passed after these fixes. The historical
+24-case lane retained one failing byte-copy timing assertion (NODE-017): official
+local Node transport aliases typed-array input until asynchronous dispatch,
+whereas the first Rust boundary snapshotted it synchronously. NODE-018 tracks incomplete
+serializer edge cases; portable UTF-8 cannot silently represent unpaired UTF-16.
+These Node findings do not establish full Playwright evaluation parity or change
+the existing cancellation rule: abandon this operation, never terminate an
+entire renderer's JavaScript to release a result wait.
+
+The subsequent NODE-017 implementation changes only the Node binding boundary:
+ordinary graph conversion stays synchronous, while bounded fixed binary views
+are retained on the Node thread until an injected `setImmediate` copies owned
+bytes for the Rust executor. Its timing, detachment and resize comparisons now
+match the pinned oracle. A 1 MiB aggregate backing-capacity ceiling prevents a
+small view from keeping an unbounded backing alive. Prepared-call cleanup is
+explicit and precedes the environment's Rust task drain; it does not depend on
+GC or a callback being delivered. The reusable evaluator and portable value
+model are unchanged by this copy-timing fix. The expanded 38-case lane has a
+complete pass, but subsequent Worker setup timeouts remain NODE-013, not a
+serializer match or a resolved connection bug.

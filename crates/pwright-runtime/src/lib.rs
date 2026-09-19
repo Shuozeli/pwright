@@ -6,7 +6,10 @@
 
 mod cleanup;
 mod connection_scheduler;
+mod controlled_config;
 mod target_scheduler;
+
+pub use controlled_config::ControlledRuntimeConfig;
 
 pub use cleanup::{
     CleanupExecutor, CleanupFailure, CleanupJob, CleanupQueue, CleanupQueueMetrics,
@@ -43,6 +46,14 @@ use pwright_core::{
     ResourceClass, ResourceError, ResourceLease, ResourceLedger, ResourceRequirements,
     ResourceScope, Service,
 };
+
+#[cfg(feature = "lifetime-handoff")]
+mod lifetime_handoff;
+#[cfg(feature = "lifetime-handoff")]
+pub use lifetime_handoff::{CallLifetimeHandoff, LifetimeHandoffError};
+
+#[cfg(feature = "disposal-reservations")]
+pub mod disposal_reservations;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeLimits {
@@ -163,7 +174,7 @@ impl RuntimeLimits {
             u64::try_from(self.active_commands.min(self.pending_calls)).unwrap_or(u64::MAX);
         let control_messages = self.control_messages.unwrap_or(0);
         let control_units = u64::try_from(control_messages).unwrap_or(u64::MAX);
-        ResourceRequirements::none()
+        let requirements = ResourceRequirements::none()
             .with_class(
                 ResourceClass::LiveObject,
                 live_objects,
@@ -187,8 +198,24 @@ impl RuntimeLimits {
                 self.live_objects
                     .saturating_add(self.pending_calls)
                     .saturating_add(usize::try_from(active_commands).unwrap_or(usize::MAX))
-                    .saturating_add(control_messages),
-            )
+                    .saturating_add(control_messages)
+                    .saturating_add(if cfg!(feature = "lifetime-handoff") {
+                        self.pending_calls
+                    } else {
+                        0
+                    }),
+            );
+        #[cfg(feature = "lifetime-handoff")]
+        let requirements = requirements.with_class(
+            ResourceClass::BackendStateBytes,
+            pending_calls.saturating_mul(lifetime_handoff::SIGNAL_BYTES),
+            if self.pending_calls == 0 {
+                0
+            } else {
+                lifetime_handoff::SIGNAL_BYTES
+            },
+        );
+        requirements
     }
 }
 
@@ -512,6 +539,8 @@ pub struct PreparedObjectDisposal {
     object_id: ObjectId,
     disposal_order: Vec<ObjectId>,
     control_resources: Option<VecDeque<ResourceLease>>,
+    #[cfg(feature = "disposal-reservations")]
+    reserved_control_slots: usize,
     finished: bool,
 }
 
@@ -716,7 +745,7 @@ impl PreparedObjectDisposal {
     }
 
     /// Commits the reserved child-first disposal and terminates every call
-    /// whose target belonged to the removed subtree with ordinary
+    /// whose current lifecycle owner belongs to the removed subtree with ordinary
     /// parent-closed semantics.
     pub fn commit(self) -> Result<Vec<ObjectRecord<ObjectKindTag>>, RuntimeStateError> {
         self.commit_inner(None)
@@ -733,10 +762,30 @@ impl PreparedObjectDisposal {
     }
 
     fn commit_inner(
-        mut self,
+        self,
         failure: Option<RuntimeCallFailure>,
     ) -> Result<Vec<ObjectRecord<ObjectKindTag>>, RuntimeStateError> {
-        let (removed, signals, wakers) = {
+        let mut committed = self.commit_parts::<false>(failure)?;
+        committed.notify();
+        Ok(committed.removed)
+    }
+
+    fn commit_parts<const DEFER: bool>(
+        self,
+        failure: Option<RuntimeCallFailure>,
+    ) -> Result<CommittedDisposalParts, RuntimeStateError> {
+        match self.commit_parts_with::<DEFER, (), Infallible>(failure, || Ok(()))? {
+            Ok(((), parts)) => Ok(parts),
+            Err(error) => match error {},
+        }
+    }
+
+    fn commit_parts_with<const DEFER: bool, Output, PublicationError>(
+        mut self,
+        failure: Option<RuntimeCallFailure>,
+        publish: impl FnOnce() -> Result<Output, PublicationError>,
+    ) -> Result<Result<(Output, CommittedDisposalParts), PublicationError>, RuntimeStateError> {
+        let (output, removed, signals, wakers) = {
             let mut state = self
                 .store
                 .state
@@ -753,11 +802,20 @@ impl PreparedObjectDisposal {
             if current_order != self.disposal_order {
                 return Err(RuntimeStateError::LifecycleTransactionUnavailable);
             }
-            let subtree = self.disposal_order.iter().copied().collect::<BTreeSet<_>>();
+            // The deferred path uses the already admitted order, avoiding a
+            // second tree whose node allocations would need separate admission.
+            let subtree =
+                (!DEFER).then(|| self.disposal_order.iter().copied().collect::<BTreeSet<_>>());
             let affected_calls = state
                 .pending_calls
                 .iter()
-                .filter(|call| subtree.contains(&call.object_id()))
+                .filter(|call| {
+                    let owner = state.call_lifecycle_owner(call);
+                    match &subtree {
+                        Some(subtree) => subtree.contains(&owner),
+                        None => self.disposal_order.contains(&owner),
+                    }
+                })
                 .map(|call| call.call_id())
                 .collect::<Vec<_>>();
             let signals =
@@ -770,6 +828,17 @@ impl PreparedObjectDisposal {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
+            // The selecting composition already holds its native/topology and
+            // route/Handle guards. Keep this runtime lock across publication so
+            // transport close cannot invalidate disposal between local commits.
+            // The callback must not reenter runtime, await, or invoke a waker.
+            let output = match publish() {
+                Ok(output) => output,
+                Err(error) => {
+                    drop(state);
+                    return Ok(Err(error));
+                }
+            };
             let removed = state.objects.dispose_subtree(self.object_id);
             state.release_object_resources(&removed);
             let mut control_resources = self.control_resources.take();
@@ -786,7 +855,8 @@ impl PreparedObjectDisposal {
             for (call_id, signal) in affected_calls.iter().zip(&signals) {
                 let outcome = state
                     .pending_calls
-                    .request_runtime_cancellation(*call_id, CancellationReason::ParentClosed)?;
+                    .request_runtime_cancellation(*call_id, CancellationReason::ParentClosed)
+                    .expect("preflight call remains present under the runtime state lock");
                 if outcome == CancellationRequestOutcome::Requested
                     && let Some(failure) = failure.as_ref()
                 {
@@ -796,24 +866,56 @@ impl PreparedObjectDisposal {
                         wakers.push(waker);
                     }
                 }
+                if DEFER && failure.is_none() {
+                    // Install termination before publishing the retired graph,
+                    // but never invoke a user waker beneath enclosing locks.
+                    let (_, waker) = signal.install_termination(CallTermination::Cancellation(
+                        CancellationReason::ParentClosed,
+                    ));
+                    if let Some(waker) = waker {
+                        wakers.push(waker);
+                    }
+                }
+            }
+            #[cfg(feature = "disposal-reservations")]
+            {
+                state.reserved_control_slots -= self.reserved_control_slots;
+                self.reserved_control_slots = 0;
             }
             state.active_lifecycle_transaction = None;
             self.finished = true;
-            let signals = if failure.is_none() {
+            let signals = if failure.is_none() && !DEFER {
                 signals
             } else {
                 Vec::new()
             };
-            (removed, signals, wakers)
+            (output, removed, signals, wakers)
         };
 
-        for signal in signals {
+        Ok(Ok((
+            output,
+            CommittedDisposalParts {
+                removed,
+                signals,
+                wakers,
+            },
+        )))
+    }
+}
+
+struct CommittedDisposalParts {
+    removed: Vec<ObjectRecord<ObjectKindTag>>,
+    signals: Vec<Arc<CancellationSignal>>,
+    wakers: Vec<Waker>,
+}
+impl CommittedDisposalParts {
+    fn notify(&mut self) {
+        for signal in self.signals.drain(..) {
             signal.request(CancellationReason::ParentClosed);
         }
-        for waker in wakers {
+        for waker in self.wakers.drain(..) {
             waker.wake();
         }
-        Ok(removed)
     }
 }
 
@@ -822,10 +924,22 @@ impl Drop for PreparedObjectDisposal {
         if self.finished {
             return;
         }
-        if let Ok(mut state) = self.store.state.lock()
-            && state.active_lifecycle_transaction == Some(self.transaction_id)
-        {
+        let Ok(mut state) = self.store.state.lock() else {
+            return;
+        };
+        #[cfg(feature = "disposal-reservations")]
+        if self.reserved_control_slots != 0 {
+            // Release EventItem leases before another operation can use
+            // the queue slots that backed this uncommitted disposal.
+            drop(self.control_resources.take());
+        }
+        if state.active_lifecycle_transaction == Some(self.transaction_id) {
             state.active_lifecycle_transaction = None;
+        }
+        #[cfg(feature = "disposal-reservations")]
+        {
+            state.reserved_control_slots -= self.reserved_control_slots;
+            self.reserved_control_slots = 0;
         }
     }
 }
@@ -893,15 +1007,33 @@ struct RuntimeState {
     resource_ledger: Option<ResourceLedger>,
     control_messages: Option<BoundedQueue<ControlMessage>>,
     control_message_claimed: bool,
+    #[cfg(feature = "disposal-reservations")]
+    reserved_control_slots: usize,
     pending_calls: PendingCallTable,
     cancellation_signals: BTreeMap<CallId, Arc<CancellationSignal>>,
     backend_started: BTreeSet<CallId>,
     next_lifecycle_transaction_id: u64,
     active_lifecycle_transaction: Option<u64>,
     transport_closed: bool,
+    // Queue clear/transport shutdown retains its backing allocation. Keep the
+    // selected byte lease with the store, not with a short-lived close pool.
+    #[cfg(feature = "disposal-reservations")]
+    control_outbox_storage: Option<ResourceLease>,
 }
 
 impl RuntimeState {
+    fn call_lifecycle_owner(&self, call: &pwright_core::PendingCall) -> ObjectId {
+        #[cfg(feature = "lifetime-handoff")]
+        if let Some(owner) = self
+            .cancellation_signals
+            .get(&call.call_id())
+            .and_then(|signal| signal.lifetime_owner.get())
+        {
+            return *owner;
+        }
+        call.object_id()
+    }
+
     fn new(limits: RuntimeLimits) -> Self {
         Self {
             objects: ObjectGraph::new(limits.live_objects),
@@ -913,12 +1045,16 @@ impl RuntimeState {
                 .control_messages
                 .map(|capacity| BoundedQueue::new(capacity, OverflowPolicy::RejectNewest)),
             control_message_claimed: false,
+            #[cfg(feature = "disposal-reservations")]
+            reserved_control_slots: 0,
             pending_calls: PendingCallTable::new(limits.pending_calls),
             cancellation_signals: BTreeMap::new(),
             backend_started: BTreeSet::new(),
             next_lifecycle_transaction_id: 1,
             active_lifecycle_transaction: None,
             transport_closed: false,
+            #[cfg(feature = "disposal-reservations")]
+            control_outbox_storage: None,
         }
     }
 
@@ -945,6 +1081,8 @@ impl RuntimeState {
             return Ok(());
         };
         let remaining = queue.capacity().saturating_sub(queue.len());
+        #[cfg(feature = "disposal-reservations")]
+        let remaining = remaining.saturating_sub(self.reserved_control_slots);
         if required > remaining {
             return Err(RuntimeStateError::ControlMessageCapacityExceeded {
                 required,
@@ -1052,6 +1190,10 @@ impl RuntimeStore {
             .state
             .lock()
             .map_err(|_| RuntimeStateError::StatePoisoned)?;
+        #[cfg(feature = "disposal-reservations")]
+        if state.reserved_control_slots != 0 {
+            return Err(RuntimeStateError::ResourceLedgerRequiresEmptyState);
+        }
         if state.resource_ledger.is_some() {
             return Err(RuntimeStateError::ResourceLedgerAlreadyInstalled);
         }
@@ -1286,7 +1428,7 @@ impl RuntimeStore {
                         let pending_calls = state
                             .pending_calls
                             .iter()
-                            .filter(|call| subtree.contains(&call.object_id()))
+                            .filter(|call| subtree.contains(&state.call_lifecycle_owner(call)))
                             .count();
                         if pending_calls > 0 {
                             return Err(RuntimeStateError::ObjectHasPendingCalls {
@@ -1323,7 +1465,7 @@ impl RuntimeStore {
         let affected_calls = state
             .pending_calls
             .iter()
-            .filter(|call| disposed_ids.contains(&call.object_id()))
+            .filter(|call| disposed_ids.contains(&state.call_lifecycle_owner(call)))
             .map(|call| call.call_id())
             .collect::<Vec<_>>();
         let signals =
@@ -1595,6 +1737,8 @@ impl RuntimeStore {
             object_id,
             disposal_order,
             control_resources,
+            #[cfg(feature = "disposal-reservations")]
+            reserved_control_slots: 0,
             finished: false,
         })
     }
@@ -1613,7 +1757,7 @@ impl RuntimeStore {
         let pending_calls = state
             .pending_calls
             .iter()
-            .filter(|call| subtree.contains(&call.object_id()))
+            .filter(|call| subtree.contains(&state.call_lifecycle_owner(call)))
             .count();
         if pending_calls > 0 {
             return Err(RuntimeStateError::ObjectHasPendingCalls {
@@ -1651,7 +1795,7 @@ impl RuntimeStore {
         let affected_calls = state
             .pending_calls
             .iter()
-            .filter(|call| subtree.contains(&call.object_id()))
+            .filter(|call| subtree.contains(&state.call_lifecycle_owner(call)))
             .map(|call| call.call_id())
             .collect::<Vec<_>>();
         let signals = affected_calls
@@ -1714,7 +1858,7 @@ impl RuntimeStore {
             let affected_calls = state
                 .pending_calls
                 .iter()
-                .filter(|call| subtree.contains(&call.object_id()))
+                .filter(|call| subtree.contains(&state.call_lifecycle_owner(call)))
                 .map(|call| call.call_id())
                 .collect::<Vec<_>>();
             let mut interrupted = 0;
@@ -1757,7 +1901,7 @@ impl RuntimeStore {
         let pending_calls = state
             .pending_calls
             .iter()
-            .filter(|call| subtree.contains(&call.object_id()))
+            .filter(|call| subtree.contains(&state.call_lifecycle_owner(call)))
             .count();
         if pending_calls == 0 {
             Ok(())
@@ -1847,11 +1991,27 @@ impl RuntimeStore {
             })
             .transpose()
             .map_err(map_resource_error)?;
+        #[cfg(feature = "lifetime-handoff")]
+        let lifetime_storage = state
+            .resource_ledger
+            .as_ref()
+            .map(|ledger| {
+                ledger.reserve(
+                    ResourceScope::Call(call_id),
+                    ResourceClass::BackendStateBytes,
+                    lifetime_handoff::SIGNAL_BYTES,
+                )
+            })
+            .transpose()
+            .map_err(map_resource_error)?;
         state
             .pending_calls
             .insert(call_id, object_id, metadata)
             .map_err(map_pending_call_error)?;
-        let signal = Arc::new(CancellationSignal::new());
+        let signal = Arc::new(CancellationSignal::new(
+            #[cfg(feature = "lifetime-handoff")]
+            lifetime_storage,
+        ));
         state
             .cancellation_signals
             .insert(call_id, Arc::clone(&signal));
@@ -2412,9 +2572,11 @@ impl<S, Cancellation, Deadlines, Cleanup>
         service: S,
         cancellation: Cancellation,
         deadlines: Deadlines,
-        limits: RuntimeLimits,
+        config: impl Into<ControlledRuntimeConfig>,
         cleanup: Cleanup,
     ) -> Self {
+        let config = config.into();
+        let limits = config.limits();
         Self {
             service,
             object_kinds: EMPTY_OBJECT_KIND_CATALOG,
@@ -2422,10 +2584,10 @@ impl<S, Cancellation, Deadlines, Cleanup>
             cancellation: Arc::new(cancellation),
             deadlines,
             store: Arc::new(RuntimeStore::new(limits)),
-            scheduler: TargetScheduler::new(TargetSchedulerLimits::new(
-                limits.live_objects,
-                limits.pending_calls,
-            )),
+            scheduler: TargetScheduler::with_concurrency(
+                TargetSchedulerLimits::new(limits.live_objects, limits.pending_calls),
+                config.target_concurrency(),
+            ),
             connection: ConnectionScheduler::new(ConnectionSchedulerLimits::new(
                 limits.active_commands,
                 limits.pending_calls,
@@ -2459,14 +2621,14 @@ impl<S, Cancellation, Deadlines, Cleanup>
         service: S,
         cancellation: Cancellation,
         deadlines: Deadlines,
-        limits: RuntimeLimits,
+        config: impl Into<ControlledRuntimeConfig>,
         cleanup: Cleanup,
         object_kinds: ObjectKindCatalog,
         topology: ObjectTopologyMode,
     ) -> Result<Self, ObjectKindCatalogError> {
         object_kinds.validate()?;
         let mut dispatcher =
-            Self::with_cleanup_executor(service, cancellation, deadlines, limits, cleanup);
+            Self::with_cleanup_executor(service, cancellation, deadlines, config, cleanup);
         dispatcher.object_kinds = object_kinds;
         dispatcher.topology = topology;
         Ok(dispatcher)
@@ -2681,11 +2843,46 @@ where
         Self: 'a;
 
     fn call(&self, command: Command<C>) -> Self::Future<'_> {
+        self.dispatch_with(command, &self.service, Arc::clone(&self.cancellation))
+    }
+}
+
+impl<S, Cancellation, Deadlines, Cleanup> ControlledDispatcher<S, Cancellation, Deadlines, Cleanup>
+where
+    S: Send + Sync,
+    Cancellation: Send + Sync,
+    Deadlines: DeadlineScheduler,
+    Cleanup: CleanupExecutor,
+{
+    /// Dispatch an explicitly supplied typed command handler through this
+    /// runtime's SAME object graph, pending-call table, target/connection
+    /// schedulers, deadlines and cleanup policy. This does not create another
+    /// runtime or register/advertise a wire capability. The caller separately
+    /// installs and budgets the handler and its cancellation implementation.
+    pub fn dispatch_with<'a, C, Handler, HandlerCancellation>(
+        &'a self,
+        command: Command<C>,
+        handler: &'a Handler,
+        handler_cancellation: Arc<HandlerCancellation>,
+    ) -> Pin<Box<dyn Future<Output = Result<CommandResult<C>, Infallible>> + Send + 'a>>
+    where
+        C: CommandSpec,
+        C::Params: Send + 'static,
+        C::Result: Send + 'static,
+        C::ErrorDetails: Send + 'static,
+        Handler: TargetedService<
+                C::Params,
+                Response = C::Result,
+                Error = OperationError<C::ErrorDetails>,
+            > + Send
+            + Sync,
+        HandlerCancellation: CommandCancellation<C> + Send + Sync + 'static,
+    {
         let (call_id, object_id, metadata, params) = command.into_parts();
         let context = OperationContext::new(call_id, object_id, C::METHOD, metadata.cancellation);
         let cleanup = Arc::clone(&self.cleanup);
         let cleanup: Arc<dyn CleanupExecutor> = cleanup;
-        let cancellation_for_abandonment = Arc::clone(&self.cancellation);
+        let cancellation_for_abandonment = Arc::clone(&handler_cancellation);
         let abandonment = AbandonedDispatch {
             store: Arc::clone(&self.store),
             cleanup,
@@ -2874,7 +3071,7 @@ where
                 }
                 return Ok(CommandResult::new(call_id, Err(error)));
             }
-            let mut operation = Box::pin(self.service.call_for(object_id, params));
+            let mut operation = Box::pin(handler.call_for(object_id, params));
 
             let race = poll_fn(|task| {
                 if let Some(termination) = cancellation.ready_termination()
@@ -2909,7 +3106,7 @@ where
                     if reason == CancellationReason::TransportClosed {
                         Err(cancellation_error(reason, metadata.timeout))
                     } else {
-                        match self.cancellation.cancel(context, reason).await {
+                        match handler_cancellation.cancel(context, reason).await {
                             Ok(()) if reason == termination.cleanup_reason() => {
                                 Err(termination.operation_error(metadata.timeout))
                             }
@@ -2926,7 +3123,7 @@ where
                         Err(error) => return Ok(CommandResult::new(call_id, Err(error))),
                     };
                     drop(operation);
-                    match self.cancellation.cancel(context, reason).await {
+                    match handler_cancellation.cancel(context, reason).await {
                         Ok(()) => Err(cancellation_error(reason, metadata.timeout)),
                         Err(error) => Err(error.reclassify(FailureKind::Cleanup)),
                     }
@@ -3179,13 +3376,23 @@ impl CallTermination {
 }
 
 struct CancellationSignal {
+    #[cfg(feature = "lifetime-handoff")]
+    _lifetime_storage: Option<ResourceLease>,
+    #[cfg(feature = "lifetime-handoff")]
+    lifetime_owner: OnceLock<ObjectId>,
     termination: OnceLock<CallTermination>,
     waker: Mutex<Option<Waker>>,
 }
 
 impl CancellationSignal {
-    const fn new() -> Self {
+    const fn new(
+        #[cfg(feature = "lifetime-handoff")] lifetime_storage: Option<ResourceLease>,
+    ) -> Self {
         Self {
+            #[cfg(feature = "lifetime-handoff")]
+            _lifetime_storage: lifetime_storage,
+            #[cfg(feature = "lifetime-handoff")]
+            lifetime_owner: OnceLock::new(),
             termination: OnceLock::new(),
             waker: Mutex::new(None),
         }
@@ -3373,6 +3580,8 @@ fn map_connection_scheduler_error<D>(error: ConnectionSchedulerError) -> Operati
 
 #[cfg(test)]
 mod tests {
+    mod concurrent_dispatch_tests;
+    mod extension_dispatch_tests;
     use std::future::{Pending, Ready, pending, ready};
     use std::pin::Pin;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -3805,12 +4014,17 @@ mod tests {
         pending_calls: u64,
         active_commands: u64,
     ) -> ResourceLedger {
-        ResourceLedger::new(
-            ResourceLimits::deny_all(16, 16)
-                .with_class(ResourceClass::LiveObject, live_objects, 1)
-                .with_class(ResourceClass::PendingCall, pending_calls, 1)
-                .with_class(ResourceClass::ActiveCommand, active_commands, 1),
-        )
+        let limits = ResourceLimits::deny_all(16, 16)
+            .with_class(ResourceClass::LiveObject, live_objects, 1)
+            .with_class(ResourceClass::PendingCall, pending_calls, 1)
+            .with_class(ResourceClass::ActiveCommand, active_commands, 1);
+        #[cfg(feature = "lifetime-handoff")]
+        let limits = limits.with_class(
+            ResourceClass::BackendStateBytes,
+            pending_calls * crate::lifetime_handoff::SIGNAL_BYTES,
+            crate::lifetime_handoff::SIGNAL_BYTES,
+        );
+        ResourceLedger::new(limits)
     }
 
     fn limits_for_requirements(requirements: ResourceRequirements) -> ResourceLimits {

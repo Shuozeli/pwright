@@ -1,0 +1,228 @@
+format: 1
+capability: pwright.mouse
+version: { major: 1, minor: 0 }
+root: pwright.mouse
+imports:
+  - pwright.common
+commands:
+  - id: mouse.click
+    name: mouse_click
+    method: 917508
+    targets: [pwright.browser.page]
+    command: mouse_click_command
+    result: mouse_click_result
+    params_type: pwright.mouse.click_params
+    result_type: pwright.mouse.success
+    error_details_type: pwright.mouse.error_details
+  - id: mouse.dblclick
+    name: mouse_dblclick
+    method: 917509
+    targets: [pwright.browser.page]
+    command: mouse_dblclick_command
+    result: mouse_dblclick_result
+    params_type: pwright.mouse.dblclick_params
+    result_type: pwright.mouse.success
+    error_details_type: pwright.mouse.error_details
+  - id: mouse.down
+    name: mouse_down
+    method: 917506
+    targets: [pwright.browser.page]
+    command: mouse_down_command
+    result: mouse_down_result
+    params_type: pwright.mouse.down_params
+    result_type: pwright.mouse.success
+    error_details_type: pwright.mouse.error_details
+  - id: mouse.move
+    name: mouse_move
+    method: 917505
+    targets: [pwright.browser.page]
+    command: mouse_move_command
+    result: mouse_move_result
+    params_type: pwright.mouse.move_params
+    result_type: pwright.mouse.success
+    error_details_type: pwright.mouse.error_details
+  - id: mouse.up
+    name: mouse_up
+    method: 917507
+    targets: [pwright.browser.page]
+    command: mouse_up_command
+    result: mouse_up_result
+    params_type: pwright.mouse.up_params
+    result_type: pwright.mouse.success
+    error_details_type: pwright.mouse.error_details
+  - id: mouse.wheel
+    name: mouse_wheel
+    method: 917510
+    targets: [pwright.browser.page]
+    command: mouse_wheel_command
+    result: mouse_wheel_result
+    params_type: pwright.mouse.wheel_params
+    result_type: pwright.mouse.success
+    error_details_type: pwright.mouse.error_details
+types:
+  - kind: tagged_union
+    id: pwright.mouse
+    variants:
+      - tag: 1
+        name: mouse_move_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.mouse.move_params }
+      - tag: 2
+        name: mouse_move_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.mouse.outcome }
+      - tag: 3
+        name: mouse_down_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.mouse.down_params }
+      - tag: 4
+        name: mouse_down_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.mouse.outcome }
+      - tag: 5
+        name: mouse_up_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.mouse.up_params }
+      - tag: 6
+        name: mouse_up_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.mouse.outcome }
+      - tag: 7
+        name: mouse_click_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.mouse.click_params }
+      - tag: 8
+        name: mouse_click_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.mouse.outcome }
+      - tag: 9
+        name: mouse_dblclick_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.mouse.dblclick_params }
+      - tag: 10
+        name: mouse_dblclick_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.mouse.outcome }
+      - tag: 11
+        name: mouse_wheel_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.mouse.wheel_params }
+      - tag: 12
+        name: mouse_wheel_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.mouse.outcome }
+  - kind: enum
+    id: pwright.mouse.button
+    public_name: mouse_button
+    public_external: true
+    variants:
+      - { tag: 0, name: left }
+      - { tag: 1, name: right }
+      - { tag: 2, name: middle }
+  - kind: record
+    id: pwright.mouse.click_params
+    public_name: click_params
+    public_external: true
+    fields:
+      - { name: x, type: f64 }
+      - { name: y, type: f64 }
+      - { name: button, type: enum, target: pwright.mouse.button }
+      - { name: click_count, type: u8, constraints: { maximum: 32 } }
+      - { name: delay, type: message, target: pwright.common.duration, cardinality: optional }
+  - kind: record
+    id: pwright.mouse.dblclick_params
+    public_name: dblclick_params
+    public_external: true
+    fields:
+      - { name: x, type: f64 }
+      - { name: y, type: f64 }
+      - { name: button, type: enum, target: pwright.mouse.button }
+      - { name: delay, type: message, target: pwright.common.duration, cardinality: optional }
+  - kind: record
+    id: pwright.mouse.down_params
+    public_name: down_params
+    public_external: true
+    fields:
+      - { name: button, type: enum, target: pwright.mouse.button }
+      - { name: click_count, type: i32 }
+  - kind: record
+    id: pwright.mouse.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8, constraints: { maximum_length: 4096 } }
+      - { name: details, type: message, target: pwright.mouse.error_details, cardinality: optional }
+  - kind: tagged_union
+    id: pwright.mouse.error_details
+    public_name: mouse_error_details
+    variants:
+      - tag: 0
+        name: invalid_argument
+        fields:
+          - { name: message, type: utf8, constraints: { maximum_length: 4096 } }
+      - tag: 1
+        name: resource
+        fields:
+          - { name: message, type: utf8, constraints: { maximum_length: 4096 } }
+      - tag: 2
+        name: backend
+        fields:
+          - { name: message, type: utf8, constraints: { maximum_length: 4096 } }
+  - kind: record
+    id: pwright.mouse.move_params
+    public_name: move_params
+    public_external: true
+    fields:
+      - { name: x, type: f64 }
+      - { name: y, type: f64 }
+      - { name: steps, type: f64 }
+  - kind: tagged_union
+    id: pwright.mouse.outcome
+    variants:
+      - { tag: 0, name: success, fields: [] }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.mouse.error }
+  - kind: record
+    id: pwright.mouse.success
+    public_name: mouse_success
+    public_external: true
+    fields: []
+  - kind: record
+    id: pwright.mouse.up_params
+    public_name: up_params
+    public_external: true
+    fields:
+      - { name: button, type: enum, target: pwright.mouse.button }
+      - { name: click_count, type: i32 }
+  - kind: record
+    id: pwright.mouse.wheel_params
+    public_name: wheel_params
+    public_external: true
+    fields:
+      - { name: delta_x, type: f64 }
+      - { name: delta_y, type: f64 }

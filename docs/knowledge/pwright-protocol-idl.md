@@ -1,12 +1,39 @@
-<!-- agent-updated: 2026-09-05T09:56:22Z -->
+<!-- agent-updated: 2026-09-09T08:34:00Z -->
 
 # Pwright protocol IDL decision record
+
+NODE-074 adds optional `navigation-1.2.yml`, checked against frozen 1.1, without
+replacing root 1.1. FrameGoto is Frame-only, method 65540/tags 7–8, returning
+a portable nonzero object ID and optional response. `rust_minor_module: true`
+selects generated Rust import placement, not wire identity; it is rejected on
+non-capability schemas. All four selected typed adapters and generated server
+bindings are present; production host negotiation/integration is still pending.
+[Contract](pwright-frame-navigation.md#node-074-opt-in-typed-navigation-12-contract).
+
+Mouse 1.0 reserves methods `0x000E_0001`–`0x000E_0006` and tags 1–12 for
+Page-targeted move/down/up/click/dblclick/wheel. Canonical method ownership,
+common metadata, generated models/capability/server and bounded typed adapters
+are verified. This is an unpublished initial contract, not a frozen ABI or
+completed FFI binding. [Mouse contract](pwright-raw-mouse.md#optional-mouse-10-contracts).
 
 > Status: provisional DT-031 implementation checkpoint. Navigation and locator
 > now exercise the generated ownership boundary; this does not freeze the
 > public wire ABI or finish cross-language generation.
 
 ## Upstream evidence
+
+The initial Keyboard 1.0 schema uses methods `0x000D_0001`–`0x000D_0005` for
+Page-targeted down/up/press/insert-text/type, with command/result tags 1–10.
+Canonical schema owns identity, field constraints and generated capability,
+models, service chain and reference. Typed adapters verify payload/outer-route
+identity and preserve delay separately from call metadata. It is not a released
+ABI or a completed native/Node binding. [Contract proof](pwright-raw-keyboard.md).
+
+The sequential-typing checkpoint freezes Locator 1.22 and 2.5 independently and
+adds `locator.press_sequentially` to 1.23/2.6: method 131095, tags 45/46. Both
+minor-compatibility and generated-output checks pass; old minors reject before
+encoding. The command preserves timeout in call metadata, with only selector,
+text and optional delay in its parameters. See [contract](pwright-sequential-typing.md).
 
 The local Playwright reference was inspected at commit
 `de214f440b7e34937fe4886f046b78b757136087`. Its channel protocol has 5,208

@@ -1,8 +1,48 @@
-<!-- agent-updated: 2026-09-04T18:17:33Z -->
+<!-- agent-updated: 2026-09-08T01:19:49Z -->
 
 # Pwright Locator press design
 
+NODE-050 passes native local/OOPIF pre-focus detach and Page/Context close during
+the post-focus key delay. All 18 Frame cases pass. Selected Node drag/Locator
+calls also pass the shared ten-case corpus; public child-Frame error details and
+native cancellation interrupted by destruction are not yet proven.
+[Selection, evidence and remaining work](pwright-chromium-drag.md#node-050-native-lifetime-gates-and-selected-node-addon).
+
+NODE-049 implements optional post-focus lifetime handoff while retaining the
+original Frame metadata/permits/deadline. Navigation preparation accepts a
+parented OOPIF session root; the epilogue uses the original Page keyboard client.
+Local/OOPIF detach now matches both timeout and finite successful completion.
+[Contract, evidence and remaining gates](pwright-chromium-drag.md#node-049-optional-frame-to-page-lifetime-handoff).
+
+NODE-048 verifies eight real local/OOPIF input cases but exposes two detach
+failures. Successful Frame focus must hand input lifetime to Page: removing the
+iframe during key delay leaves upstream Page press pending, while Rust currently
+returns TargetClosed. Do not claim lifetime parity from NODE-047 alone.
+[Required handoff contract](pwright-chromium-drag.md#next-implementation-explicit-frame-to-page-lifetime-transition).
+
+NODE-047 selects NODE-046's transaction-local interceptor for Locator press and
+sequential typing in the opt-in Rust host. Frame utility focus and Page keyboard
+retain distinct original native clients; cancellation retains the exact binding.
+Ten native host cases include Locator Escape, chord and delayed-press timeout.
+Real child/OOPIF and native interruption gates remain; addon selection is unchanged.
+[Integration boundary](pwright-chromium-drag.md#node-047-locator-keyboard-selects-the-owning-page).
+
 ## Implementation status
+
+Node now opts into interleaved Page input rather than default Rust whole-action
+exclusion. Its new artifact passes 27/27 action tests, including the previously
+failing NODE-022 delayed-Press Shift case. Page keys survive timeout; literal
+aliases (`a`, `1`) remain literal while physical codes (`KeyA`, `Digit1`) follow
+held Shift. Default exclusive cancellation recovery is unchanged. Later failure
+paragraphs below describe historical artifacts; broader native cancellation and
+modifier changes between down/up remain unverified, not a full parity claim.
+
+The shared input leaf now also implements caller-owned sequential typing and
+corrects temporary modifier aliases to emit left-key location on down/up. Its
+13-case exact Chrome event/value comparison passes, with 103 Locator regressions.
+Public Locator typing is now bound through schema 1.23/2.6 and Node FFI. It reuses Press's focus primitive,
+but **not** its navigation barrier or whole-string chord parser; see the
+[sequential-typing contract](pwright-sequential-typing.md).
 
 The typed 1.19/2.2 vertical slice is implemented through schema, portable
 values, client extensions, bounded codecs, generated server chains, Chromium
@@ -17,6 +57,15 @@ key events, default Enter/form navigation waiting, controlled cancellation
 during a delayed chord, reverse key release, zero pending calls, temporary-target
 cleanup, and preservation of the externally owned browser. The Press checkpoint
 is therefore release-complete within the currently designed scope.
+
+The later Node-FFI action comparison exposes two broader compatibility gaps
+outside that original checkpoint. NODE-021 observes a missing utility-world
+read route immediately after Enter/form navigation; commit and world readiness
+must not be conflated. NODE-022 observes pinned Playwright 1.58.2 retaining Shift
+after a delayed chord times out, while the Rust cleanup contract releases it.
+The ordinary paired tests remain required and failing; the original release
+claim does not establish full Node or timeout-state parity. See
+[the Node discrepancy register](../node-ffi-compatibility-design.md).
 
 ## Decision
 

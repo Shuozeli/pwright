@@ -19,6 +19,7 @@ cargo tree \
 
 required_packages=(
   pwright-v2-locator-composition-only-example
+  pwright-backend-cdp-common
   pwright-backend-cdp-input
   pwright-backend-cdp-locator
   pwright-backend-cdp-selector-runtime

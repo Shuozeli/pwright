@@ -26,6 +26,7 @@ pub struct CdpElementHandleAdoptionRequest {
     source: CdpEvaluatedHandle,
     target_client: Arc<dyn CdpClient>,
     target_execution_context_id: i64,
+    object_group: Option<Arc<str>>,
 }
 
 impl CdpElementHandleAdoptionRequest {
@@ -38,11 +39,36 @@ impl CdpElementHandleAdoptionRequest {
             source,
             target_client,
             target_execution_context_id,
+            object_group: None,
         }
     }
 
     pub const fn source(&self) -> &CdpEvaluatedHandle {
         &self.source
+    }
+
+    /// Borrows an independently owned native element. This creates no native
+    /// object and transfers no source ownership; the caller retains that owner
+    /// until adoption and its cleanup complete.
+    pub fn from_element_reference(
+        source_client: Arc<dyn CdpClient>,
+        object_id: &str,
+        target_client: Arc<dyn CdpClient>,
+        target_execution_context_id: i64,
+        max_native_bytes: usize,
+    ) -> Result<Self, OperationError<HandleEvaluationErrorDetails>> {
+        Ok(Self::new(
+            CdpEvaluatedHandle::element_reference(source_client, object_id, max_native_bytes)?,
+            target_client,
+            target_execution_context_id,
+        ))
+    }
+
+    /// Opt-in compensation for unparseable/lost native responses. The external
+    /// group owner must outlive this request and release the whole group.
+    pub fn with_object_group(mut self, group: Arc<str>) -> Self {
+        self.object_group = Some(group);
+        self
     }
 
     pub const fn target_execution_context_id(&self) -> i64 {
@@ -95,6 +121,15 @@ impl CdpElementHandleAdoptionService {
         &self,
         request: &CdpElementHandleAdoptionRequest,
     ) -> Result<(), OperationError<HandleEvaluationErrorDetails>> {
+        if request.source.native_argument_bytes() > self.limits.native_id_bytes()
+            || request.object_group.as_ref().is_some_and(|group| {
+                group.is_empty() || group.len() > self.limits.native_id_bytes()
+            })
+        {
+            return Err(invalid_value(
+                "native element or group exceeds the adoption bound".into(),
+            ));
+        }
         if request.target_execution_context_id <= 0 {
             return Err(invalid_value(
                 "target Chromium execution-context ID must be positive".to_owned(),
@@ -156,14 +191,28 @@ impl Service<CdpElementHandleAdoptionRequest> for CdpElementHandleAdoptionServic
                     "CDP DOM.describeNode returned a non-positive backend node ID",
                 ));
             }
-            let response = request
-                .target_client
-                .dom_resolve_backend_node_in_execution_context(
-                    backend_node_id,
-                    request.target_execution_context_id,
-                )
-                .await
-                .map_err(|error| map_cdp_error(error, limits.evaluation().error_bytes))?;
+            let response = match request.object_group.as_ref() {
+                Some(group) => {
+                    request
+                        .target_client
+                        .dom_resolve_backend_node_in_execution_context_group(
+                            backend_node_id,
+                            request.target_execution_context_id,
+                            group,
+                        )
+                        .await
+                }
+                None => {
+                    request
+                        .target_client
+                        .dom_resolve_backend_node_in_execution_context(
+                            backend_node_id,
+                            request.target_execution_context_id,
+                        )
+                        .await
+                }
+            }
+            .map_err(|error| map_cdp_error(error, limits.evaluation().error_bytes))?;
             parse_adopted_response(request.target_client, response, limits).await
         })
     }

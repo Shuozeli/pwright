@@ -21,6 +21,8 @@ use crate::handle_evaluation::{
 };
 use pwright_backend_cdp_evaluation::{CdpEvaluationService, EVALUATION_RUNTIME, parse_response};
 
+mod property_acquisition;
+
 const PROPERTY_SNAPSHOT_SOURCE: &str = r#"(target, maximum) => {
   'use strict';
   const result = Object.create(null);
@@ -33,6 +35,15 @@ const PROPERTY_SNAPSHOT_SOURCE: &str = r#"(target, maximum) => {
     count += 1;
     if (count > maximum) break;
   }
+  return result;
+}"#;
+
+// The carrier, rather than the property itself, is the evaluated return value.
+// Awaiting a property directly would assimilate Promise/thenable values and lose
+// their identity before Runtime.getProperties can produce the native Handle.
+const SINGLE_PROPERTY_SNAPSHOT_SOURCE: &str = r#"(target, name) => {
+  const result = { __proto__: null };
+  result[name] = target[name];
   return result;
 }"#;
 
@@ -77,7 +88,7 @@ impl Service<CdpHandleEvaluationRequest> for CdpHandleValueEvaluationService {
             });
         };
         let value_params = match request
-            .params()
+            .program()
             .value_projection(self.limits.evaluation().value)
         {
             Ok(params) => params,
@@ -221,61 +232,195 @@ impl CdpHandlePropertiesService {
         if target.object_id().is_none() {
             return Ok(Vec::new());
         }
+        property_acquisition::admit(self.limits, self.property_limits)?;
         let maximum = EvaluationNumber::new(self.property_limits.max_properties as f64)
             .map_err(|error| invalid_value(error.to_string()))?;
         let params = EvaluateHandleParams::function(
             PROPERTY_SNAPSHOT_SOURCE,
             HandleEvaluationValue::Number(maximum),
         );
-        let temporary = self
+        let (temporary, _lease) = self
             .handle_evaluation
-            .call(CdpHandleEvaluationRequest::new_on_handle(
+            .call_retaining_lease(CdpHandleEvaluationRequest::new_on_handle(
                 params,
                 (target_id, target),
                 Vec::new(),
             ))
             .await?;
-        let Some(temporary_id) = temporary.object_id().map(str::to_owned) else {
+        self.read_snapshot(temporary, self.property_limits, None)
+            .await
+    }
+
+    /// Read one property without Promise/thenable assimilation. The raw future
+    /// must be retained through completion by its caller, like call_on_handle.
+    /// At most one temporary carrier and one returned native value coexist.
+    pub async fn call_property_on_handle(
+        &self,
+        target_id: pwright_core::ObjectId,
+        target: CdpEvaluatedHandle,
+        name: &str,
+    ) -> Result<CdpEvaluatedHandle, OperationError<HandleEvaluationErrorDetails>> {
+        if name.len() > self.property_limits.property_name_bytes {
+            return Err(OperationError::new(
+                FailureKind::ResourceExhausted,
+                "property name exceeds configured byte limit",
+                Some(HandleEvaluationErrorDetails::InvalidValue(
+                    "property name exceeds configured byte limit".to_owned(),
+                )),
+            ));
+        }
+        let property_limits = CdpHandlePropertyLimits {
+            max_properties: 1,
+            property_name_bytes: self.property_limits.property_name_bytes,
+        };
+        property_acquisition::admit(self.limits, property_limits)?;
+        let params = EvaluateHandleParams::function(
+            SINGLE_PROPERTY_SNAPSHOT_SOURCE,
+            HandleEvaluationValue::String(name.to_owned()),
+        );
+        let (temporary, _lease) = self
+            .handle_evaluation
+            .call_retaining_lease(CdpHandleEvaluationRequest::new_on_handle(
+                params,
+                (target_id, target),
+                Vec::new(),
+            ))
+            .await?;
+        let mut properties = self
+            .read_snapshot(temporary, property_limits, Some(name))
+            .await?;
+        Ok(properties
+            .pop()
+            .expect("single-property snapshot validated exactly one matching result")
+            .1)
+    }
+
+    async fn read_snapshot(
+        &self,
+        temporary: CdpEvaluatedHandle,
+        property_limits: CdpHandlePropertyLimits,
+        expected_name: Option<&str>,
+    ) -> Result<Vec<(String, CdpEvaluatedHandle)>, OperationError<HandleEvaluationErrorDetails>>
+    {
+        let Some(temporary_id) = temporary.object_id() else {
             return Err(invalid_response(
                 "Handle property snapshot did not return a retained object",
             ));
         };
         let client = temporary.client();
-        let response = client.runtime_get_properties(&temporary_id).await;
+        let response = client
+            .runtime_get_properties_to_settlement(temporary_id)
+            .await;
         let response = match response {
             Ok(response) => response,
             Err(error) => {
                 let primary = map_cdp_error(error, self.limits.evaluation().error_bytes);
-                return Err(with_cleanup(primary, temporary.release().await.err()));
+                return Err(property_acquisition::with_cleanup(
+                    primary,
+                    client
+                        .runtime_release_object_to_settlement(temporary_id)
+                        .await
+                        .err(),
+                    self.limits.evaluation().error_bytes,
+                ));
             }
         };
-        let parsed = parse_properties(
-            Arc::clone(&client),
-            &response,
-            self.limits,
-            self.property_limits,
-        );
+        let parsed = property_acquisition::validate(&response, self.limits, property_limits)
+            .and_then(|()| {
+                if property_acquisition::contains_id(&response, temporary_id) {
+                    Err(invalid_response(
+                        "property response aliases its temporary carrier",
+                    ))
+                } else {
+                    Ok(())
+                }
+            })
+            .and_then(|()| {
+                parse_properties(Arc::clone(&client), &response, self.limits, property_limits)
+            })
+            .and_then(|properties| {
+                if let Some(name) = expected_name
+                    && (properties.len() != 1 || properties[0].0 != name)
+                {
+                    return Err(invalid_response(
+                        "single-property snapshot did not return exactly the requested property",
+                    ));
+                }
+                Ok(properties)
+            });
         match parsed {
             Ok(properties) => {
-                if let Err(cleanup) = temporary.release().await {
-                    let cleanup_error =
-                        map_cdp_error(cleanup, self.limits.evaluation().error_bytes);
-                    let release_error = release_handles(&properties).await.err();
-                    return Err(with_cleanup(cleanup_error, release_error));
+                if let Err(cleanup) = client
+                    .runtime_release_object_to_settlement(temporary_id)
+                    .await
+                {
+                    // Snapshot ownership was not released even if the property
+                    // itself is primitive. Keep this a cleanup failure so an
+                    // abandoned caller reports failed native compensation.
+                    let cleanup_error = property_acquisition::with_cleanup(
+                        OperationError::new(
+                            FailureKind::Cleanup,
+                            "Handle property snapshot release failed",
+                            None,
+                        ),
+                        Some(map_cdp_error(cleanup, self.limits.evaluation().error_bytes)),
+                        self.limits.evaluation().error_bytes,
+                    );
+                    let release_error = property_acquisition::release_response(
+                        client.as_ref(),
+                        &response,
+                        Some(temporary_id),
+                        self.limits,
+                    )
+                    .await
+                    .err();
+                    return Err(property_acquisition::with_cleanup(
+                        cleanup_error,
+                        release_error,
+                        self.limits.evaluation().error_bytes,
+                    ));
                 }
                 Ok(properties)
             }
             Err(primary) => {
-                let raw_cleanup = release_remote_values(Arc::clone(&client), &response)
-                    .await
-                    .err();
-                let temporary_cleanup = temporary.release().await.err();
-                let primary = with_cleanup(primary, raw_cleanup);
-                Err(with_cleanup(primary, temporary_cleanup))
+                let raw_cleanup = property_acquisition::release_response(
+                    client.as_ref(),
+                    &response,
+                    None,
+                    self.limits,
+                )
+                .await
+                .err();
+                // The carrier is independently owned. Avoid a duplicate release
+                // if a malformed raw response returned its same native ID.
+                let temporary_cleanup =
+                    if property_acquisition::contains_id(&response, temporary_id) {
+                        None
+                    } else {
+                        client
+                            .runtime_release_object_to_settlement(temporary_id)
+                            .await
+                            .err()
+                    };
+                let primary = property_acquisition::with_cleanup(
+                    primary,
+                    raw_cleanup,
+                    self.limits.evaluation().error_bytes,
+                );
+                Err(property_acquisition::with_cleanup(
+                    primary,
+                    temporary_cleanup,
+                    self.limits.evaluation().error_bytes,
+                ))
             }
         }
     }
 }
+
+#[cfg(test)]
+mod property_pipeline_tests;
+#[cfg(test)]
+mod single_property_tests;
 
 fn parse_properties(
     client: Arc<dyn pwright_cdp::CdpClient>,
@@ -330,67 +475,6 @@ fn parse_properties(
         properties.push((name.to_owned(), native));
     }
     Ok(properties)
-}
-
-async fn release_remote_values(
-    client: Arc<dyn pwright_cdp::CdpClient>,
-    response: &Value,
-) -> Result<(), pwright_cdp::connection::CdpError> {
-    let Some(descriptors) = response.get("result").and_then(Value::as_array) else {
-        return Ok(());
-    };
-    let mut first_error = None;
-    for object_id in descriptors.iter().filter_map(|descriptor| {
-        descriptor
-            .get("value")
-            .and_then(|value| value.get("objectId"))
-            .and_then(Value::as_str)
-    }) {
-        if let Err(error) = client.runtime_release_object(object_id).await
-            && first_error.is_none()
-        {
-            first_error = Some(error);
-        }
-    }
-    match first_error {
-        Some(error) => Err(error),
-        None => Ok(()),
-    }
-}
-
-async fn release_handles(
-    properties: &[(String, CdpEvaluatedHandle)],
-) -> Result<(), pwright_cdp::connection::CdpError> {
-    let mut first_error = None;
-    for (_, handle) in properties {
-        if let Err(error) = handle.release().await
-            && first_error.is_none()
-        {
-            first_error = Some(error);
-        }
-    }
-    match first_error {
-        Some(error) => Err(error),
-        None => Ok(()),
-    }
-}
-
-fn with_cleanup<E: Display>(
-    primary: OperationError<HandleEvaluationErrorDetails>,
-    cleanup: Option<E>,
-) -> OperationError<HandleEvaluationErrorDetails> {
-    let Some(cleanup) = cleanup else {
-        return primary;
-    };
-    let cleanup = cleanup.to_string();
-    OperationError::new(
-        FailureKind::Cleanup,
-        format!("{}; cleanup failed: {cleanup}", primary.message()),
-        Some(HandleEvaluationErrorDetails::Cleanup {
-            primary: primary.message().to_owned(),
-            cleanup,
-        }),
-    )
 }
 
 #[cfg(test)]

@@ -1,0 +1,40 @@
+[package]
+name = "pwright-node-addon"
+description = "Node-API conversion boundary for the Pwright Rust host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[features]
+default = []
+retained-file-input = ["handles", "file-input", "pwright-node-host/retained-file-input"]
+retained-target-marking = ["retained-file-input", "pwright-node-host/retained-target-marking"]
+retained-target-prevalidation = ["retained-target-marking", "pwright-node-host/retained-target-prevalidation"]
+retained-input-instrumentation = ["retained-target-prevalidation"]
+retained-call-argument-serialization = ["retained-input-instrumentation"]
+retained-serialized-payload-import = ["retained-call-argument-serialization", "pwright-node-host/retained-serialized-payload-import", "dep:serde_json"]
+retained-serialized-payload-mutation = ["retained-serialized-payload-import", "pwright-node-host/retained-serialized-payload-mutation"]
+handles = ["pwright-node-host/handles"]
+file-input = ["pwright-node-host/file-input"]
+concurrent-close = ["pwright-node-host/concurrent-close"]
+extra-headers = ["pwright-node-host/extra-headers"]
+drag-runtime = ["pwright-node-host/drag-runtime"]
+frame-navigation = ["pwright-node-host/frame-navigation", "dep:pwright-cap-navigation"]
+
+[dependencies]
+napi_runtime = { package = "napi", version = "=3.12.2", default-features = false, features = ["napi8", "tokio_rt", "dyn-symbols"] }
+napi-derive = "=3.6.3"
+pwright-node-host = { path = "../pwright-node-host" }
+pwright-cap-navigation = { workspace = true, optional = true, features = ["frame-navigation"] }
+tokio-util = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true, optional = true }
+
+[build-dependencies]
+napi-build = "=2.4.1"

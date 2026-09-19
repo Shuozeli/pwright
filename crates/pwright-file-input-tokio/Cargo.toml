@@ -1,0 +1,18 @@
+[package]
+name = "pwright-file-input-tokio"
+description = "Optional admitted blocking execution for Pwright file-input preparation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core.workspace = true
+pwright-file-input-model.workspace = true
+pwright-file-input-source.workspace = true
+pwright-file-input-fs.workspace = true
+tokio = { version = "1", features = ["rt", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }

@@ -76,6 +76,16 @@ async fn dispose_context_and_verify_target(
 #[tokio::test]
 #[ignore = "requires dedicated Chrome, internet, PWRIGHT_CDP_WS_URL, and PWRIGHT_OOPIF_FIXTURE_URL"]
 async fn oopif_frame_evaluation_uses_automatic_topology_events() {
+    run_oopif_evaluation(false).await;
+}
+
+#[tokio::test]
+#[ignore = "requires dedicated Chrome, internet, PWRIGHT_CDP_WS_URL, and PWRIGHT_OOPIF_FIXTURE_URL"]
+async fn recursive_attachment_join_preserves_oopif_world_routing() {
+    run_oopif_evaluation(true).await;
+}
+
+async fn run_oopif_evaluation(recursive_attachment: bool) {
     // Arrange one production composition around an externally owned Chrome.
     let endpoint = CdpWebSocketEndpoint::parse(
         std::env::var("PWRIGHT_CDP_WS_URL")
@@ -86,8 +96,11 @@ async fn oopif_frame_evaluation_uses_automatic_topology_events() {
         .expect("PWRIGHT_OOPIF_FIXTURE_URL must be a served cross-site iframe fixture");
     let connection_profile =
         CdpConnectionProductionProfile::new(ResourceScope::Connection, ConnectionConfig::default());
+    // Selecting utility worlds requires both main and utility routes for each
+    // of the two Frames. Preserve the main-world-only fixture's original budget.
+    let worlds = if recursive_attachment { 4 } else { 2 };
     let topology_profile = CdpTopologyProductionProfile::new(
-        CdpTopologyLimits::new(8, 1, 1, 2, 2, 256),
+        CdpTopologyLimits::new(8, 1, 1, 2, worlds, 256),
         ResourceScope::extension(96, 1),
     )
     .expect("topology profile should validate");
@@ -101,6 +114,13 @@ async fn oopif_frame_evaluation_uses_automatic_topology_events() {
         topology_profile,
     )
     .expect("topology-event profile should validate");
+    let topology_events = if recursive_attachment {
+        topology_events
+            .with_parallel_recursive_attachment()
+            .expect("four-way profile should validate")
+    } else {
+        topology_events
+    };
     let profile = ChromiumAttachProductionProfile::new(
         connection_profile,
         topology_profile,
@@ -110,6 +130,13 @@ async fn oopif_frame_evaluation_uses_automatic_topology_events() {
     )
     .with_evaluation(evaluation_profile())
     .with_topology_events(topology_events);
+    let profile = if recursive_attachment {
+        profile.with_utility_world(
+            pwright_composition_chromium::ChromiumUtilityWorldProfile::playwright_compatible(),
+        )
+    } else {
+        profile
+    };
     let requirements = profile.requirements();
     let prepared = PreparedChromiumAttach::new(profile, exact_limits(requirements))
         .expect("live production composition should prepare");

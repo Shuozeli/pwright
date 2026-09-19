@@ -7,6 +7,10 @@
 mod element_adoption;
 mod handle_evaluation;
 mod handle_operations;
+mod owner_frame;
+mod program;
+pub use owner_frame::CdpHandleOwnerFrameService;
+pub use program::CdpHandleEvaluationProgram;
 
 pub use element_adoption::{
     CdpAdoptedElementHandle, CdpAdoptedElementHandleBatch, CdpElementHandleAdoptionBatchRequest,

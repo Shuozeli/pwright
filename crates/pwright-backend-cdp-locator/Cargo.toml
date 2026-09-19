@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+pwright-backend-cdp-common = { workspace = true }
 pwright-backend-cdp-input = { workspace = true }
 pwright-backend-cdp-selector-runtime = { workspace = true }
 pwright-cap-locator = { workspace = true }

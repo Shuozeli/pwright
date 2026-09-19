@@ -224,8 +224,8 @@ fn locator_v1_and_v2_keep_separate_versions_and_click_record_kinds() {
         .kind();
 
     // Assert
-    assert_eq!(LOCATOR_SCHEMA.version(), ProtocolVersion::new(1, 22));
-    assert_eq!(LOCATOR_V2_SCHEMA.version(), ProtocolVersion::new(2, 5));
+    assert_eq!(LOCATOR_SCHEMA.version(), ProtocolVersion::new(1, 23));
+    assert_eq!(LOCATOR_V2_SCHEMA.version(), ProtocolVersion::new(2, 6));
     assert_eq!(v1_kind, BinaryTypeKind::Record);
     assert_eq!(v2_kind, BinaryTypeKind::ExtensibleRecord);
     assert_eq!(LOCATOR_SCHEMA_CATALOG.validate(), Ok(()));

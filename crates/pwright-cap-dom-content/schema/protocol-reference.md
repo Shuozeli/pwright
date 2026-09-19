@@ -8,7 +8,7 @@
 | --- | --- |
 | Kind | Capability |
 | Schema format | `1` |
-| Protocol version | `1.0` |
+| Protocol version | `1.1` |
 | Root type | `pwright.dom_content` |
 | Imports | `pwright.common` |
 | Capability dependencies | — |
@@ -18,6 +18,7 @@
 | Command | ID | Method | Targets | Params | Result | Error details | Wire variants |
 | --- | --- | ---: | --- | --- | --- | --- | --- |
 | `frame_content` | `frame.content` | `393217` | `pwright.browser.frame` | `pwright.dom_content.params` | `pwright.dom_content.data` | `pwright.dom_content.error_details` | `frame_content_command` / `frame_content_result` |
+| `frame_title` | `frame.title` | `393218` | `pwright.browser.frame` | `pwright.dom_content.title_params` | `pwright.dom_content.data` | `pwright.dom_content.error_details` | `frame_title_command` / `frame_title_result` |
 
 ## Types
 
@@ -29,6 +30,7 @@
 | `pwright.dom_content.error_details` | tagged union | `DomContentErrorDetails` |
 | `pwright.dom_content.outcome` | tagged union | — |
 | `pwright.dom_content.params` | record | `DomContentParams` |
+| `pwright.dom_content.title_params` | record | `TitleParams` |
 
 ### `pwright.dom_content`
 
@@ -36,6 +38,8 @@
 | ---: | --- | --- |
 | `1` | `frame_content_command` | `call_id`: `u64` (required); `object_id`: `u64` (required); `metadata`: `pwright.common.call_metadata` (required); `params`: `pwright.dom_content.params` (required) |
 | `2` | `frame_content_result` | `call_id`: `u64` (required); `outcome`: `pwright.dom_content.outcome` (required) |
+| `3` | `frame_title_command` | `call_id`: `u64` (required); `object_id`: `u64` (required); `metadata`: `pwright.common.call_metadata` (required); `params`: `pwright.dom_content.title_params` (required) |
+| `4` | `frame_title_result` | `call_id`: `u64` (required); `outcome`: `pwright.dom_content.outcome` (required) |
 
 ### `pwright.dom_content.data`
 
@@ -69,6 +73,11 @@
 | `1` | `error` | `error`: `pwright.dom_content.error` (required) |
 
 ### `pwright.dom_content.params`
+
+| Position | Field | Type | Cardinality | Constraints |
+| ---: | --- | --- | --- | --- |
+
+### `pwright.dom_content.title_params`
 
 | Position | Field | Type | Cardinality | Constraints |
 | ---: | --- | --- | --- | --- |

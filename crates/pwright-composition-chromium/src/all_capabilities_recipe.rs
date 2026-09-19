@@ -111,9 +111,13 @@ type AllHandleLifecycleCommands<Transport> = ChromiumRemoteHandleLifecycleHandle
     Transport,
 >;
 type AllContentCommands = ContentServerHandlers<ChromiumAllCapabilitiesDispatcher>;
-type AllDomContentCommands = DomContentServerHandlers<ChromiumAllCapabilitiesDispatcher>;
-type AllNavigationCommands =
-    NavigationServerHandlers<ChromiumAllCapabilitiesDispatcher, ChromiumAllCapabilitiesDispatcher>;
+type AllDomContentCommands =
+    DomContentServerHandlers<ChromiumAllCapabilitiesDispatcher, ChromiumAllCapabilitiesDispatcher>;
+type AllNavigationCommands = NavigationServerHandlers<
+    ChromiumAllCapabilitiesDispatcher,
+    ChromiumAllCapabilitiesDispatcher,
+    ChromiumAllCapabilitiesDispatcher,
+>;
 type AllLocatorCommands = ChromiumSelectedLocatorServerHandlers<ChromiumAllCapabilitiesDispatcher>;
 type AllLocatorScreenshotCommands =
     LocatorScreenshotServerHandlers<ChromiumAllCapabilitiesDispatcher>;

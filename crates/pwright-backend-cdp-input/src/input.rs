@@ -39,7 +39,7 @@ impl CdpModifiers {
         self.0 as i32
     }
 
-    const fn without(self, modifier: Self) -> Self {
+    pub(crate) const fn without(self, modifier: Self) -> Self {
         Self(self.0 & !modifier.0)
     }
 }
@@ -101,9 +101,33 @@ struct PressedMouseButton {
 /// The coordinator contains no unbounded collection. A modifier transaction
 /// holds its gate across key transitions and the pointer action, preventing two
 /// Frame-scoped Locator calls for the same Page from interleaving input state.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct CdpInputCoordinator {
-    state: Arc<Mutex<CdpInputState>>,
+    state: CoordinatorState,
+    // Every clone keeps admission alive, including clones injected into services.
+    _admission: Option<Arc<crate::production::InputAdmission>>,
+}
+
+#[derive(Clone)]
+enum CoordinatorState {
+    Exclusive(Arc<Mutex<CdpInputState>>),
+    Interleaved(Arc<crate::interleaved::PageState>),
+}
+
+/// Input ownership is selected once per Page, never independently per action.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CdpInputPolicy {
+    /// Whole-action exclusion with acknowledged-state cancellation recovery.
+    #[default]
+    Exclusive,
+    /// Page-owned physical state, event-level mutation and no timeout release-all.
+    Interleaved,
+}
+
+impl Default for CdpInputCoordinator {
+    fn default() -> Self {
+        Self::with_policy(CdpInputPolicy::Exclusive)
+    }
 }
 
 impl CdpInputCoordinator {
@@ -111,9 +135,70 @@ impl CdpInputCoordinator {
         Self::default()
     }
 
+    pub fn with_policy(policy: CdpInputPolicy) -> Self {
+        Self {
+            state: match policy {
+                CdpInputPolicy::Exclusive => CoordinatorState::Exclusive(Arc::default()),
+                CdpInputPolicy::Interleaved => CoordinatorState::Interleaved(Arc::default()),
+            },
+            _admission: None,
+        }
+    }
+
+    pub(crate) fn with_admission(
+        policy: CdpInputPolicy,
+        admission: Arc<crate::production::InputAdmission>,
+    ) -> Self {
+        let mut state = Self::with_policy(policy);
+        state._admission = Some(admission);
+        state
+    }
+
+    pub(crate) const fn state_allocation_bytes(policy: CdpInputPolicy) -> usize {
+        let payload = match policy {
+            CdpInputPolicy::Exclusive => std::mem::size_of::<Mutex<CdpInputState>>(),
+            CdpInputPolicy::Interleaved => std::mem::size_of::<crate::interleaved::PageState>(),
+        };
+        payload + 2 * std::mem::size_of::<usize>()
+    }
+
+    pub fn policy(&self) -> CdpInputPolicy {
+        match &self.state {
+            CoordinatorState::Exclusive(_) => CdpInputPolicy::Exclusive,
+            CoordinatorState::Interleaved(_) => CdpInputPolicy::Interleaved,
+        }
+    }
+
     /// Reports whether two routes serialize through the same Page input state.
     pub fn shares_state_with(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.state, &other.state)
+        match (&self.state, &other.state) {
+            (CoordinatorState::Exclusive(a), CoordinatorState::Exclusive(b)) => Arc::ptr_eq(a, b),
+            (CoordinatorState::Interleaved(a), CoordinatorState::Interleaved(b)) => {
+                Arc::ptr_eq(a, b)
+            }
+            (CoordinatorState::Exclusive(_), CoordinatorState::Interleaved(_))
+            | (CoordinatorState::Interleaved(_), CoordinatorState::Exclusive(_)) => false,
+        }
+    }
+
+    /// Creates an effect-free raw input owner without waiting for native replies.
+    /// Only explicitly selected Page-owned input can enter this path.
+    pub fn begin_raw_mouse_transaction(
+        &self,
+        client: Arc<dyn CdpClient>,
+    ) -> CdpResult<CdpInputTransaction> {
+        match &self.state {
+            CoordinatorState::Interleaved(state) => Ok(CdpInputTransaction {
+                inner: TransactionMode::Interleaved(crate::interleaved::Action::raw(
+                    state.clone(),
+                    client,
+                )),
+                _admission: self._admission.clone(),
+            }),
+            CoordinatorState::Exclusive(_) => Err(CdpError::Other(
+                "raw Mouse requires the Page-owned interleaved input policy".into(),
+            )),
+        }
     }
 
     /// Starts one serialized input transaction.
@@ -125,7 +210,18 @@ impl CdpInputCoordinator {
         client: Arc<dyn CdpClient>,
         requested: Option<CdpModifiers>,
     ) -> CdpResult<CdpInputTransaction> {
-        let mut state = Arc::clone(&self.state).lock_owned().await;
+        let state = match &self.state {
+            CoordinatorState::Exclusive(state) => state,
+            CoordinatorState::Interleaved(state) => {
+                return crate::interleaved::Action::begin(Arc::clone(state), client, requested)
+                    .await
+                    .map(|action| CdpInputTransaction {
+                        inner: TransactionMode::Interleaved(action),
+                        _admission: self._admission.clone(),
+                    });
+            }
+        };
+        let mut state = Arc::clone(state).lock_owned().await;
         cleanup_locked(client.as_ref(), &mut state).await?;
 
         if let Some(requested) = requested {
@@ -138,8 +234,11 @@ impl CdpInputCoordinator {
         }
 
         Ok(CdpInputTransaction {
-            client,
-            state: Some(state),
+            inner: TransactionMode::Exclusive(ExclusiveInputTransaction {
+                client,
+                state: Some(state),
+            }),
+            _admission: self._admission.clone(),
         })
     }
 
@@ -147,19 +246,243 @@ impl CdpInputCoordinator {
     /// Controlled runtimes call this from command cancellation. A subsequent
     /// input transaction also performs the same recovery before it can start.
     pub async fn cleanup_pending(&self, client: &dyn CdpClient) -> CdpResult<()> {
-        let mut state = self.state.lock().await;
-        cleanup_locked(client, &mut state).await
+        match &self.state {
+            CoordinatorState::Exclusive(state) => {
+                let mut state = state.lock().await;
+                cleanup_locked(client, &mut state).await
+            }
+            // Interleaved input has no command-local key cleanup. Page state
+            // deliberately survives cancellation; native-call retirement is
+            // still the caller/runtime's responsibility, not this receipt.
+            CoordinatorState::Interleaved(_) => Ok(()),
+        }
     }
 }
 
-/// Exclusive Page input transaction. Call `finish` after the pointer action to
-/// restore an explicitly requested temporary modifier set.
+/// An input action using the Page's explicitly selected ownership policy.
 pub struct CdpInputTransaction {
+    inner: TransactionMode,
+    _admission: Option<Arc<crate::production::InputAdmission>>,
+}
+
+enum TransactionMode {
+    Exclusive(ExclusiveInputTransaction),
+    Interleaved(crate::interleaved::Action),
+}
+
+macro_rules! dispatch_input {
+    ($name:ident($($argument:ident: $kind:ty),*)) => {
+        pub async fn $name(&mut self, $($argument: $kind),*) -> CdpResult<()> {
+            match &mut self.inner {
+                TransactionMode::Exclusive(action) => action.$name($($argument),*).await,
+                TransactionMode::Interleaved(action) => action.$name($($argument),*).await,
+            }
+        }
+    };
+}
+
+impl CdpInputTransaction {
+    /// Select once on this transaction only; never mutate shared Page bindings.
+    /// The provider and its native retirement driver have separate owners/budgets.
+    pub fn set_key_down_interceptor(
+        &mut self,
+        interceptor: Arc<dyn crate::CdpKeyDownInterceptor>,
+    ) -> CdpResult<()> {
+        match &mut self.inner {
+            TransactionMode::Interleaved(action) if action.key_down_interceptor.is_none() => {
+                action.key_down_interceptor = Some(interceptor);
+                Ok(())
+            }
+            _ => Err(CdpError::Other(
+                "keydown interception requires an unselected interleaved transaction".into(),
+            )),
+        }
+    }
+    /// Creates a caller-owned click execution. After observing its result (or
+    /// cancelling its polling), retire it before releasing its native owner.
+    pub fn raw_mouse_click<D, W>(
+        &mut self,
+        options: crate::MouseClickOptions,
+        delay: D,
+    ) -> CdpResult<crate::MouseClickExecution<D, W>>
+    where
+        D: FnMut(std::time::Duration) -> W,
+        W: std::future::Future<Output = CdpResult<()>>,
+    {
+        let admission = self._admission.clone();
+        let action = self.raw_pointer()?;
+        Ok(crate::MouseClickExecution::new(
+            action, admission, options, delay, None,
+        ))
+    }
+
+    /// Opt-in multi-phase dispatch with separate result and retirement polling.
+    /// The dispatcher must provide its own admission/storage and Page lifecycle.
+    pub fn raw_mouse_click_with_dispatcher<D, W>(
+        &mut self,
+        options: crate::MouseClickOptions,
+        delay: D,
+        dispatcher: Arc<dyn crate::CdpMouseDispatcher>,
+    ) -> CdpResult<crate::MouseClickExecution<D, W>>
+    where
+        D: FnMut(std::time::Duration) -> W,
+        W: std::future::Future<Output = CdpResult<()>>,
+    {
+        let admission = self._admission.clone();
+        let action = self.raw_pointer()?;
+        Ok(crate::MouseClickExecution::new(
+            action,
+            admission,
+            options,
+            delay,
+            Some(dispatcher),
+        ))
+    }
+
+    /// Raw Mouse operations require explicitly selected Page-owned state.
+    /// Exclusive Locator transactions deliberately retain their old cleanup policy.
+    fn raw_pointer(&mut self) -> CdpResult<&mut crate::interleaved::Action> {
+        match &mut self.inner {
+            TransactionMode::Interleaved(action) => Ok(action),
+            TransactionMode::Exclusive(_) => Err(CdpError::Other(
+                "raw Mouse requires the Page-owned interleaved input policy".into(),
+            )),
+        }
+    }
+
+    pub async fn raw_mouse_move(
+        &mut self,
+        x: f64,
+        y: f64,
+        steps: pwright_input_model::MouseMoveSteps,
+    ) -> CdpResult<()> {
+        self.raw_pointer()?.raw_mouse_move(x, y, steps).await
+    }
+    pub async fn raw_mouse_down(&mut self, button: MouseButton, click_count: i32) -> CdpResult<()> {
+        self.raw_pointer()?
+            .raw_mouse_down(button, click_count)
+            .await
+    }
+    /// Lazy opt-in button dispatch; keep the returned owner through retirement.
+    pub fn raw_mouse_down_with_dispatcher(
+        &mut self,
+        button: MouseButton,
+        click_count: i32,
+        dispatcher: Arc<dyn crate::CdpMouseDispatcher>,
+    ) -> CdpResult<crate::MouseButtonExecution> {
+        let admission = self._admission.clone();
+        let action = self.raw_pointer()?;
+        Ok(crate::MouseButtonExecution::new(
+            action,
+            admission,
+            button,
+            click_count,
+            crate::MouseDispatchKind::Down,
+            dispatcher,
+        ))
+    }
+    /// Lazy opt-in release dispatch; no synthetic release occurs on cancellation.
+    pub fn raw_mouse_up_with_dispatcher(
+        &mut self,
+        button: MouseButton,
+        click_count: i32,
+        dispatcher: Arc<dyn crate::CdpMouseDispatcher>,
+    ) -> CdpResult<crate::MouseButtonExecution> {
+        let admission = self._admission.clone();
+        let action = self.raw_pointer()?;
+        Ok(crate::MouseButtonExecution::new(
+            action,
+            admission,
+            button,
+            click_count,
+            crate::MouseDispatchKind::Up,
+            dispatcher,
+        ))
+    }
+    pub async fn raw_mouse_up(&mut self, button: MouseButton, click_count: i32) -> CdpResult<()> {
+        self.raw_pointer()?.raw_mouse_up(button, click_count).await
+    }
+    pub async fn raw_mouse_wheel(&mut self, delta_x: f64, delta_y: f64) -> CdpResult<()> {
+        self.raw_pointer()?.raw_mouse_wheel(delta_x, delta_y).await
+    }
+
+    /// Resolves a raw key alias at its dispatch boundary, not at call creation.
+    pub async fn key_down_named<'a>(
+        &mut self,
+        name: &'a str,
+        is_mac: bool,
+    ) -> Result<(), crate::KeyInputError<'a>> {
+        match &mut self.inner {
+            TransactionMode::Exclusive(action) => {
+                let key = crate::resolve_key(
+                    name,
+                    action.modifiers().contains(CdpModifiers::SHIFT),
+                    is_mac,
+                )
+                .map_err(|error| crate::KeyInputError::UnknownKey(error.0))?;
+                action.key_down(key, is_mac).await.map_err(Into::into)
+            }
+            TransactionMode::Interleaved(action) => action.key_down_named(name, is_mac).await,
+        }
+    }
+
+    /// Keyup re-resolves physical-code aliases after intervening input changes.
+    pub async fn key_up_named<'a>(
+        &mut self,
+        name: &'a str,
+        is_mac: bool,
+    ) -> Result<(), crate::KeyInputError<'a>> {
+        match &mut self.inner {
+            TransactionMode::Exclusive(action) => {
+                let key = crate::resolve_key(
+                    name,
+                    action.modifiers().contains(CdpModifiers::SHIFT),
+                    is_mac,
+                )
+                .map_err(|error| crate::KeyInputError::UnknownKey(error.0))?;
+                action.key_up(key).await.map_err(Into::into)
+            }
+            TransactionMode::Interleaved(action) => action.key_up_named(name, is_mac).await,
+        }
+    }
+
+    dispatch_input!(insert_text(text: pwright_input_model::InputText<'_>));
+    dispatch_input!(key_down(key: ResolvedKey, is_mac: bool));
+    dispatch_input!(key_up(key: ResolvedKey));
+    dispatch_input!(move_mouse(x: f64, y: f64));
+    dispatch_input!(move_mouse_in_steps(x: f64, y: f64, steps: NonZeroU32));
+    dispatch_input!(mouse_down(button: MouseButton, click_count: i32));
+    dispatch_input!(mouse_up());
+
+    pub fn modifiers(&self) -> CdpModifiers {
+        match &self.inner {
+            TransactionMode::Exclusive(action) => action.modifiers(),
+            TransactionMode::Interleaved(action) => action.modifiers(),
+        }
+    }
+
+    pub async fn finish(self) -> CdpResult<()> {
+        let outcome = match self.inner {
+            TransactionMode::Exclusive(action) => action.finish().await,
+            TransactionMode::Interleaved(action) => action.finish().await,
+        };
+        drop(self._admission);
+        outcome
+    }
+}
+
+struct ExclusiveInputTransaction {
     client: Arc<dyn CdpClient>,
     state: Option<OwnedMutexGuard<CdpInputState>>,
 }
 
-impl CdpInputTransaction {
+impl ExclusiveInputTransaction {
+    /// Inserts validated literal text without generating physical key events.
+    /// Uses the same Page serialization owner as keyboard and pointer actions.
+    pub async fn insert_text(&mut self, text: pwright_input_model::InputText<'_>) -> CdpResult<()> {
+        self.client.input_insert_text(text.as_str()).await
+    }
+
     pub fn modifiers(&self) -> CdpModifiers {
         self.state
             .as_ref()
@@ -417,17 +740,24 @@ async fn transition_modifiers(
             state.pressed_modifiers.without(key.modifier)
         };
         client
-            .input_dispatch_key_event_with_modifiers(
-                if needs_pressed {
+            .input_dispatch_keyboard_event(KeyboardEventParams {
+                event_type: if needs_pressed {
                     KeyEventType::RawKeyDown
                 } else {
                     KeyEventType::KeyUp
                 },
-                key.key,
-                key.code,
-                Some(key.windows_virtual_key_code),
-                Some(next.mask()),
-            )
+                key: key.key,
+                code: key.code,
+                windows_virtual_key_code: key.windows_virtual_key_code,
+                modifiers: next.mask(),
+                text: None,
+                unmodified_text: None,
+                auto_repeat: false,
+                // Temporary modifiers use the left-side aliases, like Keyboard.down.
+                location: 1,
+                is_keypad: false,
+                commands: &[],
+            })
             .await?;
         state.pressed_modifiers = next;
     }
@@ -445,6 +775,35 @@ mod tests {
 
     use super::{CdpInputCoordinator, CdpModifiers};
     use crate::keyboard::resolve_key;
+
+    #[tokio::test]
+    async fn temporary_modifier_transitions_preserve_left_key_location() {
+        for modifier in [
+            CdpModifiers::ALT,
+            CdpModifiers::CONTROL,
+            CdpModifiers::META,
+            CdpModifiers::SHIFT,
+        ] {
+            // Arrange
+            let client = Arc::new(FakeCdpClient::from_html(""));
+            let coordinator = CdpInputCoordinator::new();
+            // Act
+            let transaction = coordinator
+                .begin_transaction(client.clone(), Some(modifier))
+                .await
+                .unwrap();
+            transaction.finish().await.unwrap();
+            // Assert
+            let calls = client.calls();
+            assert_eq!(calls.len(), 2);
+            for (_, arguments) in &calls {
+                assert_eq!(arguments[0]["location"], 1);
+                assert!(arguments[0]["code"].as_str().unwrap().ends_with("Left"));
+            }
+            assert_eq!(calls[0].1[0]["modifiers"], modifier.mask());
+            assert_eq!(calls[1].1[0]["modifiers"], 0);
+        }
+    }
 
     #[tokio::test]
     async fn keyboard_transaction_dispatches_shifted_text_and_cleans_up_in_reverse_order() {

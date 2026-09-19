@@ -8,7 +8,7 @@
 | --- | --- |
 | Kind | Capability |
 | Schema format | `1` |
-| Protocol version | `2.5` |
+| Protocol version | `2.6` |
 | Root type | `pwright.locator` |
 | Imports | `pwright.common` |
 | Capability dependencies | — |
@@ -34,6 +34,7 @@
 | `is_enabled` | `locator.is_enabled` | `131079` | `pwright.browser.frame`, `pwright.browser.page` | `pwright.locator.is_enabled_params` | `pwright.locator.is_enabled_result` | `pwright.locator.error_details` | `is_enabled_command` / `is_enabled_result` |
 | `is_visible` | `locator.is_visible` | `131076` | `pwright.browser.frame`, `pwright.browser.page` | `pwright.locator.is_visible_params` | `pwright.locator.is_visible_result` | `pwright.locator.error_details` | `is_visible_command` / `is_visible_result` |
 | `press` | `locator.press` | `131091` | `pwright.browser.frame`, `pwright.browser.page` | `pwright.locator.press_params` | `pwright.locator.action_result` | `pwright.locator.error_details` | `press_command` / `press_result` |
+| `press_sequentially` | `locator.press_sequentially` | `131095` | `pwright.browser.frame`, `pwright.browser.page` | `pwright.locator.press_sequentially_params` | `pwright.locator.action_result` | `pwright.locator.error_details` | `press_sequentially_command` / `press_sequentially_result` |
 | `scroll_into_view_if_needed` | `locator.scroll_into_view_if_needed` | `131094` | `pwright.browser.frame`, `pwright.browser.page` | `pwright.locator.scroll_into_view_if_needed_params` | `pwright.locator.action_result` | `pwright.locator.error_details` | `scroll_into_view_if_needed_command` / `scroll_into_view_if_needed_result` |
 | `select_option` | `locator.select_option` | `131093` | `pwright.browser.frame`, `pwright.browser.page` | `pwright.locator.select_option_params` | `pwright.locator.select_option_result` | `pwright.locator.error_details` | `select_option_command` / `select_option_result` |
 | `set_checked` | `locator.set_checked` | `131092` | `pwright.browser.frame`, `pwright.browser.page` | `pwright.locator.set_checked_params` | `pwright.locator.action_result` | `pwright.locator.error_details` | `set_checked_command` / `set_checked_result` |
@@ -98,6 +99,7 @@
 | `pwright.locator.point` | record | — |
 | `pwright.locator.press_options` | record | `PressOptions` |
 | `pwright.locator.press_params` | record | `PressParams` |
+| `pwright.locator.press_sequentially_params` | record | `PressSequentiallyParams` |
 | `pwright.locator.regex_matcher` | record | — |
 | `pwright.locator.role_pattern_selector` | record | — |
 | `pwright.locator.role_selector` | record | — |
@@ -170,6 +172,8 @@
 | `42` | `select_option_result` | `call_id`: `u64` (required); `outcome`: `pwright.locator.select_option_outcome` (required) |
 | `43` | `scroll_into_view_if_needed_command` | `call_id`: `u64` (required); `object_id`: `u64` (required); `metadata`: `pwright.common.call_metadata` (required); `selector`: `pwright.locator.selector` (required) |
 | `44` | `scroll_into_view_if_needed_result` | `call_id`: `u64` (required); `outcome`: `pwright.locator.outcome` (required) |
+| `45` | `press_sequentially_command` | `call_id`: `u64` (required); `object_id`: `u64` (required); `metadata`: `pwright.common.call_metadata` (required); `selector`: `pwright.locator.selector` (required); `text`: `utf8` (required), bytes *..=1048576; `delay`: `pwright.common.duration` (optional) |
+| `46` | `press_sequentially_result` | `call_id`: `u64` (required); `outcome`: `pwright.locator.outcome` (required) |
 
 ### `pwright.locator.action_result`
 
@@ -539,6 +543,14 @@
 | 1 | `selector` | `pwright.locator.selector` | required | — |
 | 2 | `key` | `utf8` | required | bytes *..=128 |
 | 3 | `options` | `pwright.locator.press_options` | required | — |
+
+### `pwright.locator.press_sequentially_params`
+
+| Position | Field | Type | Cardinality | Constraints |
+| ---: | --- | --- | --- | --- |
+| 1 | `selector` | `pwright.locator.selector` | required | — |
+| 2 | `text` | `utf8` | required | bytes *..=1048576 |
+| 3 | `delay` | `pwright.common.duration` | optional | — |
 
 ### `pwright.locator.regex_matcher`
 

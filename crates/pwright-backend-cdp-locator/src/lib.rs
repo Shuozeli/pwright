@@ -5,12 +5,20 @@
 //! not own a browser process, transport, protocol server, or screenshot
 //! capability.
 
+mod sequential_typing;
+
+pub use pwright_backend_cdp_input::CdpInputPolicy;
+
+#[cfg(test)]
+mod keyboard_binding_tests;
+
 use std::future::{Future, Ready, ready};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 
+use pwright_backend_cdp_common::classify_cdp_failure;
 use pwright_backend_cdp_input::{
     CdpInputCoordinator, CdpInputTransaction, CdpModifiers, KeyTokens, ResolvedKey, resolve_key,
 };
@@ -18,7 +26,8 @@ use pwright_backend_cdp_input::{
 use pwright_backend_cdp_selector_runtime::SELECTOR_RUNTIME;
 use pwright_backend_cdp_selector_runtime::{
     MAX_COMPILED_SELECTOR_BYTES, MAX_SELECTOR_RUNTIME_INSTALL_BYTES, MAX_SELECTOR_STRING_BYTES,
-    compile_selector, measure_selector, selector_runtime_install_script,
+    SELECTOR_RUNTIME_SYMBOL, SELECTOR_RUNTIME_VERSION, compile_selector, measure_selector,
+    selector_runtime_install_script,
 };
 use pwright_cap_locator::{
     AllInnerTexts, AllInnerTextsParams, AllInnerTextsResult, AllTextContents,
@@ -38,7 +47,7 @@ use pwright_cap_locator::{ClickOptionsV2, ClickParamsV2, v2 as locator_v2};
 use pwright_cdp::connection::CdpError;
 use pwright_cdp::{
     CdpClient, CdpEvent, CdpEventReceiver, CdpEventRecvError, CdpEventSubscriptionError,
-    CdpEventTryRecvError, KeyEventType, MouseButton,
+    CdpEventTryRecvError, MouseButton,
 };
 use pwright_core::{
     CancellationReason, CommandCancellation, FailureKind, OperationContext, OperationError,
@@ -174,6 +183,10 @@ pub struct SelectorRuntimeMetrics {
     pub missing_after_navigation: u64,
 }
 
+// One utility-world numeric context ID in both the current and atomically
+// prepared replacement route. This is separate from retained native strings.
+const CONTEXT_ROUTE_NUMERIC_ID_BYTES: u64 = 2 * std::mem::size_of::<i64>() as u64;
+
 /// Production resource declaration for active Chromium locator actions.
 ///
 /// The bound includes compact command strings, selector labels, generated
@@ -182,6 +195,7 @@ pub struct SelectorRuntimeMetrics {
 /// separately limited by count and depth.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CdpLocatorProductionProfile {
+    input_policy: CdpInputPolicy,
     resource_scope: ResourceScope,
     max_concurrent_actions: usize,
     max_context_routes: usize,
@@ -205,6 +219,7 @@ impl CdpLocatorProductionProfile {
                 .with_metadata(1, max_concurrent_actions)
         };
         Self {
+            input_policy: CdpInputPolicy::Exclusive,
             resource_scope,
             max_concurrent_actions,
             max_context_routes: 0,
@@ -215,10 +230,22 @@ impl CdpLocatorProductionProfile {
         }
     }
 
+    /// Selects Page input scheduling without changing the wire protocol. The
+    /// default retains whole-action exclusion and cancellation key recovery.
+    pub const fn with_input_policy(mut self, policy: CdpInputPolicy) -> Self {
+        self.input_policy = policy;
+        self
+    }
+
+    pub const fn input_policy(self) -> CdpInputPolicy {
+        self.input_policy
+    }
+
     /// Adds persistent storage for Frame-scoped locator routes. Six native
     /// strings cover the route identity, native Frame ID, unique context ID,
     /// and the target-local CDP client's copies. A second set covers atomic
-    /// route replacement when an execution world is recreated.
+    /// route replacement when an execution world is recreated. Both generations'
+    /// utility-world numeric context IDs have a separate size-derived allowance.
     pub fn with_context_routes(
         mut self,
         max_context_routes: usize,
@@ -228,8 +255,12 @@ impl CdpLocatorProductionProfile {
         self.max_native_id_bytes = max_native_id_bytes;
         self.maximum_route_retained_bytes = u64::try_from(max_context_routes)
             .unwrap_or(u64::MAX)
-            .saturating_mul(12)
-            .saturating_mul(u64::try_from(max_native_id_bytes).unwrap_or(u64::MAX));
+            .saturating_mul(
+                u64::try_from(max_native_id_bytes)
+                    .unwrap_or(u64::MAX)
+                    .saturating_mul(12)
+                    .saturating_add(CONTEXT_ROUTE_NUMERIC_ID_BYTES),
+            );
         let actions = u64::try_from(self.max_concurrent_actions).unwrap_or(u64::MAX);
         let selector_bytes = self
             .maximum_retained_bytes_per_action
@@ -381,6 +412,20 @@ pub struct CdpLocatorService {
     runtime_ready: Arc<tokio::sync::OnceCell<()>>,
     runtime_counters: Arc<SelectorRuntimeCounters>,
     resources: Option<LocatorResourceBudget>,
+    keyboard_binding: Option<KeyboardBinding>,
+}
+
+#[derive(Clone)]
+struct KeyboardBinding {
+    client: Arc<dyn CdpClient>,
+    interceptor: Arc<dyn pwright_backend_cdp_input::CdpKeyDownInterceptor>,
+    handoff: Option<Arc<dyn LocatorInputHandoff>>,
+}
+
+/// Synchronous, caller-selected lifetime transition after Frame focus succeeds
+/// and before Page input mutates logical or native state. No runtime dependency.
+pub trait LocatorInputHandoff: Send + Sync {
+    fn handoff(&self) -> Result<(), OperationError<LocatorErrorDetails>>;
 }
 
 /// Creates per-target locator services with one shared production action
@@ -418,7 +463,11 @@ impl CdpLocatorServiceFactory {
     }
 
     pub fn bind(&self, client: Arc<dyn CdpClient>) -> CdpLocatorService {
-        self.bind_with_input(client, CdpInputCoordinator::new())
+        self.bind_with_input(client, self.create_input_coordinator())
+    }
+
+    pub fn create_input_coordinator(&self) -> CdpInputCoordinator {
+        CdpInputCoordinator::with_policy(self.resources.profile.input_policy())
     }
 
     pub fn bind_with_input(
@@ -441,7 +490,11 @@ impl CdpLocatorServiceFactory {
         client: Arc<dyn CdpClient>,
         unique_context_id: String,
     ) -> CdpLocatorService {
-        self.bind_unique_context_with_input(client, unique_context_id, CdpInputCoordinator::new())
+        self.bind_unique_context_with_input(
+            client,
+            unique_context_id,
+            self.create_input_coordinator(),
+        )
     }
 
     pub fn bind_unique_context_with_input(
@@ -497,6 +550,84 @@ impl CdpLocatorServiceFactory {
 }
 
 impl CdpLocatorService {
+    /// Explicit Page keyboard binding, separate from this Frame's selector client.
+    /// The caller retains native identity, provider admission and retirement.
+    /// Only press/sequential typing select this binding; pointer geometry stays
+    /// on its existing route. Input ownership must be the same Page coordinator.
+    pub fn with_keyboard_binding(
+        mut self,
+        client: Arc<dyn CdpClient>,
+        input: &CdpInputCoordinator,
+        interceptor: Arc<dyn pwright_backend_cdp_input::CdpKeyDownInterceptor>,
+    ) -> Result<Self, pwright_cdp::connection::CdpError> {
+        if self.keyboard_binding.is_some()
+            || !self.input.shares_state_with(input)
+            || input.policy() != pwright_backend_cdp_input::CdpInputPolicy::Interleaved
+        {
+            return Err(pwright_cdp::connection::CdpError::Other(
+                "Locator keyboard binding is replaced or belongs to another Page".into(),
+            ));
+        }
+        self.keyboard_binding = Some(KeyboardBinding {
+            client,
+            interceptor,
+            handoff: None,
+        });
+        Ok(self)
+    }
+
+    async fn keyboard_transaction(
+        &self,
+    ) -> Result<CdpInputTransaction, OperationError<LocatorErrorDetails>> {
+        let client = self.keyboard_client();
+        let mut transaction = self
+            .input
+            .begin_transaction(client.clone(), None)
+            .await
+            .map_err(map_cdp_error)?;
+        if let Some(binding) = &self.keyboard_binding {
+            transaction
+                .set_key_down_interceptor(binding.interceptor.clone())
+                .map_err(map_cdp_error)?;
+        }
+        Ok(transaction)
+    }
+
+    fn keyboard_client(&self) -> &Arc<dyn CdpClient> {
+        self.keyboard_binding
+            .as_ref()
+            .map_or(&self.client, |binding| &binding.client)
+    }
+
+    pub fn with_keyboard_handoff(
+        mut self,
+        handoff: Arc<dyn LocatorInputHandoff>,
+    ) -> Result<Self, pwright_cdp::connection::CdpError> {
+        let binding = self.keyboard_binding.as_mut().ok_or_else(|| {
+            pwright_cdp::connection::CdpError::Other(
+                "keyboard binding is required before lifetime handoff selection".into(),
+            )
+        })?;
+        if binding.handoff.is_some() {
+            return Err(pwright_cdp::connection::CdpError::Other(
+                "keyboard lifetime handoff is already selected".into(),
+            ));
+        }
+        binding.handoff = Some(handoff);
+        Ok(self)
+    }
+
+    fn handoff_keyboard_lifetime(&self) -> Result<(), OperationError<LocatorErrorDetails>> {
+        match self
+            .keyboard_binding
+            .as_ref()
+            .and_then(|binding| binding.handoff.as_ref())
+        {
+            Some(handoff) => handoff.handoff(),
+            None => Ok(()),
+        }
+    }
+
     pub fn new(client: Arc<dyn CdpClient>) -> Self {
         Self::from_parts(client, DEFAULT_RETRY_DELAY, None)
     }
@@ -595,6 +726,7 @@ impl CdpLocatorService {
             runtime_ready: Arc::new(tokio::sync::OnceCell::new()),
             runtime_counters,
             resources,
+            keyboard_binding: None,
         }
     }
 
@@ -1395,11 +1527,7 @@ impl Service<PressParams> for CdpLocatorService {
             } else {
                 Some(ClickNavigationBarrier::prepare(self.client.as_ref()).await?)
             };
-            let mut transaction = self
-                .input
-                .begin_transaction(Arc::clone(&self.client), None)
-                .await
-                .map_err(map_cdp_error)?;
+            let mut transaction = self.keyboard_transaction().await?;
             let action: Result<(), OperationError<LocatorErrorDetails>> = async {
                 let is_mac = loop {
                     self.runtime_counters
@@ -1417,6 +1545,7 @@ impl Service<PressParams> for CdpLocatorService {
                         }
                     }
                 };
+                self.handoff_keyboard_lifetime()?;
                 let tokens = KeyTokens::parse(params.key.as_str())
                     .expect("portable PressKey validates its bounded token sequence");
                 let mut pressed = [None::<ResolvedKey>; pwright_cap_locator::PRESS_KEY_MAX_TOKENS];
@@ -1454,7 +1583,7 @@ impl Service<PressParams> for CdpLocatorService {
             }
             action?;
             if let Some(navigation) = navigation {
-                navigation.finish(self.client.as_ref()).await?;
+                navigation.finish(self.keyboard_client().as_ref()).await?;
             }
             Ok(())
         })
@@ -1477,7 +1606,7 @@ macro_rules! impl_press_cancellation {
     };
 }
 
-impl_press_cancellation!(Press, locator_v2::Press);
+impl_press_cancellation!(Press, locator_v2::Press, Fill, locator_v2::Fill);
 
 impl Service<SelectOptionParams> for CdpLocatorService {
     type Response = SelectOptionResult;
@@ -1723,7 +1852,6 @@ impl_ready_locator_v2_cancellation!(
     locator_v2::AllTextContents,
     locator_v2::Blur,
     locator_v2::Count,
-    locator_v2::Fill,
     locator_v2::Focus,
     locator_v2::GetAttribute,
     locator_v2::InnerHtml,
@@ -2312,42 +2440,43 @@ impl Service<FillParams> for CdpLocatorService {
                 fill_actionability_script(&params.selector, &params.value, params.options.force)?;
             self.ensure_selector_runtime().await?;
             loop {
+                // Selection/focus and the final insert are one Page-owned
+                // transaction. Release it before retry delays so a missing
+                // target does not retain the input gate between attempts.
+                let mut transaction = self
+                    .input
+                    .begin_transaction(Arc::clone(&self.client), None)
+                    .await
+                    .map_err(map_cdp_error)?;
                 self.runtime_counters
                     .actionability_evaluations
                     .fetch_add(1, Ordering::Relaxed);
                 let response = self.evaluate(&script).await.map_err(map_cdp_error)?;
                 match parse_fill_attempt(response, &selector_label)? {
-                    FillAttempt::Done => return Ok(()),
-                    FillAttempt::NeedsInput => {
-                        if params.value.is_empty() {
-                            self.client
-                                .input_dispatch_key_event(
-                                    KeyEventType::RawKeyDown,
-                                    "Delete",
-                                    "Delete",
-                                    Some(46),
-                                )
-                                .await
-                                .map_err(map_cdp_error)?;
-                            return self
-                                .client
-                                .input_dispatch_key_event(
-                                    KeyEventType::KeyUp,
-                                    "Delete",
-                                    "Delete",
-                                    Some(46),
-                                )
-                                .await
-                                .map_err(map_cdp_error);
+                    FillAttempt::Done => return transaction.finish().await.map_err(map_cdp_error),
+                    FillAttempt::NeedsInput { is_mac } => {
+                        let action = async {
+                            if params.value.is_empty() {
+                                let key = resolve_key("Delete", false, is_mac)
+                                    .expect("the static layout includes Delete");
+                                transaction.key_down(key, is_mac).await?;
+                                transaction.key_up(key).await
+                            } else {
+                                self.client.input_insert_text(&params.value).await
+                            }
                         }
-                        return self
-                            .client
-                            .input_insert_text(&params.value)
-                            .await
-                            .map_err(map_cdp_error);
+                        .await;
+                        transaction.finish().await.map_err(|error| {
+                            map_cdp_error(error).reclassify(FailureKind::Cleanup)
+                        })?;
+                        return action.map_err(map_cdp_error);
                     }
-                    FillAttempt::Retry => tokio::time::sleep(self.retry_delay).await,
+                    FillAttempt::Retry => {
+                        drop(transaction);
+                        tokio::time::sleep(self.retry_delay).await;
+                    }
                     FillAttempt::RuntimeMissing => {
+                        drop(transaction);
                         self.runtime_counters
                             .missing_after_navigation
                             .fetch_add(1, Ordering::Relaxed);
@@ -2356,16 +2485,6 @@ impl Service<FillParams> for CdpLocatorService {
                 }
             }
         })
-    }
-}
-
-impl CommandCancellation<Fill> for CdpLocatorService {
-    type Future<'a> = Ready<Result<(), OperationError<LocatorErrorDetails>>>;
-
-    fn cancel(&self, _context: OperationContext, _reason: CancellationReason) -> Self::Future<'_> {
-        // The future owns no persistent browser-side operation. Dropping it
-        // prevents a later keyboard dispatch after an actionability retry.
-        ready(Ok(()))
     }
 }
 
@@ -2388,10 +2507,15 @@ impl ClickNavigationBarrier {
             .subscribe_composable_events()
             .map_err(click_navigation_subscription_error)?;
         client.page_enable().await.map_err(map_cdp_error)?;
+        // A renderer-session root can be an OOPIF and legitimately have a
+        // parent. Page creation's parentless-root assertion does not apply to
+        // this Frame-local navigation observation.
         let main_frame_id = client
-            .page_get_main_frame_id()
+            .page_get_frame_tree()
             .await
-            .map_err(map_cdp_error)?;
+            .map_err(map_cdp_error)?
+            .frame
+            .id;
         loop {
             match events.try_recv() {
                 Ok(_) => {}
@@ -2551,7 +2675,7 @@ enum ActionAttempt {
 
 enum FillAttempt {
     Done,
-    NeedsInput,
+    NeedsInput { is_mac: bool },
     Retry,
     RuntimeMissing,
 }
@@ -2704,8 +2828,8 @@ fn actionability_script(
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(async () => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2759,8 +2883,8 @@ fn click_v2_actionability_script(
     let scroll = matches!(options.scroll.unwrap_or(ScrollMode::Auto), ScrollMode::Auto);
     Ok(format!(
         r#"(async () => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2823,8 +2947,8 @@ fn hover_actionability_script(
     let scroll = matches!(options.scroll, ScrollMode::Auto);
     Ok(format!(
         r#"(async () => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2878,8 +3002,8 @@ fn count_script(selector: &Selector) -> Result<String, OperationError<LocatorErr
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2894,8 +3018,8 @@ fn all_inner_texts_script(
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2912,8 +3036,8 @@ fn all_text_contents_script(
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2926,8 +3050,8 @@ fn visibility_script(selector: &Selector) -> Result<String, OperationError<Locat
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2946,8 +3070,8 @@ fn element_state_script(
     let state = state.as_str();
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2964,8 +3088,8 @@ fn set_checked_state_script(
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -2991,8 +3115,8 @@ fn select_option_script(
     let force = options.force.unwrap_or(false);
     let script = format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3055,8 +3179,8 @@ fn scroll_into_view_if_needed_check_script(
     let selector = compile_selector(selector, "document")?;
     let script = format!(
         r#"(async () => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3108,8 +3232,8 @@ fn screenshot_geometry_check_script(
     let selector = compile_selector(selector, "document")?;
     let script = format!(
         r#"(async () => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3176,8 +3300,8 @@ fn scroll_into_view_if_needed_commit_script(
     let selector = compile_selector(selector, "document")?;
     let script = format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3215,8 +3339,8 @@ fn wait_for_script(
     };
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3234,8 +3358,8 @@ fn text_content_script(selector: &Selector) -> Result<String, OperationError<Loc
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3262,8 +3386,8 @@ fn get_attribute_script(
         .map_err(|error| invalid_response(&format!("could not encode attribute name: {error}")))?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3281,8 +3405,8 @@ fn inner_text_script(selector: &Selector) -> Result<String, OperationError<Locat
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3301,8 +3425,8 @@ fn input_value_script(selector: &Selector) -> Result<String, OperationError<Loca
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3328,8 +3452,8 @@ fn focus_operation_script(
     };
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3350,8 +3474,8 @@ fn press_focus_script(selector: &Selector) -> Result<String, OperationError<Loca
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3378,8 +3502,8 @@ fn inner_html_script(selector: &Selector) -> Result<String, OperationError<Locat
     let selector = compile_selector(selector, "document")?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3402,8 +3526,8 @@ fn fill_actionability_script(
         .map_err(|error| invalid_response(&format!("could not encode fill value: {error}")))?;
     Ok(format!(
         r#"(() => {{
-  const __pw = globalThis[Symbol.for("pwright.selector-runtime/6")];
-  if (!__pw || __pw.version !== 6) return {{ status: "runtime-missing" }};
+  const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
+  if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
   let matches;
   try {{ matches = {selector}; }}
   catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
@@ -3442,14 +3566,14 @@ fn fill_actionability_script(
     }}
     element.focus();
     element.select();
-    return {{ status: "needs-input" }};
+    return {{ status: "needs-input", isMac: navigator.platform.includes("Mac") }};
   }}
   if (tag === 'TEXTAREA') {{
     if (!{force} && (element.readOnly || element.getAttribute("aria-readonly") === "true"))
       return {{ status: "noteditable" }};
     element.focus();
     element.select();
-    return {{ status: "needs-input" }};
+    return {{ status: "needs-input", isMac: navigator.platform.includes("Mac") }};
   }}
   if (element.isContentEditable) {{
     if (!{force} && element.getAttribute("aria-readonly") === "true")
@@ -3460,7 +3584,7 @@ fn fill_actionability_script(
     const selection = element.ownerDocument.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
-    return {{ status: "needs-input" }};
+    return {{ status: "needs-input", isMac: navigator.platform.includes("Mac") }};
   }}
   return {{ status: "invalid-target", message: "Element is not an input, textarea, or contenteditable element" }};
 }})()"#
@@ -3797,7 +3921,12 @@ fn parse_fill_attempt(
         .ok_or_else(|| invalid_response("locator fill result is missing status"))?;
     match status {
         "done" => Ok(FillAttempt::Done),
-        "needs-input" => Ok(FillAttempt::NeedsInput),
+        "needs-input" => Ok(FillAttempt::NeedsInput {
+            is_mac: value
+                .get("isMac")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| invalid_response("locator fill result is missing isMac"))?,
+        }),
         "missing" | "detached" | "notvisible" | "disabled" | "noteditable" => {
             Ok(FillAttempt::Retry)
         }
@@ -5186,24 +5315,7 @@ fn resolve_modifiers(modifiers: KeyboardModifiers, is_mac: bool) -> CdpModifiers
 }
 
 fn map_cdp_error(error: CdpError) -> OperationError<LocatorErrorDetails> {
-    let kind = match &error {
-        CdpError::Timeout => FailureKind::Timeout,
-        CdpError::WebSocket(_) | CdpError::Closed | CdpError::ChannelDropped => {
-            FailureKind::TransportClosed
-        }
-        CdpError::PageClosed | CdpError::TabNotFound(_) => FailureKind::TargetClosed,
-        CdpError::Json(_) => FailureKind::ProtocolViolation,
-        CdpError::LimitExceeded { .. } | CdpError::Resource(_) => FailureKind::ResourceExhausted,
-        CdpError::Compound { .. } => FailureKind::Cleanup,
-        CdpError::Protocol { .. }
-        | CdpError::ElementNotFound { .. }
-        | CdpError::NavigationFailed { .. }
-        | CdpError::HttpFailed(_)
-        | CdpError::JsException(_)
-        | CdpError::InvalidConfiguration(_)
-        | CdpError::IdentifierExhausted
-        | CdpError::Other(_) => FailureKind::Backend,
-    };
+    let kind = classify_cdp_failure(&error);
     let message = error.to_string();
     OperationError::new(
         kind,
@@ -7277,7 +7389,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn selector_runtime_v6_exposes_shared_state_and_retarget_primitives() {
+    async fn selector_runtime_exposes_shared_state_and_retarget_primitives() {
         // Arrange
         let scripts = [
             element_state_script(
@@ -7301,16 +7413,52 @@ mod tests {
         let state_calls = scripts
             .iter()
             .map(|script| {
-                script.contains("pwright.selector-runtime/6")
+                script.contains("pwright.selector-runtime/7")
+                    && script.contains(&format!(
+                        "__pw.version !== {}",
+                        super::SELECTOR_RUNTIME_VERSION
+                    ))
                     && script.contains("__pw.elementState")
             })
             .collect::<Vec<_>>();
 
         // Assert
         assert_eq!(state_calls, vec![true, true, true]);
-        assert!(super::SELECTOR_RUNTIME.contains("version: 6"));
+        assert!(super::SELECTOR_RUNTIME.contains("version: 7"));
         assert!(super::SELECTOR_RUNTIME.contains("elementState"));
         assert!(super::SELECTOR_RUNTIME.contains("retarget"));
+    }
+
+    #[tokio::test]
+    async fn text_content_reports_a_closed_native_session_as_target_closed() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_errors(["Session with given id not found.".to_owned()]);
+        let service = CdpLocatorService::new(client.clone());
+        // Act
+        let error = service
+            .call(TextContentParams::new(selector("#missing")))
+            .await
+            .unwrap_err();
+        // Assert
+        assert_eq!(error.kind(), FailureKind::TargetClosed);
+        assert_eq!(client.calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn text_content_does_not_misclassify_navigation_context_loss_as_page_close() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_errors(["Cannot find context with specified id".to_owned()]);
+        let service = CdpLocatorService::new(client.clone());
+        // Act
+        let error = service
+            .call(TextContentParams::new(selector("#missing")))
+            .await
+            .unwrap_err();
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert_eq!(client.calls().len(), 1);
     }
 
     #[tokio::test]
@@ -8577,7 +8725,7 @@ mod tests {
         assert!(script.contains("__pw.role(document, \"dialog\""));
         assert!(script.contains("__pw.role(__root, \"button\""));
         assert!(script.contains("__pw.within"));
-        assert!(script.contains("Symbol.for(\"pwright.selector-runtime/6\")"));
+        assert!(script.contains("Symbol.for(\"pwright.selector-runtime/7\")"));
         assert!(!script.contains("validRoles"));
         assert!(script.len() < super::SELECTOR_RUNTIME.len());
     }
@@ -8733,7 +8881,7 @@ mod tests {
         client.set_evaluate_responses([
             runtime_installed(),
             json!({"result": {"value": {"status": "noteditable"}}}),
-            json!({"result": {"value": {"status": "needs-input"}}}),
+            json!({"result": {"value": {"status": "needs-input", "isMac": false}}}),
         ]);
         let service = CdpLocatorService::with_retry_delay(client.clone(), Duration::ZERO);
 
@@ -8811,7 +8959,7 @@ mod tests {
         let client = Arc::new(FakeCdpClient::from_html("<textarea>old</textarea>"));
         client.set_evaluate_responses([
             runtime_installed(),
-            json!({"result": {"value": {"status": "needs-input"}}}),
+            json!({"result": {"value": {"status": "needs-input", "isMac": true}}}),
         ]);
         let service = CdpLocatorService::new(client.clone());
 
@@ -8838,6 +8986,73 @@ mod tests {
         let calls = client.calls();
         assert_eq!(calls[2].1[0]["type"], "rawKeyDown");
         assert_eq!(calls[3].1[0]["type"], "keyUp");
+    }
+
+    #[tokio::test]
+    async fn fill_cannot_focus_or_insert_while_another_page_input_transaction_is_held() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<input>"));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "needs-input", "isMac": false}}}),
+        ]);
+        let service = CdpLocatorService::new(client.clone());
+        let held = service
+            .input
+            .begin_transaction(client.clone(), None)
+            .await
+            .unwrap();
+        let mut future = service.call(FillParams::new(
+            selector("input"),
+            "value",
+            FillOptions::new(),
+        ));
+        let mut task = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(future.as_mut().poll(&mut task).is_pending());
+        assert_eq!(client.method_names(), vec!["Runtime.evaluate"]);
+        // Act
+        drop(held);
+        let result = future.await;
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(
+            client.method_names(),
+            vec!["Runtime.evaluate", "Runtime.evaluate", "Input.insertText"]
+        );
+    }
+
+    #[tokio::test]
+    async fn clear_repairs_an_acknowledged_delete_after_key_up_failure() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<input>"));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "needs-input", "isMac": true}}}),
+        ]);
+        client.set_input_errors([None, Some("key up failed".into()), None]);
+        let service = CdpLocatorService::new(client.clone());
+        // Act
+        let result = service
+            .call(FillParams::new(selector("input"), "", FillOptions::new()))
+            .await;
+        // Assert
+        assert_eq!(result.unwrap_err().kind(), FailureKind::Backend);
+        let calls = client.calls();
+        assert_eq!(calls.len(), 5);
+        assert_eq!(calls[2].1[0]["code"], "Delete");
+        assert_eq!(calls[3].1[0]["type"], "keyUp");
+        assert_eq!(calls[4].1[0]["type"], "keyUp");
+        let transaction = service
+            .input
+            .begin_transaction(client.clone(), None)
+            .await
+            .unwrap();
+        drop(transaction);
+        assert_eq!(
+            client.calls().len(),
+            5,
+            "the repaired key must not remain pressed"
+        );
     }
 
     #[tokio::test]
@@ -8963,7 +9178,9 @@ mod tests {
     #[test]
     fn production_profile_reserves_atomic_frame_route_replacement() {
         // Arrange
-        let profile = CdpLocatorProductionProfile::new(LOCATOR_SCOPE, 1).with_context_routes(3, 64);
+        let ordinary = CdpLocatorProductionProfile::new(LOCATOR_SCOPE, 1);
+        let profile = ordinary.with_context_routes(3, 64);
+        let expected_route_bytes = 3 * (12 * 64 + 2 * std::mem::size_of::<i64>() as u64);
         let resources = production_resources(profile, 0);
         let factory = CdpLocatorServiceFactory::new_with_production_resources(profile, &resources)
             .expect("locator factory should claim actions and routes");
@@ -8977,7 +9194,15 @@ mod tests {
         // Assert
         assert_eq!(profile.max_context_routes(), 3);
         assert_eq!(profile.max_native_id_bytes(), 64);
-        assert_eq!(profile.maximum_route_retained_bytes(), 3 * 12 * 64);
+        assert_eq!(profile.maximum_route_retained_bytes(), expected_route_bytes);
+        assert_eq!(
+            profile.requirements().leases,
+            ordinary.requirements().leases + 1
+        );
+        assert_eq!(
+            profile.requirements().class(ResourceClass::SelectorBytes),
+            ordinary.requirements().class(ResourceClass::SelectorBytes)
+        );
         assert_eq!(
             resources
                 .metrics()
@@ -8987,6 +9212,14 @@ mod tests {
             profile.maximum_route_retained_bytes()
         );
         drop(route_lease);
+        assert_eq!(
+            resources
+                .metrics()
+                .expect("metrics should remain readable")
+                .class(ResourceClass::BackendStateBytes)
+                .current,
+            0
+        );
     }
 
     #[tokio::test]

@@ -1,0 +1,48 @@
+[package]
+name = "pwright-composition-chromium-file-input"
+description = "Admitted exact-element upload continuation and cleanup ownership"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+retained-preflight = [
+    "pwright-backend-cdp-file-input/retained-preflight",
+    "pwright-composition-chromium-locator-resolution/retained-reference",
+]
+retained-target-marking = [
+    "pwright-backend-cdp-file-input/retained-target-marking",
+    "pwright-composition-chromium-locator-resolution/retained-reference",
+]
+retained-target-prevalidation = [
+    "retained-preflight",
+    "retained-target-marking",
+]
+retained-serialized-payload-mutation = [
+    "retained-target-prevalidation",
+    "pwright-backend-cdp-file-input/retained-serialized-payload-mutation",
+    "dep:serde_json",
+]
+
+[dependencies]
+pwright-core.workspace = true
+pwright-runtime.workspace = true
+pwright-backend-cdp-file-input.workspace = true
+pwright-composition-chromium-locator-resolution.workspace = true
+pwright-file-input-source.workspace = true
+serde_json = { workspace = true, optional = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+pwright-runtime-tokio.workspace = true
+pwright-cdp.workspace = true
+pwright-browser-provider.workspace = true
+pwright-provider-cdp.workspace = true
+pwright-fake.workspace = true
+pwright-file-input-model.workspace = true
+pwright-selector-model.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

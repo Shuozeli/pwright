@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Semantic Locator fixture</title></head><body>
+<section id="first" aria-label="First group">
+  <button id="save" aria-label="Save file" data-testid="save">Save <span>file</span></button>
+  <button id="pressed" aria-pressed="true">Toggle</button>
+  <label for="email"> E-mail <span>address</span> </label><input id="email" placeholder="Your e-mail" value="reader@example.test">
+  <label>Wrapped label <input id="wrapped" value="wrapped"></label>
+  <span id="aria-name">ARIA name</span><input id="aria" aria-labelledby="aria-name" value="named">
+  <input id="nickname" aria-label="Nickname" value="name">
+  <input id="checked" type="checkbox" aria-label="Accept" checked>
+  <button id="disabled" disabled>Disabled action</button>
+  <button id="expanded" aria-expanded="true">Expand</button>
+  <div role="tab" id="selected" aria-selected="true">Chosen tab</div>
+  <h2 id="heading">A heading</h2><button id="hidden" style="display:none">Hidden action</button>
+  <img id="picture" alt="Small cat"><span id="titled" title="More information">Tooltip target</span>
+  <div id="unicode" data-testid="Exact ID">  Hello&nbsp; 中文  <span>world</span> </div>
+  <span id="case-id" data-testid="exact id">Lowercase identifier</span>
+</section>
+<section id="second"><button id="other">Save file</button></section>
+<section id="name-order"><button id="content-name" title="Wrong tooltip">Visible name</button><button id="fallback-name" title="Fallback name"></button><button id="aria-first" aria-label="ARIA winner" title="Tooltip">Content loser</button><a id="link-name" href="#" title="Wrong link tooltip">Visible link</a><div id="role-name" role="button" title="Wrong role tooltip">Role content</div></section>
+<div id="shadow"></div>
+<section id="regex"><button>Run</button><button>Run</button><button>Run</button></section>
+<script>document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML='<label>Shadow label<input id="shadow-input" value="shadow"></label><button id="shadow-button" title="Shadow title" data-testid="shadow-save">Shadow save</button>';</script>
+</body></html>

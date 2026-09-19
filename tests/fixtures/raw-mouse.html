@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Pwright raw Mouse fixture</title>
+<style>html,body{margin:0;overflow:hidden;user-select:none}#pad{position:fixed;inset:0;background:#eaf1f4}</style></head>
+<body><div id="pad"></div><script>
+'use strict';
+(() => {
+  const records = [];
+  let overflow = false;
+  let wheels = 0;
+  document.addEventListener('contextmenu', event => event.preventDefault());
+  for (const type of ['pointermove', 'pointerdown', 'pointerup', 'mousemove', 'mousedown', 'mouseup', 'click', 'auxclick', 'dblclick', 'wheel']) {
+    document.addEventListener(type, event => {
+      if (type === 'wheel') { event.preventDefault(); wheels++; }
+      if (records.length >= 256) { overflow = true; return; }
+      records.push({ type, x: event.clientX, y: event.clientY, button: event.button,
+        buttons: event.buttons, detail: event.detail, pressure: event.pressure ?? null,
+        shift: event.shiftKey, control: event.ctrlKey, alt: event.altKey, meta: event.metaKey,
+        deltaX: event.deltaX ?? null, deltaY: event.deltaY ?? null, deltaMode: event.deltaMode ?? null });
+    }, { passive: false });
+  }
+  window.resetMouse = () => { records.length = 0; overflow = false; wheels = 0; };
+  window.mouseSnapshot = () => ({ records: records.slice(), overflow, wheels });
+})();
+</script></body></html>

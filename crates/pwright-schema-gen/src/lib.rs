@@ -23,6 +23,10 @@ pub struct ProtocolSchema {
     library: Option<String>,
     protocol: Option<String>,
     version: Version,
+    /// Development-only binding placement. Wire identity/version is unchanged.
+    /// Allows an opt-in minor revision to coexist with a retained root API.
+    #[serde(default)]
+    rust_minor_module: bool,
     root: Option<String>,
     #[serde(default)]
     imports: Vec<String>,
@@ -34,6 +38,10 @@ pub struct ProtocolSchema {
 }
 
 impl ProtocolSchema {
+    fn rust_minor_namespace(&self) -> Option<String> {
+        self.rust_minor_module
+            .then(|| format!("v{}_{}", self.version.major, self.version.minor))
+    }
     fn namespace(&self) -> Option<&str> {
         self.capability
             .as_deref()
@@ -457,6 +465,7 @@ pub enum SchemaError {
     LibraryHasDependencies,
     ProtocolHasDependencies,
     GeneratedPublicModelsRequireCapability,
+    RustMinorModuleRequiresCapability,
     ServerOutputRequiresCapability,
     ServerOutputRequiresCommands,
     ImportsRequireResolution,
@@ -730,6 +739,8 @@ impl Display for SchemaError {
             Self::GeneratedPublicModelsRequireCapability => {
                 formatter.write_str("generated public models require a capability schema")
             }
+            Self::RustMinorModuleRequiresCapability => formatter
+                .write_str("minor-version Rust module selection requires a capability schema"),
             Self::ServerOutputRequiresCapability => {
                 formatter.write_str("server binding output requires a capability schema")
             }
@@ -1699,7 +1710,13 @@ fn generate_server_rust_resolved(
     )
     .map_err(|_| SchemaError::Formatting)?;
     writeln!(output, "use std::sync::Arc;\n").map_err(|_| SchemaError::Formatting)?;
-    if schema.version.major == 1 {
+    if let Some(module) = schema.rust_minor_namespace() {
+        writeln!(
+            output,
+            "use pwright_cap_{crate_suffix}::{module}::{{{markers}}};"
+        )
+        .map_err(|_| SchemaError::Formatting)?;
+    } else if schema.version.major == 1 {
         writeln!(output, "use pwright_cap_{crate_suffix}::{{{markers}}};")
             .map_err(|_| SchemaError::Formatting)?;
     } else {
@@ -1710,8 +1727,14 @@ fn generate_server_rust_resolved(
         )
         .map_err(|_| SchemaError::Formatting)?;
     }
-    writeln!(output, "use pwright_codec_{crate_suffix}::{codec_type};")
-        .map_err(|_| SchemaError::Formatting)?;
+    let codec_module = schema
+        .rust_minor_namespace()
+        .map_or_else(String::new, |module| format!("{module}::"));
+    writeln!(
+        output,
+        "use pwright_codec_{crate_suffix}::{codec_module}{codec_type};"
+    )
+    .map_err(|_| SchemaError::Formatting)?;
     if schema.commands.len() == 1 {
         writeln!(
             output,
@@ -2150,6 +2173,11 @@ fn generate_markdown_reference_resolved(
 
     for definition in &schema.types {
         emit_markdown_type(&mut output, definition)?;
+    }
+    // Keep generated documents whitespace-clean when the final type is added
+    // or replaced; section separators are not extra blank lines at EOF.
+    while output.ends_with("\n\n") {
+        output.pop();
     }
     Ok(output)
 }
@@ -3081,7 +3109,11 @@ fn emit_public_rust_uses(output: &mut String, schema: &ProtocolSchema) -> Result
         .map(|name| format!("{name} as Public{name}"))
         .collect::<Vec<_>>()
         .join(", ");
-    writeln!(output, "use {crate_name}::{{{imports}}};\n").map_err(|_| SchemaError::Formatting)
+    let module = schema
+        .rust_minor_namespace()
+        .map_or_else(String::new, |module| format!("{module}::"));
+    writeln!(output, "use {crate_name}::{module}{{{imports}}};\n")
+        .map_err(|_| SchemaError::Formatting)
 }
 
 fn rust_import_crate_name(namespace: &str) -> String {
@@ -3193,6 +3225,9 @@ fn emit_rust_imports(output: &mut String, schema: &ProtocolSchema) -> Result<(),
 }
 
 fn validate(schema: &ProtocolSchema) -> Result<(), SchemaError> {
+    if schema.rust_minor_module && schema.capability.is_none() {
+        return Err(SchemaError::RustMinorModuleRequiresCapability);
+    }
     if schema.format != SCHEMA_FORMAT {
         return Err(SchemaError::UnsupportedFormat {
             actual: schema.format,
@@ -6250,6 +6285,8 @@ types:
         // Assert
         assert_eq!(first, second);
         assert!(first.starts_with("<!-- agent-updated: 2026-09-03T22:08:32Z -->"));
+        assert!(first.ends_with('\n'));
+        assert!(!first.ends_with("\n\n"));
         assert!(first.contains("# `pwright.test` protocol reference"));
         assert!(
             first
@@ -6352,6 +6389,89 @@ types:
         assert!(generated.contains("pub struct TestV2ServerServices<ExecuteService>"));
         assert!(generated.contains("pub fn test_v2_server_handlers<ExecuteService>("));
         assert!(generated.contains("WireProtocol<TestV2Codec>"));
+    }
+
+    #[test]
+    fn explicit_minor_binding_scopes_public_conversions_and_server_without_changing_wire_identity()
+    {
+        // Arrange
+        let root = parse_and_validate(COMMAND_CAPABILITY).unwrap();
+        let source = COMMAND_CAPABILITY.replace(
+            "root: pwright.test.message",
+            "rust_minor_module: true\nroot: pwright.test.message",
+        );
+        let selected = parse_and_validate(&source).unwrap();
+        // Act
+        let codec = generate_rust(&selected).unwrap();
+        let server = generate_server_rust(&selected).unwrap();
+        // Assert
+        assert!(codec.contains("use pwright_cap_test::v1_0::{"));
+        assert!(server.contains("use pwright_cap_test::v1_0::{Execute};"));
+        assert!(server.contains("use pwright_codec_test::v1_0::TestCodec;"));
+        assert_eq!(
+            generate_capability_rust(&root).unwrap(),
+            generate_capability_rust(&selected).unwrap()
+        );
+        assert_eq!(
+            codec.replace("pwright_cap_test::v1_0::", "pwright_cap_test::"),
+            generate_rust(&root).unwrap()
+        );
+        check_minor_compatibility(&root, &selected).unwrap();
+    }
+
+    #[test]
+    fn minor_binding_selection_rejects_noncapability_schemas() {
+        // Arrange
+        let source = include_str!("../../pwright-codec-common/schema/common.yml")
+            .replace("format: 1", "format: 1\nrust_minor_module: true");
+        // Act
+        let result = parse_and_validate(&source);
+        // Assert
+        assert_eq!(
+            result.unwrap_err(),
+            SchemaError::RustMinorModuleRequiresCapability
+        );
+    }
+
+    #[test]
+    fn navigation_minor_revision_adds_frame_command_without_changing_published_page_contracts() {
+        // Arrange
+        let imports =
+            [
+                parse_and_validate(include_str!("../../pwright-codec-common/schema/common.yml"))
+                    .unwrap(),
+            ];
+        let previous = parse_and_validate_with_imports(
+            include_str!("../../pwright-cap-navigation/schema/baselines/1.1/navigation.yml"),
+            &imports,
+        )
+        .unwrap();
+        let selected = parse_and_validate_with_imports(
+            include_str!("../../pwright-cap-navigation/schema/navigation-1.2.yml"),
+            &imports,
+        )
+        .unwrap();
+        // Act
+        let result =
+            check_minor_compatibility_with_imports(&previous, &selected, &imports, &imports);
+        // Assert
+        result.unwrap();
+        assert!(selected.rust_minor_module);
+        assert_eq!(selected.commands.len(), 4);
+        for command in &previous.commands {
+            assert!(selected.commands.contains(command));
+        }
+        let frame = selected
+            .commands
+            .iter()
+            .find(|command| command.name == "frame_goto")
+            .unwrap();
+        assert_eq!(frame.method, 65540);
+        assert_eq!(frame.targets, ["pwright.browser.frame"]);
+        assert_eq!(
+            include_str!("../../pwright-cap-navigation/schema/navigation.yml"),
+            include_str!("../../pwright-cap-navigation/schema/baselines/1.1/navigation.yml")
+        );
     }
 
     #[test]

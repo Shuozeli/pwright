@@ -46,6 +46,11 @@ pub struct Header {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReloadParams {
+    pub wait_until: WaitUntil,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NavigationResponse {
     pub url: String,
     pub status: i64,
@@ -73,6 +78,11 @@ pub const GOTO_METHOD: MethodTag = MethodTag::new(65538);
 pub const GOTO_TARGET_OBJECT_KINDS: &[ObjectKindId] = &[
     ObjectKindId::new("pwright.browser.page"),
 ];
+pub const RELOAD_COMMAND_ID: CommandId = CommandId::new("navigation.reload");
+pub const RELOAD_METHOD: MethodTag = MethodTag::new(65539);
+pub const RELOAD_TARGET_OBJECT_KINDS: &[ObjectKindId] = &[
+    ObjectKindId::new("pwright.browser.page"),
+];
 
 pub const NAVIGATION_COMMAND_DESCRIPTORS: &[CapabilityCommandDescriptor] = &[
     CapabilityCommandDescriptor::new(
@@ -85,19 +95,25 @@ pub const NAVIGATION_COMMAND_DESCRIPTORS: &[CapabilityCommandDescriptor] = &[
         GOTO_METHOD,
         GOTO_TARGET_OBJECT_KINDS,
     ),
+    CapabilityCommandDescriptor::new(
+        RELOAD_COMMAND_ID,
+        RELOAD_METHOD,
+        RELOAD_TARGET_OBJECT_KINDS,
+    ),
 ];
 
 
 const NAVIGATION_COMMAND_IDS: &[CommandId] = &[
     BEGIN_NAVIGATION_COMMAND_ID,
     GOTO_COMMAND_ID,
+    RELOAD_COMMAND_ID,
 ];
 
 pub struct NavigationCapability;
 
 impl Capability for NavigationCapability {
     const DESCRIPTOR: CapabilityDescriptor = CapabilityDescriptor::new(
-        PluginInfo::new(NAVIGATION_CAPABILITY_ID, "Navigation", ProtocolVersion::new(1, 0)),
+        PluginInfo::new(NAVIGATION_CAPABILITY_ID, "Navigation", ProtocolVersion::new(1, 1)),
         &[],
         NAVIGATION_COMMAND_IDS,
     );
@@ -131,4 +147,19 @@ impl CommandSpec for Goto {
 impl CapabilityCommandSpec for Goto {
     type Capability = NavigationCapability;
     const COMMAND: CommandId = GOTO_COMMAND_ID;
+}
+
+pub struct Reload;
+
+impl CommandSpec for Reload {
+    const METHOD: MethodTag = RELOAD_METHOD;
+    const TARGET_OBJECT_KINDS: &'static [ObjectKindId] = RELOAD_TARGET_OBJECT_KINDS;
+    type Params = ReloadParams;
+    type Result = GotoResult;
+    type ErrorDetails = NavigationErrorDetails;
+}
+
+impl CapabilityCommandSpec for Reload {
+    type Capability = NavigationCapability;
+    const COMMAND: CommandId = RELOAD_COMMAND_ID;
 }

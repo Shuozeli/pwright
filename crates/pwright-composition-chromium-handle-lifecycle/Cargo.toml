@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+native-release = ["pwright-runtime/disposal-reservations"]
+
 [dependencies]
 pwright-backend-cdp-handle-lifecycle = { workspace = true }
 pwright-cap-handle-lifecycle = { workspace = true }

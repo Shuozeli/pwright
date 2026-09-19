@@ -26,6 +26,7 @@ Thumbs.db
 
 # Node (test harness)
 node_modules/
+packages/pwright/native/
 # Private integration scripts
 examples/scripts-dragb-private/
 docs/dragb-integration-report.md

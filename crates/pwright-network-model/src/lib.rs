@@ -12,6 +12,9 @@ use std::fmt::{self, Display, Formatter};
 
 use pwright_core::ObjectId;
 
+#[cfg(feature = "extra-headers")]
+pub mod extra_headers;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HttpHeader {
     pub name: String,

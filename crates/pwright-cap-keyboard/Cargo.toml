@@ -1,0 +1,12 @@
+[package]
+name = "pwright-cap-keyboard"
+description = "Optional raw Page Keyboard cap layer for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-core = { workspace = true }
+pwright-input-model = { workspace = true }
