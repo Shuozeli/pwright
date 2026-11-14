@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_browsercontext_cookies.py": "1e8ffedbc7fa8588b6d73b07d53a7173ae1b09b4c35021eaf51dbe6d3b6b213d"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_browsercontext_cookies.py::test_should_return_no_cookies_in_pristine_browser_context",
+      "capabilities": ["browser-context.cookies", "browser-context.isolation"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_cookies.py::test_should_get_a_cookie",
+      "capabilities": ["browser-context.cookies", "cookie.domain", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_cookies.py::test_should_get_a_non_session_cookie",
+      "capabilities": ["browser-context.cookies", "cookie.expires", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_cookies.py::test_should_properly_report_httpOnly_cookie",
+      "capabilities": ["browser-context.cookies", "cookie.http-only", "response.set-cookie"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_cookies.py::test_should_properly_report_strict_sameSite_cookie",
+      "capabilities": ["browser-context.cookies", "cookie.same-site-strict"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_cookies.py::test_should_properly_report_lax_sameSite_cookie",
+      "capabilities": ["browser-context.cookies", "cookie.same-site-lax"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_cookies.py::test_should_get_multiple_cookies",
+      "capabilities": ["browser-context.cookies", "cookie.multiple", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_cookies.py::test_should_get_cookies_from_multiple_urls",
+      "capabilities": [
+        "browser-context.add-cookies",
+        "browser-context.cookies",
+        "cookie.url-filter"
+      ]
+    }
+  ]
+}

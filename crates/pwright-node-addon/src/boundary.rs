@@ -1,6 +1,8 @@
 //! Borrow JS arguments until admission, and keep tickets through JS conversion.
 
 use std::future::Future;
+#[cfg(feature = "handles")]
+use std::sync::Arc;
 
 use napi::{
     Env, JsString, Unknown,
@@ -31,14 +33,66 @@ pub fn spawn_published<'env, T: Send + ToNapiValue + 'static>(
     port: crate::publication_port::PublicationPort,
     future: impl Future<Output = Result<T, HostError>> + Send + 'static,
 ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+    spawn_published_sized(env, execution, port, future, |_| 0)
+}
+
+#[cfg(feature = "handles")]
+pub fn spawn_published_wait<'env, T: Send + ToNapiValue + 'static>(
+    env: &'env Env,
+    execution: FfiExecution<Published<T>>,
+    port: crate::publication_port::PublicationPort,
+    wait_permit: crate::wait_admission::WaitPermit,
+    future: impl Future<Output = Result<T, HostError>> + Send + 'static,
+) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+    let wait_permit = Arc::new(wait_permit);
+    let running_permit = Arc::clone(&wait_permit);
+    spawn_published_sized_guarded(
+        env,
+        execution,
+        port,
+        wait_permit,
+        async move {
+            let outcome = future.await;
+            drop(running_permit);
+            outcome
+        },
+        |_| 0,
+    )
+}
+
+pub fn spawn_published_sized<'env, T: Send + ToNapiValue + 'static>(
+    env: &'env Env,
+    execution: FfiExecution<Published<T>>,
+    port: crate::publication_port::PublicationPort,
+    future: impl Future<Output = Result<T, HostError>> + Send + 'static,
+    additional_result_bytes: impl Fn(&T) -> u64 + Send + 'static,
+) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+    spawn_published_sized_guarded(env, execution, port, (), future, additional_result_bytes)
+}
+
+fn spawn_published_sized_guarded<'env, T: Send + ToNapiValue + 'static, G: Send + 'static>(
+    env: &'env Env,
+    execution: FfiExecution<Published<T>>,
+    port: crate::publication_port::PublicationPort,
+    settlement_guard: G,
+    future: impl Future<Output = Result<T, HostError>> + Send + 'static,
+    additional_result_bytes: impl Fn(&T) -> u64 + Send + 'static,
+) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
     let publications = port.publications();
-    spawn_with_env(
+    let reservation = execution.reservation();
+    spawn_with_env_guarded(
         env,
         execution,
         async move {
-            let outcome = future.await;
+            let outcome = match future.await {
+                Ok(value) => reservation
+                    .reserve_additional(additional_result_bytes(&value))
+                    .map(|()| value),
+                Err(error) => Err(error),
+            };
             Ok((outcome, publications.fence()?))
         },
+        settlement_guard,
         move |env, (outcome, fence)| {
             port.publish(env, fence)?;
             outcome.map_err(binding_error)
@@ -48,8 +102,18 @@ pub fn spawn_published<'env, T: Send + ToNapiValue + 'static>(
 
 pub fn spawn_with_env<'env, T: Send + 'static, R: ToNapiValue>(
     env: &'env Env,
+    execution: FfiExecution<T>,
+    future: impl Future<Output = Result<T, HostError>> + Send + 'static,
+    convert: impl FnOnce(&Env, T) -> napi::Result<R> + 'static,
+) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+    spawn_with_env_guarded(env, execution, future, (), convert)
+}
+
+fn spawn_with_env_guarded<'env, T: Send + 'static, R: ToNapiValue, G: Send + 'static>(
+    env: &'env Env,
     mut execution: FfiExecution<T>,
     future: impl Future<Output = Result<T, HostError>> + Send + 'static,
+    settlement_guard: G,
     convert: impl FnOnce(&Env, T) -> napi::Result<R> + 'static,
 ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
     execution
@@ -62,8 +126,12 @@ pub fn spawn_with_env<'env, T: Send + 'static, R: ToNapiValue>(
     // Even an operation error is an owned, budgeted settlement. Returning
     // Err from the worker future would release its permit before JS delivery.
     env.spawn_future_with_callback(async move { Ok(execution.await) }, move |env, ticket| {
-        ticket
+        let result = ticket
             .deliver(|outcome| convert(env, outcome.map_err(binding_error)?)?.into_unknown(env))
-            .map_err(binding_error)?
+            .map_err(binding_error)?;
+        // The wait guard outlives FFI Command's settlement, including JS
+        // conversion. It is also dropped if callback registration fails.
+        drop(settlement_guard);
+        result
     })
 }

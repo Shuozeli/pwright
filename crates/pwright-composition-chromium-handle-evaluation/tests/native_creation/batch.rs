@@ -37,6 +37,80 @@ fn assert_routes(fixture: &Fixture, current: usize, reserved: usize) {
 }
 
 #[tokio::test]
+async fn emitted_remote_objects_stage_and_publish_without_browser_io() {
+    // Arrange
+    let fixture = fixture(3);
+    let service = fixture.installation.raw_service();
+    let remotes = [
+        serde_json::json!({"type": "string", "value": "hello"}),
+        serde_json::json!({"type": "number", "value": 5}),
+        serde_json::json!({
+            "type": "object",
+            "description": "Object",
+            "objectId": "console-object-1"
+        }),
+    ];
+    let before = fixture.primary.calls().len();
+
+    // Act
+    let pending = service
+        .stage_remote_objects(ObjectId::new(4), &remotes)
+        .expect("event RemoteObjects should stage");
+    let result = pending.commit_or_defer();
+
+    // Assert
+    let NativeHandleBatchCreationCommit::Published(result) = result else {
+        panic!("event Handle batch did not publish")
+    };
+    assert_eq!(fixture.primary.calls().len(), before);
+    assert_eq!(result.properties.len(), 3);
+    assert_eq!(result.properties[0].name, "0");
+    assert_eq!(result.properties[0].handle.preview, "hello");
+    assert_eq!(result.properties[1].name, "1");
+    assert_eq!(result.properties[1].handle.preview, "5");
+    assert_eq!(result.properties[2].name, "2");
+    assert_eq!(result.properties[2].handle.preview, "Object");
+    assert!(
+        result
+            .properties
+            .iter()
+            .all(|property| property.handle.parent_id == ObjectId::new(4))
+    );
+    assert_routes(&fixture, 3, 0);
+    for property in result.properties {
+        super::target::dispose(&fixture, property.handle.object_id).await;
+    }
+    assert_routes(&fixture, 0, 0);
+}
+
+#[test]
+fn malformed_emitted_remote_batch_releases_all_local_route_admission() {
+    // Arrange
+    let fixture = fixture(2);
+    let service = fixture.installation.raw_service();
+    let remotes = [
+        serde_json::json!({
+            "type": "object",
+            "description": "Object",
+            "objectId": "console-object-1"
+        }),
+        serde_json::json!({"value": "missing type"}),
+    ];
+    let before = fixture.primary.calls().len();
+
+    // Act
+    let error = match service.stage_remote_objects(ObjectId::new(4), &remotes) {
+        Ok(_) => panic!("malformed RemoteObject must be rejected"),
+        Err(error) => error,
+    };
+
+    // Assert
+    assert_eq!(error.kind(), FailureKind::ProtocolViolation);
+    assert_eq!(fixture.primary.calls().len(), before);
+    assert_routes(&fixture, 0, 0);
+}
+
+#[tokio::test]
 async fn batch_capacity_is_admitted_before_browser_io() {
     // Arrange
     let fixture = fixture(3);

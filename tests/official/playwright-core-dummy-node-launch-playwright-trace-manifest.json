@@ -1,0 +1,36 @@
+{
+  "schema": 2,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "executionPolicy": "pinned-dummy-node-launch-v1",
+  "suite": {
+    "id": "library-browsertype-launch-dummy-node-failure-chromium",
+    "role": "browserless-dummy-process-diagnostic",
+    "runner": "packages/playwright/cli.js",
+    "config": "tests/library/playwright.config.ts",
+    "project": "chromium-library",
+    "selector": "tests/library/browsertype-launch.spec.ts:64",
+    "specId": "d1a604bdf6287c6776f3-522221011eea38945220",
+    "title": "should reject if launched browser fails immediately",
+    "requiresBrowser": false,
+    "fixtureMode": "dummy-node-launch",
+    "candidateAdapter": "test-mode-playwright-core-owned-public-launch",
+    "oracleAdapter": "test-mode-playwright-core-public-launch",
+    "executable": "tests/assets/dummy_bad_browser_executable.js",
+    "candidateProfile": "playwright-trace",
+    "candidateSourceSha256": "1e98c1dd2738adb8cebf99a418ceacbc1c75d1b03c80135e2613fd704295d42f",
+    "candidateArtifactSha256": "13d6db323b599d57608d99b7f18f8a06856c6425e1931dfdb718f74d356c765d",
+    "upstreamSources": {
+      "tests/library/browsertype-launch.spec.ts": "64fe24188ec96bb0d5d1ecca5af37986b16d82451b91e4db80593f707126bd05",
+      "tests/assets/dummy_bad_browser_executable.js": "9928a78e7de42f29dfc61783a2f31673b387d7d6ea27cda5bc4472e4338c1f7f",
+      "tests/library/playwright.config.ts": "338eb705bb4a17322dfba39d1c6770613bf8cf62cfec5c43bf7cece3e5db8146",
+      "tests/config/browserTest.ts": "0ef5440e164d262e7c3d01523448b5d3c4d50b99060604c20f168f04419a13d5",
+      "tests/config/testMode.ts": "7c12e6bd3fa7e2e3e4ff296277f4a60656d4d8a0c536cb55d9d6c1e83016f575",
+      "tests/config/serverFixtures.ts": "4c0039a149bd61e8707adddc626b345632561bd343749293ddbe9458f6ac617b",
+      "packages/playwright-core/src/client/browserType.ts": "f46ad9dc1a7d5c9e90b2adda605ae5949bb138ad42fc48253cd59ec65a604618",
+      "packages/playwright-core/src/server/browserType.ts": "47765ae8932d697c126e4a12b4a9998e3f83021b3ecfc159c4572137deb338ac",
+      "packages/playwright-core/src/server/utils/processLauncher.ts": "d9c3bc627b0e83cf4d307201cddb63aa7aaf7a4f2878dcc676d92c9e47c4465b"
+    }
+  }
+}

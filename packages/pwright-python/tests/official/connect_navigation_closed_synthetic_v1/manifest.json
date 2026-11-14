@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "kind": "playwright-python-connect-navigation-closed-synthetic-v1",
+  "classification": "official-derived-fixture-adapted-internal-diagnostic",
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "coreProtocolCommit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "requiresBrowser": false,
+  "fixtureAdapted": true,
+  "adaptedFixture": "launch_server",
+  "testSourceAdapted": false,
+  "promotableToOfficialLedger": false,
+  "candidateAbi": 125,
+  "candidateSelectedFeatures": [
+    "browser-registry",
+    "playwright-server-initialize",
+    "playwright-server-connect-session"
+  ],
+  "candidateWheelSha256": "55559426717355a047808cdbf0e8cc5b4402da1d8bf860ca30a885e4b407b54f",
+  "testBodies": [
+    "tests/async/test_browsertype_connect.py::test_browser_type_connect_should_reject_navigation_when_browser_closes"
+  ],
+  "engines": ["chromium", "firefox", "webkit"],
+  "expandedCaseIds": [
+    "tests/async/test_browsertype_connect.py::test_browser_type_connect_should_reject_navigation_when_browser_closes[chromium]",
+    "tests/async/test_browsertype_connect.py::test_browser_type_connect_should_reject_navigation_when_browser_closes[firefox]",
+    "tests/async/test_browsertype_connect.py::test_browser_type_connect_should_reject_navigation_when_browser_closes[webkit]"
+  ],
+  "upstreamSourceSha256": {
+    "tests/async/test_browsertype_connect.py": "d47290f5acb45246ce2bae150d3c583d340806821b660be08d798ac3572e7b11",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "pyproject.toml": "96e2d4dcd75b40a101c77d12b4e29ea4d91efc6fd58992a67ed8cc837e2e1e08"
+  },
+  "toolingVersions": {
+    "python": "3.12",
+    "playwright": "1.58.0",
+    "pytest": "8.4.2",
+    "pytest-asyncio": "1.2.0",
+    "pytest-timeout": "2.4.0",
+    "pytest-rerunfailures": "15.1",
+    "pytest-repeat": "0.9.4",
+    "pillow": "11.3.0",
+    "pixelmatch": "0.3.0",
+    "twisted": "25.5.0",
+    "pyopenssl": "25.1.0",
+    "service-identity": "24.2.0",
+    "autobahn": "23.1.2",
+    "requests": "2.32.5"
+  }
+}

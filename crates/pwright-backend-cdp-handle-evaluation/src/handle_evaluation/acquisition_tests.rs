@@ -14,10 +14,13 @@ const ERROR_BYTES: usize = 256;
 const PREVIEW_BYTES: usize = 64;
 
 fn limits() -> CdpEvaluationLimits {
-    CdpEvaluationLimits {
-        error_bytes: ERROR_BYTES,
-        ..CdpEvaluationLimits::default()
-    }
+    let defaults = CdpEvaluationLimits::default();
+    CdpEvaluationLimits::new(
+        defaults.source_bytes,
+        defaults.generated_script_bytes,
+        ERROR_BYTES,
+        defaults.value,
+    )
 }
 fn evaluation(fake: &Arc<FakeCdpClient>) -> CdpEvaluationService {
     CdpEvaluationService::with_limits_in_unique_context(fake.clone(), "acquisition-world", limits())

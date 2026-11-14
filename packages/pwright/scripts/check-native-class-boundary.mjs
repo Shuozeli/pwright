@@ -10,14 +10,23 @@ const workspace = fileURLToPath(new URL('../../../', import.meta.url));
 const addon = join(workspace, 'crates/pwright-node-addon');
 const source = join(addon, 'src');
 const expected = [
+  ['NativeApiRequestContext', 'api_request.rs'],
+  ['NativeApiResponse', 'api_request.rs'],
+  ['NativeCdpEventBatch', 'cdp_sessions.rs'],
+  ['NativeCdpSessionLease', 'cdp_sessions.rs'],
   ['NativeContextSettings', 'context_settings.rs'],
+  ['NativeDialog', 'page_dialogs.rs'],
   ['NativeEnvironment', 'environment.rs'],
   ['NativeFileInputPreparation', 'handles/file_input.rs'],
   ['NativeFileInputTimeoutSettings', 'handles/file_input/timeout_policy.rs'],
+  ['NativeFrameLocator', 'locator.rs'],
   ['NativeFrameNode', 'frame_tree.rs'],
   ['NativeFrameTree', 'frame_tree.rs'],
   ['NativeHandle', 'handles.rs'],
   ['NativeLocator', 'locator.rs'],
+  ['NativeRemoteBrowser', 'remote_browser.rs'],
+  ['NativeRemoteContext', 'remote_browser.rs'],
+  ['NativeRemotePage', 'remote_browser.rs'],
   ['NativeSession', 'lib.rs'],
   ['NativeSessionSignal', 'lib.rs'],
 ];
@@ -169,11 +178,42 @@ for (let start = find(registryTokens, ['native_classes', '!', '(']); start >= 0;
   registries.push(registryTokens.slice(start + 3, end).filter(value => value !== ',').sort());
 }
 const classNames = expected.map(([name]) => name).sort();
-const withoutPreparation = classNames.filter(name => !['NativeFileInputPreparation', 'NativeFileInputTimeoutSettings'].includes(name));
+const apiClasses = ['NativeApiRequestContext', 'NativeApiResponse'];
+const preparationClasses = ['NativeFileInputPreparation', 'NativeFileInputTimeoutSettings'];
+const handleClasses = ['NativeFrameLocator', 'NativeHandle'];
+const conditionalClasses = ['NativeDialog', 'NativeCdpEventBatch', 'NativeCdpSessionLease',
+  'NativeRemoteBrowser', 'NativeRemoteContext', 'NativeRemotePage'];
+const invocationClasses = classNames.filter(name => !conditionalClasses.includes(name));
+const withoutApi = invocationClasses.filter(name => !apiClasses.includes(name));
+const withoutPreparation = invocationClasses.filter(name => !preparationClasses.includes(name));
+const withoutPreparationOrApi = withoutPreparation.filter(name => !apiClasses.includes(name));
+const withoutPreparationOrHandle = withoutPreparation.filter(name => !handleClasses.includes(name));
+const ordinary = withoutPreparationOrHandle.filter(name => !apiClasses.includes(name));
 assert.deepEqual(registries.map(names => names.join(',')).sort(), [
-  classNames, withoutPreparation, withoutPreparation.filter(name => name !== 'NativeHandle'),
+  invocationClasses,
+  withoutApi,
+  withoutPreparation,
+  withoutPreparationOrApi,
+  withoutPreparationOrHandle,
+  ordinary,
 ].map(names => names.join(',')).sort(),
-  'retained-upload, Handle-only and ordinary typed class registries must cover exactly their selected raw classes');
+  'API request, retained-upload, Handle-only and ordinary registries must cover exactly their selected raw classes');
+
+// Independently selectable classes are appended under their feature instead
+// of being repeated in every unconditional registry invocation.
+for (const [name, feature] of [
+  ['NativeDialog', 'page-dialogs'],
+  ['NativeCdpEventBatch', 'cdp-session'],
+  ['NativeCdpSessionLease', 'cdp-session'],
+  ['NativeRemoteBrowser', 'playwright-server-connect-session'],
+  ['NativeRemoteContext', 'playwright-server-connect-session'],
+  ['NativeRemotePage', 'playwright-server-connect-session'],
+]) {
+  assert.ok(find(registryTokens, ['cfg', '(', 'feature', '=', '<literal>', ')', ']', 'stringify', '!', '(', name, ')']) >= 0,
+    `${feature} must add ${name} to the exported class-name registry`);
+  assert.ok(find(registryTokens, [name, 'as', 'TypeTag', '>', '::', 'type_tag', '(', ')']) >= 0,
+    `${feature} must add ${name} to the native type-tag registry`);
+}
 
 const manifest = readFileSync(join(addon, 'Cargo.toml'), 'utf8');
 const napiDependency = /^napi_runtime\s*=\s*\{[^\n]*\}/m.exec(manifest)?.[0];

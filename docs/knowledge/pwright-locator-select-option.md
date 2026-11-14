@@ -1,6 +1,18 @@
-<!-- agent-updated: 2026-09-04T22:10:00Z -->
+<!-- agent-updated: 2026-10-20T23:11:41Z -->
 
 # Pwright Locator select-option design
+
+Implementation checkpoint (2026-10-20): the pinned official Core Chromium
+`Page.selectOption` full file passes 32/32 in the frozen candidate and Oracle
+lanes with unchanged assertions and an adapted `connectOverCDP` fixture.
+The [v12 paired receipt](../../.work/official-conformance/outcomes/core-page-select-option32-strict-paired-v12/promotion-receipt.json)
+preserves the v11 navigation-context RED as history and advances only its
+one candidate row. The opt-in `select-option-navigation-commit` profile and
+Page-binding publication-drain guard address the no-binding path after
+selection-triggered navigation. The guard remains globally scoped, so a
+binding on a different Page is an open case. This browser-backed result does
+not resolve the cross-world `ElementHandle` design decision below or prove
+unadapted/full public-API parity.
 
 ## Decision
 

@@ -1,0 +1,191 @@
+[package]
+name = "pwright-python-addon"
+description = "PyO3 conversion boundary for the Pwright Rust host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "_native"
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[features]
+default = []
+browser-registry = ["dep:pwright-browser-registry"]
+fresh-launch = ["dep:tempfile", "pwright-node-host/owned-launch"]
+owned-process-startup = ["dep:pwright-owned-process-startup"]
+playwright-server-initialize = ["dep:pwright-playwright-server-initialize"]
+playwright-server-connect-session = [
+    "dep:pwright-playwright-server-connect",
+    "dep:pwright-playwright-server-browser-ops",
+    "dep:pwright-playwright-server-endpoint-discovery",
+    "dep:pwright-playwright-server-session",
+    "dep:pwright-transport-ws",
+    "pwright-playwright-server-connect/live",
+]
+playwright-server-close-notices = [
+    "playwright-server-connect-session",
+    "pwright-playwright-server-session/close-notices",
+    "pwright-playwright-server-browser-ops/close-state",
+]
+playwright-server-frame-title = ["playwright-server-connect-session", "pwright-playwright-server-browser-ops/frame-title"]
+persistent-context = ["pwright-node-host/owned-launch"]
+persistent-context-locale = ["persistent-context", "context-locale", "pwright-node-host/persistent-context-locale"]
+persistent-context-timezone = ["persistent-context", "context-timezone", "pwright-node-host/persistent-context-timezone"]
+persistent-context-offline = ["persistent-context", "context-offline", "pwright-node-host/persistent-context-offline"]
+persistent-context-geolocation = ["persistent-context", "context-geolocation", "pwright-node-host/persistent-context-geolocation"]
+persistent-context-geolocation-permission = ["persistent-context", "context-geolocation-permission", "pwright-node-host/persistent-context-geolocation-permission"]
+persistent-context-http-credentials = ["persistent-context", "context-http-credentials", "pwright-node-host/persistent-context-http-credentials"]
+persistent-context-launch-arguments = ["persistent-context", "pwright-node-host/persistent-context-launch-arguments"]
+persistent-context-ignore-https-errors = ["persistent-context", "ignore-https-errors", "pwright-node-host/persistent-context-ignore-https-errors"]
+persistent-context-device-emulation = ["persistent-context", "device-emulation", "pwright-node-host/persistent-context-device-emulation"]
+persistent-context-emulate-media = ["persistent-context", "emulate-media", "pwright-node-host/persistent-context-emulate-media"]
+persistent-context-extra-headers = ["persistent-context", "extra-headers", "pwright-node-host/persistent-context-extra-headers"]
+persistent-context-bypass-csp = ["persistent-context", "bypass-csp", "pwright-node-host/persistent-context-bypass-csp"]
+persistent-context-javascript-disabled = ["persistent-context", "javascript-disabled", "pwright-node-host/persistent-context-javascript-disabled"]
+context-cookies = ["pwright-node-host/context-cookies"]
+context-strict-selectors = []
+context-storage-state = ["context-cookies", "dep:serde_json", "pwright-node-host/context-storage-state"]
+cdp-session = ["dep:serde_json", "dep:tracing", "pwright-node-host/cdp-session"]
+cdp-handshake-headers = ["pwright-node-host/cdp-handshake-headers"]
+cdp-ws-close-reason = ["pwright-node-host/cdp-ws-close-reason"]
+cdp-ws-invalid-frame = ["pwright-node-host/cdp-ws-invalid-frame"]
+handles = ["pwright-node-host/handles"]
+element-handle-dom = ["handles", "pwright-node-host/element-handle-dom"]
+element-handle-dom-reads = ["element-handle-dom"]
+element-handle-scroll-into-view = ["handles", "pwright-node-host/element-handle-scroll-into-view"]
+element-handle-select-text = ["handles", "pwright-node-host/element-handle-select-text"]
+element-handle-state-predicates = ["element-handle-dom", "pwright-node-host/element-handle-state-predicates"]
+element-handle-state-wait = ["element-handle-dom", "pwright-node-host/element-handle-state-wait"]
+element-handle-click = ["element-handle-dom", "pwright-node-host/element-handle-click"]
+element-handle-tap = ["element-handle-dom", "touchscreen-input"]
+element-handle-file-input = ["handles", "file-input", "pwright-node-host/retained-file-input"]
+page-bindings = ["handles", "pwright-node-host/page-bindings"]
+context-bindings = ["page-bindings", "pwright-node-host/context-bindings"]
+page-events = ["pwright-node-host/page-events"]
+frame-events = ["page-events", "pwright-node-host/frame-events"]
+console-events = ["page-events", "pwright-node-host/console-events"]
+console-argument-handles = ["console-events", "handles", "pwright-node-host/console-argument-handles"]
+page-dialogs = ["page-events", "pwright-node-host/page-dialogs"]
+file-chooser-events = ["page-events", "file-input", "pwright-node-host/file-chooser-events"]
+file-chooser-native-paths = ["file-chooser-events", "pwright-node-host/file-chooser-native-paths"]
+page-errors = ["page-events", "pwright-node-host/page-errors"]
+console-history = ["pwright-node-host/console-history"]
+page-routes = ["pwright-node-host/page-routes"]
+route-redirects = ["page-routes", "request-history", "pwright-node-host/route-redirects"]
+route-fulfill-path = ["page-routes", "pwright-node-host/route-fulfill-path"]
+route-fulfill-api-response = ["page-routes", "api-request"]
+route-fetch = ["context-api-request", "page-routes", "route-fulfill-api-response"]
+har-replay = ["page-routes", "pwright-node-host/har-replay"]
+wait-for-function = ["handles", "pwright-node-host/wait-for-function"]
+wait-for-timeout = ["pwright-node-host/wait-for-timeout"]
+file-input = ["pwright-node-host/file-input"]
+file-input-native-paths = ["file-input", "pwright-node-host/file-input-native-paths"]
+mouse = []
+keyboard = []
+locator-highlight = ["pwright-node-host/locator-highlight"]
+locator-bounding-box = ["pwright-node-host/locator-bounding-box"]
+locator-screenshot = ["pwright-node-host/locator-screenshot"]
+locator-dom-actions = ["pwright-node-host/locator-dom-actions"]
+locator-click-modifiers = []
+page-select-option = ["pwright-node-host/select-option-navigation-commit"]
+concurrent-close = ["pwright-node-host/concurrent-close"]
+extra-headers = ["pwright-node-host/extra-headers"]
+frame-lifecycle = ["pwright-node-host/frame-lifecycle"]
+frame-navigation = ["frame-lifecycle", "dep:pwright-cap-navigation", "pwright-node-host/frame-navigation"]
+navigation-url-match = ["frame-navigation", "pwright-node-host/navigation-url-match"]
+history-navigation = ["pwright-node-host/history-navigation"]
+response-body = ["frame-navigation", "pwright-node-host/response-body"]
+wait-for-url = ["pwright-node-host/url-wait"]
+set-content = ["pwright-node-host/set-content"]
+selector-registration = ["pwright-node-host/selector-registration"]
+layout-selectors = ["pwright-node-host/layout-selectors"]
+emulate-media = ["pwright-node-host/emulate-media"]
+context-forced-colors = ["emulate-media", "pwright-node-host/context-forced-colors"]
+device-emulation = ["pwright-node-host/device-emulation"]
+touchscreen-input = ["pwright-node-host/touchscreen-input"]
+context-locale = ["pwright-node-host/context-locale"]
+context-timezone = ["pwright-node-host/context-timezone"]
+context-offline = ["pwright-node-host/context-offline"]
+context-geolocation = ["pwright-node-host/context-geolocation"]
+context-geolocation-permission = ["pwright-node-host/context-geolocation-permission"]
+context-http-credentials = ["pwright-node-host/context-http-credentials"]
+ignore-https-errors = ["pwright-node-host/ignore-https-errors"]
+bypass-csp = ["pwright-node-host/bypass-csp"]
+javascript-disabled = ["pwright-node-host/javascript-disabled"]
+page-pdf = ["pwright-node-host/page-pdf"]
+page-viewport = ["pwright-node-host/page-viewport"]
+timeout-settings = ["pwright-node-host/timeout-settings"]
+page-pause = ["timeout-settings", "pwright-node-host/page-pause"]
+request-gc = ["pwright-node-host/request-gc"]
+network-events = ["timeout-settings", "pwright-node-host/network-events"]
+context-network-events = ["network-events", "page-events", "pwright-node-host/context-network-events"]
+request-frame = ["network-events", "pwright-node-host/request-frame"]
+request-timing = ["network-events", "pwright-node-host/request-timing"]
+request-post-data-json = ["network-events", "dep:serde_json", "pwright-node-host/request-post-data-json"]
+request-history = ["network-events", "pwright-node-host/request-history"]
+request-events = ["network-events", "pwright-node-host/request-events"]
+response-events = ["network-events", "pwright-node-host/response-events"]
+response-finished = ["response-events", "pwright-node-host/response-finished"]
+navigation-response-finished = ["frame-navigation", "response-finished", "request-history", "pwright-node-host/navigation-response-finished"]
+response-security-details = ["request-history", "pwright-node-host/response-security-details"]
+download-events = ["pwright-node-host/download-events"]
+worker-events = ["page-events", "pwright-node-host/worker-events"]
+worker-handle-evaluation = ["worker-events", "handles", "pwright-node-host/worker-handle-evaluation"]
+worker-console-events = ["worker-events", "console-events", "pwright-node-host/worker-console-events"]
+worker-console-argument-handles = ["worker-console-events", "worker-handle-evaluation", "pwright-node-host/worker-console-argument-handles"]
+worker-error-events = ["worker-events", "page-errors", "pwright-node-host/worker-error-events"]
+worker-network-events = ["worker-events", "request-events", "response-events", "pwright-node-host/worker-network-events"]
+init-scripts = ["pwright-node-host/init-scripts"]
+service-worker-policy = ["init-scripts", "pwright-node-host/service-worker-policy"]
+api-request = [
+    "dep:pwright-api-request",
+    "dep:pwright-api-request-auth-basic",
+    "dep:pwright-api-request-connector-rustls",
+    "dep:pwright-api-request-cookie",
+    "dep:pwright-api-request-decompress",
+    "dep:pwright-api-request-transport",
+]
+context-api-request = [
+    "api-request",
+    "dep:async-trait",
+    "dep:url",
+    "pwright-node-host/context-api-request",
+]
+api-request-client-certificates = [
+    "api-request",
+    "dep:pwright-api-request-client-certificates",
+]
+drag-source = ["pwright-node-host/drag-source"]
+drag-runtime = ["drag-source", "pwright-node-host/drag-runtime"]
+drag-and-drop = ["pwright-node-host/drag-and-drop"]
+
+[dependencies]
+async-trait = { workspace = true, optional = true }
+pyo3 = { workspace = true }
+pyo3-async-runtimes = { workspace = true }
+pwright-api-request = { workspace = true, optional = true }
+pwright-api-request-auth-basic = { workspace = true, optional = true }
+pwright-api-request-client-certificates = { workspace = true, optional = true }
+pwright-api-request-connector-rustls = { workspace = true, optional = true }
+pwright-api-request-cookie = { workspace = true, optional = true }
+pwright-api-request-decompress = { workspace = true, optional = true }
+pwright-api-request-transport = { workspace = true, optional = true }
+pwright-cap-navigation = { workspace = true, optional = true }
+pwright-browser-registry = { workspace = true, optional = true }
+pwright-node-host = { path = "../pwright-node-host" }
+pwright-owned-process-startup = { path = "../pwright-owned-process-startup", optional = true }
+pwright-playwright-server-initialize = { workspace = true, optional = true }
+pwright-playwright-server-browser-ops = { workspace = true, optional = true }
+pwright-playwright-server-connect = { workspace = true, optional = true }
+pwright-playwright-server-endpoint-discovery = { workspace = true, optional = true }
+pwright-playwright-server-session = { workspace = true, features = ["supervisor"], optional = true }
+pwright-transport-ws = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tokio = { workspace = true }
+url = { workspace = true, optional = true }
+tokio-util = { workspace = true }
+serde_json = { workspace = true, optional = true }
+tempfile = { version = "3.24", optional = true }

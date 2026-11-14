@@ -16,9 +16,10 @@ dashmap = { workspace = true }
 url = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }
+pwright-fake = { workspace = true, optional = true }
 
 [features]
-test-utils = []
+test-utils = ["dep:pwright-fake"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

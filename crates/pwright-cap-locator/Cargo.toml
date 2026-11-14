@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+select-option-timeout-progress = []
+
 [dependencies]
 pwright-core = { workspace = true }
 pwright-input-model = { workspace = true }

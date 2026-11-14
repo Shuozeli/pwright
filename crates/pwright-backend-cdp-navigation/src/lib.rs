@@ -38,12 +38,20 @@ pub const CHROMIUM_CDP_NAVIGATION_BACKEND_ID: BackendId =
 mod frame_begin;
 #[cfg(feature = "frame-lifecycle")]
 pub mod frame_lifecycle;
+#[cfg(feature = "history-navigation")]
+mod history;
 mod reload;
 pub const CHROMIUM_CDP_PROTOCOL_ID: BackendProtocolId = BackendProtocolId::new("cdp");
 pub const CDP_BEGIN_NAVIGATION_FEATURE: BackendFeatureId =
     BackendFeatureId::new("navigation.begin");
 pub const CDP_GOTO_FEATURE: BackendFeatureId = BackendFeatureId::new("navigation.goto");
 pub const CDP_RELOAD_FEATURE: BackendFeatureId = BackendFeatureId::new("navigation.reload");
+#[cfg(feature = "history-navigation")]
+pub const CDP_GO_BACK_FEATURE: BackendFeatureId =
+    BackendFeatureId::new("history-navigation.go-back");
+#[cfg(feature = "history-navigation")]
+pub const CDP_GO_FORWARD_FEATURE: BackendFeatureId =
+    BackendFeatureId::new("history-navigation.go-forward");
 
 pub const CHROMIUM_CDP_NAVIGATION_FEATURES: &[BackendFeatureDescriptor] = &[
     BackendFeatureDescriptor::new(
@@ -67,6 +75,22 @@ pub const CHROMIUM_CDP_NAVIGATION_FEATURES: &[BackendFeatureDescriptor] = &[
         pwright_cap_navigation::RELOAD_COMMAND_ID,
         BackendImplementation::Emulated,
     ),
+    #[cfg(feature = "history-navigation")]
+    BackendFeatureDescriptor::new(
+        CDP_GO_BACK_FEATURE,
+        pwright_cap_history_navigation::HISTORY_NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 0),
+        pwright_cap_history_navigation::GO_BACK_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
+    #[cfg(feature = "history-navigation")]
+    BackendFeatureDescriptor::new(
+        CDP_GO_FORWARD_FEATURE,
+        pwright_cap_history_navigation::HISTORY_NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 1),
+        pwright_cap_history_navigation::GO_FORWARD_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
 ];
 
 pub enum ChromiumCdpNavigationBackend {}
@@ -82,6 +106,7 @@ impl BrowserBackend for ChromiumCdpNavigationBackend {
 }
 
 const HTTP_STATUS_FAILURE: &str = "net::ERR_HTTP_RESPONSE_CODE_FAILURE";
+const CHROMIUM_ERROR_DOCUMENT_URL: &str = "chrome-error://chromewebdata/";
 const DEFAULT_NETWORK_IDLE_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -579,11 +604,20 @@ async fn wait_for_same_document(
 }
 
 struct NewDocumentState {
+    /// Whether the document selected by `Page.navigate` has committed. A later
+    /// client navigation does not erase this ownership decision.
     committed: bool,
+    /// The currently followed document may change after the selected document
+    /// commits. Lifecycle and network-idle waits follow that document just as
+    /// Playwright follows the Frame's live lifecycle set.
+    active_loader: Option<String>,
+    active_document_committed: bool,
     lifecycle_reached: bool,
     final_url: Option<String>,
     response: Option<NavigationResponse>,
     document_request: Option<String>,
+    active_document_request: Option<String>,
+    pending_document: PendingDocument,
     tracking_requests: bool,
     inflight: HashSet<String>,
     idle_since: Option<tokio::time::Instant>,
@@ -593,10 +627,14 @@ impl NewDocumentState {
     fn new(wait_until: WaitUntil) -> Self {
         Self {
             committed: false,
+            active_loader: None,
+            active_document_committed: false,
             lifecycle_reached: wait_until == WaitUntil::Commit,
             final_url: None,
             response: None,
             document_request: None,
+            active_document_request: None,
+            pending_document: PendingDocument::Unknown,
             tracking_requests: false,
             inflight: HashSet::new(),
             idle_since: None,
@@ -604,13 +642,35 @@ impl NewDocumentState {
     }
 
     fn update_idle(&mut self, idle_delay: Duration) {
-        if self.committed && self.inflight.is_empty() {
+        if self.active_document_committed && self.inflight.is_empty() {
             self.idle_since
                 .get_or_insert_with(|| tokio::time::Instant::now() + idle_delay);
         } else {
             self.idle_since = None;
         }
     }
+
+    fn active_loader<'a>(&'a self, initial_loader: &'a str) -> &'a str {
+        self.active_loader.as_deref().unwrap_or(initial_loader)
+    }
+
+    fn follow_document(&mut self, loader_id: &str, wait_until: WaitUntil) {
+        if self.active_loader.as_deref() == Some(loader_id) {
+            return;
+        }
+        self.active_loader = Some(compact_navigation_string(loader_id.to_string()));
+        self.active_document_committed = false;
+        self.active_document_request = None;
+        self.lifecycle_reached = wait_until == WaitUntil::Commit;
+        self.idle_since = None;
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PendingDocument {
+    Unknown,
+    Expected,
+    Competing,
 }
 
 struct NewDocumentWait<'a> {
@@ -649,7 +709,7 @@ async fn wait_for_new_document_with_state(
         requested_url.starts_with("http://") || requested_url.starts_with("https://");
 
     loop {
-        if state.committed
+        if state.active_document_committed
             && state.lifecycle_reached
             && (!requires_response || state.response.is_some())
             && wait_until != WaitUntil::NetworkIdle
@@ -721,14 +781,34 @@ fn apply_navigation_event(
                 .and_then(|value| value.as_str())
                 .unwrap_or_default();
             validate_navigation_value("committed URL", url, limits.url_bytes)?;
-            if actual_loader != loader_id {
-                return Err(OperationError::new(
-                    FailureKind::Backend,
-                    format!("navigation was interrupted by a new document at {url}"),
-                    Some(NavigationErrorDetails::Backend(format!(
-                        "expected loader {loader_id}, received {actual_loader}"
-                    ))),
-                ));
+            if actual_loader != state.active_loader(loader_id) {
+                // Chromium can commit an error document from the previous
+                // failed navigation before or after it announces this
+                // navigation. It is stale when the expected document is the
+                // newest pending document, or when no newer competing
+                // document has started and the error navigation therefore
+                // predates this operation's event cursor.
+                let stale_error_document = url == CHROMIUM_ERROR_DOCUMENT_URL
+                    && state.pending_document == PendingDocument::Unknown;
+                if state.pending_document == PendingDocument::Expected || stale_error_document {
+                    return Ok(());
+                }
+                // Once the document selected by Page.navigate has committed,
+                // Playwright waits on the Frame's live lifecycle set. A
+                // renderer/client navigation therefore becomes the current
+                // document instead of retroactively aborting the original
+                // goto. Its response identity remains the original document's.
+                if state.committed {
+                    state.follow_document(actual_loader, wait_until);
+                } else {
+                    return Err(OperationError::new(
+                        FailureKind::Backend,
+                        format!("navigation was interrupted by a new document at {url}"),
+                        Some(NavigationErrorDetails::Backend(format!(
+                            "expected loader {loader_id}, received {actual_loader}"
+                        ))),
+                    ));
+                }
             }
             let final_url = match frame.get("urlFragment").and_then(|value| value.as_str()) {
                 Some(fragment) => {
@@ -746,8 +826,43 @@ fn apply_navigation_event(
                 }
                 None => compact_navigation_string(url.to_string()),
             };
-            state.committed = true;
+            if actual_loader == loader_id {
+                state.committed = true;
+            }
+            state.active_document_committed = true;
+            if state.active_loader.is_some() {
+                let active_request = state.active_document_request.as_deref();
+                state
+                    .inflight
+                    .retain(|request_id| Some(request_id.as_str()) == active_request);
+            }
+            state.pending_document = PendingDocument::Unknown;
             state.final_url = Some(final_url);
+        }
+        "Page.frameStartedNavigating" => {
+            if event.params.get("frameId").and_then(|value| value.as_str()) != Some(frame_id) {
+                return Ok(());
+            }
+            let Some(started_loader) = event
+                .params
+                .get("loaderId")
+                .and_then(|value| value.as_str())
+            else {
+                return Ok(());
+            };
+            validate_native_id(
+                "started-navigation loader ID",
+                started_loader,
+                limits.native_id_bytes,
+            )?;
+            if state.committed && started_loader != state.active_loader(loader_id) {
+                state.follow_document(started_loader, wait_until);
+            }
+            state.pending_document = if started_loader == state.active_loader(loader_id) {
+                PendingDocument::Expected
+            } else {
+                PendingDocument::Competing
+            };
         }
         "Page.lifecycleEvent" => {
             if event.params.get("frameId").and_then(|value| value.as_str()) != Some(frame_id)
@@ -755,7 +870,7 @@ fn apply_navigation_event(
                     .params
                     .get("loaderId")
                     .and_then(|value| value.as_str())
-                    != Some(loader_id)
+                    != Some(state.active_loader(loader_id))
             {
                 return Ok(());
             }
@@ -777,19 +892,40 @@ fn apply_navigation_event(
             };
             validate_native_id("network request ID", request_id, limits.native_id_bytes)?;
             let resource_type = event.params.get("type").and_then(|value| value.as_str());
+            let event_frame = event.params.get("frameId").and_then(|value| value.as_str());
+            let event_loader = event
+                .params
+                .get("loaderId")
+                .and_then(|value| value.as_str());
             let url = event
                 .params
                 .get("request")
                 .and_then(|request| request.get("url"))
                 .and_then(|value| value.as_str())
                 .unwrap_or_default();
-            let is_main_document = resource_type == Some("Document")
-                && event
-                    .params
-                    .get("loaderId")
-                    .and_then(|value| value.as_str())
-                    == Some(loader_id)
-                && event.params.get("frameId").and_then(|value| value.as_str()) == Some(frame_id);
+            let is_frame_document =
+                resource_type == Some("Document") && event_frame == Some(frame_id);
+            if is_frame_document
+                && state.committed
+                && let Some(event_loader) = event_loader
+                && event_loader != state.active_loader(loader_id)
+            {
+                validate_native_id(
+                    "document request loader ID",
+                    event_loader,
+                    limits.native_id_bytes,
+                )?;
+                state.follow_document(event_loader, wait_until);
+            }
+            if is_frame_document {
+                state.pending_document = if event_loader == Some(state.active_loader(loader_id)) {
+                    PendingDocument::Expected
+                } else {
+                    PendingDocument::Competing
+                };
+            }
+            let is_main_document =
+                is_frame_document && event_loader == Some(state.active_loader(loader_id));
             let tracking_requests = state.tracking_requests || is_main_document;
             let should_track = tracking_requests
                 && resource_type != Some("EventSource")
@@ -805,7 +941,11 @@ fn apply_navigation_event(
                 ));
             }
             if is_main_document {
-                state.document_request = Some(compact_navigation_string(request_id.to_string()));
+                let request_id = compact_navigation_string(request_id.to_string());
+                state.active_document_request = Some(request_id.clone());
+                if event_loader == Some(loader_id) {
+                    state.document_request = Some(request_id);
+                }
                 state.tracking_requests = true;
             }
             if !tracking_requests {
@@ -835,7 +975,7 @@ fn apply_navigation_event(
             state
                 .inflight
                 .retain(|candidate| Some(candidate.as_str()) != request_id);
-            if request_id == state.document_request.as_deref() {
+            if !state.committed && request_id == state.document_request.as_deref() {
                 let error = event
                     .params
                     .get("errorText")
@@ -1151,9 +1291,14 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        CdpNavigationLimits, ChromiumCdpNavigationBackend, event_matches_session, map_cdp_error,
-        parse_navigation_result, parse_response,
+        CdpNavigationLimits, ChromiumCdpNavigationBackend, NewDocumentState,
+        apply_navigation_event, event_matches_session, map_cdp_error, parse_navigation_result,
+        parse_response,
     };
+
+    fn event(method: &str, params: serde_json::Value) -> CdpEvent {
+        CdpEvent::new(method.to_owned(), params, None)
+    }
 
     #[test]
     fn descriptor_contains_only_navigation_commands() {
@@ -1278,5 +1423,119 @@ mod tests {
         assert!(oversized_error.message().contains("response header bytes"));
         assert_eq!(type_error.kind(), FailureKind::ProtocolViolation);
         assert!(type_error.message().contains("not a string"));
+    }
+
+    #[test]
+    fn competing_document_before_selected_commit_remains_an_interruption() {
+        // Arrange
+        let mut state = NewDocumentState::new(pwright_cap_navigation::WaitUntil::Load);
+        let started = event(
+            "Page.frameStartedNavigating",
+            json!({ "frameId": "frame", "loaderId": "other" }),
+        );
+        apply_navigation_event(
+            &mut state,
+            started,
+            "frame",
+            "selected",
+            pwright_cap_navigation::WaitUntil::Load,
+            CdpNavigationLimits::default(),
+        )
+        .unwrap();
+
+        // Act
+        let error = apply_navigation_event(
+            &mut state,
+            event(
+                "Page.frameNavigated",
+                json!({ "frame": { "id": "frame", "loaderId": "other", "url": "https://other.example/" } }),
+            ),
+            "frame",
+            "selected",
+            pwright_cap_navigation::WaitUntil::Load,
+            CdpNavigationLimits::default(),
+        )
+        .unwrap_err();
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert!(error.message().contains("interrupted by a new document"));
+    }
+
+    #[test]
+    fn client_navigation_after_commit_becomes_the_lifecycle_owner() {
+        // Arrange
+        let limits = CdpNavigationLimits::default();
+        let wait_until = pwright_cap_navigation::WaitUntil::Load;
+        let mut state = NewDocumentState::new(wait_until);
+        for input in [
+            event(
+                "Network.requestWillBeSent",
+                json!({
+                    "requestId": "request-selected", "loaderId": "selected",
+                    "frameId": "frame", "type": "Document",
+                    "request": { "url": "https://selected.example/" }
+                }),
+            ),
+            event(
+                "Network.responseReceived",
+                json!({
+                    "loaderId": "selected", "frameId": "frame", "type": "Document",
+                    "response": { "url": "https://selected.example/", "status": 200,
+                        "statusText": "OK", "headers": {} }
+                }),
+            ),
+            event(
+                "Page.frameNavigated",
+                json!({ "frame": { "id": "frame", "loaderId": "selected", "url": "https://selected.example/" } }),
+            ),
+        ] {
+            apply_navigation_event(&mut state, input, "frame", "selected", wait_until, limits)
+                .unwrap();
+        }
+
+        // Act
+        for input in [
+            event(
+                "Network.requestWillBeSent",
+                json!({
+                    "requestId": "request-followup", "loaderId": "followup",
+                    "frameId": "frame", "type": "Document",
+                    "request": { "url": "https://followup.example/" }
+                }),
+            ),
+            event(
+                "Page.frameNavigated",
+                json!({ "frame": { "id": "frame", "loaderId": "followup", "url": "https://followup.example/" } }),
+            ),
+            event(
+                "Page.lifecycleEvent",
+                json!({ "frameId": "frame", "loaderId": "followup", "name": "load" }),
+            ),
+        ] {
+            apply_navigation_event(&mut state, input, "frame", "selected", wait_until, limits)
+                .unwrap();
+        }
+
+        // Assert
+        assert!(state.committed);
+        assert!(state.active_document_committed);
+        assert_eq!(state.active_loader.as_deref(), Some("followup"));
+        assert_eq!(
+            state.active_document_request.as_deref(),
+            Some("request-followup")
+        );
+        assert_eq!(state.document_request.as_deref(), Some("request-selected"));
+        assert_eq!(
+            state.response.as_ref().map(|value| value.url.as_str()),
+            Some("https://selected.example/")
+        );
+        assert_eq!(
+            state.final_url.as_deref(),
+            Some("https://followup.example/")
+        );
+        assert!(state.lifecycle_reached);
+        assert_eq!(state.inflight.len(), 1);
+        assert!(state.inflight.contains("request-followup"));
     }
 }

@@ -1,6 +1,6 @@
 use super::*;
 use crate::frame_trees::FrameTrees;
-use pwright_composition_chromium::ChromiumFrameOwnership;
+use pwright_plugin_chromium_frame_observer::ChromiumFrameOwnership;
 
 fn fixture(page: bool) -> (Arc<FrameMetadata>, FrameTrees) {
     let book = Arc::new(

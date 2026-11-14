@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_input.py": "dc568a450db5127f907fbf02dc6612e9f2f5e17dd04615627517901eaaf48bdb"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_input.py::test_set_input_files_should_preserve_last_modified_timestamp",
+      "capabilities": ["locator.set_input_files.paths", "file.last_modified"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_emit_event",
+      "capabilities": ["page.on.filechooser", "filechooser.repr"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_not_accept_multiple_files_for_single_file_input",
+      "capabilities": ["filechooser.set_files.paths", "input.multiple.validation"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_return_the_same_file_chooser_when_there_are_many_watchdogs_simultaneously",
+      "capabilities": ["page.wait_for_event.filechooser", "event.identity"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_set_from_memory",
+      "capabilities": ["page.set_input_files.payloads"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_throw_if_a_directory_and_files_are_passed",
+      "capabilities": ["locator.set_input_files.directories", "input.directory-file.validation"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_throw_when_upload_a_folder_in_a_normal_file_upload_input",
+      "capabilities": ["locator.set_input_files.directories", "input.directory.validation"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_upload_a_folder",
+      "capabilities": ["locator.set_input_files.directories", "filechooser.set_files.directories"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_upload_a_folder_and_throw_for_multiple_directories",
+      "capabilities": ["locator.set_input_files.directories", "input.multiple-directory.validation"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_upload_large_file",
+      "capabilities": ["locator.set_input_files.paths", "file-input.large-payload"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_upload_multiple_large_file",
+      "capabilities": ["filechooser.set_files.paths", "file-input.multiple-large-payload"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_work",
+      "capabilities": ["page.set_input_files.paths"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_work_for_multiple",
+      "capabilities": ["filechooser.is_multiple", "input.multiple"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_work_for_single_file_pick",
+      "capabilities": ["filechooser.is_multiple", "input.single"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_work_for_webkitdirectory",
+      "capabilities": ["filechooser.is_multiple", "input.webkitdirectory"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_work_when_file_input_is_attached_to_dom",
+      "capabilities": ["page.expect_file_chooser", "filechooser.target.attached"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_should_work_when_file_input_is_not_attached_to_DOM",
+      "capabilities": ["page.expect_file_chooser", "filechooser.target.detached"]
+    },
+    {
+      "id": "tests/async/test_input.py::test_wheel_should_work",
+      "capabilities": ["mouse.wheel", "page.wait_for_function"]
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "ciPlatforms": [
+      "linux",
+      "darwin",
+      "win32"
+    ],
+    "ciPythonVersions": [
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "stableChannels": [
+      "chrome",
+      "msedge"
+    ],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/async/test_launcher.py": "648549470d4ba7f393c792b3774b45f358c1be63f1388509038a39a4e33564b3",
+    "tests/sync/test_launcher.py": "c5e1554d855450ef1c8aacb15eee7307401bb8a7878e8c1f77359d6110f0d94f",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_launcher.py::test_browser_close_should_fire_close_event_for_all_contexts",
+      "capabilities": ["browser_type.launch.owned", "browser.close.context-events", "async-api"]
+    },
+    {
+      "id": "tests/sync/test_launcher.py::test_browser_close_should_fire_close_event_for_all_contexts",
+      "capabilities": ["browser_type.launch.owned", "browser.close.context-events", "sync-api"]
+    }
+  ]
+}

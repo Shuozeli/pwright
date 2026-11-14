@@ -21,8 +21,8 @@ pub struct LocatorV2Codec {
 impl LocatorV2Codec {
     pub const fn new(limits: LocatorCodecLimits) -> Self {
         Self {
-            inner: LocatorCodec::new(limits),
-            capability_version: ProtocolVersion::new(2, 6),
+            inner: LocatorCodec::new(limits).with_selector_version(ProtocolVersion::new(2, 7)),
+            capability_version: ProtocolVersion::new(2, 7),
         }
     }
 
@@ -32,6 +32,7 @@ impl LocatorV2Codec {
 
     pub const fn with_capability_version(mut self, capability_version: ProtocolVersion) -> Self {
         self.capability_version = capability_version;
+        self.inner = self.inner.with_selector_version(capability_version);
         self
     }
 

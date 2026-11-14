@@ -5,7 +5,7 @@ use crate::{
     frame_tree::FrameTreeLimits,
     frame_trees::FrameTrees,
 };
-use pwright_composition_chromium::{ChromiumFrameOwnership, ChromiumFrameUrlObserver};
+use pwright_plugin_chromium_frame_observer::{ChromiumFrameOwnership, ChromiumFrameUrlObserver};
 
 mod selected;
 

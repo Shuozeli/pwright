@@ -9,6 +9,8 @@ pub(crate) enum Phase {
     Snapshot,
     PeerTransport,
     MouseRetirement,
+    #[cfg(feature = "touchscreen-input")]
+    TouchscreenRetirement,
     SessionRetirement,
     Transport,
 }
@@ -21,6 +23,8 @@ impl Phase {
             Self::Snapshot => "topology snapshot",
             Self::PeerTransport => "peer-loss transport close",
             Self::MouseRetirement => "mouse retirement",
+            #[cfg(feature = "touchscreen-input")]
+            Self::TouchscreenRetirement => "touchscreen retirement",
             Self::SessionRetirement => "owned session retirement",
             Self::Transport => "transport close",
         }

@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_har.py": "e83ef4a6861262e71405b1666e86b6bbd489f4a7332750e90ab333fc9a7c6289"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_har.py::test_page_unroute_all_should_stop_page_route_from_har",
+      "capabilities": [
+        "page.route-from-har",
+        "page.unroute-all.wait",
+        "har.default-abort"
+      ]
+    },
+    {
+      "id": "tests/async/test_har.py::test_context_unroute_call_should_stop_context_route_from_har",
+      "capabilities": [
+        "browser-context.route-from-har",
+        "browser-context.unroute-all.wait",
+        "har.default-abort"
+      ]
+    }
+  ]
+}

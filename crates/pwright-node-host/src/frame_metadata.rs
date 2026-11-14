@@ -4,13 +4,15 @@ use std::collections::{BTreeMap, VecDeque};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
-use pwright_composition_chromium::ChromiumFrameUrlObserver;
 use pwright_core::{
     ObjectId, ProductionResourceLedger, ResourceClass, ResourceLease, ResourceLedger,
     ResourceLimits, ResourceRequirements, ResourceScope,
 };
+use pwright_plugin_chromium_frame_observer::ChromiumFrameUrlObserver;
 
 use crate::HostError;
+#[cfg(feature = "frame-detach-events")]
+use crate::frame_tree::FrameTreeFactory;
 use crate::frame_tree::{
     FrameClosePublication, FrameNode, FrameTree, FrameTreePublication, Storage,
 };
@@ -31,9 +33,22 @@ pub use collections::{
 };
 pub use drain::{FramePublicationDrain, PublicationDrainError, PublicationProgress};
 pub(crate) use lifecycle::CreationDelivery;
+#[cfg(feature = "page-dialogs")]
+pub use lifecycle::PageDialog;
+#[cfg(feature = "file-chooser-events")]
+pub use lifecycle::PageFileChooser;
 pub(crate) use lifecycle::TerminalLifecycle;
 pub use lifecycle::{
-    LifecycleCause, LifecycleDelivery, LifecycleNotice, LifecycleNoticeView, LifecycleReservation,
+    ConsoleMessage, LifecycleCause, LifecycleDelivery, LifecycleNotice, LifecycleNoticeView,
+    LifecycleReservation, PageError,
+};
+#[cfg(any(feature = "console-events", feature = "console-history"))]
+pub(crate) use lifecycle::{
+    MAX_CONSOLE_ARGUMENT_BYTES, MAX_CONSOLE_LOCATION_URL_BYTES, MAX_CONSOLE_TYPE_BYTES,
+};
+#[cfg(feature = "page-errors")]
+pub(crate) use lifecycle::{
+    MAX_PAGE_ERROR_MESSAGE_BYTES, MAX_PAGE_ERROR_NAME_BYTES, MAX_PAGE_ERROR_STACK_BYTES,
 };
 pub(crate) use names::FrameNameLimits;
 use names::{BudgetedName, NameResources};
@@ -235,6 +250,13 @@ pub struct FramePublicationFence {
     sequence: u64,
 }
 
+#[cfg(feature = "frame-detach-events")]
+pub(crate) struct TreeDetachReservation {
+    book: std::sync::Weak<FrameMetadata>,
+    event: ResourceLease,
+    revision: Storage,
+}
+
 impl FramePublicationFence {
     pub fn publish(self) -> Result<(), HostError> {
         let mut state = self.book.0.state.lock().map_err(HostError::backend)?;
@@ -250,6 +272,61 @@ impl FramePublicationFence {
 }
 
 impl FramePublications {
+    #[cfg(feature = "frame-detach-events")]
+    pub(crate) fn reserve_tree_detach(
+        &self,
+        factory: &FrameTreeFactory,
+    ) -> Result<TreeDetachReservation, HostError> {
+        let state = self.0.state.lock().map_err(HostError::backend)?;
+        if state.discarded || state.sequence == u64::MAX {
+            return Err(HostError::TargetClosed);
+        }
+        if state.queue_storage.is_none() {
+            return Err(HostError::Backend(
+                "Frame detach requires a pre-admitted publication queue".into(),
+            ));
+        }
+        let event = self
+            .0
+            .resources
+            .reserve(SCOPE, ResourceClass::EventItem, 1)
+            .map_err(|error| HostError::ResourceExhausted(error.to_string()))?;
+        let revision = factory.reserve_detach_revision()?;
+        Ok(TreeDetachReservation {
+            book: Arc::downgrade(&self.0),
+            event,
+            revision,
+        })
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    pub(crate) fn stage_tree_detach(
+        &self,
+        tree: &FrameTree,
+        frames: &[FrameNode],
+        reserved: TreeDetachReservation,
+    ) -> Result<(), HostError> {
+        if !reserved.book.ptr_eq(&Arc::downgrade(&self.0)) {
+            return Err(HostError::InvalidArgument(
+                "Frame detach reservation belongs to another queue".into(),
+            ));
+        }
+        let mut state = self.0.state.lock().map_err(HostError::backend)?;
+        if state.discarded {
+            return Err(HostError::TargetClosed);
+        }
+        let sequence = state.next_sequence()?;
+        let publication = tree.stage_reserved(frames, reserved.revision)?;
+        state.pending.push_back(FrameChange {
+            sequence,
+            value: FrameChangeValue::Tree(publication),
+            _event: reserved.event,
+        });
+        state.sequence = sequence;
+        self.0.changed.notify_one();
+        Ok(())
+    }
+
     /// Public connection state changes at event dispatch, not when background
     /// shutdown starts or an unrelated completion publishes terminal Page data.
     pub fn connection_is_published_open(&self) -> Result<bool, HostError> {
@@ -432,6 +509,15 @@ impl FrameMetadata {
             .get(&frame)
             .cloned()
             .ok_or_else(|| HostError::Backend("Frame URL snapshot is not available".into()))
+    }
+
+    pub(crate) fn is_active(&self, frame: ObjectId) -> Result<bool, HostError> {
+        Ok(self
+            .state
+            .lock()
+            .map_err(HostError::backend)?
+            .active
+            .contains_key(&frame))
     }
 
     /// Attachment precedes navigation; upstream starts such a Frame at empty URL.

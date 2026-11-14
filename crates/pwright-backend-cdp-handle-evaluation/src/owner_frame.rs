@@ -139,6 +139,62 @@ impl CdpHandleOwnerFrameService {
             }
         }
     }
+
+    /// Reads the child Frame ID directly from a retained frame-owner element.
+    /// Unlike `owner_frame`, this creates no temporary native wrapper.
+    pub async fn content_frame(
+        &self,
+        target: &CdpEvaluatedHandle,
+    ) -> Result<Option<String>, Error> {
+        let limits = self.evaluation.limits();
+        let error_bytes = limits.evaluation().error_bytes;
+        if target.kind() != CdpHandleKind::Element
+            || !target.belongs_to_client(&self.client)
+            || self.evaluation.unique_context_id().is_none()
+            || target
+                .object_id()
+                .is_none_or(|id| id.is_empty() || id.len() > limits.native_id_bytes())
+        {
+            return Err(bounded_protocol_error(
+                "contentFrame requires an ElementHandle in the exact bound CDP world",
+                error_bytes,
+            ));
+        }
+        let object_id = target.object_id().expect("validated object ID");
+        match self
+            .client
+            .dom_describe_node_by_object_id_raw(object_id)
+            .await
+        {
+            Ok(response) => {
+                parse_content_frame_id(&response, limits.native_id_bytes(), error_bytes)
+            }
+            Err(error) => Err(backend_error(error, error_bytes)),
+        }
+    }
+}
+
+fn parse_content_frame_id(
+    response: &Value,
+    native_id_bytes: usize,
+    error_bytes: usize,
+) -> Result<Option<String>, Error> {
+    let Some(node) = response.get("node").filter(|node| node.is_object()) else {
+        return Err(bounded_protocol_error(
+            "DOM.describeNode has no node object",
+            error_bytes,
+        ));
+    };
+    let Some(node_name) = node.get("nodeName").and_then(Value::as_str) else {
+        return Err(bounded_protocol_error(
+            "DOM.describeNode nodeName is not a string",
+            error_bytes,
+        ));
+    };
+    if !matches!(node_name, "IFRAME" | "FRAME") {
+        return Ok(None);
+    }
+    parse_frame_id(response, native_id_bytes, error_bytes)
 }
 
 fn parse_frame_id(

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "kind": "playwright-python-upstream-skip-callable-fixtures-strict-v2",
+  "evidenceScope": "upstream-marker-skip-accounting-only-no-public-behavior-credit",
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "requiresBrowser": false,
+  "requiresFixtureServers": true,
+  "fixtureAdaptation": "unchanged-upstream-tests-with-tailscale-only-fixture-runtime",
+  "expectedOutcome": "skipped",
+  "tests": [
+    "tests/async/test_defaultbrowsercontext.py::test_should_work_in_persistent_context[firefox]",
+    "tests/async/test_extension.py::test_should_give_access_to_the_service_worker[firefox]",
+    "tests/async/test_extension.py::test_should_give_access_to_the_service_worker[webkit]",
+    "tests/async/test_extension.py::test_should_give_access_to_the_service_worker_when_recording_video[firefox]",
+    "tests/async/test_extension.py::test_should_give_access_to_the_service_worker_when_recording_video[webkit]",
+    "tests/async/test_extension.py::test_should_report_console_messages_from_content_script[firefox]",
+    "tests/async/test_extension.py::test_should_report_console_messages_from_content_script[webkit]",
+    "tests/sync/test_extension.py::test_should_give_access_to_the_service_worker[firefox]",
+    "tests/sync/test_extension.py::test_should_give_access_to_the_service_worker[webkit]",
+    "tests/sync/test_extension.py::test_should_give_access_to_the_service_worker_when_recording_video[firefox]",
+    "tests/sync/test_extension.py::test_should_give_access_to_the_service_worker_when_recording_video[webkit]"
+  ],
+  "upstreamSourceSha256": {
+    "pyproject.toml": "96e2d4dcd75b40a101c77d12b4e29ea4d91efc6fd58992a67ed8cc837e2e1e08",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/async/test_defaultbrowsercontext.py": "61dc8a12d0346c7ad07d11dfb1e351582d82e0a71665964c100968478e8c2ac0",
+    "tests/async/test_extension.py": "f8c8e8e656f6d09bdeef62400feaceadebce43a79af3490adc9d4ed79394740d",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/sync/test_extension.py": "f83b86c8d75d21456fa5e83dfbb3434237f99c79f1420fa9de125b3e7cd9a69f"
+  },
+  "identityAnchors": {
+    "candidate": {
+      "path": ".work/official-conformance/results/python-connect-refused-strict-v1/candidate-async-chromium.provenance.json",
+      "sha256": "d31d2b5981be5bb56d5b8f8db8c10747c1c67584b3cfa05437350e19a120f396"
+    },
+    "oracle": {
+      "path": ".work/official-conformance/results/python-connect-refused-strict-v1/oracle-async-chromium.provenance.json",
+      "sha256": "941596b17a1ca433f2c6005a77b464f2df4976a3f665329a5a0bb5cffa291e26"
+    }
+  }
+}

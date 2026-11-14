@@ -346,6 +346,11 @@ fn validate_options(options: &ScreenshotOptions) -> Result<(), ContentCodecError
             "full-page screenshot and clip are mutually exclusive",
         ));
     }
+    if options.document_clip && options.clip.is_none() {
+        return Err(ContentCodecError::InvalidOptions(
+            "document-space screenshot capture requires a clip",
+        ));
+    }
     if let Some(clip) = options.clip
         && (!clip.x.is_finite()
             || !clip.y.is_finite()
@@ -389,6 +394,7 @@ fn options_to_wire(options: ScreenshotOptions) -> PwrightContentScreenshotOption
         full_page: options.full_page,
         clip: options.clip.map(clip_to_wire),
         scale: options.scale.map(scale_to_wire),
+        document_clip: options.document_clip.then_some(true),
     }
 }
 
@@ -399,6 +405,7 @@ fn options_from_wire(options: PwrightContentScreenshotOptions) -> ScreenshotOpti
         full_page: options.full_page,
         clip: options.clip.map(clip_from_wire),
         scale: options.scale.map(scale_from_wire),
+        document_clip: options.document_clip.unwrap_or(false),
     }
 }
 
@@ -618,7 +625,9 @@ fn failure_kind_from_wire(value: PwrightCommonFailureKind) -> FailureKind {
 mod tests {
     use std::time::Duration;
 
-    use pwright_cap_content::{PageScreenshot, ScreenshotFormat, ScreenshotOptions};
+    use pwright_cap_content::{
+        PageScreenshot, ScreenshotClip, ScreenshotFormat, ScreenshotOptions,
+    };
     use pwright_core::{
         BudgetedBytes, CallId, CallMetadata, CancellationId, Command, CommandResult, ObjectId,
         ProtocolVersion, ResourceClass, ResourceLedger, ResourceLimits, ResourceScope,
@@ -658,7 +667,14 @@ mod tests {
             ScreenshotOptions {
                 format: Some(ScreenshotFormat::Jpeg),
                 quality: Some(80),
-                full_page: Some(true),
+                full_page: Some(false),
+                clip: Some(ScreenshotClip {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 1_000.0,
+                }),
+                document_clip: true,
                 ..ScreenshotOptions::default()
             },
         );

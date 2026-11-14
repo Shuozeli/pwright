@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "kind": "pwright-python-pyright-debt-v1",
+  "description": "Exact existing strict-Pyright diagnostics in five SHA-pinned conformance plugins; this is debt, not a zero-error type check.",
+  "pyrightVersion": "1.1.405",
+  "typeCheckingMode": "strict",
+  "pyrightConfigSha256": "20005c9d41430771a63ebdb4c9dd9f4c6736910e31e6901e41eb8555c3d5895e",
+  "targets": [
+    "python",
+    "tests",
+    "../../scripts/check_playwright_python_official_source.py",
+    "../../scripts/playwright_python_official_provenance.py",
+    "../../scripts/run_playwright_python_official_conformance.py",
+    "../../scripts/select_playwright_python_junit.py",
+    "../../scripts/verify_playwright_python_official_provenance.py",
+    "../../scripts/audit_playwright_python_official_invocations.py",
+    "../../scripts/check_playwright_python_environment_blockers.py",
+    "../../scripts/test_check_playwright_python_environment_blockers.py",
+    "../../scripts/test_playwright_python_official_provenance.py",
+    "../../scripts/test_run_playwright_python_official_conformance.py",
+    "../../scripts/test_verify_playwright_python_official_provenance.py",
+    "../../scripts/test_audit_playwright_python_official_invocations.py"
+  ],
+  "filesAnalyzed": 91,
+  "errorCount": 66,
+  "warningCount": 0,
+  "informationCount": 0,
+  "diagnosticsSha256": "0e953b32aa96e8164e19fd6634929d173785903409233014c5a753f5bb187a5f",
+  "diagnosticsByFile": {
+    "packages/pwright-python/tests/official/connect_lifecycle_synthetic_v1/pwright_python_connect_lifecycle_synthetic_v1.py": 11,
+    "packages/pwright-python/tests/official/connect_lifecycle_synthetic_v2/pwright_python_connect_lifecycle_synthetic_v2.py": 17,
+    "packages/pwright-python/tests/official/connect_remote_kill_synthetic_v1/pwright_python_connect_remote_kill_synthetic_v1.py": 20,
+    "packages/pwright-python/tests/official/ws_connect_guard_strict_v2/pwright_official_connect_guard_v2.py": 16,
+    "packages/pwright-python/tests/official/ws_connect_refused_guard_strict_v1/pwright_official_connect_refused_guard_v1.py": 2
+  },
+  "diagnosticsByRule": {
+    "reportArgumentType": 2,
+    "reportAttributeAccessIssue": 4,
+    "reportMissingImports": 2,
+    "reportUnknownArgumentType": 6,
+    "reportUnknownLambdaType": 1,
+    "reportUnknownMemberType": 40,
+    "reportUnknownVariableType": 8,
+    "reportUnnecessaryCast": 1,
+    "reportUnnecessaryIsInstance": 2
+  },
+  "shaPinnedSources": {
+    "packages/pwright-python/tests/official/connect_lifecycle_synthetic_v1/pwright_python_connect_lifecycle_synthetic_v1.py": "fc4f4c4a612af65a8cb8c8ac5018c5c1f81eabe3914883d5a4778e1b6722dc5d",
+    "packages/pwright-python/tests/official/connect_lifecycle_synthetic_v2/pwright_python_connect_lifecycle_synthetic_v2.py": "faa7dd0b5bfb71ada724146b868859bf9fd5d5b9027f5a105337c829098d7fe1",
+    "packages/pwright-python/tests/official/connect_remote_kill_synthetic_v1/pwright_python_connect_remote_kill_synthetic_v1.py": "41e7b4cfc2480988640eb223675bcff2c9dbbc25a3f822256451946ec02cbe99",
+    "packages/pwright-python/tests/official/ws_connect_guard_strict_v2/pwright_official_connect_guard_v2.py": "f1cc02ce09be1688d2a5882afbc36ee22987871a517cab134a52e55374083d66",
+    "packages/pwright-python/tests/official/ws_connect_refused_guard_strict_v1/pwright_official_connect_refused_guard_v1.py": "10d6ede9b5a8ecf552bb6caaab6d33474e40d23cc1ca9a00de1a988cfa9d9450",
+    "scripts/run_playwright_python_upstream_skip_markers_strict_v1.py": "61027b05720ffee373ea17b26b6c7d696ea010c2f8dffee0d511c2c36b9bf550",
+    "scripts/verify_playwright_python_upstream_skip_markers_strict_v1.py": "168b3801f88248f11d0d628521392ce6a05615cede547a2e708492a20391feda",
+    "packages/pwright-python/tests/official/upstream-skip-callable-fixtures-strict-v2-manifest.json": "929225455a1f371ff671e5800455746f7c03d18c40f709d68d6f6a7ec077eb69",
+    "packages/pwright-python/tests/official/upstream_skip_guard_strict_v1/pwright_official_upstream_skip_guard_v1.py": "9e4b8cbddd267db02bba68b3c139abf2422c55b062deef284f98d103f63ee448",
+    "scripts/run_playwright_python_upstream_skip_callable_fixtures_strict_v2.py": "ccd4032b0d2706008477b3c418e7b208766d3ca893610ecdb4d7516bff0fcdbd",
+    "scripts/verify_playwright_python_upstream_skip_callable_fixtures_strict_v2.py": "95a49c1d391a55b792828ecd9bbae38a41b741c94d34e4209502c69dcfbc4526",
+    "scripts/promote_playwright_python_upstream_skip_callable_fixtures_strict_v2.py": "891543d38877631763806b68a4449d0e7689e7269f3473ebfe27d2ecd7401bd1"
+  }
+}

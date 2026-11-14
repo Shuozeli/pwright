@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_browsercontext.py": "1eb6981f36e917dba202d0d0a324a4d2efcafc0b9a591c3d96f7ad7c99809cdc",
+    "tests/async/test_click.py": "ea614c3891174eda1f74964c8c1d4ba84b214b74e03fa194ad878636938338e7",
+    "tests/async/test_defaultbrowsercontext.py": "61dc8a12d0346c7ad07d11dfb1e351582d82e0a71665964c100968478e8c2ac0"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_browsercontext.py::test_csp_should_work",
+      "capabilities": [
+        "browser-context.javascript-disabled",
+        "chromium.emulation.set-script-execution-disabled"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext.py::test_csp_should_be_able_to_navigate_after_disabling_javascript",
+      "capabilities": [
+        "browser-context.javascript-disabled",
+        "chromium.emulation.set-script-execution-disabled"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_with_disabled_javascript",
+      "capabilities": [
+        "browser-context.javascript-disabled",
+        "chromium.emulation.set-script-execution-disabled",
+        "page.click",
+        "page.navigation"
+      ]
+    },
+    {
+      "id": "tests/async/test_defaultbrowsercontext.py::test_should_support_javascript_enabled_option",
+      "capabilities": [
+        "chromium.launch-persistent-context",
+        "browser-context.javascript-disabled",
+        "chromium.emulation.set-script-execution-disabled"
+      ]
+    }
+  ]
+}

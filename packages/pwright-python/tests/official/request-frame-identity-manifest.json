@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_navigation.py": "f04af8cbdee3dffb2c578d61d7685f02e5186ca565906323d71b6f92f96cd144",
+    "tests/async/test_network.py": "06ce41cadf74e6109d09fa33fb12a2a96f70b577f8657b198dbdc0567d480c2a",
+    "tests/async/test_page_network_request.py": "6ead05641f44950db30e7ab038c973226ebe726312f39b9d7d7de2aacaf4a388"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_network.py::test_request_frame_should_work_for_main_frame_navigation_request",
+      "capabilities": ["page.on.request", "request.frame.exact-identity"]
+    },
+    {
+      "id": "tests/async/test_network.py::test_request_frame_should_work_for_subframe_navigation_request",
+      "capabilities": ["page.on.request", "request.frame.exact-identity", "iframe"]
+    },
+    {
+      "id": "tests/async/test_network.py::test_request_frame_should_work_for_fetch_requests",
+      "capabilities": ["page.on.request", "request.frame.exact-identity", "fetch"]
+    },
+    {
+      "id": "tests/async/test_navigation.py::test_goto_should_capture_iframe_navigation_request",
+      "capabilities": ["page.on.request", "request.frame.exact-identity", "iframe"]
+    },
+    {
+      "id": "tests/async/test_navigation.py::test_goto_should_capture_cross_process_iframe_navigation_request",
+      "capabilities": ["page.on.request", "request.frame.exact-identity", "oopif"]
+    },
+    {
+      "id": "tests/async/test_page_network_request.py::test_should_not_allow_to_access_frame_on_popup_main_request",
+      "capabilities": [
+        "browser-context.on.request",
+        "request.frame.unavailable-before-popup-frame"
+      ]
+    }
+  ]
+}

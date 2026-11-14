@@ -13,6 +13,27 @@ use pwright_composition_chromium_locator_resolution::{
 use pwright_core::ObjectId;
 
 pub(super) struct Pair(ChromiumFrameWorldSnapshot);
+impl Pair {
+    pub(super) fn client(&self) -> Arc<dyn pwright_cdp::CdpClient> {
+        self.0.client()
+    }
+    pub(super) fn utility_unique_id(&self) -> &str {
+        self.0.utility_unique_id()
+    }
+    pub(super) const fn utility_execution_context_id(&self) -> i64 {
+        self.0.utility_execution_context_id()
+    }
+    pub(super) fn main_unique_id(&self) -> &str {
+        self.0.main_unique_id()
+    }
+    pub(super) const fn main_execution_context_id(&self) -> i64 {
+        self.0.main_execution_context_id()
+    }
+    #[cfg(all(feature = "selector-registration", feature = "handles"))]
+    pub(super) const fn page(&self) -> ObjectId {
+        self.0.page()
+    }
+}
 struct Destruction(pwright_composition_chromium::ChromiumNativeWorldLifetime);
 impl ObjectGroupDestructionProof for Destruction {
     fn all_group_worlds_destroyed(&self) -> bool {

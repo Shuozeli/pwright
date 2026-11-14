@@ -15,6 +15,7 @@ pub(crate) use session_retirement::Observer;
 mod tests;
 
 use crate::{HostError, HostSession, LiveSession, lifecycle::DriverRequest};
+use pwright_backend_cdp_topology::CdpContextOwnership;
 use pwright_cdp::CdpConnection;
 use pwright_core::{
     ObjectId, ProductionResourceLedger, ResourceClass, ResourceLease, ResourceRequirements,
@@ -35,6 +36,8 @@ use tokio::sync::oneshot;
 
 const MAX_HEADERS: usize = 256;
 const HEADER_BYTES: usize = 64 * 1024;
+pub const MAX_EXTRA_HEADERS: usize = MAX_HEADERS;
+pub const MAX_EXTRA_HEADER_BYTES: usize = HEADER_BYTES;
 const MAX_ROUTES: usize = 80; // 16 Pages and at most 64 Frame sessions.
 const ID_BYTES: usize = 256;
 const MAX_REQUESTS: usize = 9; // Shared by queued, executing and draining owners.
@@ -52,6 +55,93 @@ const MAX_VALUE_OWNERS: usize = 2 * MAX_FAILED_PAGES
     + MAX_ROUTES
     + MAX_REQUESTS * MAX_FAILED_PAGES
     + 1;
+
+/// Bounded owned launch input. Native installation later transfers these
+/// values into the existing resource-accounted header pool without retaining
+/// a second settings implementation.
+pub struct PersistentContextExtraHeaders {
+    entries: Vec<(String, String)>,
+}
+
+impl PersistentContextExtraHeaders {
+    pub fn new(entries: Vec<(String, String)>) -> Result<Self, HostError> {
+        if entries.len() > MAX_HEADERS {
+            return Err(HostError::ResourceExhausted(
+                "persistent Context extra header count exceeds 256".into(),
+            ));
+        }
+        let bytes = entries.iter().try_fold(0usize, |total, (name, value)| {
+            total
+                .checked_add(name.len())
+                .and_then(|total| total.checked_add(value.len()))
+                .ok_or_else(|| {
+                    HostError::ResourceExhausted(
+                        "persistent Context extra header bytes overflow".into(),
+                    )
+                })
+        })?;
+        if bytes > HEADER_BYTES {
+            return Err(HostError::ResourceExhausted(
+                "persistent Context extra header bytes exceed 65536".into(),
+            ));
+        }
+        Ok(Self { entries })
+    }
+
+    fn references(&self) -> Vec<HeaderRef<'_>> {
+        self.entries
+            .iter()
+            .map(|(name, value)| HeaderRef { name, value })
+            .collect()
+    }
+}
+
+enum PersistentDefaultHeaders {
+    Unselected,
+    Pending(PageHeaders),
+    Registered(ObjectId),
+}
+
+struct PersistentDefault(Mutex<PersistentDefaultHeaders>);
+
+impl PersistentDefault {
+    fn new(headers: Option<PageHeaders>) -> Self {
+        Self(Mutex::new(match headers {
+            Some(headers) => PersistentDefaultHeaders::Pending(headers),
+            None => PersistentDefaultHeaders::Unselected,
+        }))
+    }
+
+    fn seed(
+        &self,
+        settings: &Mutex<HeaderSettings>,
+        context: ObjectId,
+        ownership: CdpContextOwnership,
+    ) -> Result<(), HostError> {
+        if ownership != CdpContextOwnership::Default {
+            return Ok(());
+        }
+        let mut state = self.0.lock().map_err(HostError::backend)?;
+        match &*state {
+            PersistentDefaultHeaders::Unselected => Ok(()),
+            PersistentDefaultHeaders::Registered(existing) if *existing == context => Ok(()),
+            PersistentDefaultHeaders::Registered(_) => Err(HostError::Backend(
+                "persistent headers observed multiple default Context identities".into(),
+            )),
+            PersistentDefaultHeaders::Pending(headers) => {
+                let input: Vec<_> = headers.iter().collect();
+                let settings = settings.lock().map_err(HostError::backend)?;
+                settings
+                    .begin_context(context, &input)
+                    .map_err(settings_error)?
+                    .commit()
+                    .map_err(settings_error)?;
+                *state = PersistentDefaultHeaders::Registered(context);
+                Ok(())
+            }
+        }
+    }
+}
 
 struct InitializationFailures(Vec<(ObjectId, HeaderSyntaxError)>);
 impl InitializationFailures {
@@ -139,12 +229,14 @@ pub(crate) struct Installation {
     applied: Mutex<Vec<String>>,
     watches: session_retirement::Watches,
     failed_initializations: Mutex<InitializationFailures>,
+    persistent_default: PersistentDefault,
     _lease: ResourceLease,
 }
 impl Installation {
-    pub(crate) fn new(
+    pub(crate) fn new_with_default(
         connection: Arc<CdpConnection>,
         resources: &ProductionResourceLedger,
+        persistent_default: Option<PersistentContextExtraHeaders>,
     ) -> Result<Arc<Self>, HostError> {
         let req = body_requirements();
         let lease = resources
@@ -157,6 +249,12 @@ impl Installation {
             )
             .map_err(HostError::backend)?;
         let pool = HeaderPool::new(value_profile()?, resources).map_err(HostError::backend)?;
+        let persistent_default = persistent_default
+            .map(|headers| {
+                let input = headers.references();
+                pool.page(&input).map_err(input_error)
+            })
+            .transpose()?;
         let settings = HeaderSettings::new(settings_profile()?, pool.clone(), resources)
             .map_err(HostError::backend)?;
         Ok(Arc::new(Self {
@@ -169,6 +267,7 @@ impl Installation {
             applied: Mutex::new(Vec::with_capacity(MAX_APPLIED)),
             failed_initializations: Mutex::new(InitializationFailures::new()),
             watches: session_retirement::Watches::new(),
+            persistent_default: PersistentDefault::new(persistent_default),
             _lease: lease,
         }))
     }
@@ -216,6 +315,22 @@ impl Installation {
         Ok(CreationHeaders { input, permit })
     }
 
+    #[cfg(feature = "page-routes")]
+    pub(crate) fn augment_route_request_headers(
+        &self,
+        context: ObjectId,
+        page: ObjectId,
+        headers: &mut Vec<(String, String)>,
+    ) -> Result<(), HostError> {
+        let page_headers = self
+            .settings
+            .lock()
+            .map_err(HostError::backend)?
+            .page_headers(context, page)
+            .map_err(HostError::backend)?;
+        include_navigation_referrer(headers, page_headers.as_ref())
+    }
+
     pub(crate) fn prune(&self, live: &LiveSession) -> Result<(), HostError> {
         let topology = live.composition.topology().map_err(HostError::backend)?;
         let topology = topology.topology();
@@ -244,6 +359,51 @@ impl Installation {
             )
             .map_err(HostError::backend)
     }
+}
+
+#[cfg(feature = "page-routes")]
+fn include_navigation_referrer(
+    headers: &mut Vec<(String, String)>,
+    page_headers: Option<&PageHeaders>,
+) -> Result<(), HostError> {
+    if headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("referer"))
+    {
+        return Ok(());
+    }
+    let Some(value) = page_headers
+        .map(|headers| headers.navigation_referrer(None))
+        .transpose()
+        .map_err(HostError::backend)?
+        .flatten()
+    else {
+        return Ok(());
+    };
+    if headers.len() == MAX_HEADERS {
+        return Err(HostError::ResourceExhausted(
+            "route header count exceeds 256".into(),
+        ));
+    }
+    let bytes = headers.iter().try_fold(0usize, |total, (name, value)| {
+        total
+            .checked_add(name.len())
+            .and_then(|total| total.checked_add(value.len()))
+    });
+    let bytes = bytes
+        .and_then(|total| total.checked_add("referer".len()))
+        .and_then(|total| total.checked_add(value.len()))
+        .ok_or_else(|| HostError::ResourceExhausted("route header bytes overflow".into()))?;
+    if bytes > HEADER_BYTES {
+        return Err(HostError::ResourceExhausted(
+            "route header bytes exceed 65536".into(),
+        ));
+    }
+    headers
+        .try_reserve_exact(1)
+        .map_err(|error| HostError::ResourceExhausted(error.to_string()))?;
+    headers.push(("referer".to_owned(), value.to_owned()));
+    Ok(())
 }
 
 fn input_error(error: HeaderError) -> HostError {

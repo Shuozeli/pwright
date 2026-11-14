@@ -1,4 +1,902 @@
-<!-- agent-updated: 2026-09-19T21:23:32Z -->
+<!-- agent-updated: 2026-10-21T03:17:38Z -->
+
+The default-off Python `response-security-details` leaf retains only CDP
+issuer, protocol, subjectName, validFrom, and validTo; each of the three
+strings is limited to 4 KiB. Its checked adapter reservation adds at most
+`(sizeof(details) + 3 * 4 KiB + entry bookkeeping) * active_requests` to the
+existing network budget, without increasing the request count. The host
+charges the projected snapshot to its existing bounded response/history
+records; the FFI copies only the five typed fields. No certificate chain,
+full CDP security object, permanent registry, or extra browser is retained.
+Release adapter/host and 300 installed Python browserless contracts pass;
+unchanged official browser tests are pending CDP recovery. The separate
+interim navigation `finished()` join still depends on explicit request-history
+and the existing 256-slot response-finished owner; it is not the planned
+independent bounded navigation owner.
+
+New Node Page/Frame and ElementHandle selector waits share one
+environment-owned, immediate-fail admission limit of 24 long waits, before
+acquiring an FFI Command ticket. The environment's Command capacity is 32;
+therefore these waits alone cannot consume the eight slots reserved for
+operations that may satisfy them. The permit spans the Rust future and JS
+settlement, then returns on success, error, or cancellation. Every Session
+and derived Locator from one environment uses the same limit; there is no
+per-Session multiplication or waiting queue. The selected full-Page release
+addon (SHA-256
+`905b9b7dd8bc171e0aab2d401899730da640854d7f10d22084d6ac6dc676c533`)
+loads; focused quota release tests pass 3/3 and strict selected full-profile
+Clippy passes.
+Browser-backed concurrency proof is still pending.
+
+The opt-in Node `element-handle-wait-for-selector` leaf reuses one already
+retained Handle, the existing command-lane FFI admission, selector recipe
+budget, and Handle publication/disposal limits. Positive-state polling returns
+the observed descendant directly; each unsuccessful primitive result is
+disposed before the next attempt. Hidden/detached samples publish no Handle.
+One host delay of at most 50 ms separates attempts, and a nonzero timeout
+bounds evaluation, publication, cleanup, and delays; explicit zero permits an
+unbounded caller-owned wait. No observer, browser process, queue, or permanent
+registry is added. The new Page/Frame selector wait likewise reuses one Frame
+and one bounded evaluation per attempt, with a single original deadline and
+no persistent polling owner. Its release artifact and browserless gates pass;
+official browser/lifecycle cancellation evidence is still pending.
+
+The opt-in Node `element-handle-scroll-into-view` leaf adds one existing
+command-lane FFI admission around a retained `PendingHandle`. Rust checks
+stability through that exact Handle, then sends Chromium's native
+`DOM.scrollIntoViewIfNeeded` with the original CDP object ID. There is no
+selector lookup or new registry. A nonzero timeout bounds the whole action;
+zero disables that deadline. An omitted Node timeout is read from the
+retained owner's live Rust Page/Context timeout settings rather than a JS
+shadow table; this adds no new persistent owner. Up to four whole-action
+slots reserve room in
+the eight-call Handle budget for nested checks; polling uses one 50 ms host
+delay and a finite 32 ms browser-side stability sample at a time. It adds no
+new browser, queue or permanent owner. Native/browser integration and cleanup
+under cancellation remain to be verified before conformance credit.
+
+The opt-in Python `ElementHandle.select_text` action shares those four
+whole-action slots with retained scrolling rather than adding four more.
+The original retained Handle is evaluated in place; visibility retries do not
+re-query a selector. Even when both leaves are installed, their combined
+action limit preserves four of eight Handle-call slots for other work. Its
+ABI114 wheel's Python 3.9/3.12 installed-unit and strict Clippy gates pass;
+official browser behavior is not yet verified.
+
+Node `ElementHandle.focus()` reuses the selected `element-handle-dom` Handle
+owner, one existing FFI command admission and the host's existing exact-focus
+evaluation; it adds no queue, registry, timer, browser or Rust resource cap.
+The retained Text-node click repair changes only in-world retargeting from the
+original CDP object ID to its current parent Element and leaves the existing
+click admission/timeout/press limits unchanged. Both remain source-only until
+rebuilt native/browser gates run.
+
+Python ABI107 Context/Page binding registration admits at most 64
+Browser-shared in-flight language transactions before task/coroutine
+construction. Cancellation retains admission until native commit or rollback;
+callback dispatch has its own 64-slot bound, independent of Rust's 64
+pending-call cap. Those bounds do not guarantee settlement liveness: binding
+acknowledgement/result/error share the 32-command/64-MiB FFI budget and the
+eight-active native evaluation scheduler with ordinary work. Two release Rust
+regressions verify admission rejection at the existing count/byte limits;
+they are not progress proofs. A dedicated settlement composition is proposed
+but not implemented; no larger resource allowance is accepted here.
+
+Python ABI 103 adds no feature, package, queue, task, timer, browser process or
+native registry. ElementHandle input composes the existing `element-handle-dom`
+and `keyboard` selections under one FFI command and one input-start admission.
+It retains only the already bounded Handle, Page ID and keyboard argument;
+existing limits remain 128 UTF-8 bytes for keys, 1 MiB for text and finite
+non-negative delay no larger than `u32::MAX` milliseconds.
+
+Frame query/evaluation facades reuse existing Locator, evaluation and temporary
+collection owners. Strict selection performs one existing bounded count before
+evaluation. No selector, Handle, temporary collection or evaluation ceiling is
+raised, and the selected dependency closure remains 108 Pwright packages.
+
+Python ABI 102 reuses the existing Rust Keyboard installation and its retained
+invocation, execution and resource-ledger ceilings. The native boundary caps a
+key at 128 UTF-8 bytes and text at 1 MiB, validates delay as a finite
+non-negative value no larger than `u32::MAX` milliseconds, and charges the
+existing 1 MiB-plus-4 KiB FFI command allowance. The selected `keyboard`
+feature adds no Pwright package, queue, task, timer, browser process or native
+owner.
+
+Python ABI 101 keeps the existing request and response FIFO maxima at 256
+notices each and their existing retained-byte accounting. A selected timing
+record is one shared `Arc` containing nine `i64` fields; the codec's packet
+bound explicitly charges both possible Request/Response timing snapshots.
+Each already bounded notice adds one `u64` sequence, and installation state
+adds checked next/last sequence counters. The fence stores no history and
+waits on the existing single Browser watchers and one condition variable.
+
+The Chromium tracker adds one feature-gated cache bit per already admitted
+request and no cache collection. Terminal timing replaces, rather than
+retains beside, the pending snapshot. Zero/unavailable normalization is
+allocation-free. No request count, queue length, retained-byte ceiling,
+Handle, operation, task, timer, browser process or 108-package dependency
+closure increases.
+
+NODE-384 changes no production resource declaration. Fetch-original-then-
+fulfill reuses the bounded API-request response owner and retained body path;
+JSON fulfillment reuses the existing route body/header and FFI ceilings. No
+queue, task, timer, Handle, route, response, transport or package limit rises.
+
+Python ABI 100 raises no retained Handle, operation, queue, task, timer,
+transport, topology or package-closure ceiling. Public-wrapper conversion
+fails before native I/O above depth 64, 4,096 value nodes or 4,096 aggregate
+container entries; the Rust reader independently revalidates those limits,
+the 256 KiB input string budget and the existing 8 MiB FFI allowance.
+Handle slots cannot exceed the bounded node count and all owners consume the
+existing 64-Handle capacity. `get_properties()` reuses atomic bounded batch
+admission and independent cleanup tickets. Date/preview conversion retains no
+browser object or history. The dependency closure remains the same 108 Pwright
+packages.
+
+Python ABI 99's `file-input-native-paths` leaf raises no file-input count,
+byte, call, source, worker, topology, timer or cleanup ceiling. It reuses the
+existing prepared-directory ownership and retained-preflight reservation.
+Only the selected directory path avoids payload copying; ordinary files keep
+the bounded payload route and 50 MiB remote-CDP rejection. The dependency
+closure is identical to `file-input`.
+
+Python ABI 87 keeps the existing request-event maximum of 256 notices and 16
+MiB of aggregate retained bytes. Request-finished and request-failed notices
+reuse that FIFO; failure text and the optional native correlation ID are
+charged to the existing retained-byte accounting. Request history keeps its
+existing per-Page item and byte limits. Python adds no per-event task: one
+Browser watcher drains all three lifecycle kinds and the Page weak request map
+reuses portable identities. No browser process, protocol connection, queue,
+timer, registration or package-closure limit increases.
+
+Python ABI 86 admits at most 256 Page or Context extra-header entries with at
+most 64 KiB of aggregate name/value bytes per setter. The PyO3 async command
+reserves 512 KiB, covering the owned input plus the existing host command and
+result bounds. Rust transfers the values into the already resource-accounted
+header pool and settings book; Python retains no duplicate native snapshot.
+
+Route publication reuses the existing 256-header/64-KiB request limits. If
+Chromium omits an implicit Page referer, Rust computes the checked total,
+reserves exactly one vector slot and inserts at most one bounded value.
+Lowercasing ASCII header names is length-preserving. The composition adds no
+registration, queue, task, timer, session cursor, browser process or retained
+request-history allowance.
+
+NODE-338's route-fulfill reason phrase is selected from a compile-time Rust
+mapping. It adds at most one constant string to the already bounded transient
+CDP command and retains no user input, allocation owner, queue entry, task,
+timer, registration or history item.
+
+Python ABI 85 keeps the existing maxima of 256 registrations, 64 combined
+pending/settling calls and 64 initializing sessions. Each admitted route call
+adds one finite traversal cursor and one bounded accumulated `RouteContinue`;
+its worst-case retained URL, method, headers and POST data are already charged
+by `MAX_ROUTE_CONTINUE_INPUT_BYTES`. Fallback reuses the same fixed callback
+queue and command admission. It adds no registration, task, timer, event
+cursor, transport, browser process or response slot.
+
+Handler-specific unroute accepts at most the existing 256 opaque IDs and
+verifies ownership before mutation. Python adds one callback-key entry per
+already-counted registration; sync keys reference the original callable and
+do not duplicate request or browser state. Favicon settlement is a constant-
+size native abort command and retains no callback. Terminal refresh continues
+to scan only bounded current topology.
+
+Python ABI 84 adds one optional `u64` remaining-use value to each already
+bounded route registration; `times=0` stores no finite counter. It does not
+raise the existing 256-registration, 64 combined pending/settling-call or 64
+initializing-session ceilings and retains no per-use history. Matching,
+decrement and final removal happen in one state-lock critical section.
+
+The final pending call reuses the existing request, command and byte budgets
+and carries only one refresh boolean. Pattern reconciliation scans the already
+bounded current session topology after terminal settlement. A transient stale
+pause is admitted through the existing Fetch-command path and continued in
+Rust without a Python queue entry. The FFI descriptor adds one boolean; direct
+negated assertion aliases retain no state. No queue, task, timer, cursor,
+transport, browser process, registration slot or callback capacity is added.
+
+NODE-333 keeps public route patterns at 4 KiB and bounds the compiled CDP form
+at 8,193 bytes, covering a leading full-URL wildcard plus a backslash before
+every byte-sized question mark. The compiler computes the exact checked size
+before `try_reserve_exact`; the fixed vector also reserves at most the existing
+256 registration count before compiling entries. Every allocation failure or
+size overflow remains a typed resource error before native I/O.
+
+Compiled strings are transient `Fetch.enable` command inputs and are released
+after the existing bounded command settles. Stored registration bytes, route
+count, pending-call count, event cursor, transport, process allowance and
+Python callback ownership do not change.
+
+Python ABI 83 bounds every `Route.continue_()` input before native I/O: URL at
+64 KiB, method at 64 bytes, at most 256 headers with 64 KiB aggregate header
+bytes, and POST data at 256 KiB. The PyO3 call has an independently proven
+512 KiB allowance that covers the host's maximum admitted input. A pending
+call additionally retains at most one bounded request-scheme string within the
+existing 64-call ceiling; its requirement budget includes a full URL bound as
+the conservative proof even though an actual scheme is much smaller.
+
+Serialization reuses the existing fixed Fetch-command admission, response
+slot, event cursor, paused-call table and terminal-settlement path. Base64 is a
+transient command representation and creates no retained body store. ABI 83
+adds no queue, worker, timer, topology copy, transport, browser process,
+registration slot or callback capacity.
+
+Python ABI 82 keeps the route owner's existing maximum of 256 registrations,
+64 combined pending-plus-settling calls and 64 initializing sessions. The new
+settling table is preallocated for 64 entries, but admission counts it together
+with the pending table, so moving a call between phases cannot raise the
+combined live-call ceiling. The owner retains one fixed `Notify`; it adds no
+per-call task, timer, event cursor, transport or browser-process allowance.
+
+Scope-wide removal scans only those fixed collections. `"wait"` compares each
+call's retained original `RegistrationScope` with the exact selected Page or
+Context and observes the existing stop token while waiting. Default behavior
+does not retain a waiter. Fetch reconciliation reuses current bounded session
+topology and command admission, and Python releases callback identities only
+after native removal completes. No callback, URL pattern, Page, Context or
+session is copied merely to wait.
+
+Python ABI 81 ordinary Context routes reuse the existing 256 registrations,
+64 paused calls, 64 initializing sessions, fixed Fetch-command admission and
+bounded string-pattern storage. A registration holds one Context identity and
+one handler tag regardless of Page/OOPIF count. Python holds one callback per
+returned registration ID and clears those identities on Context close. No new
+queue, event cursor, topology mirror, timer, browser process, transport or
+Pwright package is added; selecting `page-routes` still has the same closure.
+
+NODE-327's missing-entries archive retains zero entry/header/body bytes and
+reports `retained_bytes() == 0`. Its registration still consumes one of the
+existing eight archive slots and follows the same route/initializer limits;
+the compatibility rule adds no capacity, queue, task, timer or FFI allowance.
+
+Python ABI 80 adds a fixed 64-entry initializing-session registry to the
+existing route owner. Each entry retains only the exact bounded session, Page,
+Context and native ownership needed to classify an early Fetch pause. Admission
+precedes native installation; initialization failure, target detach and normal
+topology reconciliation reclaim the same slot. The limit is exported through
+the ABI resource profile as `route_initializing_sessions: 64`.
+
+Context HAR registrations reuse ABI 79's eight-archive and 8 MiB retained-
+archive limits plus the existing paused-call, Fetch-command and archive-byte
+owners. One Context registration references one archive regardless of Page or
+OOPIF count; it does not copy that archive per session. The feature adds no
+Python callback queue, timer, unbounded target list, event cursor, transport or
+browser-process allowance.
+
+Python ABI 79 `har-replay` admits at most eight plain HAR archives. Each input
+is bounded to 8 MiB before parsing, each archive to 4,096 entries, each URL to
+64 KiB, each method to 64 bytes, each message to 256 headers/64 KiB of header
+bytes, each POST body to 256 KiB, each embedded response body to 1 MiB and each
+redirect walk to 20 hops. Total retained archive storage is independently
+bounded to 8 MiB. The host uses a bounded asynchronous file read, rejects
+external `_file` content before registration and releases exact archive bytes
+when the registration or Page retires.
+
+Internal HAR requests reuse the existing Page-route paused-call and Fetch
+command capacities; they do not create a Python callback, second event cursor,
+timer, browser process or transport. Computed-style expectations reuse the
+existing bounded Locator value-expectation lane and static-program retry loop;
+property, expected value and regex flags are validated before browser access.
+
+Python ABI 78 `context-http-credentials` retains at most 16 selected Context
+policies. Username, password and optional origin are each bounded to 65,536
+UTF-8 bytes. Pending actions, attempted authentications, request mappings and
+initializing sessions are four separate 64-entry collections. It adds one
+shared reclaiming event cursor whether HTTP authentication, Page routes or
+both are selected.
+
+The separate `response-body` leaf admits eight concurrent operations and
+reserves at most 4 MiB per output. Encoded and decoded response bodies are
+independently checked against that limit, request IDs are bounded to 256 bytes,
+and the PyO3 boundary charges the Rust output plus copied Python bytes. The leaf
+adds no Page table, cache, task, timer, browser process or event subscriber.
+
+Python ABI 76 `context-geolocation` retains at most 16 selected Context
+policies. The persistent default consumes one slot when present; attached
+external Contexts consume none. Each value is three finite `f64`s with
+longitude in `[-180, 180]`, latitude in `[-90, 90]` and nonnegative accuracy.
+Creation compensation and close release owned slots idempotently.
+
+The separately selectable geolocation-permission owner also retains at most
+16 selected Context identities, counting an enabled persistent default as one.
+It sends one constant-size browser command per grant and retains no origin,
+response body, Page, session or Python permission mirror. Both leaves reuse
+the existing topology initialization fence and native command admission.
+
+Persistent launch arguments are transient provider input bounded to 256
+switches, 65,536 UTF-8 bytes per switch and 1,048,576 UTF-8 bytes in aggregate.
+NULs, page-opening arguments and Pwright-owned profile/remote-debugging
+switches are rejected. The strings are moved into the existing launch request;
+the leaf adds no queue, task, timer, browser allowance, transport, recovery
+owner or Pwright package closure.
+
+Python ABI 75 `context-offline` retains at most 16 selected Context policies.
+The persistent default, when offline, consumes one slot and leaves at most 15
+later selected owned Contexts; attached external Contexts consume none. Each
+entry stores only the bounded portable Context identity and the default is one
+boolean.
+
+Initialization sends one constant-size `Network.emulateNetworkConditions`
+command per selected Page/OOPIF session and retains no response body. It reuses
+the existing topology initialization fence, native command admission and
+shutdown drainage. Creation compensation and close release the exact slot
+idempotently. The leaf adds a fixed 193-byte resource-profile allowance and no
+queue, task, timer, Page table, session registry, browser-process allowance,
+transport, recovery owner, Python mirror or additional Pwright package closure.
+
+Python ABI 74 `context-timezone` retains at most 16 selected Context policies.
+The persistent default, when selected, consumes one slot and leaves at most 15
+later selected owned Contexts; attached external Contexts consume none. Each
+entry stores one portable Context identity and one nonempty, control-free
+timezone identifier bounded to 256 UTF-8 bytes. Total retained timezone input
+is therefore fixed by those two limits.
+
+Initialization sends one bounded
+`Emulation.setTimezoneOverride {"timezoneId": ...}` command per selected
+Page/OOPIF session and retains no response body. It reuses the existing
+topology initialization fence, native command admission and shutdown drainage.
+Creation compensation and close release the exact slot idempotently. The leaf
+adds a fixed 192-byte resource-profile allowance and no queue, task, timer,
+Page table, session registry, browser-process allowance, transport, recovery
+owner, Python mirror or additional Pwright package closure.
+
+Python ABI 73 `javascript-disabled` retains at most 16 selected Context
+policies. The persistent default, when disabled, consumes one slot and leaves
+at most 15 later selected owned Contexts in that host; attached external
+Contexts consume none. Each entry is only the bounded portable Context ID and
+the default is one boolean. Initialization issues one constant-size
+`Emulation.setScriptExecutionDisabled` command per selected Page/OOPIF session
+and retains no response body. Close and creation compensation release the
+exact slot idempotently.
+
+`Page.expect_navigation` reuses the existing frame-lifecycle observation,
+fixed navigation-wait admission and timeout owner; the new Python/native
+binding adds no queue, task, timer, Page table or package beyond that selected
+closure. Choosing a click point from `getClientRects()` is browser-local
+temporary geometry and adds no retained allocation. Main-world console replay
+before paired-world readiness uses the existing Handle admissions and bounded
+cleanup reservations; it simply omits an unavailable optional lifetime receipt
+instead of allocating another waiter or aborting topology initialization.
+
+Python ABI 72 `bypass-csp` retains at most 16 selected Context policies. The
+persistent default, when enabled, consumes one of those slots and therefore
+leaves at most 15 later selected owned Contexts in the same host. Attached
+external Contexts consume no slot. Each entry stores only the bounded portable
+Context identity; the persistent default is one boolean.
+
+Initialization sends one constant-size `Page.setBypassCSP` command per new
+selected Page/OOPIF session and retains no response body. It reuses existing
+topology initialization, native command admission and shutdown drainage.
+Context-creation compensation and close release the exact slot idempotently.
+No queue, task, timer, Page table, session registry, browser-process allowance,
+transport, recovery owner, Python mirror, FFI byte allowance or additional
+Pwright package is introduced.
+
+Python ABI 71 `persistent-context-extra-headers` admits at most 256 header
+pairs and 64 KiB of combined UTF-8 name/value bytes. Python preflights those
+bounds before FFI, and the native launch tuple uses a fixed 512 KiB copy
+allowance. Rust moves admitted strings into the existing `HeaderPool`; no
+second header allocation table or Python mirror is retained.
+
+A selected default consumes one of the existing 16 Context header slots,
+leaving at most 15 later explicitly selected Context owners. It uses the
+existing 16 Page settings slots, 419-owner header pool, nine request owners,
+16-Page / 80-route dispatch bound and 80-permit native semaphore. Initial
+replay and later public mutation share those owners. Retirement and shutdown
+release the same leases. The feature adds no Pwright package beyond the
+persistent-context closure and no session, browser-process, timer, transport
+or recovery allowance.
+
+Python ABI 70 `persistent-context-emulate-media` adds no new media table,
+mutation gate, Page capacity or backend-state allowance. One optional tuple of
+three finite Rust enums is retained for the host lifetime. Each persistent
+default-Context Page consumes a normal entry from ABI 7's existing fixed
+64-Page table and 16 KiB allowance; initial replay and later public mutations
+share its capacity-one async gate.
+
+Every initializer issues at most one Page-scoped media command per new
+Page/OOPIF session and retains no response body. The default is immutable,
+owned/external Contexts consume no inherited entry, retirement uses the
+existing table pruning, and shutdown waits through the existing installation
+owner. No queue, task, timer, session registry, browser process, transport,
+Python state, FFI byte allowance or additional Pwright package is introduced.
+
+Python ABI 69 persistent launch-argument preflight inspects at most 256
+arguments, 64 KiB UTF-8 each and 1 MiB total. The temporary Python list stores
+only bounded references and validated strings for the duration of the call.
+The selected error path returns before environment lookup, FFI reservation,
+native session admission or browser-process creation. Empty args allocate no
+native state; non-empty switch-only args are rejected rather than retained.
+No standing allowance, ABI entry or dependency is added.
+
+Python ABI 69 `context-cookies` admits at most 1,024 cookies per command. Each
+ordinary name/value/domain/path/same-site field is limited to 16 KiB UTF-8;
+URL and partition-key fields are limited to 64 KiB. A cookie input or output
+batch is limited to 4 MiB. Cookie URL filtering accepts at most 256 URLs,
+64 KiB each and 1 MiB total. Each clear-cookie regex source is limited to
+16 KiB. The Python native boundary reserves at most 10 MiB for one cookie FFI
+operation and pre-bounds Python values before allocating Rust-owned copies.
+
+The leaf adds no standing cookie entries, mirrored bytes, Page lanes, Context
+slots, browser sessions, tasks, timers, transports or processes. Unfiltered
+clear issues one browser-root command. Filtered clear temporarily retains one
+bounded Storage result and one bounded expiry batch under the same operation;
+all temporary values are released before return. Partitioned expiry preserves
+the source cookie's `hasCrossSiteAncestor` bit without exposing or duplicating
+that internal identity in Python. The dependency proof remains the existing
+108 Pwright packages.
+
+Python ABI 68 BrowserContext event facades add no native allowance. `page` and
+`close` callbacks consume only language callback references and reuse the
+existing single Browser lifecycle watcher and bounded Rust notice path.
+Optional `console` callbacks hold exactly one existing Context-console
+subscription token while at least one listener is installed; the final removal
+releases it through the existing native owner. No queue slot, payload byte,
+Context, Page, session, command, task, timer, transport, browser process,
+recovery owner, Pwright package or ABI entry is added.
+
+Python ABI 68 `persistent-context-device-emulation` adds no new allowance. A
+selected persistent default Context consumes one entry and its actual bytes
+from the existing fixed limits of 16 device policies and 64 KiB. It therefore
+leaves at most 15 later selected owned Contexts in the same host. The default
+selection is immutable after construction and is released with the host.
+
+The feature reuses the existing Page/OOPIF initializer, per-Page viewport
+registry of 64 entries / 8 KiB, stateless user-agent composition and unique
+persistent browser-process lease. `Page.viewport_size` retains only two Python
+integers per live facade and returns a fresh mapping; it creates no native
+registry, browser query, callback, timer or cleanup task. The leaf adds no
+Pwright package, session ID, queue, task, timer, transport, browser-process
+allowance or recovery owner beyond the existing persistent launch and device
+closures.
+
+Python ABI 67 `persistent-context-ignore-https-errors` adds no new allowance.
+A selected persistent default Context consumes one entry from ABI 47's
+existing fixed capacity of 16 live HTTPS-error policies, so at most 15 later
+owned Contexts in the same host can select the policy. The default selection
+is immutable after construction and is released with the host. The leaf adds
+no session ID, queue, task, timer, transport, browser-process allowance,
+recovery owner or Pwright package beyond the existing persistent launch and
+HTTPS policy closures.
+
+Python ABI 66 persistent-session release does not raise the existing limit of
+16 admitted environment sessions. Closing a persistent default Context now
+drives its unique Browser's normal native close and removes that exact session
+from the environment vector before a later launch can be admitted. The closed
+Browser is also removed from the language owner's list. Ordinary Context close
+does not consume or release a Browser-session slot because its connected
+Browser remains shared. The repair adds no session entry, task, queue, timer,
+transport, process allowance, retained recovery object or dependency. A final
+same-process stress performs 50 sequential persistent launches without
+exceeding 16 simultaneously admitted sessions.
+
+Python ABI 66 `wait_for_function` timeout acknowledgment adds no standing
+allowance. One cancellation token is stack-owned by the existing public wait
+operation. At the deadline it prevents a new poll and keeps only the current
+already-admitted predicate command alive until its ordinary publication fence
+settles. A late Handle consumes and releases the existing Handle and cleanup
+allowances; no extra Handle is published. The repair adds no background task,
+queue slot, retained session, registry entry, transport, timer owner, browser
+process or dependency. Public timeout latency can include acknowledgment of
+that one admitted command, but never another polling interval.
+
+Python ABI 66 `persistent-context-locale` adds no new allowance. Its optional
+default-Context locale consumes one entry and its actual UTF-8 bytes from ABI
+65's existing limits of 16 live locale policies and 256 bytes per policy.
+Consequently a selected persistent default locale leaves capacity for at most
+15 additional owned Context locales in the same host. The policy is admitted
+before browser publication and released with host shutdown. The leaf adds no
+Pwright package, session table, Worker copy, queue, task, timer, transport or
+second browser process beyond `persistent-context`'s existing unique process
+lease. The shared user-agent override boundary is stateless: it borrows the
+already admitted device and locale policy owners during session initialization
+and adds no retained string copy, registry entry, lease or protocol queue.
+
+Python ABI 65 `context-locale` retains at most 16 locale entries, one per
+owned Context, with at most 256 UTF-8 bytes each. It reserves exactly one
+EventItem and the actual locale EventBytes per selected Context plus fixed
+preallocated 16-Context registry. Empty values, control characters, duplicate
+Context installation and capacity overflow fail explicitly. Context removal
+and host shutdown release every entry idempotently. The feature retains no
+session IDs and adds no Worker locale copy, command, task, queue, timer,
+browser process or transport; direct and nested Workers inherit the renderer
+locale.
+
+Python ABI 64 `worker-console-argument-handles` adds no new global Handle or
+call allowance. At most 16 argument descriptors are admitted per console event
+and all consume the existing 64 Worker Handles, eight concurrent Handle calls
+and 64 cleanup reservations. The console lane remains capped at 128 notices
+and 16 MiB; its byte charge now includes the in-queue Handle descriptor vector.
+A temporary bounded recovery owner covers at most 16 object IDs and 4 KiB of
+aggregate native ID bytes until atomic transfer. Capacity or validation failure
+releases the untransferred object IDs through the existing 128-slot console
+cleanup allowance. After transfer, queue eviction or close drops Handle owners
+before the notice's strong Worker owner, ensuring exact native release without
+extending Worker lifetime. The feature adds no Pwright package beyond the
+existing Worker Handle closure.
+
+Python ABI 63 `worker-handle-evaluation` shares the host's existing global
+limit of 64 retained Handles and eight concurrent Handle calls. A Worker
+evaluation owns one exact-session RemoteObject until opaque-Handle publication
+or compensation; property acquisition is admitted by the same call bound.
+Shutdown admits at most 64 cleanup reservations and releases each exact native
+object. A Handle core holds only a weak Worker backreference, so disposed
+descriptors add no hidden session or connection retention. Python retains no
+remote object id, execution-context registry, polling loop or cleanup queue.
+The optional leaf adds no Pwright package beyond the existing Page-events plus
+Handles closure.
+
+Python ABI 62 `worker-network-events` admits at most 64 related Worker or
+nested-Worker session routes. Each route stores bounded session/parent IDs and
+one Page identity; it adds no network adapter lane. Worker and Page traffic
+share the existing 64-active-request limit, native metadata budget and event
+queues. Scoped `(session, request-id)` keys prevent collisions without
+multiplying capacity. Worker detach drains only the retired scopes. Python's
+Page Request/Response caches are weak, so completed public wrappers are not
+retained solely by identity canonicalization.
+
+Python ABI 19 adds no unbounded Python queue or retained selector registry.
+Each drag call uses the existing bounded command allowance, two admitted
+locator recipes, fixed source/target position options and the Mouse input
+owner. `steps` must be an integer representable by the existing fixed Mouse
+event limit; all coordinates must be finite. The operation validates same
+Page/same Frame ownership before input, performs at most one source move, one
+button down, the bounded target move and one release, and attempts release
+after a started drag even when target movement fails. The optional profile
+adds exactly one Pwright package, `pwright-backend-cdp-drag`.
+
+Python ABI 18 admits at most 64 Rust `Request.sizes()` owners across the host.
+Each owner stores fixed scalar state plus one semaphore permit; Request/Response
+metadata remains in the existing bounded event snapshots. Per Page, raw
+request-header extra-info uses a separately reserved table capped by the
+configured active-request count and does not consume active-request capacity.
+The production adapter budget now includes the maximum pending native IDs,
+header entries and header bytes. `postDataEntries` decoding obeys the existing
+post-data byte cap, unknown attach-boundary tails allocate no portable object,
+and close wakes every still-pending owner.
+
+Python ABI 17 Page routing admits at most 64 registrations and 64 pending
+calls. Each registration has a 4 KiB pattern cap. Each call bounds URL at
+64 KiB, method and resource type at 64 bytes each, aggregate headers at 64 KiB
+and POST data at 256 KiB; the Rust delivery queue is fixed at 64 and glob
+scratch allocation fails explicitly. Python retains handlers and public
+wrappers only, with one route watcher per attached Browser. Pending calls and
+the watcher are released on session shutdown. The feature starts no browser,
+server, timer or second CDP/event loop.
+
+Python ABI 16 Page errors retain at most 256 name bytes, 16 KiB message bytes
+and 64 KiB stack bytes per pending native notice. Exact payload bytes are
+reserved from the existing 2 MiB Frame-metadata budget before publication.
+The leaf adds no task, timer, transport, browser process, polling loop or
+language-side queue; the existing single Browser lifecycle watcher drains it.
+
+Python ABI 15 adds one bounded native lifecycle watcher per attached Browser,
+not one task per Page or listener. Notices remain inside the Rust registry and
+publication fence until committed and acknowledged; Python receives immutable
+descriptors and retains only Page wrappers, registered callbacks and pending
+public event waiters. Browser shutdown cancels the one watcher before native
+session teardown. The combined Page/Context close service retires the selected
+network adapter in the same native close path, so selecting both capabilities
+does not create a second close observer or unbounded queue.
+
+Python ABI 14 adds no second binding registry. It selects the existing Rust
+registration/invocation owner and retains bounded Python callable references
+only for active public registrations. Result delivery uses the native receipt
+and cleanup path.
+
+Python ABI 13 additionally selects the existing Rust Handle and
+wait-for-function budgets: at most 64 retained owners, eight concurrent Handle
+calls and eight wait operations. Each falsy polling result is disposed before
+the next attempt; no Python task, remote ID or duplicate registry survives the
+Rust operation. The dependency proof adds no Pwright package to the existing
+108-package closure.
+
+Python ABI 12 selects the same bounded Rust API-request owner as Node plus the
+optional certificate identity and init-script leaves. One
+Python request context adds no language-owned socket, cookie jar, response
+registry, retry task or timer. Python retains one facade per native context,
+copies request/response boundary values, and uses awaited file I/O for optional
+storage-state and certificate paths. Certificate inputs share the Rust leaf's
+64-entry store and 16 MiB per-material caps; exact-origin lookup keeps decoding
+lazy and caches at most one TLS identity result per matched entry.
+`Playwright.stop()` disposes all remaining request
+contexts. The init-script leaf retains at most 128 sources of 64 KiB each,
+tagged with a typed Page or BrowserContext scope; Python retains no duplicate
+script registry. The sync facade retains one bounded loop thread with a 32-call
+admission semaphore; the official-test adapter's thread-safe server waiter is
+test-only and owns no production resource.
+
+NODE-221 adds no unbounded language-owned request state. A request-scoped
+official resolver result is converted to at most 64 parsed IP addresses and is
+dropped with the call; the Rust URL continues to own Host/SNI. One selected
+native context retains storage origins as at most 8 MiB of JSON. Storage
+cookies remain inside the existing 1,024-entry/1 MiB Rust cookie store. File
+storage-state import/export is awaited Node file I/O with no watcher or
+background task. Every request is still admitted by the existing eight-call
+semaphore, cancellation tree and response registry; the profile starts no
+browser process, pool or detached worker.
+
+NODE-220 retains at most 64 DNS addresses and at most 64 call-owned TCP attempt
+futures. One additional 300 ms delay future controls each next launch; there is
+never more than one pending launch delay. Attempts live in one
+`FuturesUnordered` inside the caller's future and are not spawned. The first
+success or request cancellation drops every loser immediately, including any
+partially opened socket. IP literals allocate one address and bypass DNS. No
+persistent pool, cache, task, queue or browser process is added.
+
+NODE-219 gives one pending exchange exactly one connection, one HTTP/1 decoder
+and one fixed 32 KiB transport buffer. The codec retains only bounded headers,
+the configured consumed body or a minimum 64 KiB event-fragment allowance so a
+final head can be emitted independently of a tiny body limit. A followed
+redirect or handled Basic challenge releases the whole pending exchange at the
+head event; a terminal response still consumes and decompresses under the
+existing body cap. Set-Cookie mutation happens before that decision and adds no
+second response copy. No persistent owner, task, queue or browser process is
+added.
+
+NODE-218's Basic leaf admits at most 4 KiB each for username and password plus
+64 KiB for the optional origin before encoding. It retains one zeroizing Basic
+value and one origin string per selected provider; Debug output is redacted.
+Transport creates at most one cloned Authorization value per active chain and
+performs at most one challenge retry because the header then becomes present.
+It adds no task, timer, socket, queue, table or browser owner. The existing
+request header cap independently bounds its wire copy and response-log cap
+bounds the transport log.
+
+NODE-217's selected global cookie store retains at most 1,024 entries, 4 KiB
+per parsed header/cookie and 1 MiB aggregate cookie text. Oversized wire entries
+are ignored; structured invalid entries fail; count or aggregate overflow
+evicts the oldest identity deterministically. Expired entries are pruned on
+read and write. One mutex protects one vector; there is no task, timer, socket,
+browser owner or background cleanup loop. Transport keeps no second cookie
+copy: it obtains one bounded header value for an exchange and passes raw
+Set-Cookie values to the selected store. BrowserContext and origin storage
+adapters do not exist yet and add no hidden capacity.
+
+NODE-216's Tokio connector retains at most 64 DNS answers and attempts them
+serially under the existing public deadline; one successful TCP stream belongs
+to one exchange. Every lookup/connect/read/write and TLS handshake observes the
+request token. Rustls keeps two immutable shared client configs per selected
+connector (verified and insecure), advertises one HTTP/1.1 ALPN value and
+inherits Rustls handshake/certificate defensive caps. Decompression creates no
+task: gzip/deflate use fixed decoder state, Brotli uses a 4 KiB stream buffer,
+and every decoder reads at most `max_response_body_bytes + 1`; transport checks
+the returned length again. Happy Eyeballs concurrency, proxy pools and client
+certificates do not exist yet and therefore cannot add hidden owners.
+
+NODE-215 adds no task, socket or persistent table. One active transport call
+owns one 32 KiB read buffer, one codec decoder/body and one connection supplied
+by the selected connector. Redirects are serial; the prior response and
+connection drop before the next exchange. Reset retries are serial and capped
+by the request's bounded `u16` count; backoff starts at 250 ms, saturates on
+doubling and remains inside the original public deadline. Internal log entries
+and bytes keep the existing caps; overflow removes the last admitted entries as
+needed for one fixed truncation sentinel and never causes public request
+failure. Cancellation is checked before connect/read and retains no spawned
+operation.
+
+NODE-214 adds no task, socket, timer, queue or persistent registry. One selected
+HTTP/1 decoder owns one exchange buffer and one response body. Request-head
+encoding is rejected above the existing 256 KiB header cap before append.
+Informational and final head bytes plus trailer bytes share that same cap;
+header count remains 256, chunk-size lines are at most 1 KiB and decoded body
+bytes remain inside the existing 16 MiB cap. Fixed and chunked bodies are
+admitted incrementally, close-delimited fragments are drained into the bounded
+body immediately, and bytes after completion are terminal rather than retained
+as a second response. A future connector must separately bound its read buffer,
+DNS/TLS/proxy state and decompression expansion.
+
+NODE-213 adds no persistent owner beyond one `AtomicU64` multipart identity per
+selected API request context. Query and request-body field counts are each
+limited to 1,024. Form output is appended under the existing 16 MiB body cap;
+multipart headers, inferred MIME text and file bytes share the same cap.
+Boundary selection scans the already bounded field data at most four times and
+fails rather than looping. Context/request header overlays remain inside the
+existing 256-header/256 KiB limits, and the computed content length cannot be
+supplied independently of the final bounded body.
+
+NODE-212 adds an optional API-request capacity class without preallocating its
+limits. One context admits eight concurrent calls and 64 live responses by
+default. Each request is bounded to a 1 KiB method, 64 KiB URL, 256 headers,
+256 KiB aggregate header text and 16 MiB body. Each response is bounded to a
+64 KiB URL, 8 KiB status text, the same header limits, 16 MiB body, 64 log
+entries and 256 KiB log text. The registry retains at most 64 MiB of bodies
+and 1 MiB of logs. Timeout covers semaphore wait and transport execution; its
+request-local token is cancelled before returning. Response drop/dispose
+returns exact registered body/log bytes, and context disposal cancels all
+children then clears every entry. The base crate owns no socket, decompressor,
+proxy, cookie jar, task or browser; each remains a separately bounded future
+plugin or adapter.
+
+NODE-211 adds no persistent capacity class. One expectation retains at most one
+bounded received string, one bounded preview string and fixed missing/timed-out
+flags. On the first mismatch with time remaining, Rust performs one immediate
+count and at most one static preview evaluation capped by both 100 ms and the
+remaining original deadline. It cannot renew the deadline or run after it, and
+no DOM owner, Handle, Promise, timer, task, queue, global or retry journal
+survives the attempt. The result crosses the existing 6 MiB FFI settlement
+allowance; Node retains only the final public diagnostic strings.
+
+NODE-210 adds no persistent capacity class. Boolean expectations remain serial
+under one Rust-owned public deadline and one existing Locator command at a
+time. Checked/editable/enabled results reuse their typed read leaves;
+indeterminate/focused attempts reuse the existing Locator-evaluation admission
+and leave no browser Promise, Handle, global runtime, timer, queue or table.
+The addon retains only fixed booleans and the existing bounded result strings.
+The official runtime harness performs one read-only, five-second loopback
+`/json/list` inventory before starting and refuses nonblank targets; it retains
+no browser state. The measured 62/24 file result predates this guard and is not
+final isolation evidence.
+
+NODE-209 adds one fixed `Option<ActionabilityProgress>` slot per exact selected
+Locator service route. The enum carries no string, DOM node, Handle, browser
+Promise or dynamic collection. It is cleared at click admission, on a ready or
+runtime-replaced result and on ordinary completion; an original-deadline
+timeout may consume it once only after command cancellation and browser cleanup
+succeed. Terminal projection is synchronous and performs no I/O, allocation
+proportional to input, retry or second timeout. Cleanup failure remains the
+primary cleanup error. Node retains no progress state and only formats one of
+the fixed bounded keys through the existing diagnostic allowance.
+
+NODE-208 adds no native capacity class. Bounding-box uses one existing bounded
+Locator-evaluation operation and returns four finite scalar values through the
+existing FFI settlement. Highlight admits one description no larger than
+64 KiB and installs at most one overlay root plus one animation-frame owner in
+the selected Frame utility world. Repeated calls cancel and replace the prior
+owner before installing another; navigation destroys the utility world and its
+state. The browser state uses one global symbol key and retains only the exact
+elements resolved at installation. There is no native task, timer, listener,
+queue, table, Handle or browser process, and Node retains no overlay state.
+
+NODE-207 adds no new capacity class. State, property and regular-expression
+text expectations enter the existing bounded Locator-evaluation operation;
+attempts are serial, each browser attempt is capped at 100 ms, and the public
+deadline prevents a later attempt from renewing the call budget. Expected
+property values are materialized synchronously through the existing bounded
+N-API value-conversion allowance before async dispatch. The browser result and
+diagnostic are admitted through the existing 6 MiB FFI settlement allowance.
+Context replacement discards the current attempt and retries only while the
+Frame remains active. No browser Promise, element owner, retry queue, timer,
+task or state table survives an attempt. Node retains only one bounded Locator
+description and the final received value used for language error formatting.
+
+NODE-206's default-off `response-body` leaf admits at most eight simultaneous
+operations. Each owns one fixed 4 MiB backend-state lease before CDP dispatch;
+the request identity is 1..256 bytes, encoded and decoded results are both
+rejected above 4 MiB, and invalid base64 is terminal. The Rust output retains
+its lease through N-API Buffer conversion, whose independent allowance is
+64 KiB. The leaf retains no Page state, task, queue, timer, listener or browser
+process. Node may cache one copied Buffer per public Response object so
+`body`, `text` and `json` share one native read; this is language-object state,
+not browser/protocol ownership.
+
+NODE-205 changes no resource declaration. Click actionability calls the
+already-resident selector runtime's allocation-free enabled-state/retarget
+primitive inside the existing bounded evaluation string and retry operation;
+it adds no retained element, handle, queue, timer or state table. Preserving
+`FrameDetached` changes one enum value and error formatting only; the existing
+navigation result, FFI and diagnostic string bounds still apply.
+
+The default-off Node Page-binding conformance profile composes independently
+bounded leaves. `page-bindings` retains at most 64 registrations and 64 pending
+calls with 256-byte names and 64 KiB argument payloads. Its browser controller
+rejects the normal frame-local 65th call before allocating callback/publication
+state. Page-originated malformed or oversized bridge events are dropped
+nonterminally rather than killing the topology pump. Rust admission failures
+use up to 16 asynchronous CDP rejection tasks with an additional fixed
+65,536-byte backend-state allowance. They run after the event pump returns,
+so their CDP replies cannot deadlock that pump. If all 16 tasks are occupied,
+further native rejections are dropped; the corresponding page Promise may
+remain pending until Context close. This is an explicit boundary limitation,
+not proven unbounded compatibility. Backend failures still remain terminal.
+The native retained-call allowance now accounts for both the pending owner's
+name and the queued/foreign descriptor's name (two 256-byte allocations per
+call), correcting a 16 KiB undercount across 64 calls. A focused release
+regression verifies the exact declared allowance.
+
+Python independently caps callback dispatchers at 64 per Browser; Page churn
+cannot bypass this cap by retiring native pending entries first. Dispatchers
+retain their callback children until completion or observed cancellation,
+including the pre-acknowledgement window. Browser close waits at most five
+seconds for other dispatchers, does not cancel its own initiating callback,
+and retains admission for cancellation-resistant user code while recording
+an error. A separate Browser-shared 64-transaction registration bound includes
+running and queued Page/Context operations. Admission precedes coroutine/task
+construction; caller cancellation does not release a slot before the native
+transaction settles. Another Context cannot bypass the cap. Closing a second
+Browser from a callback does not retain that foreign dispatch task as its
+close marker. Deterministic saturation, failure/reuse and ownership regressions
+pass in the 22-case language binding suite. Partial-registration browser-side
+rollback and shared-command-lane settlement pressure remain explicit open
+limitations; these local bounds do not prove complete official compatibility.
+The shared settlement risk includes the 64 MiB FFI byte budget as well as
+32 Command slots: seven 8 MiB ordinary evaluation allowances plus one 32 KiB
+binding Watch leave less than a result/error allowance. Native acknowledgement
+and delivery also share the eight-active controlled evaluation scheduler
+with work awaiting those acknowledgements. No independent settlement reserve
+has been added. A future control service must account for bounded foreign
+roots, preparation, worker storage and exact-world retirement, not retain 64
+unbudgeted result trees behind a single worker.
+
+`init-scripts` retains
+at most 128 Page- or BrowserContext-scoped sources of 64 KiB each in one
+preclaimed Rust scope; current target-session installation is rolled back on
+partial failure and future scoped sessions replay only the owning Page or
+Context sources. Receipt-free
+`waitForNavigation` reuses the existing four-registration-per-Page lifecycle
+table, eight concurrent frame-navigation operation slots and independently
+leased typed result storage. Its Page/Frame validation, lease admission and
+lifecycle-ticket registration complete synchronously before the foreign call
+returns its Future; the async phase cannot renew any of those bounds.
+The independently selected `frame-navigation-burst-20` profile instead admits
+20 per-Page registration cells and 20 host-operation slots, with a shared
+lifetime-bound pool of 20 navigation permits across the connection. Its heavy
+registration/result allowance is declared for 20 total registrations rather
+than multiplying 20 by every Page owner. The 21st shared permit is rejected;
+canceling or dropping a registration releases it. Default four/eight bounds
+are unchanged. Local release and native-load tests pass, but the unchanged
+official 20-waiter browser case has not yet been rerun with this profile.
+`page.click` creates no additional queue or state;
+it enters the existing bounded Locator click path.
+Page/Frame script-tag adds no independent native queue, lease table, timer or
+browser-state cache. The Node combinator reads at most one selected local path
+and delegates one bounded evaluation to the existing Frame/Handle owners.
+The optional `wait-for-function` leaf admits at most eight concurrent
+operations. Each operation retains a 64 KiB Rust state allowance in a dedicated
+scope and reuses the existing Handle creation/cleanup budgets for its exact
+truthy result. Every polling attempt creates one Handle through that existing
+owner; Rust disposes a falsy attempt before sleeping or starting another, and
+timeout/cancellation drops the in-flight attempt without leaving an infinite
+browser Promise. Rust owns the public timeout and session cancellation; no
+Node timer, unbounded waiter table or second persistent Handle store is added.
+The independently selected `wait-for-timeout` leaf admits at most sixteen
+operations, reserves 4 KiB of fixed installation state and 512 bytes per live
+operation, and owns the only timer. Session stop/disconnect cancels each wait;
+the Node facade retains no timer or waiter table. `timeout-settings` retains its
+existing fixed 16-Context/64-Page, 8 KiB table. Query-selector adds no native
+allowance beyond the existing one Frame Handle evaluation and disposes the
+non-element Handle before returning `null`.
+`ElementHandle.contentFrame` enters the existing retained-Handle read admission,
+issues one bounded node description, and resolves through the existing topology
+table. It allocates no temporary Handle, lease table, queue, timer or persistent
+frame store. Navigation context replacement reuses the same wait-for-function
+operation slot and deadline rather than admitting a second operation.
+Page lifecycle deduplication uses exactly 16 fixed document slots and a
+128-byte inline loader identity per slot; it adds no event task or dynamic
+string retention. FrameLocator reuses one wait-for-function operation, one
+retained owner Handle at a time, the existing content-Frame mapping and one
+Locator recipe. The owner is disposed before the derived Locator escapes.
+Text expectation attempts are serial under one native deadline and the existing
+6 MiB FFI settlement allowance. `Locator.all` rejects counts above 1024 before
+deriving recipes; each accepted result uses the existing 1024-recipe/8 MiB
+query budget. Selector-chain scratch and final `Within` trees are both admitted
+before their owned copies coexist.
+
+Python ABI 9's default-off `network-events` host leaf reuses the existing
+single-cursor Chromium normalizer and exact Page registration. It adds a fixed
+32-waiter table, at most 16 queued typed events per waiter, and a 16 MiB
+aggregate retained-payload ceiling inside a preclaimed backend-state scope.
+One Page event may be copied only after aggregate and per-waiter admission;
+overflow is terminal rather than silently lossy. Rust owns deadlines and Page
+retirement wakeups. The Python boundary admits at most 16 concurrent watch
+futures with a 1 MiB per-delivery FFI allowance, invokes predicates only after
+typed delivery, and retains no browser protocol state. Shutdown closes waiters
+and drops the final installation owner before connection I/O completion.
+
+Python ABI 8's default-off `timeout-settings` leaf reserves 8 KiB for fixed
+16-Context and 64-Page tables. It stores generic and navigation overrides,
+performs bounded inheritance lookup, and prunes retired objects without a
+timer, task, queue, or browser command.
+
+Python ABI 7's default-off `emulate-media` leaf owns one fixed 64-Page state
+table and reserves 16 KiB of backend-state allowance plus one installation
+scope. A capacity-one async gate serializes media updates; each operation sends
+exactly one Page-scoped `Emulation.setEmulatedMedia` command and commits the
+new override state only after browser acknowledgement. The leaf starts no task
+or timer, creates no unbounded queue, prunes closed Pages during reconciliation,
+and waits for admitted operations during shutdown. Unselected host profiles
+retain no media table, gate, command path, or dependency edge.
 
 NODE-191 installs two default-off, capacity-one mutation scopes. The backend
 reserves one ActiveCommand plus 64 KiB of BackendStateBytes for the sole large
@@ -1174,9 +2072,10 @@ remain separate requirements. No CallId map, task, clock or Cargo edge is added;
 existing action tickets/text leases are unchanged. This finite-state/count
 bound is not a total-heap or RSS measurement. Default exclusive behavior remains.
 
-The Node-selected recursive-attachment join requires four pending CDP slots and
-adds `4 * max_response_bytes` beyond the three-way prerequisite profile: 16 MiB
-of declared driver response-expansion capacity in this recipe, not a preallocated
+The Node-selected recursive-attachment startup now requires five pending CDP
+slots. Relative to the serial profile, its prerequisite, registration and
+recursive-startup selections add exactly `16 * max_response_bytes` of declared
+driver response-expansion capacity: bounded admission, not a preallocated
 buffer or RSS claim. Repeated/older opt-in selection cannot double-charge it.
 Driver event limits, metadata ownership, dependency closure and connection
 deadlines do not increase. [Contract](node-ffi-compatibility-design.md#node-013-recursive-attachment-prerequisite-join-2026-09-07).

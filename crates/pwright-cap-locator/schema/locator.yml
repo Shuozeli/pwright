@@ -1,7 +1,7 @@
 format: 1
 capability: pwright.locator
 display_name: Locator queries and actions
-version: { major: 1, minor: 23 }
+version: { major: 1, minor: 24 }
 root: pwright.locator
 imports:
   - pwright.common
@@ -1204,6 +1204,10 @@ types:
         fields:
           - { name: attributes, type: utf8 }
           - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+      - tag: 22
+        name: legacy_text
+        fields:
+          - { name: matcher, type: message, target: pwright.locator.text_matcher }
 
   - kind: record
     id: pwright.locator.set_checked_options

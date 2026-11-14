@@ -13,6 +13,22 @@ doctest = false
 
 [features]
 default = []
+cdp-handshake-headers = ["pwright-node-host/cdp-handshake-headers"]
+cdp-default-user-agent = ["cdp-handshake-headers", "pwright-node-host/cdp-default-user-agent", "dep:pwright-playwright-connect-headers"]
+cdp-discovery-errors = ["pwright-node-host/cdp-discovery-errors"]
+cdp-ws-close-reason = ["pwright-node-host/cdp-ws-close-reason"]
+cdp-session = ["pwright-node-host/cdp-session", "dep:serde_json", "dep:tracing", "napi_runtime/serde-json"]
+browser-cdp-session = ["cdp-session", "pwright-node-host/browser-cdp-session"]
+browser-registry = ["dep:pwright-browser-registry"]
+playwright-server-connect-ws-error = ["dep:pwright-transport-ws"]
+playwright-server-connect-close-error = ["dep:pwright-playwright-server-initialize", "dep:pwright-transport-ws"]
+playwright-server-connect-headers = ["dep:pwright-playwright-connect-headers", "pwright-playwright-connect-headers/server-ws", "dep:pwright-transport-ws"]
+playwright-server-connect-session = ["dep:pwright-playwright-server-connect", "pwright-playwright-server-connect/live", "dep:pwright-playwright-server-session", "pwright-playwright-server-session/supervisor", "dep:pwright-playwright-server-browser-ops", "dep:pwright-playwright-server-endpoint-discovery", "dep:pwright-playwright-connect-headers", "pwright-playwright-connect-headers/server-ws", "dep:pwright-transport-ws"]
+playwright-server-connect-page-events = ["playwright-server-connect-session", "pwright-playwright-server-browser-ops/page-events", "dep:pwright-playwright-server-page-events", "pwright-node-host/url-glob", "dep:url"]
+persistent-context-preflight = ["dep:pwright-persistent-context-preflight"]
+owned-launch = ["pwright-node-host/owned-launch", "dep:tempfile"]
+playwright-trace = ["owned-launch", "pwright-node-host/playwright-trace", "dep:pwright-trace-playwright-v8"]
+bidi-startup-failure = ["playwright-trace", "dep:pwright-owned-process-startup"]
 retained-file-input = ["handles", "file-input", "pwright-node-host/retained-file-input"]
 retained-target-marking = ["retained-file-input", "pwright-node-host/retained-target-marking"]
 retained-target-prevalidation = ["retained-target-marking", "pwright-node-host/retained-target-prevalidation"]
@@ -21,20 +37,138 @@ retained-call-argument-serialization = ["retained-input-instrumentation"]
 retained-serialized-payload-import = ["retained-call-argument-serialization", "pwright-node-host/retained-serialized-payload-import", "dep:serde_json"]
 retained-serialized-payload-mutation = ["retained-serialized-payload-import", "pwright-node-host/retained-serialized-payload-mutation"]
 handles = ["pwright-node-host/handles"]
+frame-element = ["handles", "pwright-node-host/frame-element"]
+element-handle-dom = ["handles", "pwright-node-host/element-handle-dom"]
+element-handle-select-option-value = ["handles", "timeout-settings", "pwright-node-host/element-handle-select-option-value"]
+element-handle-wait-for-selector = ["handles", "timeout-settings", "pwright-node-host/element-handle-wait-for-selector"]
+element-handle-scroll-into-view = ["handles", "timeout-settings", "pwright-node-host/element-handle-scroll-into-view"]
+fill-navigation-commit = ["pwright-node-host/fill-navigation-commit"]
+select-option-navigation-commit = ["pwright-node-host/select-option-navigation-commit"]
+select-option-timeout-progress = ["pwright-node-host/select-option-timeout-progress"]
+react-selectors = ["pwright-node-host/react-selectors"]
 file-input = ["pwright-node-host/file-input"]
 concurrent-close = ["pwright-node-host/concurrent-close"]
 extra-headers = ["pwright-node-host/extra-headers"]
 drag-runtime = ["pwright-node-host/drag-runtime"]
 frame-navigation = ["pwright-node-host/frame-navigation", "dep:pwright-cap-navigation"]
+frame-navigation-burst-20 = ["frame-navigation", "pwright-node-host/frame-navigation-burst-20"]
+history-navigation = ["pwright-node-host/history-navigation"]
+page-events = ["pwright-node-host/page-events"]
+frame-events = ["page-events", "pwright-node-host/frame-events"]
+frame-detach-events = ["page-events", "pwright-node-host/frame-detach-events"]
+page-dialogs = ["page-events", "pwright-node-host/page-dialogs"]
+page-routes = ["pwright-node-host/page-routes"]
+route-request-history = ["page-routes", "request-history", "pwright-node-host/route-request-history"]
+route-regexp = ["page-routes", "pwright-node-host/route-regexp"]
+page-unroute = ["page-routes"]
+route-header-url-overrides = ["page-routes", "pwright-node-host/route-redirects"]
+route-fulfill-cors = ["page-routes", "pwright-node-host/route-fulfill-cors"]
+console-events = ["pwright-node-host/console-events"]
+page-bindings = ["handles", "pwright-node-host/page-bindings", "dep:serde_json"]
+init-scripts = ["pwright-node-host/init-scripts"]
+wait-for-function = ["handles", "timeout-settings", "pwright-node-host/wait-for-function"]
+url-glob = ["pwright-node-host/url-glob"]
+wait-for-url = ["url-glob", "pwright-node-host/url-wait"]
+wait-for-timeout = ["pwright-node-host/wait-for-timeout"]
+timeout-settings = ["pwright-node-host/timeout-settings"]
+emulate-media = ["pwright-node-host/emulate-media"]
+request-gc = ["pwright-node-host/request-gc"]
+response-body = ["frame-navigation", "pwright-node-host/response-body"]
+request-history = ["pwright-node-host/request-history"]
+response-request = ["frame-navigation", "request-history", "pwright-node-host/response-request"]
+request-events = ["url-glob", "pwright-node-host/request-events"]
+request-frame = ["pwright-node-host/request-frame"]
+response-events = ["url-glob", "pwright-node-host/response-events"]
+response-finished = ["response-events", "pwright-node-host/response-finished"]
+request-post-data-json = [
+    "request-events",
+    "dep:serde_json",
+    "napi_runtime/serde-json",
+    "pwright-node-host/request-post-data-json",
+]
+api-request = [
+    "dep:pwright-api-request",
+    "dep:pwright-api-request-auth-basic",
+    "dep:pwright-api-request-connector-rustls",
+    "dep:pwright-api-request-cookie",
+    "dep:pwright-api-request-decompress",
+    "dep:pwright-api-request-transport",
+]
+api-request-client-certificates = [
+    "api-request",
+    "dep:pwright-api-request-client-certificates",
+]
+api-request-http-proxy = [
+    "api-request",
+    "dep:pwright-api-request-connector-http-proxy",
+]
+api-request-socks5-proxy = [
+    "api-request",
+    "dep:pwright-api-request-connector-socks5",
+]
+api-request-proxy-bypass = [
+    "api-request",
+    "dep:pwright-api-request-connector-proxy-bypass",
+]
+context-api-request = [
+    "api-request",
+    "device-emulation",
+    "pwright-node-host/context-api-request",
+    "dep:async-trait",
+    "dep:url",
+]
+context-cookies = ["pwright-node-host/context-cookies"]
+device-emulation = ["pwright-node-host/device-emulation"]
+touchscreen-input = ["device-emulation", "pwright-node-host/touchscreen-input"]
+context-proxy = ["pwright-node-host/context-proxy"]
+context-offline = ["pwright-node-host/context-offline"]
+bypass-csp = ["pwright-node-host/bypass-csp"]
+locator-bounding-box = ["pwright-node-host/locator-bounding-box"]
+locator-highlight = ["locator-bounding-box", "pwright-node-host/locator-highlight"]
+locator-screenshot = ["pwright-node-host/locator-screenshot"]
+locator-dom-actions = ["pwright-node-host/locator-dom-actions"]
+page-viewport = ["device-emulation", "pwright-node-host/page-viewport"]
+selector-registration = ["pwright-node-host/selector-registration"]
+light-selectors = ["handles", "pwright-node-host/light-selectors"]
+set-content = ["pwright-node-host/set-content"]
+large-evaluation-results = ["pwright-node-host/large-evaluation-results"]
+large-evaluation-inputs = ["pwright-node-host/large-evaluation-inputs"]
+large-route-post-data = ["page-routes", "pwright-node-host/large-route-post-data"]
 
 [dependencies]
+pwright-trace-playwright-v8 = { workspace = true, optional = true }
 napi_runtime = { package = "napi", version = "=3.12.2", default-features = false, features = ["napi8", "tokio_rt", "dyn-symbols"] }
 napi-derive = "=3.6.3"
 pwright-node-host = { path = "../pwright-node-host" }
+pwright-browser-registry = { workspace = true, optional = true }
+pwright-transport-ws = { workspace = true, features = ["live-tokio"], optional = true }
+pwright-playwright-connect-headers = { workspace = true, optional = true }
+pwright-playwright-server-initialize = { workspace = true, optional = true }
+pwright-playwright-server-connect = { workspace = true, optional = true }
+pwright-playwright-server-session = { workspace = true, optional = true }
+pwright-playwright-server-page-events = { path = "../pwright-playwright-server-page-events", optional = true }
+pwright-playwright-server-browser-ops = { workspace = true, optional = true }
+pwright-playwright-server-endpoint-discovery = { workspace = true, optional = true }
+pwright-persistent-context-preflight = { workspace = true, optional = true }
+pwright-owned-process-startup = { path = "../pwright-owned-process-startup", optional = true }
 pwright-cap-navigation = { workspace = true, optional = true, features = ["frame-navigation"] }
 tokio-util = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+pwright-api-request = { workspace = true, optional = true }
+pwright-api-request-auth-basic = { workspace = true, optional = true }
+pwright-api-request-client-certificates = { workspace = true, optional = true }
+pwright-api-request-connector-rustls = { workspace = true, optional = true }
+pwright-api-request-connector-http-proxy = { workspace = true, optional = true }
+pwright-api-request-connector-socks5 = { workspace = true, optional = true }
+pwright-api-request-connector-proxy-bypass = { workspace = true, optional = true }
+pwright-api-request-cookie = { workspace = true, optional = true }
+pwright-api-request-decompress = { workspace = true, optional = true }
+pwright-api-request-transport = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+tempfile = { version = "3.24", optional = true }
 
 [build-dependencies]
 napi-build = "=2.4.1"

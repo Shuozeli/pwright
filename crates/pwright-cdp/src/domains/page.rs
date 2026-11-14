@@ -37,11 +37,7 @@ impl CdpSession {
         url: &str,
         referrer: Option<&str>,
     ) -> Result<Value> {
-        let params = cdp_gen::NavigateParams {
-            url: url.to_string(),
-            referrer: referrer.map(ToOwned::to_owned),
-            ..Default::default()
-        };
+        let params = navigation_params(url, referrer);
         self.send("Page.navigate", serde_json::to_value(&params)?)
             .await
     }
@@ -73,6 +69,21 @@ impl CdpSession {
         let params = cdp_gen::SetLifecycleEventsEnabledParams { enabled };
         self.send(
             "Page.setLifecycleEventsEnabled",
+            serde_json::to_value(params)?,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Intercepts native file choosers so Chromium reports
+    /// `Page.fileChooserOpened` instead of opening a platform dialog.
+    pub async fn page_set_intercept_file_chooser_dialog(&self, enabled: bool) -> Result<()> {
+        let params = cdp_gen::SetInterceptFileChooserDialogParams {
+            enabled,
+            cancel: None,
+        };
+        self.send(
+            "Page.setInterceptFileChooserDialog",
             serde_json::to_value(params)?,
         )
         .await?;
@@ -202,6 +213,22 @@ impl CdpSession {
         Ok(())
     }
 
+    /// Resolves the JavaScript dialog currently blocking this exact target
+    /// session. Chromium permits only one active dialog per target.
+    pub async fn page_handle_java_script_dialog(
+        &self,
+        accept: bool,
+        prompt_text: Option<&str>,
+    ) -> Result<()> {
+        let params = cdp_gen::HandleJavaScriptDialogParams {
+            accept,
+            prompt_text: prompt_text.map(ToOwned::to_owned),
+        };
+        self.send("Page.handleJavaScriptDialog", serde_json::to_value(params)?)
+            .await?;
+        Ok(())
+    }
+
     /// Initiates Page closure while running before-unload handlers.
     ///
     /// CDP completion does not prove that the target closed: a before-unload
@@ -212,24 +239,60 @@ impl CdpSession {
     }
 }
 
+fn navigation_params(url: &str, referrer: Option<&str>) -> cdp_gen::NavigateParams {
+    cdp_gen::NavigateParams {
+        url: url.to_owned(),
+        referrer: referrer.map(ToOwned::to_owned),
+        // Matches the pinned Playwright Chromium Page.navigate boundary.
+        referrer_policy: Some(cdp_gen::ReferrerPolicy::UnsafeUrl),
+        ..Default::default()
+    }
+}
+
 fn frame_navigation_params(
     frame_id: &str,
     url: &str,
     referrer: Option<&str>,
 ) -> cdp_gen::NavigateParams {
     cdp_gen::NavigateParams {
-        url: url.to_owned(),
-        referrer: referrer.map(ToOwned::to_owned),
         frame_id: Some(frame_id.to_owned()),
-        // Matches the pinned Playwright Chromium navigateFrame boundary.
-        referrer_policy: Some(cdp_gen::ReferrerPolicy::UnsafeUrl),
-        ..Default::default()
+        ..navigation_params(url, referrer)
     }
 }
 
 #[cfg(test)]
-mod frame_navigation_tests {
+mod navigation_params_tests {
     use super::*;
+
+    #[test]
+    fn top_level_navigation_serializes_referrer_and_policy_without_frame_target() {
+        // Arrange
+        let params = navigation_params(
+            "https://example.test/next",
+            Some("https://referrer.test/path?q=1"),
+        );
+        // Act
+        let encoded = serde_json::to_value(params).unwrap();
+        // Assert
+        assert_eq!(
+            encoded,
+            serde_json::json!({"url": "https://example.test/next",
+            "referrer": "https://referrer.test/path?q=1", "referrerPolicy": "unsafeUrl"})
+        );
+    }
+
+    #[test]
+    fn top_level_navigation_without_referrer_keeps_policy() {
+        // Arrange
+        let params = navigation_params("about:blank", None);
+        // Act
+        let encoded = serde_json::to_value(params).unwrap();
+        // Assert
+        assert_eq!(
+            encoded,
+            serde_json::json!({"url": "about:blank", "referrerPolicy": "unsafeUrl"})
+        );
+    }
 
     #[test]
     fn frame_navigation_serializes_explicit_target_and_referrer_policy() {

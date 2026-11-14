@@ -292,7 +292,7 @@ pub struct LocatorCapability;
 
 impl Capability for LocatorCapability {
     const DESCRIPTOR: CapabilityDescriptor = CapabilityDescriptor::new(
-        PluginInfo::new(LOCATOR_CAPABILITY_ID, "Locator queries and actions", ProtocolVersion::new(2, 6)),
+        PluginInfo::new(LOCATOR_CAPABILITY_ID, "Locator queries and actions", ProtocolVersion::new(2, 7)),
         &[],
         LOCATOR_COMMAND_IDS,
     );

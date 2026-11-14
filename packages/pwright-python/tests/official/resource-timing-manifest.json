@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_resource_timing.py": "9cadbb41d5c89f24e21fe75eae10da76a13cd7820e60848ccc5600d5d976cf4b"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_resource_timing.py::test_should_work",
+      "capabilities": ["requestfinished", "request.timing"]
+    },
+    {
+      "id": "tests/async/test_resource_timing.py::test_should_work_for_subresource",
+      "capabilities": ["requestfinished", "request.timing", "subresource"]
+    },
+    {
+      "id": "tests/async/test_resource_timing.py::test_should_work_for_ssl",
+      "capabilities": ["requestfinished", "request.timing", "ignore-https-errors"]
+    },
+    {
+      "id": "tests/async/test_resource_timing.py::test_should_work_for_redirect",
+      "capabilities": ["response", "response.finished", "request.timing", "redirect"]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-page-goto-burst-20-chromium",
+      "role": "browser-backed-official-file",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": ["tests/page/page-goto.spec.ts"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "oracleAdapter": "test-mode-playwright-core-cdp",
+      "project": "chromium-page",
+      "requiresBrowser": true,
+      "pinnedGrep": "should not leak listeners during 20 waitForNavigation",
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "upstreamTestSourceSha256": "0f44b2ac6700b97f50ce67051e8728cb4c7b19c914846e99e8deaca7de37eb87",
+      "expectedSpecIdsSha256": "65f5182673d8d5d837dc228c79b8d2c04786fdffe1f12c9d49496ad5862a6853"
+    }
+  ]
+}

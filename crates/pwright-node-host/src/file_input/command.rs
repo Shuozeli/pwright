@@ -47,18 +47,35 @@ impl TargetedService<Params> for Installation {
     type Future<'a> = Pin<Box<dyn Future<Output = Outcome> + Send + 'a>>;
     fn call_for(&self, frame: ObjectId, call: Params) -> Self::Future<'_> {
         let work = async move {
-            let _lease = call._lease;
-            let (payloads, slot) = match call.input {
+            let lease = call._lease;
+            let (input, slot) = match call.input {
                 Input::Payloads(input) => {
                     if !Arc::ptr_eq(&input.origin, &self.origin) {
-                        return Err(failure(HostError::InvalidArgument("file input belongs to another session".into())));
+                        return Err(failure(HostError::InvalidArgument(
+                            "file input belongs to another session".into(),
+                        )));
                     }
-                    (input.payloads, input.slot)
+                    (input.input, input.slot)
                 }
-                Input::Paths(job, slot) => match job.await.map_err(|error| failure(HostError::backend(error)))? {
-                    PreparedInput::Payloads(payloads) => (payloads, slot),
-                    PreparedInput::Native(_) => return Err(failure(HostError::UnsupportedOperation(
-                        "native directory uploads require a selected shared-filesystem and input-event completion path".into()))),
+                Input::Paths(job, slot) => match job
+                    .await
+                    .map_err(|error| failure(HostError::backend(error)))?
+                {
+                    PreparedInput::Payloads(payloads) => {
+                        (PreparedFileInputKind::Payloads(payloads), slot)
+                    }
+                    PreparedInput::Native(prepared) => {
+                        #[cfg(feature = "file-input-native-paths")]
+                        {
+                            (PreparedFileInputKind::Native(prepared), slot)
+                        }
+                        #[cfg(not(feature = "file-input-native-paths"))]
+                        {
+                            let _ = prepared;
+                            return Err(failure(HostError::UnsupportedOperation(
+                                "native directory uploads require a selected shared-filesystem and input-event completion path".into())));
+                        }
+                    }
                 },
             };
             // Preparation is complete before strict resolution. Keep this
@@ -68,12 +85,23 @@ impl TargetedService<Params> for Installation {
                 .resolve_for_file_input(frame, call.selector)
                 .await
                 .map_err(failure)?;
-            self.upload
-                .prepare_retaining(element, payloads, slot)
-                .map_err(|error| failure(HostError::backend(error)))?
-                .await
-                .map(|_| ())
-                .map_err(|error| failure(HostError::backend(error)))
+            match input {
+                PreparedFileInputKind::Payloads(payloads) => {
+                    let _lease = lease;
+                    self.upload
+                        .prepare_retaining(element, payloads, slot)
+                        .map_err(|error| failure(HostError::backend(error)))?
+                        .await
+                        .map(|_| ())
+                        .map_err(|error| failure(HostError::backend(error)))
+                }
+                #[cfg(feature = "file-input-native-paths")]
+                PreparedFileInputKind::Native(prepared) => self
+                    .native_paths
+                    .apply(element, prepared, (lease, slot))
+                    .await
+                    .map_err(failure),
+            }
         };
         if std::mem::size_of_val(&work) > profile::CALL_BYTES as usize - 4096 {
             return Box::pin(ready(Err(failure(HostError::ResourceExhausted(

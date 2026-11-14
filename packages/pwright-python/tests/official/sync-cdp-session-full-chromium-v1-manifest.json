@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/sync/test_cdp_session.py": "67195cc8ba6c7df082a40f672ab0dd98809e0185587e1ee43ccde682cd9b80eb"
+  },
+  "cases": [
+    {"id":"tests/sync/test_cdp_session.py::test_should_be_able_to_detach_session","capabilities":["context.new-cdp-session","cdp-session.send","cdp-session.detach","sync-api"]},
+    {"id":"tests/sync/test_cdp_session.py::test_should_detach_when_page_closes","capabilities":["context.new-cdp-session","cdp-session.detach","page.close","sync-api"]},
+    {"id":"tests/sync/test_cdp_session.py::test_should_not_break_page_close","capabilities":["context.new-cdp-session","cdp-session.detach","page.close","sync-api"]},
+    {"id":"tests/sync/test_cdp_session.py::test_should_receive_events","capabilities":["context.new-cdp-session","cdp-session.events","page.goto","sync-api"]},
+    {"id":"tests/sync/test_cdp_session.py::test_should_work","capabilities":["context.new-cdp-session","cdp-session.send","cdp-session.events","sync-api"]}
+  ]
+}

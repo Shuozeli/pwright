@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/sync/test_selectors_misc.py": "940c7576586bc22381f260de40349d8ac3632ddb05ff0415b1af5ed3beeaf532"
+  },
+  "cases": [
+    {
+      "id": "tests/sync/test_selectors_misc.py::test_should_work_with_internal_and",
+      "capabilities": [
+        "page.set_content",
+        "page.eval_on_selector_all",
+        "selector.internal_and",
+        "sync-api"
+      ]
+    }
+  ]
+}

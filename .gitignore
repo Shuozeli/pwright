@@ -2,7 +2,9 @@
 target/
 
 # Local validation scratch data
-/.work/
+.work/
+__pycache__/
+*.py[cod]
 
 # Session state (created by pwright CLI)
 .pwright/

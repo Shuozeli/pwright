@@ -63,6 +63,9 @@ pub fn selector_to_wire(selector: &Selector) -> PwrightLocatorSelectorRef<'_> {
         Selector::Text(matcher) => PwrightLocatorSelectorRef::Text {
             matcher: text_matcher_to_wire(matcher),
         },
+        Selector::LegacyText(matcher) => PwrightLocatorSelectorRef::LegacyText {
+            matcher: text_matcher_to_wire(matcher),
+        },
         Selector::Label(matcher) => PwrightLocatorSelectorRef::Label {
             matcher: text_matcher_to_wire(matcher),
         },
@@ -163,6 +166,9 @@ pub fn selector_from_wire(
         }),
         PwrightLocatorSelector::Text { matcher } => {
             Ok(Selector::Text(text_matcher_from_wire(matcher)))
+        }
+        PwrightLocatorSelector::LegacyText { matcher } => {
+            Ok(Selector::LegacyText(text_matcher_from_wire(matcher)))
         }
         PwrightLocatorSelector::Label { matcher } => {
             Ok(Selector::Label(text_matcher_from_wire(matcher)))
@@ -512,5 +518,32 @@ mod tests {
         // Assert
         reader.finish().expect("selector bytes should be exhausted");
         assert_eq!(decoded, selector);
+    }
+
+    #[test]
+    fn legacy_text_selector_round_trips_without_becoming_semantic_text() {
+        // Arrange
+        let selector = Selector::legacy_text("save");
+        let limits = BinaryValueLimits::new(1_024, 0, 0, 64, 128);
+        let mut writer = BinaryWriter::new();
+        let mut encode_context = BinaryValueContext::new(limits);
+
+        // Act
+        selector_to_wire(&selector)
+            .encode_binary(&mut writer, &mut encode_context)
+            .expect("legacy text selector should encode");
+        let bytes = writer.into_bytes();
+        let mut reader = BinaryReader::new(&bytes);
+        let mut decode_context = BinaryValueContext::new(limits);
+        let wire = PwrightLocatorSelector::decode_binary(&mut reader, &mut decode_context)
+            .expect("legacy text selector should decode");
+        let decoded = selector_from_wire(wire).expect("legacy text selector should validate");
+
+        // Assert
+        reader
+            .finish()
+            .expect("legacy text selector bytes should be exhausted");
+        assert_eq!(decoded, selector);
+        assert!(matches!(decoded, Selector::LegacyText(_)));
     }
 }

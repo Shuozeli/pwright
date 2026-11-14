@@ -10,6 +10,27 @@ homepage.workspace = true
 [features]
 default = ["full"]
 navigation = []
+history-navigation = [
+    "navigation",
+    "dep:pwright-cap-history-navigation",
+    "pwright-backend-cdp-navigation/history-navigation",
+]
+request-frame = [
+    "dep:pwright-backend-cdp-network-events",
+    "pwright-backend-cdp-network-events/request-frame",
+]
+response-security-details = [
+    "dep:pwright-backend-cdp-network-events",
+    "pwright-backend-cdp-network-events/response-security-details",
+]
+request-timing = [
+    "dep:pwright-backend-cdp-network-events",
+    "pwright-backend-cdp-network-events/request-timing",
+]
+touchscreen-input = ["full", "pwright-backend-cdp-locator/touchscreen-input"]
+fill-navigation-commit = ["full", "pwright-backend-cdp-locator/fill-navigation-commit"]
+select-option-navigation-commit = ["full", "pwright-backend-cdp-locator/select-option-navigation-commit"]
+select-option-timeout-progress = ["full", "pwright-backend-cdp-locator/select-option-timeout-progress"]
 full = [
     "navigation",
     "dep:base64",
@@ -76,6 +97,7 @@ pwright-cap-handle-evaluation = { workspace = true, optional = true }
 pwright-cap-context-creation = { workspace = true, optional = true }
 pwright-cap-evaluation = { workspace = true, optional = true }
 pwright-cap-navigation = { workspace = true }
+pwright-cap-history-navigation = { workspace = true, optional = true }
 pwright-cap-page-events = { workspace = true, optional = true }
 pwright-cap-network-events = { workspace = true, optional = true }
 pwright-cap-page-creation = { workspace = true, optional = true }

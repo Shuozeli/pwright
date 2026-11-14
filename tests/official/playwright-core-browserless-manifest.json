@@ -1,0 +1,339 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/global-fetch.spec.ts"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 66,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-global-fetch-cookie",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/global-fetch-cookie.spec.ts"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 20,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-launcher-metadata",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/launcher.spec.ts:20",
+        "tests/library/launcher.spec.ts:24"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-launcher-metadata",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/launcher.spec.ts:20",
+        "tests/library/launcher.spec.ts:24"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-selector-registration",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/selectors-register.spec.ts:148"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-selector-registration",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/selectors-register.spec.ts:148"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-selector-registration-execution-chromium",
+      "role": "browser-backed-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/selectors-register.spec.ts:29"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "oracleAdapter": "test-mode-playwright-core-cdp",
+      "project": "chromium-library",
+      "requiresBrowser": true,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-fetch-proxy-global-http",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/fetch-proxy.spec.ts:47"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-fetch-proxy-global-https-server",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/fetch-proxy.spec.ts:143"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-fetch-proxy-global-socks5",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/fetch-proxy.spec.ts:133"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-fetch-proxy-context-chromium",
+      "role": "browser-backed-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/fetch-proxy.spec.ts:64",
+        "tests/library/fetch-proxy.spec.ts:82"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "oracleAdapter": "test-mode-playwright-core-cdp",
+      "project": "chromium-library",
+      "requiresBrowser": true,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-client-certificates-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/client-certificates.spec.ts:94"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-client-certificates-request",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/client-certificates.spec.ts:99",
+        "tests/library/client-certificates.spec.ts:108",
+        "tests/library/client-certificates.spec.ts:124",
+        "tests/library/client-certificates.spec.ts:141",
+        "tests/library/client-certificates.spec.ts:158",
+        "tests/library/client-certificates.spec.ts:223",
+        "tests/library/client-certificates.spec.ts:237"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 7,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-client-certificates-http-proxy",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/client-certificates.spec.ts:175"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-client-certificates-socks5-proxy",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/client-certificates.spec.ts:196"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-global-fetch",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/global-fetch.spec.ts"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 66,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-client-certificates-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/client-certificates.spec.ts:94"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-client-certificates-request",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/client-certificates.spec.ts:99",
+        "tests/library/client-certificates.spec.ts:108",
+        "tests/library/client-certificates.spec.ts:124",
+        "tests/library/client-certificates.spec.ts:141",
+        "tests/library/client-certificates.spec.ts:158",
+        "tests/library/client-certificates.spec.ts:223",
+        "tests/library/client-certificates.spec.ts:237"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 7,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-client-certificates-http-proxy",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/client-certificates.spec.ts:175"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-client-certificates-socks5-proxy",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/client-certificates.spec.ts:196"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-fetch-proxy-global-http",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/fetch-proxy.spec.ts:47"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-fetch-proxy-global-https-server",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/fetch-proxy.spec.ts:143"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-fetch-proxy-global-socks5",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/fetch-proxy.spec.ts:133"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-global-fetch-cookie",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/global-fetch-cookie.spec.ts"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 20,
+      "expectedFiles": 1
+    }
+  ]
+}

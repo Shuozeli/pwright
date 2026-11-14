@@ -9,8 +9,13 @@ use std::time::Duration;
 use pwright_backend_cdp_page_lifecycle::CdpPageClosePoll;
 use pwright_cap_page_creation::BrowserContextNewPage;
 use pwright_cap_page_lifecycle::PageClose;
+#[cfg(feature = "page-dialogs")]
+use pwright_cap_page_lifecycle::PageRunBeforeUnload;
+#[cfg(feature = "page-dialogs")]
+use pwright_composition_chromium::ChromiumPageRunBeforeUnloadCommandService;
 use pwright_composition_chromium::{
     AttachedBrowserContextNewPageService, AttachedChromiumComposition,
+    ChromiumNetworkPageRegistrationHandle,
 };
 use pwright_core::{CallId, CallMetadata, Command, CommandResult, CommandSpec, ObjectId, Service};
 use pwright_runtime_tokio::TokioCleanupExecutor;
@@ -19,6 +24,17 @@ use tokio::sync::oneshot;
 use crate::context_lifecycle::ContextLifecycleServices;
 use crate::frame_metadata::FrameMetadata;
 use crate::{CommandRuntime, ContextDescriptor, HostError, HostSession, PageDescriptor};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClosePageDisposition {
+    Page,
+    Context,
+}
+
+pub(crate) enum AbandonedCreation {
+    Context(CallId, ObjectId),
+    Page(CallId, ObjectId),
+}
 
 pub(crate) enum DriverRequest {
     #[cfg(feature = "extra-headers")]
@@ -30,6 +46,8 @@ pub(crate) enum DriverRequest {
         metadata: Box<crate::context_metadata::ContextReservation>,
         #[cfg(feature = "extra-headers")]
         headers: Option<crate::extra_headers::CreationHeaders>,
+        #[cfg(feature = "context-proxy")]
+        creation_options: pwright_backend_cdp_context_creation::CdpBrowserContextCreationOptions,
         reply: oneshot::Sender<Result<ContextDescriptor, HostError>>,
     },
     CloseContext {
@@ -40,9 +58,16 @@ pub(crate) enum DriverRequest {
     NewPage {
         call_id: CallId,
         context: ObjectId,
+        internal: bool,
         reply: oneshot::Sender<Result<PageDescriptor, HostError>>,
     },
     ClosePage {
+        call_id: CallId,
+        page: ObjectId,
+        reply: oneshot::Sender<Result<(), HostError>>,
+    },
+    #[cfg(feature = "page-dialogs")]
+    RunBeforeUnload {
         call_id: CallId,
         page: ObjectId,
         reply: oneshot::Sender<Result<(), HostError>>,
@@ -57,17 +82,18 @@ pub(crate) enum DriverReply {
     ),
     Abandoned,
     Fence(oneshot::Sender<()>),
-    NewContext(
-        oneshot::Sender<Result<ContextDescriptor, HostError>>,
-        Result<ContextDescriptor, HostError>,
-    ),
+    NewContext {
+        call_id: CallId,
+        reply: oneshot::Sender<Result<ContextDescriptor, HostError>>,
+        result: Result<ContextDescriptor, HostError>,
+    },
     CloseContext(
         oneshot::Sender<Result<(), HostError>>,
         Result<(), HostError>,
     ),
     NewPage {
-        #[cfg(feature = "extra-headers")]
         call_id: CallId,
+        internal: bool,
         reply: oneshot::Sender<Result<PageDescriptor, HostError>>,
         result: Result<PageDescriptor, HostError>,
     },
@@ -75,34 +101,85 @@ pub(crate) enum DriverReply {
         oneshot::Sender<Result<(), HostError>>,
         Result<(), HostError>,
     ),
+    #[cfg(feature = "page-dialogs")]
+    RunBeforeUnload(
+        oneshot::Sender<Result<(), HostError>>,
+        Result<(), HostError>,
+    ),
 }
 
 impl DriverReply {
     /// Send only after the driver has reconciled the transaction's native events.
-    pub fn send(self) {
+    pub fn send(self) -> Result<Option<AbandonedCreation>, HostError> {
         match self {
             #[cfg(feature = "extra-headers")]
             Self::ExtraHeaders(reply, result) => {
                 let _ = reply.send(result);
+                Ok(None)
             }
-            Self::Abandoned => {}
+            Self::Abandoned => Ok(None),
             Self::Fence(reply) => {
                 let _ = reply.send(());
+                Ok(None)
             }
-            Self::NewContext(reply, result) => {
-                let _ = reply.send(result);
-            }
+            Self::NewContext {
+                call_id,
+                reply,
+                result,
+            } => send_creation_result(call_id, true, reply, result, |context| {
+                created_object_id(&context.id)
+            })
+            .map(|abandoned| {
+                abandoned.map(|(call_id, context)| AbandonedCreation::Context(call_id, context))
+            }),
             Self::CloseContext(reply, result) => {
                 let _ = reply.send(result);
+                Ok(None)
             }
-            Self::NewPage { reply, result, .. } => {
-                let _ = reply.send(result);
-            }
+            Self::NewPage {
+                call_id,
+                internal,
+                reply,
+                result,
+            } => send_creation_result(call_id, internal, reply, result, |page| {
+                created_object_id(&page.id)
+            })
+            .map(|abandoned| {
+                abandoned.map(|(call_id, page)| AbandonedCreation::Page(call_id, page))
+            }),
             Self::ClosePage(reply, result) => {
                 let _ = reply.send(result);
+                Ok(None)
+            }
+            #[cfg(feature = "page-dialogs")]
+            Self::RunBeforeUnload(reply, result) => {
+                let _ = reply.send(result);
+                Ok(None)
             }
         }
     }
+}
+
+fn send_creation_result<T, E>(
+    call_id: CallId,
+    compensate_on_abandon: bool,
+    reply: oneshot::Sender<Result<T, E>>,
+    result: Result<T, E>,
+    id: impl FnOnce(&T) -> Result<ObjectId, HostError>,
+) -> Result<Option<(CallId, ObjectId)>, HostError> {
+    match reply.send(result) {
+        Ok(()) | Err(Err(_)) => Ok(None),
+        Err(Ok(created)) if compensate_on_abandon => Ok(Some((call_id, id(&created)?))),
+        Err(Ok(_)) => Ok(None),
+    }
+}
+
+fn created_object_id(id: &str) -> Result<ObjectId, HostError> {
+    id.parse::<u64>()
+        .ok()
+        .filter(|value| *value != 0)
+        .map(ObjectId::new)
+        .ok_or_else(|| HostError::Backend("abandoned creation has invalid native identity".into()))
 }
 
 struct NativeClosePoll(Duration);
@@ -116,8 +193,18 @@ pub(crate) struct LifecycleServices {
     contexts: ContextLifecycleServices,
     create: AttachedBrowserContextNewPageService<TokioCleanupExecutor>,
     close: crate::close_services::PageCloseService,
+    #[cfg(feature = "page-dialogs")]
+    before_unload: ChromiumPageRunBeforeUnloadCommandService,
     metadata: Arc<FrameMetadata>,
     trees: Arc<crate::frame_trees::FrameTrees>,
+}
+
+pub(crate) struct LifecycleBindings {
+    pub(crate) metadata: Arc<FrameMetadata>,
+    pub(crate) trees: Arc<crate::frame_trees::FrameTrees>,
+    pub(crate) context_metadata: crate::context_metadata::ContextMetadata,
+    pub(crate) stop: tokio_util::sync::CancellationToken,
+    pub(crate) network: Option<ChromiumNetworkPageRegistrationHandle>,
 }
 
 impl LifecycleServices {
@@ -125,24 +212,35 @@ impl LifecycleServices {
         composition: &AttachedChromiumComposition,
         runtime: &CommandRuntime,
         cleanup: TokioCleanupExecutor,
-        metadata: Arc<FrameMetadata>,
-        trees: Arc<crate::frame_trees::FrameTrees>,
-        context_metadata: crate::context_metadata::ContextMetadata,
-        stop: tokio_util::sync::CancellationToken,
+        bindings: LifecycleBindings,
     ) -> Result<Self, HostError> {
+        let LifecycleBindings {
+            metadata,
+            trees,
+            context_metadata,
+            stop,
+            network,
+        } = bindings;
         let contexts = ContextLifecycleServices::new(
             composition,
             runtime,
             cleanup.clone(),
             context_metadata,
             trees.clone(),
+            network.clone(),
         )?;
-        let create = composition
-            .browser_context_new_page_service(runtime, cleanup.clone())
-            .map_err(HostError::backend)?
-            .ok_or_else(|| {
-                HostError::UnsupportedOperation("Page creation profile is not installed".into())
-            })?;
+        let create = match network.clone() {
+            Some(network) => composition.browser_context_new_page_service_with_network(
+                runtime,
+                network,
+                cleanup.clone(),
+            ),
+            None => composition.browser_context_new_page_service(runtime, cleanup.clone()),
+        }
+        .map_err(HostError::backend)?
+        .ok_or_else(|| {
+            HostError::UnsupportedOperation("Page creation profile is not installed".into())
+        })?;
         let close = crate::close_services::PageCloseService::new(
             composition,
             runtime,
@@ -150,11 +248,19 @@ impl LifecycleServices {
             Arc::new(NativeClosePoll(Duration::from_millis(10))),
             &trees,
             stop,
+            network,
         )?;
+        #[cfg(feature = "page-dialogs")]
+        let before_unload = ChromiumPageRunBeforeUnloadCommandService::new(
+            runtime.service().clone(),
+            runtime.lifecycle_handle(),
+        );
         Ok(Self {
             contexts,
             create,
             close,
+            #[cfg(feature = "page-dialogs")]
+            before_unload,
             metadata,
             trees,
         })
@@ -180,23 +286,29 @@ impl LifecycleServices {
                 metadata,
                 #[cfg(feature = "extra-headers")]
                 headers,
+                #[cfg(feature = "context-proxy")]
+                creation_options,
                 reply,
             } => {
                 if reply.is_closed() {
                     return DriverReply::Abandoned;
                 }
-                DriverReply::NewContext(
+                DriverReply::NewContext {
+                    call_id,
                     reply,
-                    self.contexts
+                    result: self
+                        .contexts
                         .create(
                             call_id,
                             browser,
                             *metadata,
                             #[cfg(feature = "extra-headers")]
                             headers,
+                            #[cfg(feature = "context-proxy")]
+                            creation_options,
                         )
                         .await,
-                )
+                }
             }
             DriverRequest::CloseContext {
                 call_id,
@@ -211,16 +323,17 @@ impl LifecycleServices {
             DriverRequest::NewPage {
                 call_id,
                 context,
+                internal,
                 reply,
             } => {
                 if reply.is_closed() {
                     return DriverReply::Abandoned;
                 }
                 DriverReply::NewPage {
-                    #[cfg(feature = "extra-headers")]
                     call_id,
+                    internal,
                     reply,
-                    result: self.create_page(call_id, context).await,
+                    result: self.create_page(call_id, context, internal).await,
                 }
             }
             DriverRequest::ClosePage {
@@ -241,6 +354,26 @@ impl LifecycleServices {
                     ))
                     .await;
                 DriverReply::ClosePage(reply, ordinary_close(outcome(result)))
+            }
+            #[cfg(feature = "page-dialogs")]
+            DriverRequest::RunBeforeUnload {
+                call_id,
+                page,
+                reply,
+            } => {
+                if reply.is_closed() {
+                    return DriverReply::Abandoned;
+                }
+                let result = self
+                    .before_unload
+                    .call(Command::<PageRunBeforeUnload>::new(
+                        call_id,
+                        page,
+                        CallMetadata::default(),
+                        (),
+                    ))
+                    .await;
+                DriverReply::RunBeforeUnload(reply, outcome(result))
             }
         }
     }
@@ -279,10 +412,36 @@ impl LifecycleServices {
         Ok((reply, true))
     }
 
+    pub(crate) async fn close_abandoned_page(
+        &self,
+        call_id: CallId,
+        page: ObjectId,
+    ) -> Result<(), HostError> {
+        ordinary_close(outcome(
+            self.close
+                .call(Command::<PageClose>::new(
+                    call_id,
+                    page,
+                    CallMetadata::default(),
+                    (),
+                ))
+                .await,
+        ))
+    }
+
+    pub(crate) async fn close_abandoned_context(
+        &self,
+        call_id: CallId,
+        context: ObjectId,
+    ) -> Result<(), HostError> {
+        self.contexts.close(call_id, context).await
+    }
+
     async fn create_page(
         &self,
         call_id: CallId,
         context: ObjectId,
+        internal: bool,
     ) -> Result<PageDescriptor, HostError> {
         let collection = self.trees.reserve_creation_collection()?;
         let metadata = self.metadata.reserve_new_page()?;
@@ -301,8 +460,12 @@ impl LifecycleServices {
             .metadata
             .activate_new_page(created.main_frame_id, metadata.clone())
             .and_then(|()| {
-                self.trees
-                    .activate_page(reserved_tree, created.object_id, created.main_frame_id)
+                self.trees.activate_page(
+                    reserved_tree,
+                    created.object_id,
+                    created.main_frame_id,
+                    internal,
+                )
             });
         let initialized = initialized.and_then(|bindings| {
             collection.commit()?;
@@ -363,25 +526,107 @@ pub(crate) fn ordinary_close(result: Result<(), HostError>) -> Result<(), HostEr
 
 impl HostSession {
     pub async fn new_page(&self, context_id: &str) -> Result<PageDescriptor, HostError> {
+        if self.context_metadata.owned_contexts_only()
+            && self.context_ownership(context_id)?
+                != Some(pwright_backend_cdp_topology::CdpContextOwnership::Owned)
+        {
+            return Err(HostError::TargetClosed);
+        }
+        if self.browser_pages.owns_context(context_id)? {
+            return Err(HostError::Backend(
+                "Please use browser.new_context() for multi-page scripts".into(),
+            ));
+        }
+        #[cfg(feature = "browser-cdp-session")]
+        let target_fence = self.cdp_browser_target_fence()?;
+        let page = self.new_page_inner(context_id).await?;
+        #[cfg(feature = "browser-cdp-session")]
+        if let Err(primary) = self
+            .cdp_wait_browser_target_fence(&page.id, &target_fence)
+            .await
+        {
+            return Err(match self.close_page(&page.id).await {
+                Ok(()) => primary,
+                Err(cleanup) => HostError::Backend(format!(
+                    "BrowserContext.new_page target event failed: {primary}; Page cleanup failed: {cleanup}"
+                )),
+            });
+        }
+        Ok(page)
+    }
+
+    pub(crate) async fn new_page_inner(
+        &self,
+        context_id: &str,
+    ) -> Result<PageDescriptor, HostError> {
+        self.new_page_with_intent(context_id, false).await
+    }
+
+    #[cfg(feature = "context-storage-state")]
+    pub(crate) async fn new_internal_page_inner(
+        &self,
+        context_id: &str,
+    ) -> Result<PageDescriptor, HostError> {
+        self.new_page_with_intent(context_id, true).await
+    }
+
+    async fn new_page_with_intent(
+        &self,
+        context_id: &str,
+        internal: bool,
+    ) -> Result<PageDescriptor, HostError> {
         let (context, call_id, _operation) = self.admit_operation(context_id)?;
         let (reply, completion) = oneshot::channel();
         self.send_driver_request(DriverRequest::NewPage {
             call_id,
             context,
+            internal,
             reply,
         })?;
         self.await_driver_reply(completion).await
     }
 
     pub async fn close_page(&self, page_id: &str) -> Result<(), HostError> {
+        self.close_page_with_disposition(page_id).await.map(|_| ())
+    }
+
+    pub async fn close_page_with_disposition(
+        &self,
+        page_id: &str,
+    ) -> Result<ClosePageDisposition, HostError> {
+        if let Some(context) = self.browser_pages.context_for_page(page_id)? {
+            self.close_context(&context.get().to_string()).await?;
+            return Ok(ClosePageDisposition::Context);
+        }
         let result = self.close_page_inner(page_id).await;
-        settle_page_close(result, &self.stop, &self.disconnected).await
+        settle_page_close(result, &self.stop, &self.disconnected).await?;
+        #[cfg(feature = "page-bindings")]
+        self.retire_page_binding_registrations(ObjectId::new(
+            page_id
+                .parse::<u64>()
+                .map_err(|_| HostError::InvalidArgument("invalid portable Page ID".into()))?,
+        ))?;
+        #[cfg(feature = "context-forced-colors")]
+        self.retire_forced_colors_page(page_id)?;
+        Ok(ClosePageDisposition::Page)
     }
 
     async fn close_page_inner(&self, page_id: &str) -> Result<(), HostError> {
         let (page, call_id, _operation) = self.admit_operation(page_id)?;
         let (reply, completion) = oneshot::channel();
         self.send_driver_request(DriverRequest::ClosePage {
+            call_id,
+            page,
+            reply,
+        })?;
+        self.await_driver_reply(completion).await
+    }
+
+    #[cfg(feature = "page-dialogs")]
+    pub async fn run_before_unload(&self, page_id: &str) -> Result<(), HostError> {
+        let (page, call_id, _operation) = self.admit_operation(page_id)?;
+        let (reply, completion) = oneshot::channel();
+        self.send_driver_request(DriverRequest::RunBeforeUnload {
             call_id,
             page,
             reply,
@@ -478,6 +723,98 @@ pub(crate) async fn settle_context_close(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn abandoned_internal_page_reply_returns_exact_native_close_target() {
+        // Arrange
+        let (reply, completion) = oneshot::channel::<Result<u64, ()>>();
+        drop(completion);
+        let call_id = CallId::new(7);
+
+        // Act
+        let abandoned =
+            send_creation_result(call_id, true, reply, Ok(19), |id| Ok(ObjectId::new(*id)))
+                .unwrap();
+
+        // Assert
+        assert_eq!(abandoned, Some((call_id, ObjectId::new(19))));
+    }
+
+    #[test]
+    fn delivered_internal_page_reply_does_not_request_compensation() {
+        // Arrange
+        let (reply, mut completion) = oneshot::channel::<Result<u64, ()>>();
+        let call_id = CallId::new(7);
+
+        // Act
+        let abandoned =
+            send_creation_result(call_id, true, reply, Ok(19), |id| Ok(ObjectId::new(*id)))
+                .unwrap();
+
+        // Assert
+        assert!(abandoned.is_none());
+        assert_eq!(completion.try_recv(), Ok(Ok(19)));
+    }
+
+    #[test]
+    fn abandoned_owned_context_reply_returns_exact_native_close_target() {
+        // Arrange
+        let metadata = crate::context_metadata::ContextMetadata::new(
+            crate::context_metadata::ContextMetadataLimits {
+                active_contexts: 1,
+                states: 4,
+                conversions: 2,
+                base_url_bytes: 64,
+                bytes: 1024,
+            },
+        )
+        .unwrap();
+        let id = ObjectId::new(23);
+        let created = metadata.reserve_creation(None).unwrap().commit(id).unwrap();
+        let descriptor = ContextDescriptor {
+            id: id.get().to_string(),
+            settings: created.snapshot,
+            settings_binding: Some(created.binding),
+        };
+        let (reply, completion) = oneshot::channel();
+        drop(completion);
+        let call_id = CallId::new(17);
+
+        // Act
+        let abandoned = DriverReply::NewContext {
+            call_id,
+            reply,
+            result: Ok(descriptor),
+        }
+        .send()
+        .unwrap();
+
+        // Assert
+        assert!(matches!(
+            abandoned,
+            Some(AbandonedCreation::Context(found_call, found_context))
+                if found_call == call_id && found_context == id
+        ));
+    }
+
+    #[test]
+    fn malformed_abandoned_creation_id_fails_instead_of_skipping_cleanup() {
+        // Arrange
+        let (reply, completion) = oneshot::channel::<Result<String, ()>>();
+        drop(completion);
+
+        // Act
+        let result = send_creation_result(
+            CallId::new(18),
+            true,
+            reply,
+            Ok("not-a-native-id".into()),
+            |id| created_object_id(id.as_str()),
+        );
+
+        // Assert
+        assert!(matches!(result, Err(HostError::Backend(_))));
+    }
 
     #[test]
     fn closed_driver_queue_seals_admission_before_reporting_closed() {

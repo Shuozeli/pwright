@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "experiment": {
+    "scope": "paired-trusted-tailscale-https-fixture-diagnostic",
+    "lanes": ["candidate", "oracle"],
+    "api": "sync",
+    "browser": "chromium",
+    "fixtureFlag": "--secure-http-fixture",
+    "selectionFlags": ["--manifest-cases", "--manifest-api", "sync", "--browser", "chromium"],
+    "ledgerPolicy": "diagnostic-only-no-ledger-promotion-preserve-original-six-case-http-results",
+    "hypothesis": "Trusted HTTPS may enable service-worker registration and activation; comparing both lanes does not by itself establish the root cause of the original HTTP failures."
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/sync/test_network.py": "db831f837f94b2ee4eefb9dd6b271e7af42c573a59e4c3f49c20d83c572128ff"
+  },
+  "assets": {
+    "tests/assets/empty.html": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/assets/simple.json": "1a30b52dacd02b3698f473e5d9df017c54b1e006846363e878dcc2ade9624712",
+    "tests/assets/serviceworkers/fetch/sw.html": "450261e64a2d7bf9b054638c11ebbaf0481394e0e5284350cbf0c601ccefd0b0",
+    "tests/assets/serviceworkers/fetch/sw.js": "1d42856cb41a94fbbfc321d92b39d152e52d357cbe9cbd0f54d75f8b710690ac",
+    "tests/assets/serviceworkers/fetch/style.css": "aae2798dbe4c81fb3b467df66899ef72fed0d732490cff8cf0df4717ac76697e",
+    "tests/testserver/cert.pem": "402a4ecc40aba35f8143673ac7c20d02c742954a79dc94523b06a5bd9c5fb18e",
+    "tests/testserver/key.pem": "3302e5f7eb8485e832a10f54a63cc049f98e98a5a2d55671c9ed9b440c59053a"
+  },
+  "expandedChromiumIds": [
+    "tests/sync/test_network.py::test_should_report_if_response_was_from_service_worker[chromium]",
+    "tests/sync/test_network.py::test_should_report_service_worker_request[chromium]"
+  ],
+  "expandedChromiumIdsSha256": "12d1d7e2ed36adc250727df4a3c15cba0082cc5ee74e54f59f62a54f1d895b7d",
+  "cases": [
+    {"id":"tests/sync/test_network.py::test_should_report_if_response_was_from_service_worker","capabilities":["response-service-worker","sync-api"]},
+    {"id":"tests/sync/test_network.py::test_should_report_service_worker_request","capabilities":["request-service-worker","sync-api"]}
+  ]
+}

@@ -243,6 +243,22 @@ impl ChromiumFrameWorldAccess {
         }
     }
 
+    /// Snapshot an already-observed world pair without waiting or browser I/O.
+    /// Event observers call this only from the serialized topology cursor after
+    /// matching the exact main execution-context route.
+    pub fn snapshot_current(&self, frame: ObjectId) -> Result<Option<ChromiumFrameWorldSnapshot>> {
+        let permit = Arc::new(self.admit()?);
+        let Some(data) = permit.state.lookup(frame, Some(&permit))? else {
+            return Ok(None);
+        };
+        validate_snapshot_data(&data)?;
+        Ok(Some(ChromiumFrameWorldSnapshot {
+            data,
+            permit,
+            retired: AtomicBool::new(false),
+        }))
+    }
+
     /// Admit synchronously, then await both observed worlds for this exact
     /// Frame. A Page ID is not substituted with its main Frame. The caller
     /// supplies its original timeout and lifecycle cancellation by dropping
@@ -263,17 +279,7 @@ impl ChromiumFrameWorldAccess {
             let data = readiness
                 .resolve(|| state.lookup(frame, Some(&permit)))
                 .await?;
-            if data.main_numeric <= 0
-                || data.utility_numeric <= 0
-                || data.main_numeric == data.utility_numeric
-                || data.main.is_empty()
-                || data.utility.is_empty()
-                || data.main == data.utility
-            {
-                return Err(FrameWorldAccessError::Setup(
-                    "requires distinct valid main and utility execution worlds",
-                ));
-            }
+            validate_snapshot_data(&data)?;
             Ok(ChromiumFrameWorldSnapshot {
                 data,
                 permit,
@@ -281,6 +287,53 @@ impl ChromiumFrameWorldAccess {
             })
         }
     }
+
+    /// Admit one retained parent MAIN world without waiting for an unrelated
+    /// utility world. Frame-owner lookup uses only this exact CDP session and
+    /// execution context; ordinary paired-world consumers keep `snapshot`.
+    pub fn snapshot_main(
+        &self,
+        frame: ObjectId,
+    ) -> impl Future<Output = Result<ChromiumMainWorldSnapshot>> + Send + 'static {
+        let admitted = self.admit();
+        async move {
+            let permit = Arc::new(admitted?);
+            let state = &permit.state;
+            let readiness = state
+                .services
+                .world_readiness
+                .as_ref()
+                .expect("validated readiness");
+            let data = readiness
+                .resolve(|| state.lookup_main(frame, Some(&permit)))
+                .await?;
+            if data.main_numeric <= 0 || data.main.is_empty() {
+                return Err(FrameWorldAccessError::Setup(
+                    "requires a valid main execution world",
+                ));
+            }
+            Ok(ChromiumMainWorldSnapshot {
+                data,
+                permit,
+                retired: AtomicBool::new(false),
+            })
+        }
+    }
+}
+
+fn validate_snapshot_data(data: &SnapshotData) -> Result<()> {
+    if data.main_numeric <= 0
+        || data.utility_numeric <= 0
+        || data.main_numeric == data.utility_numeric
+        || data.main.is_empty()
+        || data.utility.is_empty()
+        || data.main == data.utility
+    {
+        return Err(FrameWorldAccessError::Setup(
+            "requires distinct valid main and utility execution worlds",
+        ));
+    }
+    Ok(())
 }
 
 struct SnapshotData {
@@ -294,7 +347,91 @@ struct SnapshotData {
     main_numeric: i64,
     lifetime: Option<crate::ChromiumNativeWorldLifetime>,
 }
+struct MainSnapshotData {
+    epoch: pwright_backend_cdp::ConnectionEpoch,
+    frame: ObjectId,
+    page: ObjectId,
+    client: Arc<dyn CdpClient>,
+    main: Arc<str>,
+    main_numeric: i64,
+    lifetime: Option<crate::ChromiumNativeWorldLifetime>,
+}
 impl State {
+    fn lookup_main(
+        &self,
+        frame: ObjectId,
+        permit: Option<&Arc<Permit>>,
+    ) -> std::result::Result<Option<MainSnapshotData>, CdpPageRouteError> {
+        let routes = self
+            .services
+            .routes
+            .lock()
+            .map_err(|_| CdpPageRouteError::StatePoisoned)?;
+        let index = routes
+            .readiness_frames
+            .binary_search_by_key(&frame, |(frame, _)| *frame)
+            .map_err(|_| CdpPageRouteError::WorldTargetClosed { object_id: frame })?;
+        let page_id = routes.readiness_frames[index].1;
+        let page = routes
+            .pages
+            .get(&page_id)
+            .ok_or(CdpPageRouteError::WorldTargetClosed { object_id: frame })?;
+        if page.crashed {
+            return Err(CdpPageRouteError::PageCrashed { object_id: frame });
+        }
+        let Some(main) = routes.frame_evaluations.get(&frame) else {
+            return Ok(None);
+        };
+        if main.page_object_id != page_id {
+            return Ok(None);
+        }
+        for (field, value) in [
+            ("CDP target ID", main.target_id.as_str()),
+            ("CDP session ID", main.session_id.as_str()),
+            ("CDP main world unique ID", main.unique_context_id.as_ref()),
+        ] {
+            crate::validate_route_id(field, value, NATIVE_ID_BYTES)?;
+        }
+        let lifetime = if self.profile.native_retirement {
+            crate::validate_route_id(
+                "CDP owning Page target ID",
+                &page.target_id,
+                NATIVE_ID_BYTES,
+            )?;
+            permit
+                .map(|permit| {
+                    routes
+                        .native_world_retirement
+                        .as_ref()
+                        .expect("installed native retirement")
+                        .register(
+                            crate::native_world_retirement::Identity {
+                                epoch: routes.epoch.expect("published topology epoch"),
+                                context: page.browser_context_object_id,
+                                page_target: page.target_id.as_str().into(),
+                                session: main.session_id.as_str().into(),
+                                worlds: crate::native_world_retirement::IdentityWorlds::Main(
+                                    main.unique_context_id.clone(),
+                                ),
+                            },
+                            permit.clone(),
+                        )
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        Ok(Some(MainSnapshotData {
+            epoch: routes.epoch.expect("published topology epoch"),
+            frame,
+            page: page_id,
+            client: main.service.client(),
+            main: main.unique_context_id.clone(),
+            main_numeric: main.execution_context_id,
+            lifetime,
+        }))
+    }
+
     fn lookup(
         &self,
         frame: ObjectId,
@@ -360,8 +497,10 @@ impl State {
                                 context: page.browser_context_object_id,
                                 page_target: page.target_id.as_str().into(),
                                 session: main.session_id.as_str().into(),
-                                main: Some(main.unique_context_id.clone()),
-                                utility: utility.unique_context_id.clone(),
+                                worlds: crate::native_world_retirement::IdentityWorlds::Paired {
+                                    main: main.unique_context_id.clone(),
+                                    utility: utility.unique_context_id.clone(),
+                                },
                             },
                             permit.clone(),
                         )
@@ -381,6 +520,54 @@ impl State {
             main_numeric: main.execution_context_id,
             lifetime,
         }))
+    }
+}
+
+/// Budgeted owner for one exact parent main world. Its optional native receipt
+/// proves destruction of that world alone; route invalidation is never proof.
+pub struct ChromiumMainWorldSnapshot {
+    data: MainSnapshotData,
+    permit: Arc<Permit>,
+    retired: AtomicBool,
+}
+// Main-only snapshots share the preexisting paired snapshot admission. The
+// retained route and receipt never exceed its declared storage envelope.
+const _: () = assert!(
+    std::mem::size_of::<ChromiumMainWorldSnapshot>() + 4 * NATIVE_ID_BYTES + 1024
+        < SNAPSHOT_BYTES as usize
+);
+impl ChromiumMainWorldSnapshot {
+    pub const fn page(&self) -> ObjectId {
+        self.data.page
+    }
+    pub fn client(&self) -> Arc<dyn CdpClient> {
+        self.data.client.clone()
+    }
+    pub const fn main_execution_context_id(&self) -> i64 {
+        self.data.main_numeric
+    }
+    pub fn main_unique_id(&self) -> &str {
+        &self.data.main
+    }
+    pub fn native_lifetime(&self) -> Option<crate::ChromiumNativeWorldLifetime> {
+        self.data.lifetime.clone()
+    }
+    pub fn is_current(&self) -> Result<bool> {
+        let current = self
+            .permit
+            .state
+            .lookup_main(self.data.frame, None)?
+            .is_some_and(|current| {
+                current.epoch == self.data.epoch
+                    && current.page == self.data.page
+                    && current.main_numeric == self.data.main_numeric
+                    && current.main == self.data.main
+                    && Arc::ptr_eq(&current.client, &self.data.client)
+            });
+        if !current {
+            self.retired.store(true, Ordering::Release);
+        }
+        Ok(current && !self.retired.load(Ordering::Acquire))
     }
 }
 

@@ -10,6 +10,8 @@ homepage.workspace = true
 [features]
 default = []
 extra-headers = []
+network-raw-headers = []
+request-timing = []
 
 [dependencies]
 pwright-core = { workspace = true }

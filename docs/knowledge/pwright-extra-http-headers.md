@@ -1,6 +1,19 @@
-<!-- agent-updated: 2026-09-10T01:40:30Z -->
+<!-- agent-updated: 2026-10-06T07:11:26Z -->
 
 # Extra HTTP headers: Rust policy and native installation design
+
+## NODE-369 complete official Context header file
+
+The complete unchanged Playwright v1.58.0
+`tests/library/browsercontext-set-extra-http-headers.spec.ts` file passes 2/2
+candidate and 2/2 independent oracle. It proves a Context creation header plus
+Page override reaches the fixture with case-insensitive replacement while the
+other Context header survives, and that a non-string creation value retains the
+public error. Candidate/oracle report SHA-256 values are
+`c5694f1ef1c40cbb50b0b397bff35a45fdc70d678747cfd230de31f0149fb099`
+and `a9cdcafcc44f8c8da97d7420f7f4e6a15a3cde000c8082707ccfc7757e31131f`.
+No header implementation changed in this checkpoint; it is official coverage
+of the Rust-owned NODE-084 creation/override path, not full header conformance.
 
 NODE-097's controlled raw peer isolates a native Page-auto-attach interference
 signature seen during shared-browser header churn. Both upstream and Rust owners

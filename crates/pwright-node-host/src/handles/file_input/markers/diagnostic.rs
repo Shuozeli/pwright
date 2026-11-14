@@ -32,9 +32,21 @@ pub(super) fn bounded(error: HostError) -> HostError {
             message: copy(&message, BYTES / 2),
             stack: stack.map(|value| copy(&value, BYTES - BYTES / 8 - BYTES / 2)),
         },
+        HostError::ActionTimeout {
+            api,
+            timeout_ms,
+            locator,
+            progress,
+        } => HostError::ActionTimeout {
+            api,
+            timeout_ms,
+            locator: copy(&locator, BYTES),
+            progress,
+        },
         error @ (HostError::Timeout(_)
         | HostError::ConnectTimeout { .. }
-        | HostError::TargetClosed) => error,
+        | HostError::TargetClosed
+        | HostError::FrameDetached) => error,
     }
 }
 
@@ -108,6 +120,32 @@ mod tests {
             assert!(source.starts_with(&value));
             assert!(source.is_char_boundary(value.len()));
             assert_eq!(value.capacity(), value.len());
+        }
+    }
+
+    #[test]
+    fn static_diagnostics_preserve_their_exact_variant_and_code() {
+        // Arrange
+        let errors = [
+            HostError::ActionTimeout {
+                api: "Locator.click",
+                timeout_ms: 17,
+                locator: "button".into(),
+                progress: "waiting for element",
+            },
+            HostError::FrameDetached,
+        ];
+
+        for error in errors {
+            let kind = std::mem::discriminant(&error);
+            let code = error.code();
+
+            // Act
+            let result = bounded(error);
+
+            // Assert
+            assert_eq!(std::mem::discriminant(&result), kind);
+            assert_eq!(result.code(), code);
         }
     }
 }

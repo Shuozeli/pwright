@@ -1,0 +1,19 @@
+[package]
+name = "pwright-composition-chromium-touchscreen"
+description = "Optional Chromium Touchscreen Page binding with caller-owned retirement"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-input = { workspace = true }
+pwright-backend-cdp-touchscreen = { workspace = true }
+pwright-cap-touchscreen = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

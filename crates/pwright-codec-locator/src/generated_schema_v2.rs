@@ -806,6 +806,9 @@ pub enum PwrightLocatorSelector {
         attributes: String,
         matcher: PwrightLocatorRegexMatcher,
     },
+    LegacyText {
+        matcher: PwrightLocatorTextMatcher,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1545,6 +1548,9 @@ pub enum PwrightLocatorSelectorRef<'a> {
     TestIdRegex {
         attributes: &'a str,
         matcher: PwrightLocatorRegexMatcherRef<'a>,
+    },
+    LegacyText {
+        matcher: PwrightLocatorTextMatcherRef<'a>,
     },
 }
 
@@ -4677,6 +4683,11 @@ impl BinaryEncode for PwrightLocatorSelector {
                     <PwrightLocatorRegexMatcher as BinaryEncode>::encode_binary(matcher, writer, context)?;
                     Ok(())
                 }
+                Self::LegacyText { matcher } => {
+                    writer.u8(22)?;
+                    <PwrightLocatorTextMatcher as BinaryEncode>::encode_binary(matcher, writer, context)?;
+                    Ok(())
+                }
             }
         })
     }
@@ -4849,6 +4860,12 @@ impl BinaryDecode for PwrightLocatorSelector {
                     let matcher = <PwrightLocatorRegexMatcher as BinaryDecode>::decode_binary(reader, context)?;
                     Ok(Self::TestIdRegex {
                         attributes,
+                        matcher,
+                    })
+                },
+                22 => {
+                    let matcher = <PwrightLocatorTextMatcher as BinaryDecode>::decode_binary(reader, context)?;
+                    Ok(Self::LegacyText {
                         matcher,
                     })
                 },
@@ -6466,6 +6483,11 @@ impl BinaryEncode for PwrightLocatorSelectorRef<'_> {
                     <PwrightLocatorRegexMatcherRef as BinaryEncode>::encode_binary(matcher, writer, context)?;
                     Ok(())
                 }
+                Self::LegacyText { matcher } => {
+                    writer.u8(22)?;
+                    <PwrightLocatorTextMatcherRef as BinaryEncode>::encode_binary(matcher, writer, context)?;
+                    Ok(())
+                }
             }
         })
     }
@@ -6900,12 +6922,12 @@ const TYPE_0_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(46, "press_sequentially_result", TYPE_0_VARIANT_45_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator", ProtocolVersion::new(2, 6), TYPE_0_VARIANTS);
+pub const PWRIGHT_LOCATOR_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator", ProtocolVersion::new(2, 7), TYPE_0_VARIANTS);
 
 const TYPE_1_FIELDS: &[BinaryFieldSchema] = &[
 ];
 
-pub const PWRIGHT_LOCATOR_ACTION_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.action_result", ProtocolVersion::new(2, 6), TYPE_1_FIELDS);
+pub const PWRIGHT_LOCATOR_ACTION_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.action_result", ProtocolVersion::new(2, 7), TYPE_1_FIELDS);
 
 const TYPE_2_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.all_inner_texts_result", BinaryCardinality::Required),
@@ -6920,19 +6942,19 @@ const TYPE_2_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_2_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_ALL_INNER_TEXTS_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.all_inner_texts_outcome", ProtocolVersion::new(2, 6), TYPE_2_VARIANTS);
+pub const PWRIGHT_LOCATOR_ALL_INNER_TEXTS_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.all_inner_texts_outcome", ProtocolVersion::new(2, 7), TYPE_2_VARIANTS);
 
 const TYPE_3_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_ALL_INNER_TEXTS_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.all_inner_texts_params", ProtocolVersion::new(2, 6), TYPE_3_FIELDS);
+pub const PWRIGHT_LOCATOR_ALL_INNER_TEXTS_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.all_inner_texts_params", ProtocolVersion::new(2, 7), TYPE_3_FIELDS);
 
 const TYPE_4_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("values", BinaryFieldKind::Utf8, BinaryCardinality::Repeated).with_item_count_range(BinarySizeRange::new(None, Some(4096_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_ALL_INNER_TEXTS_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.all_inner_texts_result", ProtocolVersion::new(2, 6), TYPE_4_FIELDS);
+pub const PWRIGHT_LOCATOR_ALL_INNER_TEXTS_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.all_inner_texts_result", ProtocolVersion::new(2, 7), TYPE_4_FIELDS);
 
 const TYPE_5_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.all_text_contents_result", BinaryCardinality::Required),
@@ -6947,25 +6969,25 @@ const TYPE_5_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_5_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_ALL_TEXT_CONTENTS_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.all_text_contents_outcome", ProtocolVersion::new(2, 6), TYPE_5_VARIANTS);
+pub const PWRIGHT_LOCATOR_ALL_TEXT_CONTENTS_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.all_text_contents_outcome", ProtocolVersion::new(2, 7), TYPE_5_VARIANTS);
 
 const TYPE_6_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_ALL_TEXT_CONTENTS_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.all_text_contents_params", ProtocolVersion::new(2, 6), TYPE_6_FIELDS);
+pub const PWRIGHT_LOCATOR_ALL_TEXT_CONTENTS_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.all_text_contents_params", ProtocolVersion::new(2, 7), TYPE_6_FIELDS);
 
 const TYPE_7_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("values", BinaryFieldKind::Utf8, BinaryCardinality::Repeated).with_item_count_range(BinarySizeRange::new(None, Some(4096_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_ALL_TEXT_CONTENTS_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.all_text_contents_result", ProtocolVersion::new(2, 6), TYPE_7_FIELDS);
+pub const PWRIGHT_LOCATOR_ALL_TEXT_CONTENTS_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.all_text_contents_result", ProtocolVersion::new(2, 7), TYPE_7_FIELDS);
 
 const TYPE_8_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_BLUR_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.blur_params", ProtocolVersion::new(2, 6), TYPE_8_FIELDS);
+pub const PWRIGHT_LOCATOR_BLUR_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.blur_params", ProtocolVersion::new(2, 7), TYPE_8_FIELDS);
 
 const TYPE_9_FIELDS: &[BinaryExtensibleFieldSchema] = &[
     BinaryExtensibleFieldSchema::new(1, BinaryFieldSchema::enumeration("button", "pwright.locator.mouse_button", BinaryCardinality::Optional)),
@@ -6980,14 +7002,14 @@ const TYPE_9_FIELDS: &[BinaryExtensibleFieldSchema] = &[
     BinaryExtensibleFieldSchema::new(10, BinaryFieldSchema::new("trial", BinaryFieldKind::Bool, BinaryCardinality::Optional)),
 ];
 
-pub const PWRIGHT_LOCATOR_CLICK_OPTIONS_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.locator.click_options", ProtocolVersion::new(2, 6), BinarySizeRange::new(Some(0_u32), Some(128_u32)), TYPE_9_FIELDS);
+pub const PWRIGHT_LOCATOR_CLICK_OPTIONS_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.locator.click_options", ProtocolVersion::new(2, 7), BinarySizeRange::new(Some(0_u32), Some(128_u32)), TYPE_9_FIELDS);
 
 const TYPE_10_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
     BinaryFieldSchema::message("options", "pwright.locator.click_options", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_CLICK_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.click_params", ProtocolVersion::new(2, 6), TYPE_10_FIELDS);
+pub const PWRIGHT_LOCATOR_CLICK_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.click_params", ProtocolVersion::new(2, 7), TYPE_10_FIELDS);
 
 const TYPE_11_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.count_result", BinaryCardinality::Required),
@@ -7002,19 +7024,19 @@ const TYPE_11_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_11_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_COUNT_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.count_outcome", ProtocolVersion::new(2, 6), TYPE_11_VARIANTS);
+pub const PWRIGHT_LOCATOR_COUNT_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.count_outcome", ProtocolVersion::new(2, 7), TYPE_11_VARIANTS);
 
 const TYPE_12_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_COUNT_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.count_params", ProtocolVersion::new(2, 6), TYPE_12_FIELDS);
+pub const PWRIGHT_LOCATOR_COUNT_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.count_params", ProtocolVersion::new(2, 7), TYPE_12_FIELDS);
 
 const TYPE_13_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("count", BinaryFieldKind::U32, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_COUNT_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.count_result", ProtocolVersion::new(2, 6), TYPE_13_FIELDS);
+pub const PWRIGHT_LOCATOR_COUNT_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.count_result", ProtocolVersion::new(2, 7), TYPE_13_FIELDS);
 
 const TYPE_14_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("kind", "pwright.common.failure_kind", BinaryCardinality::Required),
@@ -7022,7 +7044,7 @@ const TYPE_14_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("details", "pwright.locator.error_details", BinaryCardinality::Optional),
 ];
 
-pub const PWRIGHT_LOCATOR_ERROR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.error", ProtocolVersion::new(2, 6), TYPE_14_FIELDS);
+pub const PWRIGHT_LOCATOR_ERROR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.error", ProtocolVersion::new(2, 7), TYPE_14_FIELDS);
 
 const TYPE_15_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("message", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -7058,13 +7080,13 @@ const TYPE_15_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(5, "invalid_value", TYPE_15_VARIANT_5_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_ERROR_DETAILS_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.error_details", ProtocolVersion::new(2, 6), TYPE_15_VARIANTS);
+pub const PWRIGHT_LOCATOR_ERROR_DETAILS_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.error_details", ProtocolVersion::new(2, 7), TYPE_15_VARIANTS);
 
 const TYPE_16_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("force", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_FILL_OPTIONS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.fill_options", ProtocolVersion::new(2, 6), TYPE_16_FIELDS);
+pub const PWRIGHT_LOCATOR_FILL_OPTIONS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.fill_options", ProtocolVersion::new(2, 7), TYPE_16_FIELDS);
 
 const TYPE_17_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
@@ -7072,13 +7094,13 @@ const TYPE_17_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("options", "pwright.locator.fill_options", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_FILL_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.fill_params", ProtocolVersion::new(2, 6), TYPE_17_FIELDS);
+pub const PWRIGHT_LOCATOR_FILL_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.fill_params", ProtocolVersion::new(2, 7), TYPE_17_FIELDS);
 
 const TYPE_18_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_FOCUS_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.focus_params", ProtocolVersion::new(2, 6), TYPE_18_FIELDS);
+pub const PWRIGHT_LOCATOR_FOCUS_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.focus_params", ProtocolVersion::new(2, 7), TYPE_18_FIELDS);
 
 const TYPE_19_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.get_attribute_result", BinaryCardinality::Required),
@@ -7093,20 +7115,20 @@ const TYPE_19_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_19_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_GET_ATTRIBUTE_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.get_attribute_outcome", ProtocolVersion::new(2, 6), TYPE_19_VARIANTS);
+pub const PWRIGHT_LOCATOR_GET_ATTRIBUTE_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.get_attribute_outcome", ProtocolVersion::new(2, 7), TYPE_19_VARIANTS);
 
 const TYPE_20_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
     BinaryFieldSchema::new("name", BinaryFieldKind::Utf8, BinaryCardinality::Required).with_length_range(BinarySizeRange::new(None, Some(65536_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_GET_ATTRIBUTE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.get_attribute_params", ProtocolVersion::new(2, 6), TYPE_20_FIELDS);
+pub const PWRIGHT_LOCATOR_GET_ATTRIBUTE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.get_attribute_params", ProtocolVersion::new(2, 7), TYPE_20_FIELDS);
 
 const TYPE_21_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Optional).with_length_range(BinarySizeRange::new(None, Some(1048576_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_GET_ATTRIBUTE_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.get_attribute_result", ProtocolVersion::new(2, 6), TYPE_21_FIELDS);
+pub const PWRIGHT_LOCATOR_GET_ATTRIBUTE_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.get_attribute_result", ProtocolVersion::new(2, 7), TYPE_21_FIELDS);
 
 const TYPE_22_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("force", BinaryFieldKind::Bool, BinaryCardinality::Required),
@@ -7116,14 +7138,14 @@ const TYPE_22_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("trial", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_HOVER_OPTIONS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.hover_options", ProtocolVersion::new(2, 6), TYPE_22_FIELDS);
+pub const PWRIGHT_LOCATOR_HOVER_OPTIONS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.hover_options", ProtocolVersion::new(2, 7), TYPE_22_FIELDS);
 
 const TYPE_23_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
     BinaryFieldSchema::message("options", "pwright.locator.hover_options", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_HOVER_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.hover_params", ProtocolVersion::new(2, 6), TYPE_23_FIELDS);
+pub const PWRIGHT_LOCATOR_HOVER_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.hover_params", ProtocolVersion::new(2, 7), TYPE_23_FIELDS);
 
 const TYPE_24_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.inner_html_result", BinaryCardinality::Required),
@@ -7138,19 +7160,19 @@ const TYPE_24_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_24_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_INNER_HTML_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.inner_html_outcome", ProtocolVersion::new(2, 6), TYPE_24_VARIANTS);
+pub const PWRIGHT_LOCATOR_INNER_HTML_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.inner_html_outcome", ProtocolVersion::new(2, 7), TYPE_24_VARIANTS);
 
 const TYPE_25_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_INNER_HTML_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.inner_html_params", ProtocolVersion::new(2, 6), TYPE_25_FIELDS);
+pub const PWRIGHT_LOCATOR_INNER_HTML_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.inner_html_params", ProtocolVersion::new(2, 7), TYPE_25_FIELDS);
 
 const TYPE_26_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required).with_length_range(BinarySizeRange::new(None, Some(1048576_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_INNER_HTML_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.inner_html_result", ProtocolVersion::new(2, 6), TYPE_26_FIELDS);
+pub const PWRIGHT_LOCATOR_INNER_HTML_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.inner_html_result", ProtocolVersion::new(2, 7), TYPE_26_FIELDS);
 
 const TYPE_27_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.inner_text_result", BinaryCardinality::Required),
@@ -7165,19 +7187,19 @@ const TYPE_27_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_27_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_INNER_TEXT_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.inner_text_outcome", ProtocolVersion::new(2, 6), TYPE_27_VARIANTS);
+pub const PWRIGHT_LOCATOR_INNER_TEXT_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.inner_text_outcome", ProtocolVersion::new(2, 7), TYPE_27_VARIANTS);
 
 const TYPE_28_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_INNER_TEXT_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.inner_text_params", ProtocolVersion::new(2, 6), TYPE_28_FIELDS);
+pub const PWRIGHT_LOCATOR_INNER_TEXT_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.inner_text_params", ProtocolVersion::new(2, 7), TYPE_28_FIELDS);
 
 const TYPE_29_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required).with_length_range(BinarySizeRange::new(None, Some(1048576_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_INNER_TEXT_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.inner_text_result", ProtocolVersion::new(2, 6), TYPE_29_FIELDS);
+pub const PWRIGHT_LOCATOR_INNER_TEXT_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.inner_text_result", ProtocolVersion::new(2, 7), TYPE_29_FIELDS);
 
 const TYPE_30_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.input_value_result", BinaryCardinality::Required),
@@ -7192,19 +7214,19 @@ const TYPE_30_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_30_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_INPUT_VALUE_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.input_value_outcome", ProtocolVersion::new(2, 6), TYPE_30_VARIANTS);
+pub const PWRIGHT_LOCATOR_INPUT_VALUE_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.input_value_outcome", ProtocolVersion::new(2, 7), TYPE_30_VARIANTS);
 
 const TYPE_31_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_INPUT_VALUE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.input_value_params", ProtocolVersion::new(2, 6), TYPE_31_FIELDS);
+pub const PWRIGHT_LOCATOR_INPUT_VALUE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.input_value_params", ProtocolVersion::new(2, 7), TYPE_31_FIELDS);
 
 const TYPE_32_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required).with_length_range(BinarySizeRange::new(None, Some(1048576_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_INPUT_VALUE_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.input_value_result", ProtocolVersion::new(2, 6), TYPE_32_FIELDS);
+pub const PWRIGHT_LOCATOR_INPUT_VALUE_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.input_value_result", ProtocolVersion::new(2, 7), TYPE_32_FIELDS);
 
 const TYPE_33_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.is_checked_result", BinaryCardinality::Required),
@@ -7219,19 +7241,19 @@ const TYPE_33_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_33_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_CHECKED_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.is_checked_outcome", ProtocolVersion::new(2, 6), TYPE_33_VARIANTS);
+pub const PWRIGHT_LOCATOR_IS_CHECKED_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.is_checked_outcome", ProtocolVersion::new(2, 7), TYPE_33_VARIANTS);
 
 const TYPE_34_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_CHECKED_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_checked_params", ProtocolVersion::new(2, 6), TYPE_34_FIELDS);
+pub const PWRIGHT_LOCATOR_IS_CHECKED_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_checked_params", ProtocolVersion::new(2, 7), TYPE_34_FIELDS);
 
 const TYPE_35_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("checked", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_CHECKED_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_checked_result", ProtocolVersion::new(2, 6), TYPE_35_FIELDS);
+pub const PWRIGHT_LOCATOR_IS_CHECKED_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_checked_result", ProtocolVersion::new(2, 7), TYPE_35_FIELDS);
 
 const TYPE_36_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.is_editable_result", BinaryCardinality::Required),
@@ -7246,19 +7268,19 @@ const TYPE_36_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_36_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_EDITABLE_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.is_editable_outcome", ProtocolVersion::new(2, 6), TYPE_36_VARIANTS);
+pub const PWRIGHT_LOCATOR_IS_EDITABLE_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.is_editable_outcome", ProtocolVersion::new(2, 7), TYPE_36_VARIANTS);
 
 const TYPE_37_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_EDITABLE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_editable_params", ProtocolVersion::new(2, 6), TYPE_37_FIELDS);
+pub const PWRIGHT_LOCATOR_IS_EDITABLE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_editable_params", ProtocolVersion::new(2, 7), TYPE_37_FIELDS);
 
 const TYPE_38_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("editable", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_EDITABLE_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_editable_result", ProtocolVersion::new(2, 6), TYPE_38_FIELDS);
+pub const PWRIGHT_LOCATOR_IS_EDITABLE_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_editable_result", ProtocolVersion::new(2, 7), TYPE_38_FIELDS);
 
 const TYPE_39_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.is_enabled_result", BinaryCardinality::Required),
@@ -7273,19 +7295,19 @@ const TYPE_39_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_39_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_ENABLED_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.is_enabled_outcome", ProtocolVersion::new(2, 6), TYPE_39_VARIANTS);
+pub const PWRIGHT_LOCATOR_IS_ENABLED_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.is_enabled_outcome", ProtocolVersion::new(2, 7), TYPE_39_VARIANTS);
 
 const TYPE_40_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_ENABLED_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_enabled_params", ProtocolVersion::new(2, 6), TYPE_40_FIELDS);
+pub const PWRIGHT_LOCATOR_IS_ENABLED_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_enabled_params", ProtocolVersion::new(2, 7), TYPE_40_FIELDS);
 
 const TYPE_41_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("enabled", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_ENABLED_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_enabled_result", ProtocolVersion::new(2, 6), TYPE_41_FIELDS);
+pub const PWRIGHT_LOCATOR_IS_ENABLED_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_enabled_result", ProtocolVersion::new(2, 7), TYPE_41_FIELDS);
 
 const TYPE_42_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.is_visible_result", BinaryCardinality::Required),
@@ -7300,19 +7322,19 @@ const TYPE_42_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_42_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_VISIBLE_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.is_visible_outcome", ProtocolVersion::new(2, 6), TYPE_42_VARIANTS);
+pub const PWRIGHT_LOCATOR_IS_VISIBLE_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.is_visible_outcome", ProtocolVersion::new(2, 7), TYPE_42_VARIANTS);
 
 const TYPE_43_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_VISIBLE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_visible_params", ProtocolVersion::new(2, 6), TYPE_43_FIELDS);
+pub const PWRIGHT_LOCATOR_IS_VISIBLE_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_visible_params", ProtocolVersion::new(2, 7), TYPE_43_FIELDS);
 
 const TYPE_44_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("visible", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_IS_VISIBLE_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_visible_result", ProtocolVersion::new(2, 6), TYPE_44_FIELDS);
+pub const PWRIGHT_LOCATOR_IS_VISIBLE_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.is_visible_result", ProtocolVersion::new(2, 7), TYPE_44_FIELDS);
 
 const TYPE_45_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "alt"),
@@ -7322,13 +7344,13 @@ const TYPE_45_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(4, "shift"),
 ];
 
-pub const PWRIGHT_LOCATOR_KEYBOARD_MODIFIER_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.keyboard_modifier", ProtocolVersion::new(2, 6), TYPE_45_VARIANTS);
+pub const PWRIGHT_LOCATOR_KEYBOARD_MODIFIER_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.keyboard_modifier", ProtocolVersion::new(2, 7), TYPE_45_VARIANTS);
 
 const TYPE_46_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("values", "pwright.locator.keyboard_modifier", BinaryCardinality::Repeated).with_item_count_range(BinarySizeRange::new(None, Some(5_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_KEYBOARD_MODIFIERS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.keyboard_modifiers", ProtocolVersion::new(2, 6), TYPE_46_FIELDS);
+pub const PWRIGHT_LOCATOR_KEYBOARD_MODIFIERS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.keyboard_modifiers", ProtocolVersion::new(2, 7), TYPE_46_FIELDS);
 
 const TYPE_47_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "left"),
@@ -7336,7 +7358,7 @@ const TYPE_47_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(2, "middle"),
 ];
 
-pub const PWRIGHT_LOCATOR_MOUSE_BUTTON_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.mouse_button", ProtocolVersion::new(2, 6), TYPE_47_VARIANTS);
+pub const PWRIGHT_LOCATOR_MOUSE_BUTTON_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.mouse_button", ProtocolVersion::new(2, 7), TYPE_47_VARIANTS);
 
 const TYPE_48_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "absent"),
@@ -7345,7 +7367,7 @@ const TYPE_48_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(3, "mixed"),
 ];
 
-pub const PWRIGHT_LOCATOR_OPTIONAL_ARIA_TRI_STATE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.optional_aria_tri_state", ProtocolVersion::new(2, 6), TYPE_48_VARIANTS);
+pub const PWRIGHT_LOCATOR_OPTIONAL_ARIA_TRI_STATE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.optional_aria_tri_state", ProtocolVersion::new(2, 7), TYPE_48_VARIANTS);
 
 const TYPE_49_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "absent"),
@@ -7353,7 +7375,7 @@ const TYPE_49_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(2, "true"),
 ];
 
-pub const PWRIGHT_LOCATOR_OPTIONAL_BOOL_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.optional_bool", ProtocolVersion::new(2, 6), TYPE_49_VARIANTS);
+pub const PWRIGHT_LOCATOR_OPTIONAL_BOOL_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.optional_bool", ProtocolVersion::new(2, 7), TYPE_49_VARIANTS);
 
 const TYPE_50_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
 ];
@@ -7367,21 +7389,21 @@ const TYPE_50_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_50_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.outcome", ProtocolVersion::new(2, 6), TYPE_50_VARIANTS);
+pub const PWRIGHT_LOCATOR_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.outcome", ProtocolVersion::new(2, 7), TYPE_50_VARIANTS);
 
 const TYPE_51_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("x", BinaryFieldKind::F64, BinaryCardinality::Required),
     BinaryFieldSchema::new("y", BinaryFieldKind::F64, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_POINT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.point", ProtocolVersion::new(2, 6), TYPE_51_FIELDS);
+pub const PWRIGHT_LOCATOR_POINT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.point", ProtocolVersion::new(2, 7), TYPE_51_FIELDS);
 
 const TYPE_52_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("delay", "pwright.common.duration", BinaryCardinality::Optional),
     BinaryFieldSchema::new("no_wait_after", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_PRESS_OPTIONS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.press_options", ProtocolVersion::new(2, 6), TYPE_52_FIELDS);
+pub const PWRIGHT_LOCATOR_PRESS_OPTIONS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.press_options", ProtocolVersion::new(2, 7), TYPE_52_FIELDS);
 
 const TYPE_53_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
@@ -7389,7 +7411,7 @@ const TYPE_53_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("options", "pwright.locator.press_options", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_PRESS_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.press_params", ProtocolVersion::new(2, 6), TYPE_53_FIELDS);
+pub const PWRIGHT_LOCATOR_PRESS_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.press_params", ProtocolVersion::new(2, 7), TYPE_53_FIELDS);
 
 const TYPE_54_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
@@ -7397,14 +7419,14 @@ const TYPE_54_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("delay", "pwright.common.duration", BinaryCardinality::Optional),
 ];
 
-pub const PWRIGHT_LOCATOR_PRESS_SEQUENTIALLY_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.press_sequentially_params", ProtocolVersion::new(2, 6), TYPE_54_FIELDS);
+pub const PWRIGHT_LOCATOR_PRESS_SEQUENTIALLY_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.press_sequentially_params", ProtocolVersion::new(2, 7), TYPE_54_FIELDS);
 
 const TYPE_55_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("source", BinaryFieldKind::Utf8, BinaryCardinality::Required),
     BinaryFieldSchema::new("flags", BinaryFieldKind::Utf8, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_REGEX_MATCHER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.regex_matcher", ProtocolVersion::new(2, 6), TYPE_55_FIELDS);
+pub const PWRIGHT_LOCATOR_REGEX_MATCHER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.regex_matcher", ProtocolVersion::new(2, 7), TYPE_55_FIELDS);
 
 const TYPE_56_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("role", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -7419,7 +7441,7 @@ const TYPE_56_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("selected", "pwright.locator.optional_bool", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_ROLE_PATTERN_SELECTOR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.role_pattern_selector", ProtocolVersion::new(2, 6), TYPE_56_FIELDS);
+pub const PWRIGHT_LOCATOR_ROLE_PATTERN_SELECTOR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.role_pattern_selector", ProtocolVersion::new(2, 7), TYPE_56_FIELDS);
 
 const TYPE_57_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("role", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -7434,20 +7456,20 @@ const TYPE_57_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("selected", "pwright.locator.optional_bool", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_ROLE_SELECTOR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.role_selector", ProtocolVersion::new(2, 6), TYPE_57_FIELDS);
+pub const PWRIGHT_LOCATOR_ROLE_SELECTOR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.role_selector", ProtocolVersion::new(2, 7), TYPE_57_FIELDS);
 
 const TYPE_58_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_SCROLL_INTO_VIEW_IF_NEEDED_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.scroll_into_view_if_needed_params", ProtocolVersion::new(2, 6), TYPE_58_FIELDS);
+pub const PWRIGHT_LOCATOR_SCROLL_INTO_VIEW_IF_NEEDED_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.scroll_into_view_if_needed_params", ProtocolVersion::new(2, 7), TYPE_58_FIELDS);
 
 const TYPE_59_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "auto"),
     BinaryEnumVariantSchema::new(1, "none"),
 ];
 
-pub const PWRIGHT_LOCATOR_SCROLL_MODE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.scroll_mode", ProtocolVersion::new(2, 6), TYPE_59_VARIANTS);
+pub const PWRIGHT_LOCATOR_SCROLL_MODE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.scroll_mode", ProtocolVersion::new(2, 7), TYPE_59_VARIANTS);
 
 const TYPE_60_FIELDS: &[BinaryExtensibleFieldSchema] = &[
     BinaryExtensibleFieldSchema::new(1, BinaryFieldSchema::new("value_or_label", BinaryFieldKind::Utf8, BinaryCardinality::Optional).with_length_range(BinarySizeRange::new(None, Some(65536_u32)))),
@@ -7456,13 +7478,13 @@ const TYPE_60_FIELDS: &[BinaryExtensibleFieldSchema] = &[
     BinaryExtensibleFieldSchema::new(4, BinaryFieldSchema::new("index", BinaryFieldKind::I32, BinaryCardinality::Optional)),
 ];
 
-pub const PWRIGHT_LOCATOR_SELECT_OPTION_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.locator.select_option", ProtocolVersion::new(2, 6), BinarySizeRange::new(Some(0_u32), Some(196672_u32)), TYPE_60_FIELDS);
+pub const PWRIGHT_LOCATOR_SELECT_OPTION_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.locator.select_option", ProtocolVersion::new(2, 7), BinarySizeRange::new(Some(0_u32), Some(196672_u32)), TYPE_60_FIELDS);
 
 const TYPE_61_FIELDS: &[BinaryExtensibleFieldSchema] = &[
     BinaryExtensibleFieldSchema::new(1, BinaryFieldSchema::new("force", BinaryFieldKind::Bool, BinaryCardinality::Optional)),
 ];
 
-pub const PWRIGHT_LOCATOR_SELECT_OPTION_OPTIONS_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.locator.select_option_options", ProtocolVersion::new(2, 6), BinarySizeRange::new(Some(0_u32), Some(16_u32)), TYPE_61_FIELDS);
+pub const PWRIGHT_LOCATOR_SELECT_OPTION_OPTIONS_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.locator.select_option_options", ProtocolVersion::new(2, 7), BinarySizeRange::new(Some(0_u32), Some(16_u32)), TYPE_61_FIELDS);
 
 const TYPE_62_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.select_option_result", BinaryCardinality::Required),
@@ -7477,7 +7499,7 @@ const TYPE_62_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_62_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_SELECT_OPTION_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.select_option_outcome", ProtocolVersion::new(2, 6), TYPE_62_VARIANTS);
+pub const PWRIGHT_LOCATOR_SELECT_OPTION_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.select_option_outcome", ProtocolVersion::new(2, 7), TYPE_62_VARIANTS);
 
 const TYPE_63_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
@@ -7485,19 +7507,19 @@ const TYPE_63_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("options", "pwright.locator.select_option_options", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_SELECT_OPTION_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.select_option_params", ProtocolVersion::new(2, 6), TYPE_63_FIELDS);
+pub const PWRIGHT_LOCATOR_SELECT_OPTION_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.select_option_params", ProtocolVersion::new(2, 7), TYPE_63_FIELDS);
 
 const TYPE_64_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("values", "pwright.locator.select_option_value", BinaryCardinality::Repeated).with_item_count_range(BinarySizeRange::new(None, Some(1024_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_SELECT_OPTION_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.select_option_result", ProtocolVersion::new(2, 6), TYPE_64_FIELDS);
+pub const PWRIGHT_LOCATOR_SELECT_OPTION_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.select_option_result", ProtocolVersion::new(2, 7), TYPE_64_FIELDS);
 
 const TYPE_65_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required).with_length_range(BinarySizeRange::new(None, Some(65536_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_SELECT_OPTION_VALUE_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.select_option_value", ProtocolVersion::new(2, 6), TYPE_65_FIELDS);
+pub const PWRIGHT_LOCATOR_SELECT_OPTION_VALUE_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.select_option_value", ProtocolVersion::new(2, 7), TYPE_65_FIELDS);
 
 const TYPE_66_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -7604,6 +7626,10 @@ const TYPE_66_VARIANT_21_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("matcher", "pwright.locator.regex_matcher", BinaryCardinality::Required),
 ];
 
+const TYPE_66_VARIANT_22_FIELDS: &[BinaryFieldSchema] = &[
+    BinaryFieldSchema::message("matcher", "pwright.locator.text_matcher", BinaryCardinality::Required),
+];
+
 const TYPE_66_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(0, "css", TYPE_66_VARIANT_0_FIELDS),
     BinaryVariantSchema::new(1, "nth", TYPE_66_VARIANT_1_FIELDS),
@@ -7627,9 +7653,10 @@ const TYPE_66_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(19, "attribute_regex", TYPE_66_VARIANT_19_FIELDS),
     BinaryVariantSchema::new(20, "test_id_text", TYPE_66_VARIANT_20_FIELDS),
     BinaryVariantSchema::new(21, "test_id_regex", TYPE_66_VARIANT_21_FIELDS),
+    BinaryVariantSchema::new(22, "legacy_text", TYPE_66_VARIANT_22_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_SELECTOR_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.selector", ProtocolVersion::new(2, 6), TYPE_66_VARIANTS);
+pub const PWRIGHT_LOCATOR_SELECTOR_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.selector", ProtocolVersion::new(2, 7), TYPE_66_VARIANTS);
 
 const TYPE_67_FIELDS: &[BinaryExtensibleFieldSchema] = &[
     BinaryExtensibleFieldSchema::new(1, BinaryFieldSchema::new("force", BinaryFieldKind::Bool, BinaryCardinality::Optional)),
@@ -7638,7 +7665,7 @@ const TYPE_67_FIELDS: &[BinaryExtensibleFieldSchema] = &[
     BinaryExtensibleFieldSchema::new(4, BinaryFieldSchema::new("trial", BinaryFieldKind::Bool, BinaryCardinality::Optional)),
 ];
 
-pub const PWRIGHT_LOCATOR_SET_CHECKED_OPTIONS_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.locator.set_checked_options", ProtocolVersion::new(2, 6), BinarySizeRange::new(Some(0_u32), Some(64_u32)), TYPE_67_FIELDS);
+pub const PWRIGHT_LOCATOR_SET_CHECKED_OPTIONS_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.locator.set_checked_options", ProtocolVersion::new(2, 7), BinarySizeRange::new(Some(0_u32), Some(64_u32)), TYPE_67_FIELDS);
 
 const TYPE_68_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
@@ -7646,7 +7673,7 @@ const TYPE_68_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("options", "pwright.locator.set_checked_options", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_SET_CHECKED_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.set_checked_params", ProtocolVersion::new(2, 6), TYPE_68_FIELDS);
+pub const PWRIGHT_LOCATOR_SET_CHECKED_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.set_checked_params", ProtocolVersion::new(2, 7), TYPE_68_FIELDS);
 
 const TYPE_69_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("result", "pwright.locator.text_content_result", BinaryCardinality::Required),
@@ -7661,26 +7688,26 @@ const TYPE_69_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "error", TYPE_69_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_TEXT_CONTENT_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.text_content_outcome", ProtocolVersion::new(2, 6), TYPE_69_VARIANTS);
+pub const PWRIGHT_LOCATOR_TEXT_CONTENT_OUTCOME_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.text_content_outcome", ProtocolVersion::new(2, 7), TYPE_69_VARIANTS);
 
 const TYPE_70_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_TEXT_CONTENT_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.text_content_params", ProtocolVersion::new(2, 6), TYPE_70_FIELDS);
+pub const PWRIGHT_LOCATOR_TEXT_CONTENT_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.text_content_params", ProtocolVersion::new(2, 7), TYPE_70_FIELDS);
 
 const TYPE_71_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Optional).with_length_range(BinarySizeRange::new(None, Some(1048576_u32))),
 ];
 
-pub const PWRIGHT_LOCATOR_TEXT_CONTENT_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.text_content_result", ProtocolVersion::new(2, 6), TYPE_71_FIELDS);
+pub const PWRIGHT_LOCATOR_TEXT_CONTENT_RESULT_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.text_content_result", ProtocolVersion::new(2, 7), TYPE_71_FIELDS);
 
 const TYPE_72_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required),
     BinaryFieldSchema::new("exact", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_TEXT_MATCHER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.text_matcher", ProtocolVersion::new(2, 6), TYPE_72_FIELDS);
+pub const PWRIGHT_LOCATOR_TEXT_MATCHER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.text_matcher", ProtocolVersion::new(2, 7), TYPE_72_FIELDS);
 
 const TYPE_73_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("matcher", "pwright.locator.text_matcher", BinaryCardinality::Required),
@@ -7695,7 +7722,7 @@ const TYPE_73_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "regex", TYPE_73_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_TEXT_PATTERN_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.text_pattern", ProtocolVersion::new(2, 6), TYPE_73_VARIANTS);
+pub const PWRIGHT_LOCATOR_TEXT_PATTERN_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.text_pattern", ProtocolVersion::new(2, 7), TYPE_73_VARIANTS);
 
 const TYPE_74_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "placeholder"),
@@ -7703,20 +7730,20 @@ const TYPE_74_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(2, "title"),
 ];
 
-pub const PWRIGHT_LOCATOR_USER_FACING_ATTRIBUTE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.user_facing_attribute", ProtocolVersion::new(2, 6), TYPE_74_VARIANTS);
+pub const PWRIGHT_LOCATOR_USER_FACING_ATTRIBUTE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.user_facing_attribute", ProtocolVersion::new(2, 7), TYPE_74_VARIANTS);
 
 const TYPE_75_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("state", "pwright.locator.wait_for_state", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_WAIT_FOR_OPTIONS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.wait_for_options", ProtocolVersion::new(2, 6), TYPE_75_FIELDS);
+pub const PWRIGHT_LOCATOR_WAIT_FOR_OPTIONS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.wait_for_options", ProtocolVersion::new(2, 7), TYPE_75_FIELDS);
 
 const TYPE_76_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("selector", "pwright.locator.selector", BinaryCardinality::Required),
     BinaryFieldSchema::message("options", "pwright.locator.wait_for_options", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_WAIT_FOR_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.wait_for_params", ProtocolVersion::new(2, 6), TYPE_76_FIELDS);
+pub const PWRIGHT_LOCATOR_WAIT_FOR_PARAMS_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.wait_for_params", ProtocolVersion::new(2, 7), TYPE_76_FIELDS);
 
 const TYPE_77_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "attached"),
@@ -7725,7 +7752,7 @@ const TYPE_77_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(3, "hidden"),
 ];
 
-pub const PWRIGHT_LOCATOR_WAIT_FOR_STATE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.wait_for_state", ProtocolVersion::new(2, 6), TYPE_77_VARIANTS);
+pub const PWRIGHT_LOCATOR_WAIT_FOR_STATE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.wait_for_state", ProtocolVersion::new(2, 7), TYPE_77_VARIANTS);
 
 pub const COMMAND_LOCATOR_ALL_INNER_TEXTS_SCHEMA: BinaryCommandSchema = BinaryCommandSchema::new(CommandId::new("locator.all_inner_texts"), MethodTag::new(131087), 29, 30);
 pub const COMMAND_LOCATOR_ALL_TEXT_CONTENTS_SCHEMA: BinaryCommandSchema = BinaryCommandSchema::new(CommandId::new("locator.all_text_contents"), MethodTag::new(131086), 27, 28);

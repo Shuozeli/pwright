@@ -1,8 +1,8 @@
 use super::*;
 use crate::frame_metadata::{FrameMetadata, FrameMetadataLimits};
 use crate::frame_trees::FrameTrees;
-use pwright_composition_chromium::ChromiumFrameUrlObserver;
 use pwright_core::ObjectId;
+use pwright_plugin_chromium_frame_observer::{ChromiumFrameOwnership, ChromiumFrameUrlObserver};
 use std::sync::Arc;
 
 fn book() -> Arc<FrameMetadata> {
@@ -254,7 +254,7 @@ fn terminal_page_close_is_published_before_disconnect_readiness() {
     let (book, trees, _frame) = fixture();
     trees
         .reconcile(
-            std::iter::once(pwright_composition_chromium::ChromiumFrameOwnership {
+            std::iter::once(ChromiumFrameOwnership {
                 frame: ObjectId::new(2),
                 page: ObjectId::new(3),
                 parent: None,
@@ -283,7 +283,7 @@ fn owner_captured_during_collection_batch_cannot_publish_its_partial_changes() {
     let (book, trees, frame) = fixture();
     trees
         .reconcile(
-            std::iter::once(pwright_composition_chromium::ChromiumFrameOwnership {
+            std::iter::once(ChromiumFrameOwnership {
                 frame: ObjectId::new(2),
                 page: ObjectId::new(3),
                 parent: None,

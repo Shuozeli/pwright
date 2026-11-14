@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_browsercontext_route.py": "6360feeaa5e51f21988d97f6b92f414ff86250d9429de3f1fd7ab6eb4a838a49",
+    "tests/async/test_page_route.py": "389149836f06148df13ee6075a31b3ade175adf24aac4eea3f5a10e157bfd303"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_page_route.py::test_should_work_if_handler_with_times_parameter_was_removed_from_another_handler",
+      "capabilities": ["page.route", "page.unroute.handler", "route.fallback", "route.times"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_route.py::test_should_work_if_handler_with_times_parameter_was_removed_from_another_handler",
+      "capabilities": [
+        "browser_context.route",
+        "browser_context.unroute.handler",
+        "route.fallback",
+        "route.times"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_route.py::test_should_chain_fallback",
+      "capabilities": ["browser_context.route", "route.fallback.chain"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_route.py::test_should_chain_fallback_with_dynamic_url",
+      "capabilities": ["browser_context.route", "route.fallback.url"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_route.py::test_should_not_chain_fulfill",
+      "capabilities": ["browser_context.route", "route.fallback.chain", "route.fulfill"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_route.py::test_should_not_chain_abort",
+      "capabilities": ["browser_context.route", "route.fallback.chain", "route.abort"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_route.py::test_should_chain_fallback_into_page",
+      "capabilities": ["page.route", "browser_context.route", "route.fallback.chain"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_route.py::test_should_fall_back_async",
+      "capabilities": ["browser_context.route", "route.fallback.async"]
+    }
+  ]
+}

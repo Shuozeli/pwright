@@ -21,10 +21,19 @@ type Execution = FfiExecution<boundary::Published<EvaluationResult>>;
 
 pub enum EvaluationTarget {
     FrameValue(String),
+    #[cfg(feature = "wait-for-function")]
+    FrameWaitForFunction(String, pwright_node_host::wait_for_function::Polling, u32),
+    #[cfg(feature = "page-bindings")]
+    PageBindingResult(u64),
     #[cfg(feature = "handles")]
     FrameHandle(String, Result<crate::handles::HandlePolicy, HostError>),
     #[cfg(feature = "handles")]
     HandleValue(Result<Arc<pwright_node_host::handles::PendingHandle>, HostError>),
+    #[cfg(feature = "element-handle-dom")]
+    HandleElementQueryAll(
+        Result<Arc<pwright_node_host::handles::PendingHandle>, HostError>,
+        pwright_node_host::locator_query::ElementHandleQuery,
+    ),
     #[cfg(feature = "handles")]
     HandleHandle(
         Result<Arc<pwright_node_host::handles::PendingHandle>, HostError>,
@@ -57,6 +66,20 @@ impl ToNapiValue for EvaluationResult {
     }
 }
 
+impl EvaluationResult {
+    fn additional_ffi_reservation(&self) -> u64 {
+        #[cfg(feature = "large-evaluation-results")]
+        if let Self::Value(EvaluationOutput(
+            pwright_node_host::evaluation::EvaluationValue::String(value),
+        )) = self
+            && value.len() > pwright_node_host::evaluation::STRING_BYTES
+        {
+            return pwright_node_host::evaluation::LARGE_RESULT_FFI_ALLOWANCE;
+        }
+        0
+    }
+}
+
 #[napi(object)]
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ConversionMetrics {
@@ -83,116 +106,207 @@ impl EvaluationCall {
         }
         let argument = self.input.materialize(env)?;
         let host = self.host;
-        boundary::spawn_published(env, self.execution, self.publications, async move {
-            match self.target {
-                EvaluationTarget::FrameValue(frame) => {
-                    let params = if self.is_function {
-                        EvaluateParams::function(self.source, argument)
-                    } else {
-                        EvaluateParams::expression(self.source)
-                    };
-                    host.frame_evaluate(&frame, params)
-                        .await
-                        .map(EvaluationOutput)
-                        .map(EvaluationResult::Value)
-                }
-                #[cfg(feature = "handles")]
-                EvaluationTarget::FrameHandle(frame, policy) => {
-                    use pwright_node_host::handles::EvaluateHandleParams;
-                    let policy = policy?;
-                    let params = if self.is_function {
-                        EvaluateHandleParams::function(self.source, argument)
-                    } else {
-                        EvaluateHandleParams::expression(self.source)
-                    };
-                    host.frame_prepare_handle(&frame, params)
-                        .await
-                        .map(|value| EvaluationResult::Handle(value, policy))
-                }
-                #[cfg(feature = "handles")]
-                EvaluationTarget::HandleHandle(handle, policy) => {
-                    let handle = handle?;
-                    let params = if self.is_function {
-                        pwright_node_host::handles::EvaluateHandleParams::function(
+        boundary::spawn_published_sized(
+            env,
+            self.execution,
+            self.publications,
+            async move {
+                match self.target {
+                    EvaluationTarget::FrameValue(frame) => {
+                        let params = if self.is_function {
+                            EvaluateParams::function(self.source, argument)
+                        } else {
+                            EvaluateParams::expression(self.source)
+                        };
+                        host.frame_evaluate(&frame, params)
+                            .await
+                            .map(EvaluationOutput)
+                            .map(EvaluationResult::Value)
+                    }
+                    #[cfg(feature = "wait-for-function")]
+                    EvaluationTarget::FrameWaitForFunction(frame, polling, timeout_ms) => host
+                        .frame_wait_for_function(
+                            &frame,
                             self.source,
+                            self.is_function,
                             argument,
+                            polling,
+                            timeout_ms,
                         )
-                        .into()
-                    } else {
-                        pwright_node_host::handles::HandleEvaluationProgram::expression(
-                            self.source,
-                            argument.into(),
-                        )
-                    };
-                    host.handle_prepare_program(&handle, params)
                         .await
-                        .map(|value| EvaluationResult::Handle(value, policy))
-                }
-                #[cfg(feature = "handles")]
-                EvaluationTarget::HandleValue(handle) => {
-                    let handle = handle?;
-                    if !self.is_function {
-                        let params =
+                        .map(|value| EvaluationResult::Handle(value, Default::default())),
+                    #[cfg(feature = "page-bindings")]
+                    EvaluationTarget::PageBindingResult(call_id) => host
+                        .deliver_page_binding_value(call_id, argument)
+                        .await
+                        .map(|()| {
+                            EvaluationResult::Value(EvaluationOutput(
+                                pwright_node_host::evaluation::EvaluationValue::Undefined,
+                            ))
+                        }),
+                    #[cfg(feature = "handles")]
+                    EvaluationTarget::FrameHandle(frame, policy) => {
+                        use pwright_node_host::handles::EvaluateHandleParams;
+                        let policy = policy?;
+                        let params = if self.is_function {
+                            EvaluateHandleParams::function(self.source, argument)
+                        } else {
+                            EvaluateHandleParams::expression(self.source)
+                        };
+                        host.frame_prepare_handle(&frame, params)
+                            .await
+                            .map(|value| EvaluationResult::Handle(value, policy))
+                    }
+                    #[cfg(feature = "handles")]
+                    EvaluationTarget::HandleHandle(handle, policy) => {
+                        let handle = handle?;
+                        let params = if self.is_function {
+                            pwright_node_host::handles::EvaluateHandleParams::function(
+                                self.source,
+                                argument,
+                            )
+                            .into()
+                        } else {
                             pwright_node_host::handles::HandleEvaluationProgram::expression(
                                 self.source,
                                 argument.into(),
-                            );
-                        return host
-                            .handle_evaluate_program(&handle, params)
+                            )
+                        };
+                        host.handle_prepare_program(&handle, params)
+                            .await
+                            .map(|value| EvaluationResult::Handle(value, policy))
+                    }
+                    #[cfg(feature = "handles")]
+                    EvaluationTarget::HandleValue(handle) => {
+                        let handle = handle?;
+                        if !self.is_function {
+                            let params =
+                                pwright_node_host::handles::HandleEvaluationProgram::expression(
+                                    self.source,
+                                    argument.into(),
+                                );
+                            return host
+                                .handle_evaluate_program(&handle, params)
+                                .await
+                                .map(EvaluationOutput)
+                                .map(EvaluationResult::Value);
+                        }
+                        let params = pwright_node_host::handles::HandleEvaluateParams::function(
+                            self.source,
+                            argument,
+                        );
+                        host.handle_evaluate(&handle, params)
                             .await
                             .map(EvaluationOutput)
-                            .map(EvaluationResult::Value);
+                            .map(EvaluationResult::Value)
                     }
-                    let params = pwright_node_host::handles::HandleEvaluateParams::function(
-                        self.source,
-                        argument,
-                    );
-                    host.handle_evaluate(&handle, params)
+                    #[cfg(feature = "element-handle-dom")]
+                    EvaluationTarget::HandleElementQueryAll(handle, query) => {
+                        let handle = handle?;
+                        let argument = pwright_node_host::handles::OwnedHandleArgument::from_slots(
+                            argument,
+                            Vec::new(),
+                        )?;
+                        host.element_handle_eval_on_selector_all(
+                            &handle,
+                            query,
+                            self.source,
+                            self.is_function,
+                            argument,
+                        )
                         .await
                         .map(EvaluationOutput)
                         .map(EvaluationResult::Value)
+                    }
                 }
-            }
-        })
+            },
+            EvaluationResult::additional_ffi_reservation,
+        )
     }
 
     #[cfg(feature = "handles")]
     fn start_owned<'env>(self, env: &'env Env) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
         let argument = self.input.materialize_owned(env)?;
         let host = self.host;
-        boundary::spawn_published(env, self.execution, self.publications, async move {
-            match self.target {
-                EvaluationTarget::FrameValue(frame) => host
-                    .frame_evaluate_owned(&frame, self.source, self.is_function, argument)
-                    .await
-                    .map(EvaluationOutput)
-                    .map(EvaluationResult::Value),
-                EvaluationTarget::FrameHandle(frame, policy) => {
-                    let policy = policy?;
-                    host.frame_prepare_handle_owned(&frame, self.source, self.is_function, argument)
+        boundary::spawn_published_sized(
+            env,
+            self.execution,
+            self.publications,
+            async move {
+                match self.target {
+                    EvaluationTarget::FrameValue(frame) => host
+                        .frame_evaluate_owned(&frame, self.source, self.is_function, argument)
+                        .await
+                        .map(EvaluationOutput)
+                        .map(EvaluationResult::Value),
+                    #[cfg(feature = "wait-for-function")]
+                    EvaluationTarget::FrameWaitForFunction(frame, polling, timeout_ms) => host
+                        .frame_wait_for_function_owned(
+                            &frame,
+                            self.source,
+                            self.is_function,
+                            argument,
+                            polling,
+                            timeout_ms,
+                        )
+                        .await
+                        .map(|value| EvaluationResult::Handle(value, Default::default())),
+                    #[cfg(feature = "page-bindings")]
+                    EvaluationTarget::PageBindingResult(call_id) => host
+                        .deliver_page_binding_owned(call_id, argument)
+                        .await
+                        .map(|()| {
+                            EvaluationResult::Value(EvaluationOutput(
+                                pwright_node_host::evaluation::EvaluationValue::Undefined,
+                            ))
+                        }),
+                    EvaluationTarget::FrameHandle(frame, policy) => {
+                        let policy = policy?;
+                        host.frame_prepare_handle_owned(
+                            &frame,
+                            self.source,
+                            self.is_function,
+                            argument,
+                        )
                         .await
                         .map(|value| EvaluationResult::Handle(value, policy))
-                }
-                EvaluationTarget::HandleValue(handle) => {
-                    let handle = handle?;
-                    host.handle_evaluate_program_owned(
-                        &handle,
-                        self.source,
-                        self.is_function,
-                        argument,
-                    )
-                    .await
-                    .map(EvaluationOutput)
-                    .map(EvaluationResult::Value)
-                }
-                EvaluationTarget::HandleHandle(handle, policy) => {
-                    let handle = handle?;
-                    host.handle_prepare_owned(&handle, self.source, self.is_function, argument)
+                    }
+                    EvaluationTarget::HandleValue(handle) => {
+                        let handle = handle?;
+                        host.handle_evaluate_program_owned(
+                            &handle,
+                            self.source,
+                            self.is_function,
+                            argument,
+                        )
                         .await
-                        .map(|value| EvaluationResult::Handle(value, policy))
+                        .map(EvaluationOutput)
+                        .map(EvaluationResult::Value)
+                    }
+                    EvaluationTarget::HandleHandle(handle, policy) => {
+                        let handle = handle?;
+                        host.handle_prepare_owned(&handle, self.source, self.is_function, argument)
+                            .await
+                            .map(|value| EvaluationResult::Handle(value, policy))
+                    }
+                    #[cfg(feature = "element-handle-dom")]
+                    EvaluationTarget::HandleElementQueryAll(handle, query) => {
+                        let handle = handle?;
+                        host.element_handle_eval_on_selector_all(
+                            &handle,
+                            query,
+                            self.source,
+                            self.is_function,
+                            argument,
+                        )
+                        .await
+                        .map(EvaluationOutput)
+                        .map(EvaluationResult::Value)
+                    }
                 }
-            }
-        })
+            },
+            EvaluationResult::additional_ffi_reservation,
+        )
     }
 }
 

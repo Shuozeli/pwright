@@ -13,6 +13,7 @@ impl HostSession {
         id: &str,
         params: C::Params,
         timeout_ms: u32,
+        map_error: fn(OperationError<LocatorErrorDetails>, u32) -> HostError,
     ) -> Result<(), HostError>
     where
         C: CommandSpec<Result = (), ErrorDetails = LocatorErrorDetails>,
@@ -23,11 +24,12 @@ impl HostSession {
     {
         #[cfg(not(feature = "drag-runtime"))]
         {
-            self.invoke::<C>(id, params, timeout_ms).await
+            self.invoke_with_error::<C>(id, params, timeout_ms, map_error)
+                .await
         }
         #[cfg(feature = "drag-runtime")]
         {
-            selected::invoke::<C>(self, id, params, timeout_ms).await
+            selected::invoke::<C>(self, id, params, timeout_ms, map_error).await
         }
     }
 }
@@ -204,6 +206,7 @@ mod selected {
         id: &str,
         params: C::Params,
         timeout_ms: u32,
+        map_error: fn(OperationError<LocatorErrorDetails>, u32) -> HostError,
     ) -> Result<(), HostError>
     where
         C: CommandSpec<Result = (), ErrorDetails = LocatorErrorDetails>,
@@ -268,6 +271,6 @@ mod selected {
         };
         result
             .into_outcome()
-            .map_err(|error| HostError::operation(error, timeout_ms))
+            .map_err(|error| map_error(error, timeout_ms))
     }
 }

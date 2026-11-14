@@ -273,6 +273,94 @@ async fn typed_native_detach_abandons_unpublished_page_without_sealing_the_drive
 }
 
 #[tokio::test]
+async fn recursive_missing_session_waits_for_ordered_detach_after_reporting_page_ready() {
+    // Arrange
+    let mut f = discovery_fixture_with_startup(8, false, true);
+    let initializer = Arc::new(RetirementInitializer::missing());
+    f.driver = f.driver.with_session_initializer(initializer.clone());
+    f.sender
+        .send(attached_page_event("page-gone", "session-gone", None, None))
+        .unwrap();
+
+    // Act
+    let (attached, initialization_calls, initialized_before_detach, state_before_detach) = {
+        let attached = f.driver.receive_once(&f.runtime).await.unwrap();
+        let initialization_calls = initializer.pages.lock().unwrap().len();
+        let initialized_before_detach = f.driver.initialized_session_count();
+        let state_before_detach = f
+            .topology
+            .lock()
+            .unwrap()
+            .topology()
+            .page_state("page-gone")
+            .cloned();
+        f.sender
+            .send(CdpEvent::new(
+                "Target.detachedFromTarget".into(),
+                serde_json::json!({
+                    "sessionId": "session-gone",
+                    "targetId": "page-gone"
+                }),
+                None,
+            ))
+            .unwrap();
+        f.driver.receive_once(&f.runtime).await.unwrap();
+        (
+            attached,
+            initialization_calls,
+            initialized_before_detach,
+            state_before_detach,
+        )
+    };
+
+    // Assert
+    assert!(matches!(
+        attached,
+        ChromiumTopologyEventDriverOutcome::Updated(_)
+    ));
+    assert_eq!(initialization_calls, 1);
+    assert_eq!(initialized_before_detach, 1);
+    assert_eq!(
+        state_before_detach,
+        Some(pwright_backend_cdp::CdpPageState::Ready)
+    );
+    assert!(
+        f.topology
+            .lock()
+            .unwrap()
+            .topology()
+            .page_object_id("page-gone")
+            .is_none()
+    );
+    assert_eq!(f.driver.initialized_session_count(), 0);
+}
+
+#[test]
+fn compound_missing_session_receipts_are_retirement_only_when_both_sides_are_typed() {
+    // Arrange
+    let missing = || CdpError::Protocol {
+        code: -32001,
+        message: "Session with given id not found.".into(),
+    };
+    let both_missing = ChromiumTopologyEventDriverError::Cdp(CdpError::Compound {
+        source: Box::new(CdpError::SessionDetached),
+        system: Box::new(missing()),
+    });
+    let mixed = ChromiumTopologyEventDriverError::Cdp(CdpError::Compound {
+        source: Box::new(missing()),
+        system: Box::new(CdpError::Closed),
+    });
+
+    // Act
+    let accepted = super::super::discovered_session::missing_native_session(&both_missing);
+    let rejected = super::super::discovered_session::missing_native_session(&mixed);
+
+    // Assert
+    assert!(accepted);
+    assert!(!rejected);
+}
+
+#[tokio::test]
 async fn unrelated_initialization_failures_are_not_treated_as_session_retirement() {
     // Arrange
     let message = "Session with given id not found.";

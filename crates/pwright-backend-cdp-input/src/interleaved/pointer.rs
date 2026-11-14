@@ -1,5 +1,5 @@
 //! Raw Page-owned mouse primitives. No selector, task, clock or JS fallback.
-use super::{Action, PageState, button_mask};
+use super::{Action, PageState, button_index, button_mask};
 use pwright_cdp::{
     MouseButton,
     connection::{CdpError, Result},
@@ -56,6 +56,7 @@ fn down_event(page: &PageState, button: MouseButton, count: i32) -> DispatchMous
     let mut state = page.state.lock().expect("input state is not poisoned");
     state.last_button = Some(button);
     state.buttons |= button_mask(button);
+    state.owned_presses[button_index(button)] = None;
     DispatchMouseEventParams {
         r#type: "mousePressed".into(),
         x: state.x,
@@ -73,6 +74,7 @@ fn up_event(page: &PageState, button: MouseButton, count: i32) -> DispatchMouseE
     let mut state = page.state.lock().expect("input state is not poisoned");
     state.last_button = None;
     state.buttons &= !button_mask(button);
+    state.owned_presses[button_index(button)] = None;
     DispatchMouseEventParams {
         r#type: "mouseReleased".into(),
         x: state.x,

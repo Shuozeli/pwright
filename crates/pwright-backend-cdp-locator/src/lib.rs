@@ -5,20 +5,41 @@
 //! not own a browser process, transport, protocol server, or screenshot
 //! capability.
 
+#[cfg(feature = "fill-navigation-commit")]
+mod fill_commit;
+#[cfg(feature = "retained-element-click")]
+mod retained_click_child;
+#[cfg(feature = "retained-element-click")]
+mod retained_click_diagnostics;
+#[cfg(feature = "select-option-navigation-commit")]
+mod select_option_commit;
 mod sequential_typing;
 
+#[cfg(feature = "fill-navigation-commit")]
+use fill_commit::{FillCommitReceipt, is_navigation_context_loss};
 pub use pwright_backend_cdp_input::CdpInputPolicy;
+#[cfg(feature = "retained-element-click")]
+pub use pwright_backend_cdp_input::CdpOwnedMousePress;
+#[cfg(feature = "retained-element-click")]
+pub use retained_click_diagnostics::RetainedClickDiagnostics;
+#[cfg(feature = "select-option-navigation-commit")]
+use select_option_commit::{
+    SelectOptionCommitReceipt,
+    is_navigation_context_loss as is_select_option_navigation_context_loss,
+};
 
 #[cfg(test)]
 mod keyboard_binding_tests;
 
 use std::future::{Future, Ready, ready};
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pwright_backend_cdp_common::classify_cdp_failure;
+#[cfg(feature = "retained-element-click")]
+use pwright_backend_cdp_input::CdpCheckedMouseDownError;
 use pwright_backend_cdp_input::{
     CdpInputCoordinator, CdpInputTransaction, CdpModifiers, KeyTokens, ResolvedKey, resolve_key,
 };
@@ -44,6 +65,8 @@ use pwright_cap_locator::{
     TextContentResult, WaitFor, WaitForParams, WaitForState,
 };
 use pwright_cap_locator::{ClickOptionsV2, ClickParamsV2, v2 as locator_v2};
+#[cfg(feature = "touchscreen-input")]
+use pwright_cap_touchscreen::{SelectorTapOptions, SelectorTapParams};
 use pwright_cdp::connection::CdpError;
 use pwright_cdp::{
     CdpClient, CdpEvent, CdpEventReceiver, CdpEventRecvError, CdpEventSubscriptionError,
@@ -57,8 +80,13 @@ use pwright_core::{
 use serde_json::Value;
 
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_millis(50);
+#[cfg(feature = "touchscreen-input")]
+const TAP_TRIAL_INTERCEPTOR_SYMBOL: &str = "pwright.tap.trial-interceptor";
 const MAX_CLICK_STEPS: u32 = 10_000;
+#[cfg(feature = "retained-element-click")]
+const MAX_RETAINED_CLICK_NATIVE_ID_BYTES: usize = 1024;
 const MAX_FILL_VALUE_BYTES: usize = 1024 * 1024;
+const FILL_COMMIT_BINDING: &str = "__pwrightFillCommit";
 const MAX_ATTRIBUTE_NAME_BYTES: usize = 64 * 1024;
 const MAX_ATTRIBUTE_RESULT_BYTES: usize = 1024 * 1024;
 const MAX_TEXT_CONTENT_BYTES: usize = 1024 * 1024;
@@ -68,6 +96,13 @@ const MAX_INPUT_VALUE_BYTES: usize = 1024 * 1024;
 const MAX_SELECT_OPTION_ITEMS: usize = 1024;
 const MAX_SELECT_OPTION_ITEM_BYTES: usize = 64 * 1024;
 const MAX_SELECT_OPTION_TOTAL_BYTES: usize = 1024 * 1024;
+// The default Node host admits at most 256 KiB per CDP event. Bound the
+// JavaScript string before Runtime.bindingCalled so UTF-8 expansion and the
+// protocol envelope still fit without retiring the connection.
+#[cfg(feature = "select-option-navigation-commit")]
+const MAX_SELECT_OPTION_RECEIPT_CODE_UNITS: usize = 64 * 1024;
+#[cfg(feature = "select-option-navigation-commit")]
+const MAX_SELECT_OPTION_RECEIPT_BYTES: usize = MAX_SELECT_OPTION_RECEIPT_CODE_UNITS * 3;
 const MAX_SELECT_OPTION_INPUT_RETAINED_BYTES: usize = MAX_SELECT_OPTION_TOTAL_BYTES
     + MAX_SELECT_OPTION_ITEMS * std::mem::size_of::<SelectOptionValue>();
 const MAX_ALL_TEXT_CONTENTS_ITEMS: usize = 4096;
@@ -408,11 +443,18 @@ pub struct CdpLocatorService {
     client: Arc<dyn CdpClient>,
     input: CdpInputCoordinator,
     unique_context_id: Option<Arc<str>>,
+    #[cfg(feature = "fill-navigation-commit")]
+    fill_commit_execution_context_id: Option<i64>,
+    #[cfg(feature = "select-option-navigation-commit")]
+    select_option_commit_execution_context_id: Option<i64>,
+    #[cfg(feature = "select-option-navigation-commit")]
+    select_option_commit_frame_id: Option<Arc<str>>,
     retry_delay: Duration,
     runtime_ready: Arc<tokio::sync::OnceCell<()>>,
     runtime_counters: Arc<SelectorRuntimeCounters>,
     resources: Option<LocatorResourceBudget>,
     keyboard_binding: Option<KeyboardBinding>,
+    action_progress: Arc<Mutex<Option<ActionabilityProgress>>>,
 }
 
 #[derive(Clone)]
@@ -722,12 +764,61 @@ impl CdpLocatorService {
             client,
             input,
             unique_context_id,
+            #[cfg(feature = "fill-navigation-commit")]
+            fill_commit_execution_context_id: None,
+            #[cfg(feature = "select-option-navigation-commit")]
+            select_option_commit_execution_context_id: None,
+            #[cfg(feature = "select-option-navigation-commit")]
+            select_option_commit_frame_id: None,
             retry_delay,
             runtime_ready: Arc::new(tokio::sync::OnceCell::new()),
             runtime_counters,
             resources,
             keyboard_binding: None,
+            action_progress: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Opt a route into direct-fill commit receipts only when composition has
+    /// selected its exact isolated utility execution world.
+    #[cfg(feature = "fill-navigation-commit")]
+    pub fn with_fill_commit_execution_context(mut self, execution_context_id: i64) -> Self {
+        self.fill_commit_execution_context_id = (execution_context_id > 0
+            && self.unique_context_id.is_some())
+        .then_some(execution_context_id);
+        self
+    }
+
+    /// Enable select-option recovery only in the explicitly selected utility world.
+    #[cfg(feature = "select-option-navigation-commit")]
+    pub fn with_select_option_commit_route(
+        mut self,
+        execution_context_id: i64,
+        frame_id: Arc<str>,
+    ) -> Self {
+        let valid = execution_context_id > 0
+            && self.unique_context_id.is_some()
+            && !frame_id.is_empty()
+            && frame_id.len() <= 1024;
+        self.select_option_commit_execution_context_id = valid.then_some(execution_context_id);
+        self.select_option_commit_frame_id = valid.then_some(frame_id);
+        self
+    }
+
+    fn clear_action_progress(&self) {
+        if let Ok(mut progress) = self.action_progress.lock() {
+            *progress = None;
+        }
+    }
+
+    fn record_action_progress(&self, progress: ActionabilityProgress) {
+        if let Ok(mut current) = self.action_progress.lock() {
+            *current = Some(progress);
+        }
+    }
+
+    fn take_action_progress(&self) -> Option<ActionabilityProgress> {
+        self.action_progress.lock().ok()?.take()
     }
 
     fn reserve_locator_action(
@@ -756,6 +847,22 @@ impl CdpLocatorService {
                 ));
             }
         }
+        self.reserve_action_resource(resources)
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    fn reserve_retained_click_action(
+        &self,
+    ) -> Result<Option<LocatorActionLease>, OperationError<LocatorErrorDetails>> {
+        self.resources.as_ref().map_or(Ok(None), |resources| {
+            self.reserve_action_resource(resources)
+        })
+    }
+
+    fn reserve_action_resource(
+        &self,
+        resources: &LocatorResourceBudget,
+    ) -> Result<Option<LocatorActionLease>, OperationError<LocatorErrorDetails>> {
         let limit = resources.profile.max_concurrent_actions();
         if resources
             .active_actions
@@ -784,6 +891,456 @@ impl CdpLocatorService {
             resource: Some(resource),
             active_actions: resources.active_actions.clone(),
         }))
+    }
+
+    async fn execute_click_v2_pointer(
+        &self,
+        point: ClickPoint,
+        options: &ClickOptionsV2,
+        steps: std::num::NonZeroU32,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        let navigation = self.prepare_click_v2_navigation(options).await?;
+        self.dispatch_click_v2_pointer(point, options, steps)
+            .await?;
+        if let Some(navigation) = navigation {
+            navigation.finish(self.client.as_ref()).await?;
+        }
+        Ok(())
+    }
+
+    async fn prepare_click_v2_navigation(
+        &self,
+        options: &ClickOptionsV2,
+    ) -> Result<Option<ClickNavigationBarrier>, OperationError<LocatorErrorDetails>> {
+        let wait_after = !options.no_wait_after.unwrap_or(false) && !options.trial.unwrap_or(false);
+        if wait_after {
+            ClickNavigationBarrier::prepare(self.client.as_ref())
+                .await
+                .map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn dispatch_click_v2_pointer(
+        &self,
+        point: ClickPoint,
+        options: &ClickOptionsV2,
+        steps: std::num::NonZeroU32,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        let requested_modifiers = options
+            .modifiers
+            .map(|modifiers| resolve_modifiers(modifiers, point.is_mac));
+        let mut transaction = self
+            .input
+            .begin_transaction(Arc::clone(&self.client), requested_modifiers)
+            .await
+            .map_err(map_cdp_error)?;
+        let action = run_click_v2_pointer_action(&mut transaction, point, options, steps).await;
+        let cleanup = transaction.finish().await;
+        if let Err(error) = cleanup {
+            return Err(map_cdp_error(error).reclassify(FailureKind::Cleanup));
+        }
+        action.map_err(map_cdp_error)?;
+        Ok(())
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    pub fn new_retained_click_press(
+        &self,
+    ) -> Result<CdpOwnedMousePress, OperationError<LocatorErrorDetails>> {
+        self.input.new_owned_mouse_press().map_err(map_cdp_error)
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    async fn dispatch_retained_click_v2_pointer<ParentHit, ParentHitFuture>(
+        &self,
+        route: RetainedClickPointerRoute<'_>,
+        options: &ClickOptionsV2,
+        identity: RetainedClickIdentity<'_>,
+        press: &CdpOwnedMousePress,
+        parent_hit: &ParentHit,
+        validate_world: &(impl Fn() -> Result<(), OperationError<LocatorErrorDetails>> + Send + Sync),
+    ) -> Result<bool, OperationError<LocatorErrorDetails>>
+    where
+        ParentHit: Fn(f64, f64) -> ParentHitFuture + Send + Sync,
+        ParentHitFuture: Future<Output = Result<bool, OperationError<LocatorErrorDetails>>> + Send,
+    {
+        let RetainedClickPointerRoute {
+            local_point,
+            dispatch_point,
+            child,
+            steps,
+        } = route;
+        let requested_modifiers = options
+            .modifiers
+            .map(|modifiers| resolve_modifiers(modifiers, local_point.is_mac));
+        let mut transaction = self
+            .input
+            .begin_transaction(Arc::clone(&self.client), requested_modifiers)
+            .await
+            .map_err(map_cdp_error)?;
+        transaction
+            .set_owned_mouse_press(press)
+            .map_err(map_cdp_error)?;
+        let action = async {
+            validate_world()?;
+            transaction
+                .move_mouse_in_steps(dispatch_point.x, dispatch_point.y, steps)
+                .await
+                .map_err(map_cdp_error)?;
+            validate_world()?;
+            // Hover can itself move or replace the target. Recheck the same
+            // native object in its original world after movement, before any
+            // pointer press. A moved point retries; a retired world fails.
+            let response = self
+                .client
+                .runtime_call_function_by_value_in_unique_context(
+                    identity.unique_context_id,
+                    &retained_click_route_check_script(
+                        local_point,
+                        options.force.unwrap_or(false),
+                        child.is_some(),
+                    ),
+                    vec![serde_json::json!({"objectId": identity.native_object_id})],
+                )
+                .await
+                .map_err(map_cdp_error)?;
+            validate_world()?;
+            if !verify_retained_click_route(response)? {
+                return Ok(false);
+            }
+            if let Some((child, viewport)) = child {
+                let current = retained_click_child::translate(
+                    self.client.as_ref(),
+                    child,
+                    local_point,
+                    viewport,
+                )
+                .await?;
+                validate_world()?;
+                if (current.x - dispatch_point.x).abs() > 0.25
+                    || (current.y - dispatch_point.y).abs() > 0.25
+                {
+                    return Ok(false);
+                }
+                if !options.force.unwrap_or(false) && !parent_hit(current.x, current.y).await? {
+                    return Ok(false);
+                }
+                validate_world()?;
+            }
+            let button = map_button(options.button.unwrap_or(PortableMouseButton::Left));
+            let click_count = options.click_count.map_or(1, |count| count.get());
+            let delay = options.delay.unwrap_or(Duration::ZERO);
+            for count in 1..=click_count {
+                // Each prior press has been released before another world
+                // check can fail; never leave a committed press held here.
+                validate_world()?;
+                transaction
+                    .mouse_down_checked(button, i32::from(count), validate_world)
+                    .await
+                    .map_err(|error| match error {
+                        CdpCheckedMouseDownError::Check(error) => error,
+                        CdpCheckedMouseDownError::Input(error) => map_cdp_error(error),
+                    })?;
+                if !delay.is_zero() {
+                    tokio::time::sleep(delay).await;
+                }
+                transaction.mouse_up().await.map_err(map_cdp_error)?;
+                if count < click_count && !delay.is_zero() {
+                    tokio::time::sleep(delay).await;
+                }
+            }
+            Ok(true)
+        }
+        .await;
+        let cleanup = transaction.finish().await;
+        if let Err(error) = cleanup {
+            return Err(map_cdp_error(error).reclassify(FailureKind::Cleanup));
+        }
+        action
+    }
+
+    /// Click an exact retained Element in this Page's top-level Frame.
+    ///
+    /// The caller must keep its native handle lease alive until this future
+    /// settles, supply the handle's original execution-context identity, and
+    /// apply a bounded runtime deadline plus the cancellation cleanup hook.
+    /// Child Frames, including OOPIFs, fail before input: their local CSS
+    /// coordinates cannot be dispatched as top-level Page coordinates.
+    #[cfg(feature = "retained-element-click")]
+    pub async fn click_retained_top_level_element(
+        &self,
+        native_object_id: &str,
+        unique_context_id: &str,
+        options: ClickOptionsV2,
+        press: &CdpOwnedMousePress,
+        validate_world: impl Fn() -> Result<(), OperationError<LocatorErrorDetails>> + Send + Sync,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        let diagnostics = RetainedClickDiagnostics::default();
+        self.click_retained_top_level_element_with_diagnostics(
+            native_object_id,
+            unique_context_id,
+            options,
+            press,
+            &diagnostics,
+            validate_world,
+        )
+        .await
+    }
+
+    /// Same exact-element operation with invocation-owned bounded progress.
+    /// The caller retains `diagnostics` through cancellation cleanup so a
+    /// deadline can report only observations from this invocation.
+    #[cfg(feature = "retained-element-click")]
+    pub async fn click_retained_top_level_element_with_diagnostics(
+        &self,
+        native_object_id: &str,
+        unique_context_id: &str,
+        options: ClickOptionsV2,
+        press: &CdpOwnedMousePress,
+        diagnostics: &RetainedClickDiagnostics,
+        validate_world: impl Fn() -> Result<(), OperationError<LocatorErrorDetails>> + Send + Sync,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        self.click_retained_element_with_diagnostics(
+            RetainedClickTarget {
+                identity: RetainedClickIdentity {
+                    native_object_id,
+                    unique_context_id,
+                },
+                child: None,
+            },
+            options,
+            press,
+            diagnostics,
+            |_, _| async { Ok(true) },
+            validate_world,
+        )
+        .await
+    }
+
+    /// Exact retained Element click through one same-session child Frame.
+    /// Deeper Frame chains and OOPIF routes fail closed before pointer input.
+    #[cfg(feature = "retained-element-click")]
+    pub async fn click_retained_one_link_child_element_with_diagnostics<
+        ParentHit,
+        ParentHitFuture,
+    >(
+        &self,
+        target: RetainedClickChildTarget<'_>,
+        options: ClickOptionsV2,
+        press: &CdpOwnedMousePress,
+        diagnostics: &RetainedClickDiagnostics,
+        parent_hit: ParentHit,
+        validate_world: impl Fn() -> Result<(), OperationError<LocatorErrorDetails>> + Send + Sync,
+    ) -> Result<(), OperationError<LocatorErrorDetails>>
+    where
+        ParentHit: Fn(f64, f64) -> ParentHitFuture + Send + Sync,
+        ParentHitFuture: Future<Output = Result<bool, OperationError<LocatorErrorDetails>>> + Send,
+    {
+        self.click_retained_element_with_diagnostics(
+            RetainedClickTarget {
+                identity: RetainedClickIdentity {
+                    native_object_id: target.native_object_id,
+                    unique_context_id: target.unique_context_id,
+                },
+                child: Some(retained_click_child::ChildFrame {
+                    frame_id: target.child_frame_id,
+                    parent_frame_id: target.parent_frame_id,
+                }),
+            },
+            options,
+            press,
+            diagnostics,
+            parent_hit,
+            validate_world,
+        )
+        .await
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    async fn click_retained_element_with_diagnostics<ParentHit, ParentHitFuture>(
+        &self,
+        target: RetainedClickTarget<'_>,
+        options: ClickOptionsV2,
+        press: &CdpOwnedMousePress,
+        diagnostics: &RetainedClickDiagnostics,
+        parent_hit: ParentHit,
+        validate_world: impl Fn() -> Result<(), OperationError<LocatorErrorDetails>> + Send + Sync,
+    ) -> Result<(), OperationError<LocatorErrorDetails>>
+    where
+        ParentHit: Fn(f64, f64) -> ParentHitFuture + Send + Sync,
+        ParentHitFuture: Future<Output = Result<bool, OperationError<LocatorErrorDetails>>> + Send,
+    {
+        let RetainedClickTarget { identity, child } = target;
+        let RetainedClickIdentity {
+            native_object_id,
+            unique_context_id,
+        } = identity;
+        validate_retained_click_native_id(native_object_id, "object ID")?;
+        validate_retained_click_native_id(unique_context_id, "context ID")?;
+        if let Some(child) = child {
+            validate_retained_click_native_id(child.frame_id, "Frame ID")?;
+            validate_retained_click_native_id(child.parent_frame_id, "parent Frame ID")?;
+        }
+        validate_world()?;
+        let steps = options.steps.unwrap_or(std::num::NonZeroU32::MIN);
+        if steps.get() > MAX_CLICK_STEPS {
+            return Err(locator_resource_error(&format!(
+                "click steps exceed the {MAX_CLICK_STEPS}-event backend limit"
+            )));
+        }
+        let _resources = self.reserve_retained_click_action()?;
+        async {
+            if let Some(child) = child {
+                retained_click_child::verify_one_link_route(self.client.as_ref(), child).await?;
+            } else {
+                let tree = self
+                    .client
+                    .page_get_frame_tree()
+                    .await
+                    .map_err(map_cdp_error)?;
+                if tree.frame.parent_id.is_some() {
+                    return Err(retained_click_target_error(
+                        "retained Element click requires a top-level Page target",
+                    ));
+                }
+            }
+            let script = retained_click_actionability_script(&options, child.is_some());
+            loop {
+                validate_world()?;
+                self.runtime_counters
+                    .actionability_evaluations
+                    .fetch_add(1, Ordering::Relaxed);
+                let response = self
+                    .client
+                    .runtime_call_function_by_value_in_unique_context(
+                        unique_context_id,
+                        &script,
+                        vec![serde_json::json!({"objectId": native_object_id})],
+                    )
+                    .await
+                    .map_err(map_cdp_error)?;
+                validate_world()?;
+                let child_viewport =
+                    if child.is_some() && retained_click_status(&response)? == "ready" {
+                        Some(retained_click_child::Viewport::from_actionability(
+                            &response,
+                        )?)
+                    } else {
+                        None
+                    };
+                let point = match parse_retained_click_attempt(
+                    response,
+                    options.force.unwrap_or(false),
+                    diagnostics,
+                )? {
+                    ActionAttempt::Ready(point) => {
+                        diagnostics.clear();
+                        point
+                    }
+                    ActionAttempt::Retry(_) => {
+                        tokio::time::sleep(self.retry_delay).await;
+                        continue;
+                    }
+                    ActionAttempt::RuntimeMissing => {
+                        return Err(invalid_response(
+                            "retained Element click could not install its selector runtime",
+                        ));
+                    }
+                };
+                let dispatch_point = if let Some(child) = child {
+                    let viewport = child_viewport.expect("ready child click has viewport");
+                    let translated = retained_click_child::translate(
+                        self.client.as_ref(),
+                        child,
+                        point,
+                        viewport,
+                    )
+                    .await?;
+                    validate_world()?;
+                    if !options.force.unwrap_or(false)
+                        && !parent_hit(translated.x, translated.y).await?
+                    {
+                        diagnostics.record(ActionabilityProgress::Obscured, None);
+                        tokio::time::sleep(self.retry_delay).await;
+                        continue;
+                    }
+                    validate_world()?;
+                    translated
+                } else {
+                    point
+                };
+                if options.trial.unwrap_or(false) {
+                    return Ok(());
+                }
+                let navigation = self.prepare_click_v2_navigation(&options).await?;
+                validate_world()?;
+                // The point was derived from an exact top-level Element, not
+                // a selector. Recheck the same object after the navigation
+                // barrier and just before dispatch. Movement retries against
+                // this identity; detach or reparenting remains terminal.
+                let response = self
+                    .client
+                    .runtime_call_function_by_value_in_unique_context(
+                        unique_context_id,
+                        &retained_click_route_check_script(
+                            point,
+                            options.force.unwrap_or(false),
+                            child.is_some(),
+                        ),
+                        vec![serde_json::json!({"objectId": native_object_id})],
+                    )
+                    .await
+                    .map_err(map_cdp_error)?;
+                validate_world()?;
+                if !verify_retained_click_route(response)? {
+                    diagnostics.record(ActionabilityProgress::Unstable, None);
+                    tokio::time::sleep(self.retry_delay).await;
+                    continue;
+                }
+                if !self
+                    .dispatch_retained_click_v2_pointer(
+                        RetainedClickPointerRoute {
+                            local_point: point,
+                            dispatch_point,
+                            child: child.zip(child_viewport),
+                            steps,
+                        },
+                        &options,
+                        RetainedClickIdentity {
+                            native_object_id,
+                            unique_context_id,
+                        },
+                        press,
+                        &parent_hit,
+                        &validate_world,
+                    )
+                    .await?
+                {
+                    diagnostics.record(ActionabilityProgress::Unstable, None);
+                    tokio::time::sleep(self.retry_delay).await;
+                    continue;
+                }
+                if let Some(navigation) = navigation {
+                    navigation.finish(self.client.as_ref()).await?;
+                }
+                return Ok(());
+            }
+        }
+        .await
+    }
+
+    /// Cancellation hook for a retained click dropped after mouse-down.
+    #[cfg(feature = "retained-element-click")]
+    pub async fn cancel_retained_top_level_click(
+        &self,
+        press: &CdpOwnedMousePress,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        self.input
+            .release_owned_mouse_press(self.client.as_ref(), press)
+            .await
+            .map_err(map_cdp_error)
     }
 
     async fn ensure_selector_runtime(&self) -> Result<(), OperationError<LocatorErrorDetails>> {
@@ -825,6 +1382,148 @@ impl CdpLocatorService {
             }
             None => self.client.runtime_evaluate(expression).await,
         }
+    }
+
+    /// Runs one selector tap through the same lazy actionability and Page input
+    /// owners as Locator click. This direct optional leaf is used by the Node
+    /// FFI composition without installing a second selector runtime.
+    #[cfg(feature = "touchscreen-input")]
+    pub async fn selector_tap(
+        &self,
+        params: SelectorTapParams,
+        timeout: Option<Duration>,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        let trial = params.options.trial.unwrap_or(false);
+        let action = self.selector_tap_inner(params);
+        let outcome = match timeout {
+            Some(timeout) => match tokio::time::timeout(timeout, action).await {
+                Ok(outcome) => outcome,
+                Err(_) => {
+                    self.cancel_selector_tap(trial).await?;
+                    let progress = self
+                        .take_action_progress()
+                        .map(|progress| progress.key().to_owned());
+                    Err(OperationError::new(
+                        FailureKind::Timeout,
+                        "locator tap actionability deadline was exceeded",
+                        progress.map(LocatorErrorDetails::Backend),
+                    ))
+                }
+            },
+            None => action.await,
+        };
+        self.clear_action_progress();
+        outcome
+    }
+
+    /// Cancels a retained selector tap after its action future is dropped.
+    /// Both native input and the optional trial interceptor are attempted so
+    /// one cleanup failure cannot strand the other resource.
+    #[cfg(feature = "touchscreen-input")]
+    pub async fn cancel_selector_tap(
+        &self,
+        trial: bool,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        let input_cleanup = self
+            .input
+            .cleanup_pending(self.client.as_ref())
+            .await
+            .map_err(|error| map_cdp_error(error).reclassify(FailureKind::Cleanup));
+        let interceptor_cleanup = if trial {
+            self.evaluate(&tap_trial_interceptor_remove_script())
+                .await
+                .map(|_| ())
+                .map_err(|error| map_cdp_error(error).reclassify(FailureKind::Cleanup))
+        } else {
+            Ok(())
+        };
+        input_cleanup?;
+        interceptor_cleanup
+    }
+
+    #[cfg(feature = "touchscreen-input")]
+    async fn selector_tap_inner(
+        &self,
+        params: SelectorTapParams,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        let resources = self.reserve_locator_action(&params.selector, None)?;
+        let _resources = resources;
+        self.clear_action_progress();
+        let selector_label = params.selector.to_string();
+        let click_options = tap_click_options(params.options);
+        let script = click_v2_actionability_script(&params.selector, &click_options)?;
+        self.ensure_selector_runtime().await?;
+        let point = loop {
+            self.runtime_counters
+                .actionability_evaluations
+                .fetch_add(1, Ordering::Relaxed);
+            let response = self.evaluate(&script).await.map_err(map_cdp_error)?;
+            match parse_pointer_attempt(
+                response,
+                &selector_label,
+                true,
+                params.options.force.unwrap_or(false),
+            )? {
+                ActionAttempt::Ready(point) => {
+                    self.clear_action_progress();
+                    break point;
+                }
+                ActionAttempt::Retry(progress) => {
+                    self.record_action_progress(progress);
+                    tokio::time::sleep(self.retry_delay).await;
+                }
+                ActionAttempt::RuntimeMissing => {
+                    self.clear_action_progress();
+                    self.runtime_counters
+                        .missing_after_navigation
+                        .fetch_add(1, Ordering::Relaxed);
+                    self.install_selector_runtime().await?;
+                }
+            }
+        };
+
+        let trial = params.options.trial.unwrap_or(false);
+        if trial {
+            self.evaluate(&tap_trial_interceptor_install_script())
+                .await
+                .map_err(map_cdp_error)?;
+        }
+        let requested_modifiers = params
+            .options
+            .modifiers
+            .map(|modifiers| resolve_modifiers(modifiers, point.is_mac));
+        let transaction = self
+            .input
+            .begin_transaction(Arc::clone(&self.client), requested_modifiers)
+            .await;
+        let mut transaction = match transaction {
+            Ok(transaction) => transaction,
+            Err(error) => {
+                let action_error = map_cdp_error(error);
+                if trial {
+                    self.evaluate(&tap_trial_interceptor_remove_script())
+                        .await
+                        .map_err(|error| map_cdp_error(error).reclassify(FailureKind::Cleanup))?;
+                }
+                return Err(action_error);
+            }
+        };
+        let action = transaction.touchscreen_tap(point.x, point.y).await;
+        let input_cleanup = transaction.finish().await;
+        let interceptor_cleanup = if trial {
+            self.evaluate(&tap_trial_interceptor_remove_script())
+                .await
+                .map(|_| ())
+        } else {
+            Ok(())
+        };
+        if let Err(error) = input_cleanup {
+            return Err(map_cdp_error(error).reclassify(FailureKind::Cleanup));
+        }
+        if let Err(error) = interceptor_cleanup {
+            return Err(map_cdp_error(error).reclassify(FailureKind::Cleanup));
+        }
+        action.map_err(map_cdp_error)
     }
 
     fn query_element_state(
@@ -1299,6 +1998,56 @@ impl CdpLocatorService {
     }
 }
 
+#[cfg(feature = "touchscreen-input")]
+const fn tap_click_options(options: SelectorTapOptions) -> ClickOptionsV2 {
+    ClickOptionsV2 {
+        button: None,
+        click_count: None,
+        delay: None,
+        force: options.force,
+        modifiers: options.modifiers,
+        no_wait_after: options.no_wait_after,
+        position: options.position,
+        scroll: options.scroll,
+        steps: None,
+        trial: options.trial,
+    }
+}
+
+#[cfg(feature = "touchscreen-input")]
+fn tap_trial_interceptor_install_script() -> String {
+    format!(
+        r#"(() => {{
+  const key = Symbol.for({TAP_TRIAL_INTERCEPTOR_SYMBOL:?});
+  globalThis[key]?.stop?.();
+  const types = ["pointerdown", "pointerup", "touchstart", "touchend", "touchcancel"];
+  const listener = event => {{
+    if (!event.isTrusted) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  }};
+  for (const type of types) window.addEventListener(type, listener, true);
+  globalThis[key] = {{ stop() {{
+    for (const type of types) window.removeEventListener(type, listener, true);
+    delete globalThis[key];
+  }} }};
+  return true;
+}})()"#,
+    )
+}
+
+#[cfg(feature = "touchscreen-input")]
+fn tap_trial_interceptor_remove_script() -> String {
+    format!(
+        r#"(() => {{
+  const key = Symbol.for({TAP_TRIAL_INTERCEPTOR_SYMBOL:?});
+  globalThis[key]?.stop?.();
+  return true;
+}})()"#,
+    )
+}
+
 impl Service<ClickParams> for CdpLocatorService {
     type Response = ();
     type Error = OperationError<LocatorErrorDetails>;
@@ -1325,9 +2074,9 @@ impl Service<ClickParams> for CdpLocatorService {
                     .actionability_evaluations
                     .fetch_add(1, Ordering::Relaxed);
                 let response = self.evaluate(&script).await.map_err(map_cdp_error)?;
-                match parse_attempt(response, &selector_label)? {
+                match parse_attempt(response, &selector_label, params.options.force)? {
                     ActionAttempt::Ready(point) => break point,
-                    ActionAttempt::Retry => tokio::time::sleep(self.retry_delay).await,
+                    ActionAttempt::Retry(_) => tokio::time::sleep(self.retry_delay).await,
                     ActionAttempt::RuntimeMissing => {
                         self.runtime_counters
                             .missing_after_navigation
@@ -1397,61 +2146,54 @@ impl Service<ClickParamsV2> for CdpLocatorService {
                 return Box::pin(async move { Err(error) });
             }
         };
+        self.clear_action_progress();
         Box::pin(async move {
-            let _resources = resources;
-            let steps = params.options.steps.unwrap_or(std::num::NonZeroU32::MIN);
-            if steps.get() > MAX_CLICK_STEPS {
-                return Err(locator_resource_error(&format!(
-                    "click steps exceed the {MAX_CLICK_STEPS}-event backend limit"
-                )));
-            }
-            let selector_label = params.selector.to_string();
-            let script = click_v2_actionability_script(&params.selector, &params.options)?;
-            self.ensure_selector_runtime().await?;
-            let point = loop {
-                self.runtime_counters
-                    .actionability_evaluations
-                    .fetch_add(1, Ordering::Relaxed);
-                let response = self.evaluate(&script).await.map_err(map_cdp_error)?;
-                match parse_pointer_attempt(response, &selector_label, true)? {
-                    ActionAttempt::Ready(point) => break point,
-                    ActionAttempt::Retry => tokio::time::sleep(self.retry_delay).await,
-                    ActionAttempt::RuntimeMissing => {
-                        self.runtime_counters
-                            .missing_after_navigation
-                            .fetch_add(1, Ordering::Relaxed);
-                        self.install_selector_runtime().await?;
-                    }
+            let outcome = async {
+                let _resources = resources;
+                let steps = params.options.steps.unwrap_or(std::num::NonZeroU32::MIN);
+                if steps.get() > MAX_CLICK_STEPS {
+                    return Err(locator_resource_error(&format!(
+                        "click steps exceed the {MAX_CLICK_STEPS}-event backend limit"
+                    )));
                 }
-            };
+                let selector_label = params.selector.to_string();
+                let script = click_v2_actionability_script(&params.selector, &params.options)?;
+                self.ensure_selector_runtime().await?;
+                let point = loop {
+                    self.runtime_counters
+                        .actionability_evaluations
+                        .fetch_add(1, Ordering::Relaxed);
+                    let response = self.evaluate(&script).await.map_err(map_cdp_error)?;
+                    match parse_pointer_attempt(
+                        response,
+                        &selector_label,
+                        true,
+                        params.options.force.unwrap_or(false),
+                    )? {
+                        ActionAttempt::Ready(point) => {
+                            self.clear_action_progress();
+                            break point;
+                        }
+                        ActionAttempt::Retry(progress) => {
+                            self.record_action_progress(progress);
+                            tokio::time::sleep(self.retry_delay).await;
+                        }
+                        ActionAttempt::RuntimeMissing => {
+                            self.clear_action_progress();
+                            self.runtime_counters
+                                .missing_after_navigation
+                                .fetch_add(1, Ordering::Relaxed);
+                            self.install_selector_runtime().await?;
+                        }
+                    }
+                };
 
-            let wait_after = !params.options.no_wait_after.unwrap_or(false)
-                && !params.options.trial.unwrap_or(false);
-            let navigation = if wait_after {
-                Some(ClickNavigationBarrier::prepare(self.client.as_ref()).await?)
-            } else {
-                None
-            };
-            let requested_modifiers = params
-                .options
-                .modifiers
-                .map(|modifiers| resolve_modifiers(modifiers, point.is_mac));
-            let mut transaction = self
-                .input
-                .begin_transaction(Arc::clone(&self.client), requested_modifiers)
-                .await
-                .map_err(map_cdp_error)?;
-            let action =
-                run_click_v2_pointer_action(&mut transaction, point, &params.options, steps).await;
-            let cleanup = transaction.finish().await;
-            if let Err(error) = cleanup {
-                return Err(map_cdp_error(error).reclassify(FailureKind::Cleanup));
+                self.execute_click_v2_pointer(point, &params.options, steps)
+                    .await
             }
-            action.map_err(map_cdp_error)?;
-            if let Some(navigation) = navigation {
-                navigation.finish(self.client.as_ref()).await?;
-            }
-            Ok(())
+            .await;
+            self.clear_action_progress();
+            outcome
         })
     }
 }
@@ -1469,6 +2211,24 @@ impl CommandCancellation<locator_v2::Click> for CdpLocatorService {
                 .await
                 .map_err(map_cdp_error)
         })
+    }
+
+    fn terminal_error_after_cancel(
+        &self,
+        _context: OperationContext,
+        reason: CancellationReason,
+        _timeout: Option<Duration>,
+    ) -> Option<OperationError<LocatorErrorDetails>> {
+        if reason != CancellationReason::DeadlineExceeded {
+            self.clear_action_progress();
+            return None;
+        }
+        let progress = self.take_action_progress()?;
+        Some(OperationError::new(
+            FailureKind::Timeout,
+            "locator actionability deadline was exceeded",
+            Some(LocatorErrorDetails::Backend(progress.key().to_owned())),
+        ))
     }
 }
 
@@ -1638,18 +2398,93 @@ impl Service<SelectOptionParams> for CdpLocatorService {
         };
         Box::pin(async move {
             let _resources = resources;
+            #[cfg(feature = "select-option-timeout-progress")]
+            let progress = params.progress().cloned();
             let selector_label = params.selector.to_string();
-            let script = select_option_script(&params.selector, &params.values, params.options)?;
+            #[cfg(feature = "select-option-navigation-commit")]
+            let commit_token = match (
+                self.select_option_commit_execution_context_id,
+                self.unique_context_id.as_deref(),
+                self.select_option_commit_frame_id.as_deref(),
+            ) {
+                (Some(_), Some(unique_context_id), Some(_)) => {
+                    Some(SelectOptionCommitReceipt::next_token(unique_context_id)?)
+                }
+                _ => None,
+            };
+            #[cfg(not(feature = "select-option-navigation-commit"))]
+            let commit_token: Option<String> = None;
+            let script = select_option_script(
+                &params.selector,
+                &params.values,
+                params.options,
+                commit_token.as_deref(),
+            )?;
             self.ensure_selector_runtime().await?;
             loop {
+                #[cfg(feature = "select-option-navigation-commit")]
+                let receipt = if let (
+                    Some(execution_context_id),
+                    Some(unique_context_id),
+                    Some(frame_id),
+                    Some(commit_token),
+                ) = (
+                    self.select_option_commit_execution_context_id,
+                    self.unique_context_id.as_ref(),
+                    self.select_option_commit_frame_id.as_ref(),
+                    commit_token.as_deref(),
+                ) {
+                    Some(
+                        SelectOptionCommitReceipt::prepare(
+                            self.client.as_ref(),
+                            execution_context_id,
+                            Arc::clone(unique_context_id),
+                            Arc::clone(frame_id),
+                            commit_token,
+                        )
+                        .await?,
+                    )
+                } else {
+                    None
+                };
                 self.runtime_counters
                     .actionability_evaluations
                     .fetch_add(1, Ordering::Relaxed);
-                let response = self.evaluate(&script).await.map_err(map_cdp_error)?;
+                let response = match self.evaluate(&script).await {
+                    Ok(response) => response,
+                    Err(error) => {
+                        #[cfg(feature = "select-option-navigation-commit")]
+                        if is_select_option_navigation_context_loss(&error)
+                            && let Some(receipt) = receipt
+                            && let Some(values) = receipt.confirm_after_context_loss().await
+                        {
+                            return Ok(values);
+                        }
+                        return Err(map_cdp_error(error));
+                    }
+                };
                 match parse_select_option_attempt(response, &selector_label)? {
-                    SelectOptionAttempt::Done(values) => return Ok(values),
-                    SelectOptionAttempt::Retry => tokio::time::sleep(self.retry_delay).await,
+                    SelectOptionAttempt::Done(values) => {
+                        #[cfg(feature = "select-option-timeout-progress")]
+                        if let Some(progress) = &progress {
+                            progress.record_retry_option_not_enabled(false);
+                        }
+                        return Ok(values);
+                    }
+                    SelectOptionAttempt::Retry(option_not_enabled) => {
+                        #[cfg(feature = "select-option-timeout-progress")]
+                        if let Some(progress) = &progress {
+                            progress.record_retry_option_not_enabled(option_not_enabled);
+                        }
+                        #[cfg(not(feature = "select-option-timeout-progress"))]
+                        let _ = option_not_enabled;
+                        tokio::time::sleep(self.retry_delay).await;
+                    }
                     SelectOptionAttempt::RuntimeMissing => {
+                        #[cfg(feature = "select-option-timeout-progress")]
+                        if let Some(progress) = &progress {
+                            progress.record_retry_option_not_enabled(false);
+                        }
                         self.runtime_counters
                             .missing_after_navigation
                             .fetch_add(1, Ordering::Relaxed);
@@ -1741,9 +2576,14 @@ impl Service<SetCheckedParams> for CdpLocatorService {
                     .actionability_evaluations
                     .fetch_add(1, Ordering::Relaxed);
                 let response = self.evaluate(&actionability).await.map_err(map_cdp_error)?;
-                match parse_pointer_attempt(response, &selector_label, false)? {
+                match parse_pointer_attempt(
+                    response,
+                    &selector_label,
+                    false,
+                    params.options.force.unwrap_or(false),
+                )? {
                     ActionAttempt::Ready(point) => break point,
-                    ActionAttempt::Retry => tokio::time::sleep(self.retry_delay).await,
+                    ActionAttempt::Retry(_) => tokio::time::sleep(self.retry_delay).await,
                     ActionAttempt::RuntimeMissing => {
                         self.runtime_counters
                             .missing_after_navigation
@@ -1961,9 +2801,9 @@ impl Service<HoverParams> for CdpLocatorService {
                     .hover_evaluations
                     .fetch_add(1, Ordering::Relaxed);
                 let response = self.evaluate(&script).await.map_err(map_cdp_error)?;
-                match parse_hover_attempt(response, &selector_label)? {
+                match parse_hover_attempt(response, &selector_label, params.options.force)? {
                     ActionAttempt::Ready(point) => break point,
-                    ActionAttempt::Retry => tokio::time::sleep(self.retry_delay).await,
+                    ActionAttempt::Retry(_) => tokio::time::sleep(self.retry_delay).await,
                     ActionAttempt::RuntimeMissing => {
                         self.runtime_counters
                             .missing_after_navigation
@@ -2436,8 +3276,24 @@ impl Service<FillParams> for CdpLocatorService {
             }
 
             let selector_label = params.selector.to_string();
-            let script =
-                fill_actionability_script(&params.selector, &params.value, params.options.force)?;
+            #[cfg(feature = "fill-navigation-commit")]
+            let commit_token = match (
+                self.fill_commit_execution_context_id,
+                self.unique_context_id.as_deref(),
+            ) {
+                (Some(_), Some(unique_context_id)) => {
+                    Some(FillCommitReceipt::next_token(unique_context_id)?)
+                }
+                _ => None,
+            };
+            #[cfg(not(feature = "fill-navigation-commit"))]
+            let commit_token: Option<String> = None;
+            let script = fill_actionability_script(
+                &params.selector,
+                &params.value,
+                params.options.force,
+                commit_token.as_deref(),
+            )?;
             self.ensure_selector_runtime().await?;
             loop {
                 // Selection/focus and the final insert are one Page-owned
@@ -2448,10 +3304,38 @@ impl Service<FillParams> for CdpLocatorService {
                     .begin_transaction(Arc::clone(&self.client), None)
                     .await
                     .map_err(map_cdp_error)?;
+                #[cfg(feature = "fill-navigation-commit")]
+                let receipt = if let (Some(execution_context_id), Some(commit_token)) = (
+                    self.fill_commit_execution_context_id,
+                    commit_token.as_deref(),
+                ) {
+                    Some(
+                        FillCommitReceipt::prepare(
+                            self.client.as_ref(),
+                            execution_context_id,
+                            commit_token,
+                        )
+                        .await?,
+                    )
+                } else {
+                    None
+                };
                 self.runtime_counters
                     .actionability_evaluations
                     .fetch_add(1, Ordering::Relaxed);
-                let response = self.evaluate(&script).await.map_err(map_cdp_error)?;
+                let response = match self.evaluate(&script).await {
+                    Ok(response) => response,
+                    Err(error) => {
+                        #[cfg(feature = "fill-navigation-commit")]
+                        if is_navigation_context_loss(&error)
+                            && let Some(receipt) = receipt
+                            && receipt.confirm_after_context_loss().await
+                        {
+                            return transaction.finish().await.map_err(map_cdp_error);
+                        }
+                        return Err(map_cdp_error(error));
+                    }
+                };
                 match parse_fill_attempt(response, &selector_label)? {
                     FillAttempt::Done => return transaction.finish().await.map_err(map_cdp_error),
                     FillAttempt::NeedsInput { is_mac } => {
@@ -2493,6 +3377,56 @@ struct ClickPoint {
     x: f64,
     y: f64,
     is_mac: bool,
+}
+
+#[cfg(feature = "retained-element-click")]
+struct RetainedClickIdentity<'a> {
+    native_object_id: &'a str,
+    unique_context_id: &'a str,
+}
+
+#[cfg(feature = "retained-element-click")]
+struct RetainedClickTarget<'a> {
+    identity: RetainedClickIdentity<'a>,
+    child: Option<retained_click_child::ChildFrame<'a>>,
+}
+
+/// Exact retained Element and its one-link child Frame route.
+#[cfg(feature = "retained-element-click")]
+#[derive(Clone, Copy)]
+pub struct RetainedClickChildTarget<'a> {
+    native_object_id: &'a str,
+    unique_context_id: &'a str,
+    child_frame_id: &'a str,
+    parent_frame_id: &'a str,
+}
+
+#[cfg(feature = "retained-element-click")]
+impl<'a> RetainedClickChildTarget<'a> {
+    pub fn new(
+        native_object_id: &'a str,
+        unique_context_id: &'a str,
+        child_frame_id: &'a str,
+        parent_frame_id: &'a str,
+    ) -> Self {
+        Self {
+            native_object_id,
+            unique_context_id,
+            child_frame_id,
+            parent_frame_id,
+        }
+    }
+}
+
+#[cfg(feature = "retained-element-click")]
+struct RetainedClickPointerRoute<'a> {
+    local_point: ClickPoint,
+    dispatch_point: ClickPoint,
+    child: Option<(
+        retained_click_child::ChildFrame<'a>,
+        retained_click_child::Viewport,
+    )>,
+    steps: std::num::NonZeroU32,
 }
 
 struct ClickNavigationBarrier {
@@ -2583,6 +3517,12 @@ impl ClickNavigationBarrier {
         event: &CdpEvent,
         requested: &mut bool,
     ) -> Result<bool, OperationError<LocatorErrorDetails>> {
+        if event.method == "Browser.downloadWillBegin"
+            && event.params.get("frameId").and_then(Value::as_str)
+                == Some(self.main_frame_id.as_str())
+        {
+            return Ok(true);
+        }
         if event.session_id.as_deref() != self.expected_session.as_deref() {
             return Ok(false);
         }
@@ -2667,9 +3607,32 @@ const fn set_checked_click_options(options: SetCheckedOptions) -> ClickOptionsV2
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ActionabilityProgress {
+    Missing,
+    Detached,
+    NotVisible,
+    Unstable,
+    Disabled,
+    Obscured,
+}
+
+impl ActionabilityProgress {
+    const fn key(self) -> &'static str {
+        match self {
+            Self::Missing => "actionability:missing",
+            Self::Detached => "actionability:detached",
+            Self::NotVisible => "actionability:not-visible",
+            Self::Unstable => "actionability:unstable",
+            Self::Disabled => "actionability:disabled",
+            Self::Obscured => "actionability:obscured",
+        }
+    }
+}
+
 enum ActionAttempt {
     Ready(ClickPoint),
-    Retry,
+    Retry(ActionabilityProgress),
     RuntimeMissing,
 }
 
@@ -2731,7 +3694,7 @@ enum SetCheckedStateAttempt {
 
 enum SelectOptionAttempt {
     Done(SelectOptionResult),
-    Retry,
+    Retry(bool),
     RuntimeMissing,
 }
 
@@ -2826,6 +3789,7 @@ fn actionability_script(
     force: bool,
 ) -> Result<String, OperationError<LocatorErrorDetails>> {
     let selector = compile_selector(selector, "document")?;
+    let enabled_check = enabled_actionability_check(force);
     Ok(format!(
         r#"(async () => {{
   const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
@@ -2839,10 +3803,9 @@ fn actionability_script(
   if (!element.isConnected) return {{ status: "detached" }};
   const style = getComputedStyle(element);
   let rect = element.getBoundingClientRect();
-  if (!{force} && (style.visibility === "hidden" || style.display === "none" || rect.width <= 0 || rect.height <= 0))
+  if (style.display === "none" || rect.width <= 0 || rect.height <= 0 || (!{force} && style.visibility === "hidden"))
     return {{ status: "notvisible" }};
-  if (!{force} && (("disabled" in element && element.disabled) || element.getAttribute("aria-disabled") === "true"))
-    return {{ status: "disabled" }};
+{enabled_check}
   element.scrollIntoView({{ block: "center", inline: "center", behavior: "instant" }});
   await new Promise(resolve => {{
     if (document.visibilityState !== "visible") {{ setTimeout(resolve, 0); return; }}
@@ -2858,12 +3821,14 @@ fn actionability_script(
   const top = Math.max(0, rect.top);
   const right = Math.min(window.innerWidth, rect.right);
   const bottom = Math.min(window.innerHeight, rect.bottom);
-  if (right <= left || bottom <= top) return {{ status: "notvisible" }};
+  if (right <= left || bottom <= top) return {{ status: "out-of-viewport" }};
   const x = (left + right) / 2;
   const y = (top + bottom) / 2;
   if (!{force}) {{
     const hit = document.elementFromPoint(x, y);
-    if (!hit || (hit !== element && !element.contains(hit))) return {{ status: "obscured" }};
+    const target = !element.matches('input, textarea, select') && !element.isContentEditable
+      ? (element.closest('button, [role=button], a, [role=link]') || element) : element;
+    if (!hit || (hit !== target && !target.contains(hit))) return {{ status: "obscured" }};
   }}
   return {{ status: "ready", x, y }};
 }})()"#
@@ -2875,30 +3840,93 @@ fn click_v2_actionability_script(
     options: &ClickOptionsV2,
 ) -> Result<String, OperationError<LocatorErrorDetails>> {
     let selector = compile_selector(selector, "document")?;
+    let element_setup = format!(
+        r#"  let matches;
+  try {{ matches = {selector}; }}
+  catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
+  if (matches.length === 0) return {{ status: "missing" }};
+  if (matches.length > 1) return {{ status: "strict", count: matches.length }};
+  const element = matches[0];"#
+    );
+    Ok(format!(
+        "(async () => {{\n{}\n}})()",
+        click_v2_actionability_body(&element_setup, options, false)
+    ))
+}
+
+fn click_v2_actionability_body(
+    element_setup: &str,
+    options: &ClickOptionsV2,
+    retained_blocker_preview: bool,
+) -> String {
     let position = options.position.map_or_else(
         || "null".to_string(),
         |position| format!(r#"{{ x: {}, y: {} }}"#, position.x(), position.y()),
     );
     let force = options.force.unwrap_or(false);
+    let enabled_check = enabled_actionability_check(force);
     let scroll = matches!(options.scroll.unwrap_or(ScrollMode::Auto), ScrollMode::Auto);
-    Ok(format!(
-        r#"(async () => {{
+    let obscured_result = if retained_blocker_preview {
+        r#"{
+      const blockerTag = hit ? String(hit.localName || "").slice(0, 25) : "";
+      const blockerId = hit ? String(hit.id || "").slice(0, 65) : "";
+      return { status: "obscured", blockerTag, blockerId };
+    }"#
+    } else {
+        r#"return { status: "obscured" };"#
+    };
+    let viewport_fields = if retained_blocker_preview {
+        ", viewportWidth: window.innerWidth, viewportHeight: window.innerHeight"
+    } else {
+        ""
+    };
+    format!(
+        r#"
   const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
   if (!__pw || __pw.version !== {SELECTOR_RUNTIME_VERSION}) return {{ status: "runtime-missing" }};
-  let matches;
-  try {{ matches = {selector}; }}
-  catch (error) {{ return {{ status: "invalid", message: String(error) }}; }}
-  if (matches.length === 0) return {{ status: "missing" }};
-  if (matches.length > 1) return {{ status: "strict", count: matches.length }};
-  const element = matches[0];
+{element_setup}
   if (!element.isConnected) return {{ status: "detached" }};
   const style = getComputedStyle(element);
   let rect = element.getBoundingClientRect();
-  if (!{force} && (style.visibility === "hidden" || style.display === "none" || rect.width <= 0 || rect.height <= 0))
+  if (style.display === "none" || rect.width <= 0 || rect.height <= 0 || (!{force} && style.visibility === "hidden"))
     return {{ status: "notvisible" }};
-  if (!{force} && (("disabled" in element && element.disabled) || element.getAttribute("aria-disabled") === "true"))
-    return {{ status: "disabled" }};
-  if ({scroll}) element.scrollIntoView({{ block: "center", inline: "center", behavior: "instant" }});
+{enabled_check}
+  const position = {position};
+  if ({scroll}) {{
+    if (position) {{
+      const positionPoint = () => {{
+        const box = element.getBoundingClientRect();
+        return {{
+          x: box.left + (Number.parseFloat(style.borderLeftWidth) || 0) + position.x,
+          y: box.top + (Number.parseFloat(style.borderTopWidth) || 0) + position.y,
+        }};
+      }};
+      let ancestor = element.parentElement || element.getRootNode()?.host || null;
+      while (ancestor) {{
+        const overflow = getComputedStyle(ancestor);
+        const scrollX = /^(auto|scroll|hidden)$/.test(overflow.overflowX) && ancestor.scrollWidth > ancestor.clientWidth;
+        const scrollY = /^(auto|scroll|hidden)$/.test(overflow.overflowY) && ancestor.scrollHeight > ancestor.clientHeight;
+        if (scrollX || scrollY) {{
+          const box = ancestor.getBoundingClientRect();
+          const left = box.left + ancestor.clientLeft;
+          const top = box.top + ancestor.clientTop;
+          const right = left + ancestor.clientWidth;
+          const bottom = top + ancestor.clientHeight;
+          const point = positionPoint();
+          const dx = scrollX && (point.x < left || point.x >= right) ? point.x - (left + right) / 2 : 0;
+          const dy = scrollY && (point.y < top || point.y >= bottom) ? point.y - (top + bottom) / 2 : 0;
+          if (dx || dy) ancestor.scrollTo({{ left: ancestor.scrollLeft + dx, top: ancestor.scrollTop + dy, behavior: "instant" }});
+        }}
+        ancestor = ancestor.parentElement || ancestor.getRootNode()?.host || null;
+      }}
+      const point = positionPoint();
+      const dx = point.x < 0 || point.x >= window.innerWidth ? point.x - window.innerWidth / 2 : 0;
+      const dy = point.y < 0 || point.y >= window.innerHeight ? point.y - window.innerHeight / 2 : 0;
+      if (dx || dy) window.scrollBy({{ left: dx, top: dy, behavior: "instant" }});
+    }} else {{
+      element.scrollIntoView({{ block: "center", inline: "center", behavior: "instant" }});
+    }}
+  }}
   await new Promise(resolve => {{
     if (document.visibilityState !== "visible") {{ setTimeout(resolve, 0); return; }}
     requestAnimationFrame(() => requestAnimationFrame(resolve));
@@ -2909,30 +3937,103 @@ fn click_v2_actionability_script(
       Math.abs(rect.width - next.width) > 0.25 || Math.abs(rect.height - next.height) > 0.25))
     return {{ status: "unstable" }};
   rect = next;
-  const position = {position};
   let x;
   let y;
   if (position) {{
     x = rect.left + (Number.parseFloat(style.borderLeftWidth) || 0) + position.x;
     y = rect.top + (Number.parseFloat(style.borderTopWidth) || 0) + position.y;
   }} else {{
-    const left = Math.max(0, rect.left);
-    const top = Math.max(0, rect.top);
-    const right = Math.min(window.innerWidth, rect.right);
-    const bottom = Math.min(window.innerHeight, rect.bottom);
-    if (right <= left || bottom <= top) return {{ status: "notvisible" }};
+    const clientRect = Array.from(element.getClientRects(), candidate => ({{
+      left: Math.max(0, candidate.left),
+      top: Math.max(0, candidate.top),
+      right: Math.min(window.innerWidth, candidate.right),
+      bottom: Math.min(window.innerHeight, candidate.bottom),
+    }})).find(candidate =>
+      (candidate.right - candidate.left) * (candidate.bottom - candidate.top) > 0.99
+    );
+    if (!clientRect) return {{ status: "out-of-viewport" }};
+    const {{ left, top, right, bottom }} = clientRect;
+    if (right <= left || bottom <= top) return {{ status: "out-of-viewport" }};
     x = (left + right) / 2;
     y = (top + bottom) / 2;
   }}
   if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight)
-    return {{ status: "notvisible" }};
+    return {{ status: "out-of-viewport" }};
   if (!{force}) {{
     const hit = document.elementFromPoint(x, y);
-    if (!hit || (hit !== element && !element.contains(hit))) return {{ status: "obscured" }};
+    const target = !element.matches('input, textarea, select') && !element.isContentEditable
+      ? (element.closest('button, [role=button], a, [role=link]') || element) : element;
+    if (!hit || (hit !== target && !target.contains(hit))) {obscured_result}
   }}
-  return {{ status: "ready", x, y, isMac: /Mac|iPhone|iPad|iPod/.test(navigator.platform) }};
-}})()"#,
-    ))
+  return {{ status: "ready", x, y, isMac: /Mac|iPhone|iPad|iPod/.test(navigator.platform){viewport_fields} }};"#,
+    )
+}
+
+#[cfg(feature = "retained-element-click")]
+const RETAINED_CLICK_TARGET_SETUP: &str = r#"  const ELEMENT_NODE = 1;
+  if (!node || typeof node.nodeType !== "number") return { status: "invalid-target" };
+  const element = node.nodeType === ELEMENT_NODE ? node : node.parentElement;
+  if (!element || !node.isConnected || !element.isConnected) return { status: "detached" };
+  if (element.nodeType !== ELEMENT_NODE) return { status: "invalid-target" };
+  if (element.ownerDocument?.defaultView !== globalThis) return { status: "frame-mismatch" };"#;
+
+#[cfg(feature = "retained-element-click")]
+fn retained_click_actionability_script(options: &ClickOptionsV2, allow_child: bool) -> String {
+    let frame_check = if allow_child {
+        ""
+    } else {
+        "  if (globalThis !== globalThis.top) return { status: \"non-top-level\" };"
+    };
+    let setup = format!("{RETAINED_CLICK_TARGET_SETUP}\n{frame_check}");
+    let body = click_v2_actionability_body(&setup, options, true);
+    format!(
+        "async function(node) {{\n{};\n{}\n}}",
+        selector_runtime_install_script(),
+        body
+    )
+}
+
+#[cfg(feature = "retained-element-click")]
+fn retained_click_route_check_script(point: ClickPoint, force: bool, allow_child: bool) -> String {
+    let frame_check = if allow_child {
+        ""
+    } else {
+        "if (globalThis !== globalThis.top) return { status: \"non-top-level\" };"
+    };
+    format!(
+        r#"function(node) {{
+  {RETAINED_CLICK_TARGET_SETUP}
+  {frame_check}
+  const x = {x};
+  const y = {y};
+  if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight)
+    return {{ status: "moved" }};
+  const containsPoint = Array.from(element.getClientRects()).some(rect =>
+    x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom);
+  if (!containsPoint) return {{ status: "moved" }};
+  if (!{force}) {{
+    const hit = document.elementFromPoint(x, y);
+    const target = !element.matches('input, textarea, select') && !element.isContentEditable
+      ? (element.closest('button, [role=button], a, [role=link]') || element) : element;
+    if (!hit || (hit !== target && !target.contains(hit))) return {{ status: "moved" }};
+  }}
+  return {{ status: "ready" }};
+}}"#,
+        x = point.x,
+        y = point.y
+    )
+}
+
+fn enabled_actionability_check(force: bool) -> String {
+    format!(
+        r#"  if (!{force}) {{
+    const enabled = __pw.elementState(element, "enabled");
+    if (enabled.status === "retry") return {{ status: "detached" }};
+    if (enabled.status !== "done")
+      return {{ status: "invalid", message: enabled.message || "Unable to determine enabled state" }};
+    if (!enabled.value) return {{ status: "disabled" }};
+  }}"#
+    )
 }
 
 fn hover_actionability_script(
@@ -2982,12 +4083,12 @@ fn hover_actionability_script(
     const top = Math.max(0, rect.top);
     const right = Math.min(window.innerWidth, rect.right);
     const bottom = Math.min(window.innerHeight, rect.bottom);
-    if (right <= left || bottom <= top) return {{ status: "notvisible" }};
+    if (right <= left || bottom <= top) return {{ status: "out-of-viewport" }};
     x = (left + right) / 2;
     y = (top + bottom) / 2;
   }}
   if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight)
-    return {{ status: "notvisible" }};
+    return {{ status: "out-of-viewport" }};
   if (!{force}) {{
     const hit = document.elementFromPoint(x, y);
     if (!hit || (hit !== element && !element.contains(hit))) return {{ status: "obscured" }};
@@ -3108,11 +4209,37 @@ fn select_option_script(
     selector: &Selector,
     values: &[SelectOptionValue],
     options: SelectOptionOptions,
+    commit_token: Option<&str>,
 ) -> Result<String, OperationError<LocatorErrorDetails>> {
     validate_select_option_input(values)?;
     let selector = compile_selector(selector, "document")?;
     let requested = select_option_values_json(values)?;
     let force = options.force.unwrap_or(false);
+    #[cfg(feature = "select-option-navigation-commit")]
+    let commit_call = commit_token
+        .map(|token| {
+            let token = serde_json::to_string(token).map_err(|error| {
+                invalid_response(&format!(
+                    "could not encode select-option commit receipt: {error}"
+                ))
+            })?;
+            Ok::<_, OperationError<LocatorErrorDetails>>(format!(
+                r#"if (committedValues.length <= {MAX_SELECT_OPTION_ITEMS} &&
+      committedValues.every(value => value.length <= {MAX_SELECT_OPTION_ITEM_BYTES}) &&
+      committedValues.reduce((size, value) => size + value.length, 0) <= {MAX_SELECT_OPTION_TOTAL_BYTES}) {{
+    const receipt = JSON.stringify({{ token: {token}, values: committedValues }});
+    if (receipt.length <= {MAX_SELECT_OPTION_RECEIPT_CODE_UNITS})
+      globalThis[{FILL_COMMIT_BINDING:?}](receipt);
+  }}"#,
+            ))
+        })
+        .transpose()?
+        .unwrap_or_default();
+    #[cfg(not(feature = "select-option-navigation-commit"))]
+    let commit_call = {
+        let _ = commit_token;
+        String::new()
+    };
     let script = format!(
         r#"(() => {{
   const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
@@ -3160,9 +4287,12 @@ fn select_option_script(
   if (remaining.length) return {{ status: "options-not-found" }};
   element.value = undefined;
   selected.forEach(option => option.selected = true);
+  const committedValues = selected.map(option => option.value);
+  {commit_call}
   element.dispatchEvent(new Event("input", {{ bubbles: true, composed: true }}));
   element.dispatchEvent(new Event("change", {{ bubbles: true }}));
-  return {{ status: "done", values: selected.map(option => option.value) }};
+  const values = selected.map(option => option.value);
+  return {{ status: "done", values }};
 }})()"#,
     );
     if script.len() > MAX_SELECT_OPTION_SCRIPT_BYTES {
@@ -3270,7 +4400,10 @@ fn screenshot_geometry_check_script(
     }});
   }} catch (error) {{ return {{ status: "backend", message: String(error) }}; }}
   if (!element.isConnected) return {{ status: "detached" }};
-  if (ratio !== 1) return {{ status: "ready-to-scroll" }};
+  // Oversized elements can never reach an intersection ratio of one, but
+  // Playwright still captures their complete layout box. Scroll only when the
+  // element is entirely outside the viewport.
+  if (ratio <= 0) return {{ status: "ready-to-scroll" }};
   const final = element.getBoundingClientRect();
   const finalStable = Math.abs(after.x - final.x) <= 0.25 &&
     Math.abs(after.y - final.y) <= 0.25 &&
@@ -3520,10 +4653,22 @@ fn fill_actionability_script(
     selector: &Selector,
     value: &str,
     force: bool,
+    commit_token: Option<&str>,
 ) -> Result<String, OperationError<LocatorErrorDetails>> {
     let selector = compile_selector(selector, "document")?;
     let value = serde_json::to_string(value)
         .map_err(|error| invalid_response(&format!("could not encode fill value: {error}")))?;
+    let commit_call = commit_token
+        .map(|token| {
+            let token = serde_json::to_string(token).map_err(|error| {
+                invalid_response(&format!("could not encode fill commit receipt: {error}"))
+            })?;
+            Ok::<_, OperationError<LocatorErrorDetails>>(format!(
+                "globalThis[{FILL_COMMIT_BINDING:?}]({token});"
+            ))
+        })
+        .transpose()?
+        .unwrap_or_default();
     Ok(format!(
         r#"(() => {{
   const __pw = globalThis[Symbol.for({SELECTOR_RUNTIME_SYMBOL:?})];
@@ -3549,19 +4694,22 @@ fn fill_actionability_script(
     const direct = new Set(['color','date','time','datetime-local','month','range','week']);
     const textual = new Set(['','email','number','password','search','tel','text','url']);
     if (!direct.has(type) && !textual.has(type))
-      return {{ status: "invalid-target", message: `input type "${{type}}" cannot be filled` }};
+      return {{ status: "invalid-target", message: `Input of type "${{type}}" cannot be filled` }};
     if (!{force} && (element.readOnly || element.getAttribute("aria-readonly") === "true"))
       return {{ status: "noteditable" }};
     if (type === 'number' && value !== '' && Number.isNaN(Number(value)))
       return {{ status: "invalid-value", message: `Cannot type text into input[type=number]` }};
     if (direct.has(type)) {{
-      const expected = value.trim();
+      // Color values are ASCII hex and the DOM value setter canonicalizes
+      // valid mixed-case input to lowercase before the validation readback.
+      const expected = type === 'color' ? value.trim().toLowerCase() : value.trim();
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       setter.call(element, expected);
       if (element.value !== expected)
         return {{ status: "invalid-value", message: `Malformed value for input[type=${{type}}]` }};
       element.dispatchEvent(new Event('input', {{ bubbles: true, composed: true }}));
       element.dispatchEvent(new Event('change', {{ bubbles: true }}));
+      {commit_call}
       return {{ status: "done" }};
     }}
     element.focus();
@@ -3586,7 +4734,7 @@ fn fill_actionability_script(
     selection.addRange(range);
     return {{ status: "needs-input", isMac: navigator.platform.includes("Mac") }};
   }}
-  return {{ status: "invalid-target", message: "Element is not an input, textarea, or contenteditable element" }};
+  return {{ status: "invalid-target", message: "Element is not an <input>, <textarea> or [contenteditable] element" }};
 }})()"#
     ))
 }
@@ -3818,21 +4966,24 @@ fn map_locator_resource_error(error: ResourceError) -> OperationError<LocatorErr
 fn parse_attempt(
     response: Value,
     selector: &str,
+    force: bool,
 ) -> Result<ActionAttempt, OperationError<LocatorErrorDetails>> {
-    parse_pointer_attempt(response, selector, false)
+    parse_pointer_attempt(response, selector, false, force)
 }
 
 fn parse_hover_attempt(
     response: Value,
     selector: &str,
+    force: bool,
 ) -> Result<ActionAttempt, OperationError<LocatorErrorDetails>> {
-    parse_pointer_attempt(response, selector, true)
+    parse_pointer_attempt(response, selector, true, force)
 }
 
 fn parse_pointer_attempt(
     response: Value,
     selector: &str,
     require_platform: bool,
+    force: bool,
 ) -> Result<ActionAttempt, OperationError<LocatorErrorDetails>> {
     let value = response
         .get("result")
@@ -3860,9 +5011,27 @@ fn parse_pointer_attempt(
             };
             Ok(ActionAttempt::Ready(ClickPoint { x, y, is_mac }))
         }
-        "missing" | "detached" | "notvisible" | "unstable" | "disabled" | "obscured" => {
-            Ok(ActionAttempt::Retry)
-        }
+        "missing" => Ok(ActionAttempt::Retry(ActionabilityProgress::Missing)),
+        "detached" => Ok(ActionAttempt::Retry(ActionabilityProgress::Detached)),
+        "notvisible" if force => Err(OperationError::new(
+            FailureKind::Backend,
+            "Element is not visible",
+            Some(LocatorErrorDetails::Backend(
+                "Element is not visible".to_owned(),
+            )),
+        )),
+        "notvisible" => Ok(ActionAttempt::Retry(ActionabilityProgress::NotVisible)),
+        "out-of-viewport" if force => Err(OperationError::new(
+            FailureKind::Backend,
+            "Element is outside of the viewport",
+            Some(LocatorErrorDetails::Backend(
+                "Element is outside of the viewport".to_owned(),
+            )),
+        )),
+        "out-of-viewport" => Ok(ActionAttempt::Retry(ActionabilityProgress::NotVisible)),
+        "unstable" => Ok(ActionAttempt::Retry(ActionabilityProgress::Unstable)),
+        "disabled" => Ok(ActionAttempt::Retry(ActionabilityProgress::Disabled)),
+        "obscured" => Ok(ActionAttempt::Retry(ActionabilityProgress::Obscured)),
         "runtime-missing" => Ok(ActionAttempt::RuntimeMissing),
         "strict" => {
             let count = value
@@ -3903,6 +5072,107 @@ fn parse_pointer_attempt(
         other => Err(invalid_response(&format!(
             "locator actionability returned unknown status `{other}`"
         ))),
+    }
+}
+
+#[cfg(feature = "retained-element-click")]
+fn validate_retained_click_native_id(
+    value: &str,
+    label: &str,
+) -> Result<(), OperationError<LocatorErrorDetails>> {
+    if value.is_empty() || value.len() > MAX_RETAINED_CLICK_NATIVE_ID_BYTES {
+        return Err(locator_resource_error(&format!(
+            "retained Element {label} must contain between 1 and {MAX_RETAINED_CLICK_NATIVE_ID_BYTES} bytes"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "retained-element-click")]
+fn retained_click_target_error(message: &str) -> OperationError<LocatorErrorDetails> {
+    OperationError::new(
+        FailureKind::Backend,
+        message,
+        Some(LocatorErrorDetails::InvalidTarget(message.to_owned())),
+    )
+}
+
+#[cfg(feature = "retained-element-click")]
+fn retained_click_status(response: &Value) -> Result<&str, OperationError<LocatorErrorDetails>> {
+    response
+        .get("result")
+        .and_then(|result| result.get("value"))
+        .and_then(|value| value.get("status"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid_response("retained Element click response is missing status"))
+}
+
+#[cfg(feature = "retained-element-click")]
+fn retained_click_status_error(status: &str) -> Option<OperationError<LocatorErrorDetails>> {
+    match status {
+        "detached" => Some(OperationError::new(
+            FailureKind::Backend,
+            "Element is not attached to the DOM",
+            Some(LocatorErrorDetails::InvalidTarget(status.to_owned())),
+        )),
+        "frame-mismatch" => Some(OperationError::new(
+            FailureKind::TargetClosed,
+            "retained Element moved to another Frame",
+            Some(LocatorErrorDetails::InvalidTarget(status.to_owned())),
+        )),
+        "non-top-level" => Some(retained_click_target_error(
+            "retained Element click requires a top-level Frame; child-frame coordinate translation is unavailable",
+        )),
+        "invalid-target" => Some(retained_click_target_error(
+            "retained click target is not an Element",
+        )),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "retained-element-click")]
+fn parse_retained_click_attempt(
+    response: Value,
+    force: bool,
+    diagnostics: &RetainedClickDiagnostics,
+) -> Result<ActionAttempt, OperationError<LocatorErrorDetails>> {
+    if let Some(error) = retained_click_status_error(retained_click_status(&response)?) {
+        return Err(error);
+    }
+    let blocker = response
+        .get("result")
+        .and_then(|result| result.get("value"))
+        .and_then(Value::as_object)
+        .and_then(|value| {
+            Some((
+                value.get("blockerTag")?.as_str()?,
+                value.get("blockerId")?.as_str()?,
+            ))
+        })
+        .and_then(|(tag, id)| RetainedClickDiagnostics::blocker_preview(tag, id));
+    let attempt = parse_pointer_attempt(response, "retained Element", true, force)?;
+    if let ActionAttempt::Retry(progress) = attempt {
+        diagnostics.record(progress, blocker);
+    }
+    Ok(attempt)
+}
+
+#[cfg(feature = "retained-element-click")]
+fn verify_retained_click_route(
+    response: Value,
+) -> Result<bool, OperationError<LocatorErrorDetails>> {
+    let status = retained_click_status(&response)?;
+    if let Some(error) = retained_click_status_error(status) {
+        return Err(error);
+    }
+    if status == "ready" {
+        Ok(true)
+    } else if status == "moved" {
+        Ok(false)
+    } else {
+        Err(invalid_response(&format!(
+            "retained Element route check returned unknown status `{status}`"
+        )))
     }
 }
 
@@ -4445,7 +5715,7 @@ fn parse_select_option_attempt(
             Ok(SelectOptionAttempt::Done(output))
         }
         "retry" | "notvisible" | "disabled" | "options-not-found" | "option-not-enabled" => {
-            Ok(SelectOptionAttempt::Retry)
+            Ok(SelectOptionAttempt::Retry(status == "option-not-enabled"))
         }
         "runtime-missing" => Ok(SelectOptionAttempt::RuntimeMissing),
         "strict" => {
@@ -5328,6 +6598,8 @@ fn map_cdp_error(error: CdpError) -> OperationError<LocatorErrorDetails> {
 mod tests {
     use std::num::{NonZeroU8, NonZeroU32};
     use std::sync::Arc;
+    #[cfg(feature = "retained-element-click")]
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use pwright_backend_cdp_input::resolve_key;
@@ -5346,6 +6618,8 @@ mod tests {
         WaitForState,
     };
     use pwright_cap_locator::{ClickOptionsV2, ClickParamsV2};
+    #[cfg(feature = "touchscreen-input")]
+    use pwright_cap_touchscreen::{KeyboardModifiers, SelectorTapOptions, SelectorTapParams};
     use pwright_cdp::CdpEvent;
     use pwright_core::{
         CallId, CallMetadata, CancellationReason, Command, CommandCancellation, CommandSpec,
@@ -5360,8 +6634,10 @@ mod tests {
     use super::{
         CdpLocatorProductionProfile, CdpLocatorService, CdpLocatorServiceFactory,
         LocatorElementState, MAX_FOCUS_SCRIPT_BYTES, MAX_SELECTOR_STRING_BYTES,
-        actionability_script, element_state_script, scroll_into_view_if_needed_check_script,
-        scroll_into_view_if_needed_commit_script, select_option_script, wait_for_script,
+        actionability_script, click_v2_actionability_script, element_state_script,
+        fill_actionability_script, parse_pointer_attempt, screenshot_geometry_check_script,
+        scroll_into_view_if_needed_check_script, scroll_into_view_if_needed_commit_script,
+        select_option_script, wait_for_script,
     };
 
     const LOCATOR_SCOPE: ResourceScope = ResourceScope::Object(ObjectId::new(42));
@@ -5372,6 +6648,48 @@ mod tests {
 
     fn runtime_installed() -> serde_json::Value {
         json!({"result": {"value": true}})
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    fn retained_click_service(
+        client: Arc<FakeCdpClient>,
+        retry_delay: Duration,
+    ) -> CdpLocatorService {
+        CdpLocatorService::from_parts_with_counters(
+            client,
+            super::CdpInputCoordinator::with_policy(super::CdpInputPolicy::Interleaved),
+            None,
+            retry_delay,
+            None,
+            Arc::new(super::SelectorRuntimeCounters::default()),
+        )
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    fn one_link_frame_tree() -> pwright_cdp::generated::page::FrameTree {
+        serde_json::from_value(json!({
+            "frame": {
+                "id": "main-frame", "loaderId": "main-loader", "url": "about:blank",
+                "domainAndRegistry": "", "securityOrigin": "://", "mimeType": "text/html",
+                "secureContextType": "InsecureScheme",
+                "crossOriginIsolatedContextType": "NotIsolated", "gatedAPIFeatures": []
+            },
+            "childFrames": [{"frame": {
+                "id": "child-frame", "parentId": "main-frame", "loaderId": "child-loader",
+                "url": "about:blank", "domainAndRegistry": "", "securityOrigin": "://",
+                "mimeType": "text/html", "secureContextType": "InsecureScheme",
+                "crossOriginIsolatedContextType": "NotIsolated", "gatedAPIFeatures": []
+            }}]
+        }))
+        .expect("one-link Frame tree must satisfy CDP schema")
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    fn child_ready_response() -> serde_json::Value {
+        json!({"result": {"value": {
+            "status": "ready", "x": 20.0, "y": 30.0, "isMac": false,
+            "viewportWidth": 200.0, "viewportHeight": 150.0
+        }}})
     }
 
     fn production_resources(
@@ -5468,6 +6786,99 @@ mod tests {
             client.method_names(),
             vec!["Runtime.evaluate", "Runtime.evaluate"]
         );
+    }
+
+    #[cfg(feature = "touchscreen-input")]
+    #[tokio::test]
+    async fn selector_tap_dispatches_touch_pair_with_temporary_modifiers() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>Submit</button>"));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {
+                "status": "ready", "x": 12.5, "y": 19.0, "isMac": false
+            }}}),
+        ]);
+        let service = CdpLocatorService::new(client.clone());
+        let options = SelectorTapOptions::new()
+            .with_modifiers(KeyboardModifiers::new().with(KeyboardModifier::Alt));
+
+        // Act
+        service
+            .selector_tap(
+                SelectorTapParams::new(Selector::Css(selector("button")), options),
+                None,
+            )
+            .await
+            .expect("actionable tap should succeed");
+
+        // Assert
+        assert_eq!(
+            client.method_names(),
+            vec![
+                "Runtime.evaluate",
+                "Runtime.evaluate",
+                "Input.dispatchKeyEvent",
+                "Input.dispatchTouchEvent",
+                "Input.dispatchTouchEvent",
+                "Input.dispatchKeyEvent",
+            ]
+        );
+        let calls = client.calls();
+        assert_eq!(calls[2].1[0]["key"], "Alt");
+        assert_eq!(calls[3].1[0]["type"], "touchStart");
+        assert_eq!(calls[3].1[0]["touchPoints"][0]["x"], 12.5);
+        assert_eq!(calls[3].1[0]["modifiers"], 1);
+        assert_eq!(calls[4].1[0]["type"], "touchEnd");
+        assert_eq!(calls[5].1[0]["type"], "keyUp");
+    }
+
+    #[cfg(feature = "touchscreen-input")]
+    #[tokio::test]
+    async fn selector_tap_trial_blocks_dom_commit_while_still_dispatching_touch() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>Submit</button>"));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {
+                "status": "ready", "x": 1.0, "y": 2.0, "isMac": false
+            }}}),
+            json!({"result": {"value": true}}),
+            json!({"result": {"value": true}}),
+        ]);
+        let service = CdpLocatorService::new(client.clone());
+
+        // Act
+        service
+            .selector_tap(
+                SelectorTapParams::new(
+                    Selector::Css(selector("button")),
+                    SelectorTapOptions::new().with_trial(true),
+                ),
+                None,
+            )
+            .await
+            .expect("trial tap should finish");
+
+        // Assert
+        let calls = client.calls();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|(method, _)| method == "Input.dispatchTouchEvent")
+                .count(),
+            2
+        );
+        let methods = client.method_names();
+        assert_eq!(methods.last().map(String::as_str), Some("Runtime.evaluate"));
+        let install = calls[2].1[0]
+            .as_str()
+            .expect("trial installation should be JavaScript");
+        let cleanup = calls[5].1[0]
+            .as_str()
+            .expect("trial cleanup should be JavaScript");
+        assert!(install.contains("touchstart"));
+        assert!(cleanup.contains("stop"));
     }
 
     #[tokio::test]
@@ -5588,8 +6999,965 @@ mod tests {
             .as_str()
             .expect("evaluation should carry script");
         assert!(script.contains("const position = { x: 2.5, y: 3.25 }"));
-        assert!(script.contains("if (false) element.scrollIntoView"));
+        assert!(script.contains("if (false) {\n    if (position)"));
         assert!(script.contains("if (!true"));
+        assert!(!script.contains("blockerTag"));
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[test]
+    fn retained_element_click_scripts_do_not_read_mutable_page_node_global() {
+        // Arrange
+        let point = super::ClickPoint {
+            x: 10.0,
+            y: 20.0,
+            is_mac: false,
+        };
+        let options = ClickOptionsV2::new();
+
+        // Act
+        let scripts = [
+            super::retained_click_actionability_script(&options, false),
+            super::retained_click_actionability_script(&options, true),
+            super::retained_click_route_check_script(point, false, false),
+            super::retained_click_route_check_script(point, true, true),
+        ];
+
+        // Assert
+        for script in scripts {
+            assert!(script.contains("const ELEMENT_NODE = 1;"));
+            assert!(script.contains("node.nodeType === ELEMENT_NODE ? node : node.parentElement"));
+            assert!(script.contains("!node.isConnected || !element.isConnected"));
+            assert!(script.contains("element.nodeType !== ELEMENT_NODE"));
+            assert!(script.contains("element.ownerDocument?.defaultView !== globalThis"));
+            assert!(!script.contains("Node."));
+        }
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_text_node_click_retargets_each_phase_without_requerying() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>Text</button>"));
+        client.set_evaluate_responses([
+            json!({"result": {"value": {
+                "status": "ready", "x": 13.5, "y": 21.25, "isMac": false
+            }}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+
+        // Act
+        service
+            .click_retained_top_level_element(
+                "text-node-7",
+                "world-3",
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                || Ok(()),
+            )
+            .await
+            .expect("the exact retained Text node should click through its parent Element");
+
+        // Assert
+        let evaluations: Vec<_> = client
+            .calls()
+            .into_iter()
+            .filter(|call| call.0 == "Runtime.callFunctionOn")
+            .collect();
+        assert_eq!(evaluations.len(), 3);
+        for (index, call) in evaluations.iter().enumerate() {
+            assert_eq!(call.1[0]["uniqueContextId"], "world-3");
+            assert_eq!(call.1[0]["arguments"][0]["objectId"], "text-node-7");
+            let script = call.1[0]["functionDeclaration"].as_str().unwrap();
+            assert!(script.contains("node.nodeType === ELEMENT_NODE ? node : node.parentElement"));
+            assert!(script.contains("!node.isConnected || !element.isConnected"));
+            assert!(!script.contains("const element = matches[0]"));
+            assert!(script.starts_with(if index == 0 {
+                "async function(node)"
+            } else {
+                "function(node)"
+            }));
+        }
+        assert!(client.calls().iter().any(|call| {
+            call.0 == "Input.dispatchMouseEvent" && call.1[0]["type"] == "mousePressed"
+        }));
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[test]
+    fn retained_obscured_response_records_only_sanitized_blocker_preview() {
+        // Arrange
+        let diagnostics = super::RetainedClickDiagnostics::default();
+        let response = json!({"result": {"value": {
+            "status": "obscured", "blockerTag": "div", "blockerId": "blocker"
+        }}});
+
+        // Act
+        let attempt = super::parse_retained_click_attempt(response, false, &diagnostics);
+        let log = diagnostics.timeout_log().unwrap();
+
+        // Assert
+        assert!(matches!(
+            attempt,
+            Ok(super::ActionAttempt::Retry(
+                super::ActionabilityProgress::Obscured
+            ))
+        ));
+        assert!(log.contains("<div id=\"blocker\"></div> intercepts pointer events"));
+        assert!(log.contains("retrying click action"));
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_top_level_click_uses_the_exact_object_and_shared_pointer_transaction() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>First</button>"));
+        client.set_evaluate_responses([
+            json!({"result": {"value": {
+                "status": "ready", "x": 13.5, "y": 21.25, "isMac": false
+            }}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let options = ClickOptionsV2::new()
+            .with_button(MouseButton::Right)
+            .with_no_wait_after(true);
+
+        // Act
+        service
+            .click_retained_top_level_element("remote-object-7", "world-3", options, &press, || {
+                Ok(())
+            })
+            .await
+            .expect("the exact top-level Element should click");
+
+        // Assert
+        assert_eq!(
+            client.method_names(),
+            [
+                "Page.getFrameTree",
+                "Runtime.callFunctionOn",
+                "Runtime.callFunctionOn",
+                "Input.dispatchMouseEvent",
+                "Runtime.callFunctionOn",
+                "Input.dispatchMouseEvent",
+                "Input.dispatchMouseEvent",
+            ]
+        );
+        let calls = client.calls();
+        for call in &calls[1..=2] {
+            assert_eq!(call.1[0]["uniqueContextId"], "world-3");
+            assert_eq!(call.1[0]["arguments"][0]["objectId"], "remote-object-7");
+        }
+        let script = calls[1].1[0]["functionDeclaration"]
+            .as_str()
+            .expect("actionability should use a function declaration");
+        assert!(script.contains("async function(node)"));
+        assert!(script.contains("globalThis !== globalThis.top"));
+        assert!(script.contains("blockerTag"));
+        assert!(!script.contains("const element = matches[0]"));
+        let route_script = calls[2].1[0]["functionDeclaration"]
+            .as_str()
+            .expect("route check should use a function declaration");
+        assert!(route_script.contains("const x = 13.5"));
+        assert!(route_script.contains("element.getClientRects()"));
+        assert_eq!(calls[3].1[0]["x"], 13.5);
+        assert_eq!(calls[3].1[0]["y"], 21.25);
+        assert_eq!(calls[4].1[0]["arguments"][0]["objectId"], "remote-object-7");
+        assert_eq!(calls[5].1[0]["button"], "right");
+        assert_eq!(calls[6].1[0]["type"], "mouseReleased");
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_top_level_trial_checks_exact_element_without_pointer_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>First</button>"));
+        client.set_evaluate_responses([json!({"result": {"value": {
+            "status": "ready", "x": 13.5, "y": 21.25, "isMac": false
+        }}})]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+
+        // Act
+        service
+            .click_retained_top_level_element(
+                "remote-object-7",
+                "world-3",
+                ClickOptionsV2::new().with_trial(true),
+                &press,
+                || Ok(()),
+            )
+            .await
+            .expect("trial should finish after exact-element actionability");
+
+        // Assert
+        assert_eq!(
+            client.method_names(),
+            ["Page.getFrameTree", "Runtime.callFunctionOn"]
+        );
+        assert_eq!(
+            client.calls()[1].1[0]["arguments"][0]["objectId"],
+            "remote-object-7"
+        );
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn detached_retained_element_fails_without_requery_or_pointer_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>First</button>"));
+        client.set_evaluate_responses([json!({"result": {"value": {"status": "detached"}}})]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+
+        // Act
+        let error = service
+            .click_retained_top_level_element(
+                "removed-object",
+                "world-3",
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                || Ok(()),
+            )
+            .await
+            .expect_err("detached retained Element must fail");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert_eq!(error.message(), "Element is not attached to the DOM");
+        assert_eq!(
+            client.method_names(),
+            ["Page.getFrameTree", "Runtime.callFunctionOn"]
+        );
+        assert_eq!(
+            client.calls()[1].1[0]["arguments"][0]["objectId"],
+            "removed-object"
+        );
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn child_frame_target_is_rejected_before_retained_evaluation_or_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>Nested</button>"));
+        let tree = serde_json::from_value(json!({
+            "frame": {
+                "id": "child-frame",
+                "parentId": "main-frame",
+                "loaderId": "fake-loader",
+                "url": "about:blank",
+                "domainAndRegistry": "",
+                "securityOrigin": "://",
+                "mimeType": "text/html",
+                "secureContextType": "InsecureScheme",
+                "crossOriginIsolatedContextType": "NotIsolated",
+                "gatedAPIFeatures": []
+            }
+        }))
+        .expect("child Frame tree should match CDP schema");
+        client.set_frame_tree(tree);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+
+        // Act
+        let error = service
+            .click_retained_top_level_element(
+                "nested-object",
+                "world-3",
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                || Ok(()),
+            )
+            .await
+            .expect_err("child Frame coordinates must not be used as Page coordinates");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert_eq!(client.method_names(), ["Page.getFrameTree"]);
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_child_click_translates_content_quad_to_page_css_coordinates() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(
+            "<iframe><button>Nested</button></iframe>",
+        ));
+        client.set_frame_tree(one_link_frame_tree());
+        client.set_frame_owner("child-frame", 91);
+        client.set_backend_box_model(
+            91,
+            json!({"model": {
+                "content": [108.0, 106.0, 308.0, 106.0, 308.0, 256.0, 108.0, 256.0],
+                "border": [100.0, 98.0, 316.0, 98.0, 316.0, 264.0, 100.0, 264.0]
+            }}),
+        );
+        client.set_evaluate_responses([
+            child_ready_response(),
+            json!({"result": {"value": {"status": "ready"}}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let diagnostics = super::RetainedClickDiagnostics::default();
+
+        // Act
+        service
+            .click_retained_one_link_child_element_with_diagnostics(
+                super::RetainedClickChildTarget::new(
+                    "nested-object",
+                    "world-3",
+                    "child-frame",
+                    "main-frame",
+                ),
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                &diagnostics,
+                |_, _| async { Ok(true) },
+                || Ok(()),
+            )
+            .await
+            .expect("one same-session child click should use Page CSS coordinates");
+
+        // Assert
+        let calls = client.calls();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|call| call.0 == "DOM.getFrameOwner")
+                .count(),
+            2
+        );
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|call| call.0 == "DOM.getBoxModel")
+                .count(),
+            2
+        );
+        let move_call = calls
+            .iter()
+            .find(|call| call.0 == "Input.dispatchMouseEvent" && call.1[0]["type"] == "mouseMoved")
+            .unwrap();
+        assert_eq!(move_call.1[0]["x"], 128.0);
+        assert_eq!(move_call.1[0]["y"], 136.0);
+        assert!(calls.iter().any(
+            |call| call.0 == "Input.dispatchMouseEvent" && call.1[0]["type"] == "mousePressed"
+        ));
+        assert!(
+            calls
+                .iter()
+                .filter(|call| call.0 == "Runtime.callFunctionOn")
+                .all(|call| {
+                    call.1[0]["arguments"].as_array().is_none_or(|args| {
+                        args.is_empty() || args[0]["objectId"] == "nested-object"
+                    })
+                })
+        );
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_child_click_rejects_malformed_content_quad_without_mouse_down() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<iframe></iframe>"));
+        client.set_frame_tree(one_link_frame_tree());
+        client.set_frame_owner("child-frame", 91);
+        client.set_backend_box_model(
+            91,
+            json!({"model": {
+                "content": [108.0, 106.0, 308.0, 106.0, 400.0, 256.0, 108.0, 256.0]
+            }}),
+        );
+        client.set_evaluate_responses([child_ready_response()]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let diagnostics = super::RetainedClickDiagnostics::default();
+
+        // Act
+        let error = service
+            .click_retained_one_link_child_element_with_diagnostics(
+                super::RetainedClickChildTarget::new(
+                    "nested-object",
+                    "world-3",
+                    "child-frame",
+                    "main-frame",
+                ),
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                &diagnostics,
+                |_, _| async { Ok(true) },
+                || Ok(()),
+            )
+            .await
+            .expect_err("non-affine iframe geometry must fail closed");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert!(
+            !client
+                .method_names()
+                .contains(&"Input.dispatchMouseEvent".to_owned())
+        );
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_child_click_retries_transient_parent_overlay_before_mouse_down() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<iframe></iframe>"));
+        client.set_frame_tree(one_link_frame_tree());
+        client.set_frame_owner("child-frame", 91);
+        client.set_backend_box_model(
+            91,
+            json!({"model": {
+                "content": [108.0, 106.0, 308.0, 106.0, 308.0, 256.0, 108.0, 256.0]
+            }}),
+        );
+        client.set_evaluate_responses([
+            child_ready_response(),
+            child_ready_response(),
+            json!({"result": {"value": {"status": "ready"}}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let diagnostics = super::RetainedClickDiagnostics::default();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let hit_client = client.clone();
+        let hit_attempts = attempts.clone();
+
+        // Act
+        service
+            .click_retained_one_link_child_element_with_diagnostics(
+                super::RetainedClickChildTarget::new(
+                    "nested-object",
+                    "world-3",
+                    "child-frame",
+                    "main-frame",
+                ),
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                &diagnostics,
+                move |_, _| {
+                    let attempt = hit_attempts.fetch_add(1, Ordering::Relaxed);
+                    if attempt == 0 {
+                        assert!(
+                            !hit_client
+                                .method_names()
+                                .contains(&"Input.dispatchMouseEvent".to_owned())
+                        );
+                    }
+                    async move { Ok(attempt != 0) }
+                },
+                || Ok(()),
+            )
+            .await
+            .expect("a transient parent overlay should retry the same element");
+
+        // Assert
+        assert_eq!(attempts.load(Ordering::Relaxed), 3);
+        assert_eq!(
+            client
+                .calls()
+                .iter()
+                .filter(|call| call.0 == "Input.dispatchMouseEvent"
+                    && call.1[0]["type"] == "mousePressed")
+                .count(),
+            1
+        );
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_child_force_click_skips_parent_hit_without_skipping_frame_route() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<iframe></iframe>"));
+        client.set_frame_tree(one_link_frame_tree());
+        client.set_frame_owner("child-frame", 91);
+        client.set_backend_box_model(
+            91,
+            json!({"model": {
+                "content": [108.0, 106.0, 308.0, 106.0, 308.0, 256.0, 108.0, 256.0]
+            }}),
+        );
+        client.set_evaluate_responses([
+            child_ready_response(),
+            json!({"result": {"value": {"status": "ready"}}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let diagnostics = super::RetainedClickDiagnostics::default();
+        let hit_calls = Arc::new(AtomicUsize::new(0));
+        let hit_calls_for_proof = hit_calls.clone();
+
+        // Act
+        service
+            .click_retained_one_link_child_element_with_diagnostics(
+                super::RetainedClickChildTarget::new(
+                    "nested-object",
+                    "world-3",
+                    "child-frame",
+                    "main-frame",
+                ),
+                ClickOptionsV2::new()
+                    .with_force(true)
+                    .with_no_wait_after(true),
+                &press,
+                &diagnostics,
+                move |_, _| {
+                    hit_calls_for_proof.fetch_add(1, Ordering::Relaxed);
+                    async { Ok(false) }
+                },
+                || Ok(()),
+            )
+            .await
+            .expect("force should skip hit proof, not native route and geometry");
+
+        // Assert
+        let methods = client.method_names();
+        assert_eq!(hit_calls.load(Ordering::Relaxed), 0);
+        assert!(methods.contains(&"Page.getFrameTree".to_owned()));
+        assert!(methods.contains(&"DOM.getBoxModel".to_owned()));
+        assert!(client.calls().iter().any(|call| {
+            call.0 == "Input.dispatchMouseEvent" && call.1[0]["type"] == "mousePressed"
+        }));
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_child_click_rejects_retired_parent_edge_without_mouse_down() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<iframe></iframe>"));
+        client.set_frame_trees([
+            one_link_frame_tree(),
+            serde_json::from_value(json!({"frame": {
+                "id": "main-frame", "loaderId": "main-loader", "url": "about:blank",
+                "domainAndRegistry": "", "securityOrigin": "://", "mimeType": "text/html",
+                "secureContextType": "InsecureScheme",
+                "crossOriginIsolatedContextType": "NotIsolated", "gatedAPIFeatures": []
+            }}))
+            .unwrap(),
+        ]);
+        client.set_evaluate_responses([child_ready_response()]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let diagnostics = super::RetainedClickDiagnostics::default();
+
+        // Act
+        let error = service
+            .click_retained_one_link_child_element_with_diagnostics(
+                super::RetainedClickChildTarget::new(
+                    "nested-object",
+                    "world-3",
+                    "child-frame",
+                    "main-frame",
+                ),
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                &diagnostics,
+                |_, _| async { Ok(true) },
+                || Ok(()),
+            )
+            .await
+            .expect_err("retired parent edge must fail before geometry or input");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert!(
+            !client
+                .method_names()
+                .contains(&"Input.dispatchMouseEvent".to_owned())
+        );
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_child_click_rejects_nested_route_before_parent_proof_or_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<iframe></iframe>"));
+        client.set_frame_tree(one_link_frame_tree());
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let diagnostics = super::RetainedClickDiagnostics::default();
+
+        // Act
+        let error = service
+            .click_retained_one_link_child_element_with_diagnostics(
+                super::RetainedClickChildTarget::new(
+                    "nested-object",
+                    "world-3",
+                    "grandchild-frame",
+                    "child-frame",
+                ),
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                &diagnostics,
+                |_, _| async { Ok(true) },
+                || Ok(()),
+            )
+            .await
+            .expect_err("a grandchild must not inherit one-link coordinates");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert_eq!(client.method_names(), ["Page.getFrameTree"]);
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_child_click_rejects_oopif_root_before_parent_proof_or_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<iframe></iframe>"));
+        let remote_root = serde_json::from_value(json!({"frame": {
+            "id": "child-frame", "parentId": "main-frame", "loaderId": "child-loader",
+            "url": "about:blank", "domainAndRegistry": "", "securityOrigin": "://",
+            "mimeType": "text/html", "secureContextType": "InsecureScheme",
+            "crossOriginIsolatedContextType": "NotIsolated", "gatedAPIFeatures": []
+        }}))
+        .unwrap();
+        client.set_frame_tree(remote_root);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let diagnostics = super::RetainedClickDiagnostics::default();
+
+        // Act
+        let error = service
+            .click_retained_one_link_child_element_with_diagnostics(
+                super::RetainedClickChildTarget::new(
+                    "nested-object",
+                    "world-3",
+                    "child-frame",
+                    "main-frame",
+                ),
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                &diagnostics,
+                |_, _| async { Ok(true) },
+                || Ok(()),
+            )
+            .await
+            .expect_err("an OOPIF-local root must not dispatch Page input");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert_eq!(client.method_names(), ["Page.getFrameTree"]);
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_route_change_after_actionability_prevents_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>First</button>"));
+        client.set_evaluate_responses([
+            json!({"result": {"value": {
+                "status": "ready", "x": 13.5, "y": 21.25, "isMac": false
+            }}}),
+            json!({"result": {"value": {"status": "frame-mismatch"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+
+        // Act
+        let error = service
+            .click_retained_top_level_element(
+                "moved-object",
+                "world-3",
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                || Ok(()),
+            )
+            .await
+            .expect_err("moving the exact Element after actionability must fail");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::TargetClosed);
+        assert_eq!(
+            client.method_names(),
+            [
+                "Page.getFrameTree",
+                "Runtime.callFunctionOn",
+                "Runtime.callFunctionOn",
+            ]
+        );
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_world_retirement_after_mouse_move_prevents_mouse_down() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>First</button>"));
+        client.set_evaluate_responses([
+            json!({"result": {"value": {
+                "status": "ready", "x": 13.5, "y": 21.25, "isMac": false
+            }}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+        let guard_client = client.clone();
+        let validate_world = move || {
+            if guard_client
+                .method_names()
+                .iter()
+                .any(|method| method == "Input.dispatchMouseEvent")
+            {
+                return Err(super::OperationError::new(
+                    FailureKind::TargetClosed,
+                    "creation world retired after hover",
+                    None,
+                ));
+            }
+            Ok(())
+        };
+
+        // Act
+        let error = service
+            .click_retained_top_level_element(
+                "object-7",
+                "world-3",
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                validate_world,
+            )
+            .await
+            .expect_err("a retired world cannot receive a pointer press");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::TargetClosed);
+        assert_eq!(
+            client.method_names(),
+            [
+                "Page.getFrameTree",
+                "Runtime.callFunctionOn",
+                "Runtime.callFunctionOn",
+                "Input.dispatchMouseEvent",
+            ]
+        );
+        assert_eq!(client.calls()[3].1[0]["type"], "mouseMoved");
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn retained_route_recheck_follows_navigation_barrier_before_pointer_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>First</button>"));
+        client.set_evaluate_responses([
+            json!({"result": {"value": {
+                "status": "ready", "x": 13.5, "y": 21.25, "isMac": false
+            }}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+
+        // Act
+        service
+            .click_retained_top_level_element(
+                "object-7",
+                "world-3",
+                ClickOptionsV2::new(),
+                &press,
+                || Ok(()),
+            )
+            .await
+            .expect("top-level click should finish without requested navigation");
+
+        // Assert
+        assert_eq!(
+            client.method_names(),
+            [
+                "Page.getFrameTree",
+                "Runtime.callFunctionOn",
+                "Page.enable",
+                "Page.getFrameTree",
+                "Runtime.callFunctionOn",
+                "Input.dispatchMouseEvent",
+                "Runtime.callFunctionOn",
+                "Input.dispatchMouseEvent",
+                "Input.dispatchMouseEvent",
+                "Page.enable",
+            ]
+        );
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn moved_retained_click_point_retries_the_same_object_before_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>First</button>"));
+        client.set_evaluate_responses([
+            json!({"result": {"value": {
+                "status": "ready", "x": 13.5, "y": 21.25, "isMac": false
+            }}}),
+            json!({"result": {"value": {"status": "moved"}}}),
+            json!({"result": {"value": {
+                "status": "ready", "x": 14.0, "y": 22.0, "isMac": false
+            }}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+            json!({"result": {"value": {"status": "ready"}}}),
+        ]);
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+
+        // Act
+        service
+            .click_retained_top_level_element(
+                "object-7",
+                "world-3",
+                ClickOptionsV2::new().with_no_wait_after(true),
+                &press,
+                || Ok(()),
+            )
+            .await
+            .expect("moved point should retry against the exact retained object");
+
+        // Assert
+        assert_eq!(
+            client.method_names(),
+            [
+                "Page.getFrameTree",
+                "Runtime.callFunctionOn",
+                "Runtime.callFunctionOn",
+                "Runtime.callFunctionOn",
+                "Runtime.callFunctionOn",
+                "Input.dispatchMouseEvent",
+                "Runtime.callFunctionOn",
+                "Input.dispatchMouseEvent",
+                "Input.dispatchMouseEvent",
+            ]
+        );
+        let calls = client.calls();
+        for call in &calls[1..=4] {
+            assert_eq!(call.1[0]["arguments"][0]["objectId"], "object-7");
+        }
+        assert_eq!(calls[5].1[0]["x"], 14.0);
+        assert_eq!(calls[6].1[0]["arguments"][0]["objectId"], "object-7");
+    }
+
+    #[cfg(feature = "retained-element-click")]
+    #[tokio::test]
+    async fn invalid_retained_native_id_fails_before_browser_io() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<button>First</button>"));
+        let service = retained_click_service(client.clone(), Duration::ZERO);
+        let press = service.new_retained_click_press().unwrap();
+
+        // Act
+        let error = service
+            .click_retained_top_level_element("", "world-3", ClickOptionsV2::new(), &press, || {
+                Ok(())
+            })
+            .await
+            .expect_err("empty native object ID must fail");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::ResourceExhausted);
+        assert!(client.calls().is_empty());
+    }
+
+    #[test]
+    fn locator_v2_click_scrolls_large_position_through_overflow_ancestors() {
+        // Arrange
+        let selector = Selector::Css(selector("button"));
+        let options = ClickOptionsV2::new()
+            .with_position(Position::new(1900.0, 1910.0).expect("finite position should build"));
+
+        // Act
+        let script = click_v2_actionability_script(&selector, &options)
+            .expect("positioned click actionability should compile");
+
+        // Assert
+        assert!(script.contains("const position = { x: 1900, y: 1910 }"));
+        assert!(
+            script.contains("let ancestor = element.parentElement || element.getRootNode()?.host")
+        );
+        assert!(script.contains("ancestor.scrollTo({ left: ancestor.scrollLeft + dx"));
+        assert!(script.contains("window.scrollBy({ left: dx, top: dy"));
+        assert!(
+            script.find("ancestor.scrollTo").unwrap() < script.find("window.scrollBy").unwrap()
+        );
+        assert!(
+            script.find("window.scrollBy").unwrap() < script.find("await new Promise").unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn forced_locator_v2_click_returns_not_visible_without_retry_or_input() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(
+            "<button style=\"display:none\">Submit</button>",
+        ));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "notvisible"}}}),
+        ]);
+        let service = CdpLocatorService::new(client.clone());
+
+        // Act
+        let error = service
+            .call(ClickParamsV2::new(
+                Selector::Css(selector("button")),
+                ClickOptionsV2::new().with_force(true),
+            ))
+            .await
+            .expect_err("forced click should fail immediately for a no-layout element");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert_eq!(error.message(), "Element is not visible");
+        assert_eq!(
+            client.method_names(),
+            vec!["Runtime.evaluate", "Runtime.evaluate"]
+        );
+        let script = client.calls()[1].1[0]
+            .as_str()
+            .expect("actionability expression should be a string")
+            .to_owned();
+        assert!(script.contains("if (style.display === \"none\" || rect.width <= 0"));
+        assert_eq!(
+            service.selector_runtime_metrics().actionability_evaluations,
+            1
+        );
+    }
+
+    #[test]
+    fn forced_click_reports_outside_viewport_separately_from_no_layout() {
+        // Arrange
+        let response = json!({"result": {"value": {"status": "out-of-viewport"}}});
+
+        // Act
+        let result = parse_pointer_attempt(response, "button", true, true);
+
+        // Assert
+        let error = result.err().expect("forced offscreen click should fail");
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert_eq!(error.message(), "Element is outside of the viewport");
+    }
+
+    #[test]
+    fn ordinary_click_retries_a_point_outside_viewport() {
+        // Arrange
+        let response = json!({"result": {"value": {"status": "out-of-viewport"}}});
+
+        // Act
+        let result = parse_pointer_attempt(response, "button", true, false);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Ok(super::ActionAttempt::Retry(
+                super::ActionabilityProgress::NotVisible
+            ))
+        ));
     }
 
     #[tokio::test]
@@ -5614,6 +7982,64 @@ mod tests {
                 CdpEvent::new(
                     "Page.frameNavigated".to_string(),
                     json!({"frame": {"id": "main-frame", "url": "https://example.test/next"}}),
+                    None,
+                ),
+            ],
+        ]);
+        let service = CdpLocatorService::new(client.clone());
+
+        // Act
+        let result = service
+            .call(ClickParamsV2::new(
+                Selector::Css(selector("a")),
+                ClickOptionsV2::new(),
+            ))
+            .await;
+
+        // Assert
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            client.method_names(),
+            vec![
+                "Runtime.evaluate",
+                "Runtime.evaluate",
+                "Page.enable",
+                "Page.getFrameTree",
+                "Input.dispatchMouseEvent",
+                "Input.dispatchMouseEvent",
+                "Input.dispatchMouseEvent",
+                "Page.enable",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn locator_v2_click_finishes_when_requested_navigation_becomes_a_download() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<a>Download</a>"));
+        client.set_main_frame_id("main-frame");
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {
+                "status": "ready", "x": 1.0, "y": 2.0, "isMac": false
+            }}}),
+        ]);
+        client.set_page_enable_events([
+            vec![],
+            vec![
+                CdpEvent::new(
+                    "Page.frameRequestedNavigation".to_string(),
+                    json!({"frameId": "main-frame", "disposition": "currentTab"}),
+                    None,
+                ),
+                CdpEvent::new(
+                    "Browser.downloadWillBegin".to_string(),
+                    json!({
+                        "frameId": "main-frame",
+                        "guid": "download-guid",
+                        "url": "https://example.test/file",
+                        "suggestedFilename": "file.txt"
+                    }),
                     None,
                 ),
             ],
@@ -5773,6 +8199,22 @@ mod tests {
         assert!(!check_script.contains("__pw.visible"));
         assert!(!check_script.contains("elementState"));
         assert!(!check_script.contains("elementFromPoint"));
+    }
+
+    #[test]
+    fn screenshot_geometry_accepts_oversized_partially_visible_elements() {
+        // Arrange
+        let selector = Selector::Css(selector("body"));
+
+        // Act
+        let check_script = screenshot_geometry_check_script(&selector)
+            .expect("a bounded strict selector should compile");
+
+        // Assert
+        assert!(check_script.len() <= MAX_FOCUS_SCRIPT_BYTES);
+        assert!(check_script.contains("if (ratio <= 0)"));
+        assert!(!check_script.contains("if (ratio !== 1)"));
+        assert!(!check_script.contains("element.scrollIntoView"));
     }
 
     #[tokio::test]
@@ -6104,6 +8546,48 @@ mod tests {
         assert_eq!(calls[3].1[0]["modifiers"], 0);
     }
 
+    #[test]
+    fn click_deadline_projects_and_consumes_the_last_bounded_progress() {
+        // Arrange
+        let service = CdpLocatorService::new(Arc::new(FakeCdpClient::from_html("")));
+        service.record_action_progress(super::ActionabilityProgress::Disabled);
+        let context = OperationContext::new(
+            CallId::new(92),
+            ObjectId::new(3),
+            pwright_cap_locator::v2::Click::METHOD,
+            None,
+        );
+
+        // Act
+        let first = <CdpLocatorService as CommandCancellation<
+            pwright_cap_locator::v2::Click,
+        >>::terminal_error_after_cancel(
+            &service,
+            context,
+            CancellationReason::DeadlineExceeded,
+            Some(Duration::from_millis(250)),
+        );
+        let second = <CdpLocatorService as CommandCancellation<
+            pwright_cap_locator::v2::Click,
+        >>::terminal_error_after_cancel(
+            &service,
+            context,
+            CancellationReason::DeadlineExceeded,
+            Some(Duration::from_millis(250)),
+        );
+
+        // Assert
+        let first = first.expect("recorded progress should enrich the deadline");
+        assert_eq!(first.kind(), FailureKind::Timeout);
+        assert_eq!(
+            first.details(),
+            Some(&LocatorErrorDetails::Backend(
+                "actionability:disabled".to_string()
+            ))
+        );
+        assert!(second.is_none());
+    }
+
     #[tokio::test]
     async fn select_option_retries_precommit_states_and_returns_dom_order_values() {
         // Arrange
@@ -6143,6 +8627,90 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "select-option-timeout-progress")]
+    #[tokio::test(start_paused = true)]
+    async fn disabled_option_retry_is_retained_for_only_this_timed_out_call() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(
+            "<select><option disabled>two</option></select>",
+        ));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "option-not-enabled"}}}),
+        ]);
+        let service = CdpLocatorService::with_retry_delay(client.clone(), Duration::from_secs(1));
+        let progress = pwright_cap_locator::SelectOptionProgress::new();
+        let params = SelectOptionParams::new(
+            Selector::Css(selector("select")),
+            "two",
+            SelectOptionOptions::new(),
+        )
+        .with_progress(progress.clone());
+
+        // Act
+        let deadline = tokio::time::timeout(Duration::from_millis(10), service.call(params)).await;
+
+        // Assert
+        assert!(deadline.is_err());
+        assert!(progress.option_not_enabled());
+        assert_eq!(client.method_names(), vec!["Runtime.evaluate"; 2]);
+    }
+
+    #[cfg(feature = "select-option-timeout-progress")]
+    #[tokio::test(start_paused = true)]
+    async fn other_select_option_retry_does_not_claim_disabled_option() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<select></select>"));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "options-not-found"}}}),
+        ]);
+        let service = CdpLocatorService::with_retry_delay(client, Duration::from_secs(1));
+        let progress = pwright_cap_locator::SelectOptionProgress::new();
+        let params = SelectOptionParams::new(
+            Selector::Css(selector("select")),
+            "two",
+            SelectOptionOptions::new(),
+        )
+        .with_progress(progress.clone());
+
+        // Act
+        let deadline = tokio::time::timeout(Duration::from_millis(10), service.call(params)).await;
+
+        // Assert
+        assert!(deadline.is_err());
+        assert!(!progress.option_not_enabled());
+    }
+
+    #[cfg(feature = "select-option-timeout-progress")]
+    #[tokio::test]
+    async fn successful_selection_clears_an_earlier_disabled_option_retry() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(
+            "<select><option>two</option></select>",
+        ));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "option-not-enabled"}}}),
+            json!({"result": {"value": {"status": "done", "values": ["two"]}}}),
+        ]);
+        let service = CdpLocatorService::with_retry_delay(client, Duration::ZERO);
+        let progress = pwright_cap_locator::SelectOptionProgress::new();
+        let params = SelectOptionParams::new(
+            Selector::Css(selector("select")),
+            "two",
+            SelectOptionOptions::new(),
+        )
+        .with_progress(progress.clone());
+
+        // Act
+        let values = service.call(params).await.unwrap();
+
+        // Assert
+        assert_eq!(values, ["two"]);
+        assert!(!progress.option_not_enabled());
+    }
+
     #[test]
     fn select_option_script_preserves_matching_event_and_force_semantics() {
         // Arrange
@@ -6159,12 +8727,14 @@ mod tests {
             &Selector::Css(selector("select")),
             &values,
             SelectOptionOptions::new().with_force(true),
+            None,
         )
         .expect("bounded descriptors should compile");
         let empty = select_option_script(
             &Selector::Css(selector("select")),
             &[],
             SelectOptionOptions::new(),
+            None,
         )
         .expect("empty selection should compile");
 
@@ -6176,10 +8746,250 @@ mod tests {
         assert!(script.contains("if (!true)"));
         assert!(script.contains("descriptor.valueOrLabel === option.value"));
         assert!(script.contains("if (element.multiple)"));
+        assert!(script.contains("__pw.elementState(option, \"enabled\")"));
+        assert!(script.contains(r#"status: "option-not-enabled""#));
         assert!(script.contains("element.value = undefined"));
         assert!(script.contains(r#"new Event("input", { bubbles: true, composed: true })"#));
         assert!(script.contains(r#"new Event("change", { bubbles: true })"#));
         assert!(empty.contains("const requested = [];"));
+        assert!(!script.contains("__pwrightFillCommit"));
+    }
+
+    #[cfg(feature = "select-option-navigation-commit")]
+    #[test]
+    fn select_option_receipt_follows_dom_commit_and_precedes_input_listener() {
+        // Arrange
+        let selector = Selector::Css(selector("select"));
+
+        // Act
+        let script = select_option_script(
+            &selector,
+            &[SelectOptionValue::from("blue")],
+            SelectOptionOptions::new(),
+            Some("select-option:world:1"),
+        )
+        .unwrap();
+
+        // Assert
+        let selected = script
+            .find("selected.forEach(option => option.selected = true)")
+            .unwrap();
+        let committed_values = script
+            .find("const committedValues = selected.map(option => option.value)")
+            .unwrap();
+        let input = script.find("dispatchEvent(new Event(\"input\"").unwrap();
+        let change = script.find("dispatchEvent(new Event(\"change\"").unwrap();
+        let receipt = script.find("__pwrightFillCommit").unwrap();
+        let result_values = script
+            .rfind("const values = selected.map(option => option.value)")
+            .unwrap();
+        assert!(script.contains("if (receipt.length <= 65536)"));
+        assert!(
+            selected < committed_values
+                && committed_values < receipt
+                && receipt < input
+                && input < change
+                && change < result_values
+        );
+    }
+
+    #[cfg(feature = "select-option-navigation-commit")]
+    #[tokio::test]
+    async fn select_option_recovers_values_only_from_receipt_and_frame_navigation() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(
+            "<select><option value='blue'>Blue</option></select>",
+        ));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "done", "count": 1}}}),
+        ]);
+        let mut service = CdpLocatorService::new(client.clone());
+        service.unique_context_id = Some(Arc::from("utility-context-1"));
+        let service = service.with_select_option_commit_route(7, Arc::from("frame-a"));
+        service
+            .call(CountParams::new(selector("select")))
+            .await
+            .unwrap();
+        client.set_evaluate_errors(["Cannot find context with specified id".to_owned()]);
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_evaluate_gate(Some(gate.clone()));
+
+        // Act
+        let selection = tokio::spawn(async move {
+            service
+                .call(SelectOptionParams::new(
+                    selector("select"),
+                    "blue",
+                    SelectOptionOptions::new(),
+                ))
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if client.method_names().len() >= 4 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let calls = client.calls();
+        let script = calls[3].1[0]["expression"].as_str().unwrap();
+        let prefix = "token: ";
+        let start = script.find(prefix).unwrap() + prefix.len();
+        let end = start + script[start..].find(", values").unwrap();
+        let token: String = serde_json::from_str(&script[start..end]).unwrap();
+        client.send_event(CdpEvent::new(
+            "Runtime.bindingCalled".to_owned(),
+            json!({
+                "name": super::FILL_COMMIT_BINDING,
+                "executionContextId": 7,
+                "payload": json!({"token": token, "values": ["blue"]}).to_string(),
+            }),
+            None,
+        ));
+        client.send_event(CdpEvent::new(
+            "Page.frameNavigated".to_owned(),
+            json!({"frame": {"id": "frame-a"}}),
+            None,
+        ));
+        gate.notify_one();
+        let result = selection.await.unwrap();
+
+        // Assert
+        assert_eq!(result.unwrap(), ["blue"]);
+        assert_eq!(
+            client.method_names(),
+            vec![
+                "Runtime.evaluate",
+                "Runtime.evaluate",
+                "Runtime.addBinding",
+                "Runtime.evaluate",
+            ]
+        );
+    }
+
+    #[cfg(feature = "select-option-navigation-commit")]
+    #[tokio::test]
+    async fn select_option_recovers_through_exact_session_receipt_and_frame_navigation() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(
+            "<select><option value='blue'>Blue</option></select>",
+        ));
+        client.set_event_session_id("selected-session").unwrap();
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "done", "count": 1}}}),
+        ]);
+        let mut service = CdpLocatorService::new(client.clone());
+        service.unique_context_id = Some(Arc::from("utility-context-1"));
+        let service = service.with_select_option_commit_route(7, Arc::from("frame-a"));
+        service
+            .call(CountParams::new(selector("select")))
+            .await
+            .unwrap();
+        client.set_evaluate_errors(["Cannot find context with specified id".to_owned()]);
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_evaluate_gate(Some(gate.clone()));
+
+        // Act
+        let selection = tokio::spawn(async move {
+            service
+                .call(SelectOptionParams::new(
+                    selector("select"),
+                    "blue",
+                    SelectOptionOptions::new(),
+                ))
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if client.method_names().len() >= 4 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let calls = client.calls();
+        let script = calls[3].1[0]["expression"].as_str().unwrap();
+        let start = script.find("token: ").unwrap() + "token: ".len();
+        let end = start + script[start..].find(", values").unwrap();
+        let token: String = serde_json::from_str(&script[start..end]).unwrap();
+        client.send_event(CdpEvent::new(
+            "Runtime.bindingCalled".to_owned(),
+            json!({
+                "name": super::FILL_COMMIT_BINDING,
+                "executionContextId": 7,
+                "payload": json!({"token": token, "values": ["blue"]}).to_string(),
+            }),
+            Some("selected-session".to_owned()),
+        ));
+        client.send_event(CdpEvent::new(
+            "Page.frameNavigated".to_owned(),
+            json!({"frame": {"id": "frame-a"}}),
+            Some("selected-session".to_owned()),
+        ));
+        gate.notify_one();
+        let result = selection.await.unwrap();
+
+        // Assert
+        assert_eq!(result.unwrap(), ["blue"]);
+        assert_eq!(
+            client.method_names(),
+            [
+                "Runtime.evaluate",
+                "Runtime.evaluate",
+                "Runtime.addBinding",
+                "Runtime.evaluate"
+            ]
+        );
+        assert!(
+            script.find(super::FILL_COMMIT_BINDING).unwrap()
+                < script.find("dispatchEvent(new Event(\"input\"").unwrap()
+        );
+    }
+
+    #[cfg(feature = "select-option-navigation-commit")]
+    #[tokio::test]
+    async fn select_option_preserves_context_loss_without_commit_receipt() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(
+            "<select><option value='blue'>Blue</option></select>",
+        ));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "done", "count": 1}}}),
+        ]);
+        let mut service = CdpLocatorService::new(client.clone());
+        service.unique_context_id = Some(Arc::from("utility-context-1"));
+        let service = service.with_select_option_commit_route(7, Arc::from("frame-a"));
+        service
+            .call(CountParams::new(selector("select")))
+            .await
+            .unwrap();
+        client.set_evaluate_errors(["Cannot find context with specified id".to_owned()]);
+
+        // Act
+        let error = service
+            .call(SelectOptionParams::new(
+                selector("select"),
+                "blue",
+                SelectOptionOptions::new(),
+            ))
+            .await
+            .unwrap_err();
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert!(
+            error
+                .message()
+                .contains("Cannot find context with specified id")
+        );
     }
 
     #[tokio::test]
@@ -6360,7 +9170,7 @@ mod tests {
             .as_str()
             .expect("actionability expression should be a string");
         assert!(actionability.contains("const position = { x: 2, y: 3 }"));
-        assert!(actionability.contains("if (false) element.scrollIntoView"));
+        assert!(actionability.contains("if (false) {\n    if (position)"));
         assert_eq!(calls[3].1[0]["type"], "mouseMoved");
         assert_eq!(calls[4].1[0]["type"], "mousePressed");
         assert_eq!(calls[4].1[0]["button"], "left");
@@ -7413,7 +10223,7 @@ mod tests {
         let state_calls = scripts
             .iter()
             .map(|script| {
-                script.contains("pwright.selector-runtime/7")
+                script.contains(super::SELECTOR_RUNTIME_SYMBOL)
                     && script.contains(&format!(
                         "__pw.version !== {}",
                         super::SELECTOR_RUNTIME_VERSION
@@ -7424,7 +10234,10 @@ mod tests {
 
         // Assert
         assert_eq!(state_calls, vec![true, true, true]);
-        assert!(super::SELECTOR_RUNTIME.contains("version: 7"));
+        assert!(
+            super::SELECTOR_RUNTIME
+                .contains(&format!("version: {}", super::SELECTOR_RUNTIME_VERSION))
+        );
         assert!(super::SELECTOR_RUNTIME.contains("elementState"));
         assert!(super::SELECTOR_RUNTIME.contains("retarget"));
     }
@@ -8725,9 +11538,57 @@ mod tests {
         assert!(script.contains("__pw.role(document, \"dialog\""));
         assert!(script.contains("__pw.role(__root, \"button\""));
         assert!(script.contains("__pw.within"));
-        assert!(script.contains("Symbol.for(\"pwright.selector-runtime/7\")"));
+        assert!(script.contains(super::SELECTOR_RUNTIME_SYMBOL));
         assert!(!script.contains("validRoles"));
         assert!(script.len() < super::SELECTOR_RUNTIME.len());
+    }
+
+    #[test]
+    fn legacy_click_enabled_check_uses_shared_retargeting_state() {
+        // Arrange
+        let selector = Selector::text("Click target", false);
+
+        // Act
+        let script =
+            actionability_script(&selector, false).expect("click actionability should compile");
+
+        // Assert
+        assert!(script.contains("__pw.elementState(element, \"enabled\")"));
+        assert!(script.contains("element.closest('button, [role=button], a, [role=link]')"));
+        assert!(script.contains("hit !== target && !target.contains(hit)"));
+        assert!(!script.contains("element.disabled"));
+        assert!(!script.contains("element.getAttribute(\"aria-disabled\")"));
+    }
+
+    #[test]
+    fn locator_v2_click_enabled_check_uses_shared_retargeting_state() {
+        // Arrange
+        let selector = Selector::text("Click target", false);
+
+        // Act
+        let script = click_v2_actionability_script(&selector, &ClickOptionsV2::new())
+            .expect("locator v2 click actionability should compile");
+
+        // Assert
+        assert!(script.contains("__pw.elementState(element, \"enabled\")"));
+        assert!(script.contains("Array.from(element.getClientRects()"));
+        assert!(script.contains("const { left, top, right, bottom } = clientRect"));
+        assert!(!script.contains("element.disabled"));
+        assert!(!script.contains("element.getAttribute(\"aria-disabled\")"));
+    }
+
+    #[test]
+    fn locator_v2_click_hit_check_accepts_button_and_role_button_ancestors() {
+        // Arrange
+        let selector = Selector::text("Click target", false);
+
+        // Act
+        let script = click_v2_actionability_script(&selector, &ClickOptionsV2::new())
+            .expect("v2 click actionability");
+
+        // Assert
+        assert!(script.contains("element.closest('button, [role=button], a, [role=link]')"));
+        assert!(script.contains("hit !== target && !target.contains(hit)"));
     }
 
     #[test]
@@ -8953,6 +11814,143 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "fill-navigation-commit")]
+    #[tokio::test]
+    async fn direct_fill_accepts_context_loss_only_after_exact_commit_receipt() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<input type=date>"));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "done", "count": 1}}}),
+        ]);
+        let mut service = CdpLocatorService::new(client.clone());
+        service.unique_context_id = Some(Arc::from("utility-context-1"));
+        let service = service.with_fill_commit_execution_context(7);
+        service
+            .call(CountParams::new(selector("input")))
+            .await
+            .unwrap();
+        client.set_evaluate_errors(["Cannot find context with specified id".to_owned()]);
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_evaluate_gate(Some(gate.clone()));
+
+        // Act
+        let fill = tokio::spawn(async move {
+            service
+                .call(FillParams::new(
+                    selector("input"),
+                    "2020-03-02",
+                    FillOptions::new(),
+                ))
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if client
+                    .method_names()
+                    .last()
+                    .is_some_and(|name| name == "Runtime.evaluate")
+                    && client.method_names().len() >= 4
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let calls = client.calls();
+        let script = calls[3].1[0]["expression"].as_str().unwrap();
+        let binding = "globalThis[\"__pwrightFillCommit\"](";
+        let payload_start = script.find(binding).unwrap() + binding.len();
+        let payload_end = payload_start + script[payload_start..].find(");").unwrap();
+        let payload: String = serde_json::from_str(&script[payload_start..payload_end]).unwrap();
+        client.send_event(CdpEvent::new(
+            "Runtime.bindingCalled".to_owned(),
+            json!({
+                "name": super::FILL_COMMIT_BINDING,
+                "executionContextId": 7,
+                "payload": payload,
+            }),
+            None,
+        ));
+        gate.notify_one();
+        let result = fill.await.unwrap();
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(
+            client.method_names(),
+            vec![
+                "Runtime.evaluate",
+                "Runtime.evaluate",
+                "Runtime.addBinding",
+                "Runtime.evaluate",
+            ]
+        );
+    }
+
+    #[cfg(feature = "fill-navigation-commit")]
+    #[tokio::test]
+    async fn direct_fill_preserves_context_loss_without_commit_receipt() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<input type=date>"));
+        client.set_evaluate_responses([
+            runtime_installed(),
+            json!({"result": {"value": {"status": "done", "count": 1}}}),
+        ]);
+        let mut service = CdpLocatorService::new(client.clone());
+        service.unique_context_id = Some(Arc::from("utility-context-1"));
+        let service = service.with_fill_commit_execution_context(7);
+        service
+            .call(CountParams::new(selector("input")))
+            .await
+            .unwrap();
+        client.set_evaluate_errors(["Cannot find context with specified id".to_owned()]);
+
+        // Act
+        let error = service
+            .call(FillParams::new(
+                selector("input"),
+                "2020-03-02",
+                FillOptions::new(),
+            ))
+            .await
+            .unwrap_err();
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert!(
+            error
+                .message()
+                .contains("Cannot find context with specified id")
+        );
+    }
+
+    #[cfg(feature = "fill-navigation-commit")]
+    #[test]
+    fn direct_fill_receipt_runs_only_after_both_dom_events() {
+        // Arrange
+        let selector = Selector::Css(selector("input[type=date]"));
+
+        // Act
+        let script =
+            fill_actionability_script(&selector, "2020-03-02", false, Some("world:1")).unwrap();
+
+        // Assert
+        let input = script
+            .find("element.dispatchEvent(new Event('input'")
+            .unwrap();
+        let change = script
+            .find("element.dispatchEvent(new Event('change'")
+            .unwrap();
+        let receipt = script
+            .find("globalThis[\"__pwrightFillCommit\"](\"world:1\")")
+            .unwrap();
+        assert!(input < change && change < receipt);
+        assert!(receipt < script.find("return { status: \"done\" }").unwrap());
+    }
+
     #[tokio::test]
     async fn empty_fill_deletes_the_selected_editable_value() {
         // Arrange
@@ -9102,6 +12100,36 @@ mod tests {
                 "Cannot type text into input[type=number]".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn fill_script_uses_playwright_compatible_invalid_target_words() {
+        // Arrange
+        let selector = Selector::Css(selector("input"));
+
+        // Act
+        let script = fill_actionability_script(&selector, "value", false, None)
+            .expect("fill script should compile");
+
+        // Assert
+        assert!(script.contains("Input of type"));
+        assert!(
+            script.contains("Element is not an <input>, <textarea> or [contenteditable] element")
+        );
+    }
+
+    #[test]
+    fn fill_script_canonicalizes_color_case_without_changing_other_direct_inputs() {
+        // Arrange
+        let selector = Selector::Css(selector("input"));
+
+        // Act
+        let script = fill_actionability_script(&selector, "#AbCd00", false, None)
+            .expect("fill script should compile");
+
+        // Assert
+        assert!(script.contains("type === 'color' ? value.trim().toLowerCase() : value.trim()"));
+        assert!(script.contains("if (element.value !== expected)"));
     }
 
     #[tokio::test]

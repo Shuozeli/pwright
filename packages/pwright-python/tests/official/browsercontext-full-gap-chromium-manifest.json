@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/async/test_browsercontext.py": "1eb6981f36e917dba202d0d0a324a4d2efcafc0b9a591c3d96f7ad7c99809cdc",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/async/utils.py": "ee618a20d789a28f953ba23a2c24249f3b21f7bd00b1a2d2435aa75ce9b0b478",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea"
+  },
+  "cases": [
+    {"id": "tests/async/test_browsercontext.py::test_auth_should_fail_with_wrong_credentials", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_auth_should_fail_without_credentials", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_auth_should_return_resource_body", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_auth_should_work_with_correct_credentials", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_close_should_be_callable_twice", "capabilities": ["browser-context", "lifecycle", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_csp_should_be_able_to_navigate_after_disabling_javascript", "capabilities": ["browser-context", "content-security-policy", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_csp_should_work", "capabilities": ["browser-context", "content-security-policy", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_expose_binding_should_work", "capabilities": ["browser-context", "expose-binding", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_expose_bindinghandle_should_work", "capabilities": ["browser-context", "expose-binding", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_expose_function_should_be_callable_from_inside_add_init_script", "capabilities": ["browser-context", "expose-function", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_expose_function_should_throw_for_duplicate_registrations", "capabilities": ["browser-context", "expose-function", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_expose_function_should_work", "capabilities": ["browser-context", "expose-function", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_offline_should_emulate_navigator_online", "capabilities": ["browser-context", "network-offline", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_offline_should_work_with_initial_option", "capabilities": ["browser-context", "network-offline", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_bypass_after_cross_process_navigation", "capabilities": ["browser-context", "page-events", "cross-process-navigation", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_bypass_csp_header", "capabilities": ["browser-context", "page-events", "content-security-policy", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_bypass_csp_in_iframes_as_well", "capabilities": ["browser-context", "page-events", "content-security-policy", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_bypass_csp_meta_tag", "capabilities": ["browser-context", "page-events", "content-security-policy", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_have_about_blank_for_empty_url_with_domcontentloaded", "capabilities": ["browser-context", "page-events", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_have_about_blank_url_with_domcontentloaded", "capabilities": ["browser-context", "page-events", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_have_an_opener", "capabilities": ["browser-context", "page-events", "popup", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_have_url", "capabilities": ["browser-context", "page-events", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_have_url_after_domcontentloaded", "capabilities": ["browser-context", "page-events", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_not_allow_device_scale_factor_with_null_viewport", "capabilities": ["browser-context", "context-options", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_not_allow_is_mobile_with_null_viewport", "capabilities": ["browser-context", "context-options", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_report_when_a_new_page_is_created_and_closed", "capabilities": ["browser-context", "page-events", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_work_with_ctrl_clicking", "capabilities": ["browser-context", "page-events", "popup", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_page_event_should_work_with_shift_clicking", "capabilities": ["browser-context", "page-events", "popup", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_should_fail_with_correct_credentials_and_mismatching_hostname", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_should_fail_with_correct_credentials_and_mismatching_port", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_should_fail_with_correct_credentials_and_mismatching_scheme", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_should_support_forced_colors", "capabilities": ["browser-context", "forced-colors", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_should_work_with_correct_credentials_and_matching_origin", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_should_work_with_correct_credentials_and_matching_origin_case_insensitive", "capabilities": ["browser-context", "http-credentials", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_strict_selectors_on_context", "capabilities": ["browser-context", "strict-selectors", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_user_agent_should_emulate_device_user_agent", "capabilities": ["browser-context", "user-agent", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_user_agent_should_make_a_copy_of_default_options", "capabilities": ["browser-context", "user-agent", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_user_agent_should_work", "capabilities": ["browser-context", "user-agent", "async-api"]},
+    {"id": "tests/async/test_browsercontext.py::test_user_agent_should_work_for_subframes", "capabilities": ["browser-context", "user-agent", "async-api"]}
+  ]
+}

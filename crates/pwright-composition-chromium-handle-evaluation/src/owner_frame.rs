@@ -30,4 +30,28 @@ impl ChromiumHandleEvaluationCommandService {
         .owner_frame(&resolved.target)
         .await
     }
+
+    /// Queries the retained frame-owner element for its child Frame ID without
+    /// publishing another Handle or exposing the native identity.
+    pub async fn content_frame_native_id(
+        &self,
+        target: ObjectId,
+    ) -> Result<Option<String>, OperationError<HandleEvaluationErrorDetails>> {
+        validate_live(&self.runtime, target, "ElementHandle")?;
+        let resolved = self.resolve_handle(target, &[]).await?;
+        if resolved.target.kind() != CdpHandleKind::Element {
+            return Err(OperationError::new(
+                FailureKind::ProtocolViolation,
+                "contentFrame requires an ElementHandle",
+                None,
+            ));
+        }
+        pwright_backend_cdp_handle_evaluation::CdpHandleOwnerFrameService::new(
+            resolved.evaluation,
+            self.native_id_bytes,
+            self.preview_bytes,
+        )
+        .content_frame(&resolved.target)
+        .await
+    }
 }

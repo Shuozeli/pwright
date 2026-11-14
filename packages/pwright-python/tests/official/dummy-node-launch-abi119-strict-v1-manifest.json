@@ -1,0 +1,54 @@
+{
+  "schema": 3,
+  "kind": "playwright-python-guarded-dummy-node-strict-v1",
+  "evidenceScope": "strict-public-behavior-guarded-dummy-exit",
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "executionPolicy": "macos-sandbox-dummy-node-strict-v1",
+  "browser": "chromium",
+  "launchMode": "owned",
+  "requiresBrowser": false,
+  "requiresFixtureServers": true,
+  "tests": {
+    "async": "tests/async/test_launcher.py::test_browser_type_launch_should_reject_if_launched_browser_fails_immediately[chromium]",
+    "sync": "tests/sync/test_launcher.py::test_browser_type_launch_should_reject_if_launched_browser_fails_immediately[chromium]"
+  },
+  "upstreamSources": {
+    "tests/async/test_launcher.py": "648549470d4ba7f393c792b3774b45f358c1be63f1388509038a39a4e33564b3",
+    "tests/sync/test_launcher.py": "c5e1554d855450ef1c8aacb15eee7307401bb8a7878e8c1f77359d6110f0d94f",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/assets/dummy_bad_browser_executable.js": "9928a78e7de42f29dfc61783a2f31673b387d7d6ea27cda5bc4472e4338c1f7f",
+    "pyproject.toml": "96e2d4dcd75b40a101c77d12b4e29ea4d91efc6fd58992a67ed8cc837e2e1e08"
+  },
+  "candidateWheelSha256": "86d1ff028301b4bd42f9f2a3a39b8cef172217e8a9600e1fcf0517c7b38b1254",
+  "candidatePackageTreeSha256": "cb5e28beb4ae7101c179c3e72916a8a61ba1c50862b75a27ddf441ee6d372b25",
+  "candidateNativeSha256": "62944c0e57439c4cc99f6e32941b4557508623f982a7a394914882de9c6daa58",
+  "candidateRuntimeLibraries": {
+    "libcrypto-a12805a1.3.dylib": "bfa24a48f50688de796e559941e03882248d3b26bc3be1f78e3b9b560f6badbd",
+    "libssl-ffd8ac69.3.dylib": "a5486ffa809746d423d1f47bc6319664aba9560805fe1c923b6be4d6d3c22069"
+  },
+  "oraclePackageTreeSha256": "d7655707035107f13a81db0e1d52d839c2bf42bf2008478fba610299cd6da149",
+  "oracleDriverNodeSha256": "6f2e835e57feb7a29ffcd53a4d4eb60224ec264a1e002c3ba6d99999ea29807d",
+  "systemNodeSha256": "1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040",
+  "pythonRuntimeSha256": "bc56ea9cdc0fface1eb75712f871a454324f6cbfec4e30311b197f208a7f3d07",
+  "supportTrees": {
+    "packages/pwright-python/tests/official/shim": "91695bbdc103345adc694882c3f9dc02dfd39929ca138265d8e7769830d7c15b",
+    "packages/pwright-python/tests/official/runtime": "aa98681e0669136b62f940c53b7a405802a33fba6fbdd79a87efaabd6463eb44"
+  },
+  "captureReady": true,
+  "captureSourceSha256": {
+    "scripts/run_playwright_python_dummy_node_strict.py": "8558e2200e8aed43760ca810dfbc161911f8349f1ef701e505e7f18a4a070d36",
+    "packages/pwright-python/tests/official/dummy_guard_strict/pwright_official_dummy_guard.py": "607e0127f6dada83e7039a74a22407b2c97e89ae46d21621dddc8c5fecc51e63",
+    "packages/pwright-python/tests/official/dummy_guard_strict/node": "f17d72ec76596d90303ddf442b6c1ac13e44e27c9b3a5e5a4c899e9e4cf4a95c"
+  },
+  "captureSourcePaths": [
+    "scripts/run_playwright_python_dummy_node_strict.py",
+    "packages/pwright-python/tests/official/dummy_guard_strict/pwright_official_dummy_guard.py",
+    "packages/pwright-python/tests/official/dummy_guard_strict/node"
+  ]
+}

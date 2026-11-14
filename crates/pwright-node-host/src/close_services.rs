@@ -8,7 +8,8 @@ use pwright_cap_context_lifecycle::BrowserContextClose;
 use pwright_cap_page_lifecycle::PageClose;
 use pwright_composition_chromium::{
     AttachedBrowserContextCloseService, AttachedChromiumComposition, AttachedPageCloseService,
-    ConfirmedAttachedPageCloseService, ObservedAttachedContextCloseService,
+    ChromiumNetworkPageRegistrationHandle, ConfirmedAttachedPageCloseService,
+    ObservedAttachedContextCloseService,
 };
 use pwright_core::{Command, CommandResult, Service};
 use pwright_runtime_tokio::TokioCleanupExecutor;
@@ -66,9 +67,25 @@ impl PageCloseService {
         poll: Arc<dyn CdpPageClosePoll>,
         trees: &Arc<FrameTrees>,
         stop: tokio_util::sync::CancellationToken,
+        network: Option<ChromiumNetworkPageRegistrationHandle>,
     ) -> Result<Self, HostError> {
-        let selected = match trees.close_observer()? {
-            Some(observer) => {
+        let selected = match (trees.close_observer()?, network) {
+            (Some(observer), Some(network)) => {
+                let confirmation = pwright_backend_cdp_page_lifecycle::native_confirmation::NativePageCloseConfirmation::new(
+                    composition.connection().clone(), composition.resources(), native_profile()?, NativeStop(stop),
+                ).map_err(HostError::backend)?;
+                composition
+                    .confirmed_page_close_service_with_network(
+                        runtime,
+                        cleanup,
+                        poll,
+                        observer,
+                        Arc::new(confirmation),
+                        network,
+                    )
+                    .map(Self::Confirmed)
+            }
+            (Some(observer), None) => {
                 let confirmation = pwright_backend_cdp_page_lifecycle::native_confirmation::NativePageCloseConfirmation::new(
                     composition.connection().clone(), composition.resources(), native_profile()?, NativeStop(stop),
                 ).map_err(HostError::backend)?;
@@ -82,7 +99,10 @@ impl PageCloseService {
                     )
                     .map(Self::Confirmed)
             }
-            None => composition
+            (None, Some(network)) => composition
+                .page_lifecycle_services_with_network(runtime, network, cleanup, poll)
+                .map(|(close, _)| Self::Ordinary(close)),
+            (None, None) => composition
                 .page_lifecycle_services(runtime, cleanup, poll)
                 .map(|(close, _)| Self::Ordinary(close)),
         };
@@ -111,12 +131,23 @@ impl ContextCloseService {
         runtime: &CommandRuntime,
         cleanup: TokioCleanupExecutor,
         trees: &Arc<FrameTrees>,
+        network: Option<ChromiumNetworkPageRegistrationHandle>,
     ) -> Result<Self, HostError> {
-        let selected = match trees.close_observer()? {
-            Some(observer) => composition
+        let selected = match (trees.close_observer()?, network) {
+            (Some(observer), Some(network)) => composition
+                .observed_browser_context_close_service_for_page_runtime_with_network(
+                    runtime, cleanup, observer, network,
+                )
+                .map(Self::Observed),
+            (Some(observer), None) => composition
                 .observed_browser_context_close_service_for_page_runtime(runtime, cleanup, observer)
                 .map(Self::Observed),
-            None => composition
+            (None, Some(network)) => composition
+                .browser_context_close_service_for_page_runtime_with_network(
+                    runtime, network, cleanup,
+                )
+                .map(Self::Ordinary),
+            (None, None) => composition
                 .browser_context_close_service_for_page_runtime(runtime, cleanup)
                 .map(Self::Ordinary),
         };

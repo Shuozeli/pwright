@@ -53,6 +53,7 @@ pub struct FrameNavigationWaitProfile {
     requests: usize,
     id_bytes: usize,
     error_bytes: usize,
+    url_bytes: usize,
     response_bytes: usize,
     arena_bytes: usize,
     bytes: u64,
@@ -94,10 +95,31 @@ impl FrameNavigationWaitProfile {
             requests,
             id_bytes,
             error_bytes,
+            url_bytes: 0,
             response_bytes,
             arena_bytes,
             bytes,
         })
+    }
+    /// URL retention is optional; ordinary navigation receipts pay no URL cost.
+    pub fn with_url_bytes(mut self, url_bytes: usize) -> Result<Self> {
+        if url_bytes == 0 || self.url_bytes != 0 {
+            return Err(NavigationWaitError::InvalidProfile);
+        }
+        let extra = self
+            .events
+            .checked_mul(url_bytes)
+            .ok_or(NavigationWaitError::SizeOverflow)?;
+        self.arena_bytes = self
+            .arena_bytes
+            .checked_add(extra)
+            .ok_or(NavigationWaitError::SizeOverflow)?;
+        self.bytes = self
+            .bytes
+            .checked_add(u64::try_from(extra).map_err(|_| NavigationWaitError::SizeOverflow)?)
+            .ok_or(NavigationWaitError::SizeOverflow)?;
+        self.url_bytes = url_bytes;
+        Ok(self)
     }
     pub const fn requirements(self) -> ResourceRequirements {
         ResourceRequirements::none()
@@ -115,6 +137,13 @@ struct Navigation {
     request: Option<usize>,
     failure: Option<bool>,
     error_len: usize,
+    url_len: usize,
+}
+/// One bounded navigation candidate copied out before invoking a predicate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NavigationCandidate<'a> {
+    Url(&'a str),
+    Failed,
 }
 #[derive(Clone, Copy)]
 enum Response {
@@ -161,6 +190,7 @@ pub struct FrameNavigationWait {
     deadline: Option<Duration>,
     now: Duration,
     receipt_len: Option<usize>,
+    accept_any_navigation: bool,
     event_count: usize,
     pending_document: Option<usize>,
     failure_event: Option<usize>,
@@ -206,6 +236,7 @@ impl FrameNavigationWait {
             deadline,
             now: Duration::ZERO,
             receipt_len: None,
+            accept_any_navigation: false,
             event_count: 0,
             pending_document: None,
             failure_event: None,
@@ -227,8 +258,67 @@ impl FrameNavigationWait {
                 self.arena[..loader.len()].copy_from_slice(loader.as_bytes());
             }
             self.receipt_len = loader.map(str::len);
+            self.accept_any_navigation = false;
             self.state = State::Navigation;
             self.match_navigation()
+        })();
+        self.seal_error(result)
+    }
+
+    /// Wait for the next committed or same-document navigation without a
+    /// command receipt. This is the Page.waitForNavigation mode: the first
+    /// navigation observed after registration becomes the selected document.
+    pub fn wait_for_next_navigation(&mut self, now: Duration) -> Result<()> {
+        self.tick(now)?;
+        let result = (|| {
+            if !matches!(self.state, State::Receipt) {
+                return Err(NavigationWaitError::InvalidState);
+            }
+            self.accept_any_navigation = true;
+            self.state = State::Navigation;
+            self.match_navigation()
+        })();
+        self.seal_error(result)
+    }
+
+    /// Inspect an event without selecting it. Callers must copy a URL out of
+    /// their lifecycle lock before running any language-supplied predicate.
+    pub fn candidate(&self, index: usize) -> Result<Option<NavigationCandidate<'_>>> {
+        if self.profile.url_bytes == 0 || !matches!(self.state, State::Receipt) {
+            return Err(NavigationWaitError::InvalidState);
+        }
+        let Some(event) = self.events.get(index).copied().flatten() else {
+            return Ok(None);
+        };
+        if event.failure.is_some() {
+            return Ok(Some(NavigationCandidate::Failed));
+        }
+        let offset = self.event_offset(index) + self.profile.id_bytes + self.profile.error_bytes;
+        let url = std::str::from_utf8(&self.arena[offset..offset + event.url_len])
+            .map_err(|_| NavigationWaitError::InvalidIdentity)?;
+        Ok(Some(NavigationCandidate::Url(url)))
+    }
+
+    /// Select exactly an observed event while retaining one registration and
+    /// one absolute deadline across all rejected candidates.
+    pub fn select_candidate(&mut self, now: Duration, index: usize) -> Result<()> {
+        self.tick(now)?;
+        let result = (|| {
+            if self.profile.url_bytes == 0 || !matches!(self.state, State::Receipt) {
+                return Err(NavigationWaitError::InvalidState);
+            }
+            let event = self
+                .events
+                .get(index)
+                .copied()
+                .flatten()
+                .ok_or(NavigationWaitError::InvalidState)?;
+            if let Some(canceled) = event.failure {
+                self.failure_event = Some(index);
+                return Err(NavigationWaitError::Network { canceled });
+            }
+            self.state = State::Lifecycle(event.request);
+            Ok(())
         })();
         self.seal_error(result)
     }
@@ -295,6 +385,17 @@ impl FrameNavigationWait {
         }
     }
 
+    /// Borrow the completed document's native loader/request identity.
+    /// Chromium uses this value as the `Network.getResponseBody` request ID
+    /// for a document response. It remains owned by this wait's fixed arena.
+    pub fn response_request_id(&self) -> Option<&str> {
+        let State::Complete(Some(index)) = self.state else {
+            return None;
+        };
+        let request = self.requests[index]?;
+        std::str::from_utf8(&self.arena[self.request_offset(index)..][..request.loader_len]).ok()
+    }
+
     /// The embedding scheduler combines this with the Page's idle deadline.
     pub fn next_deadline(&self) -> Option<Duration> {
         self.outcome().is_none().then_some(self.deadline).flatten()
@@ -348,7 +449,8 @@ impl FrameNavigationWait {
         }
     }
     fn event_offset(&self, i: usize) -> usize {
-        self.profile.id_bytes + i * (self.profile.id_bytes + self.profile.error_bytes)
+        self.profile.id_bytes
+            + i * (self.profile.id_bytes + self.profile.error_bytes + self.profile.url_bytes)
     }
     fn request_offset(&self, i: usize) -> usize {
         self.event_offset(self.profile.events)
@@ -392,17 +494,19 @@ impl FrameNavigationWait {
                 });
                 self.pending_document = Some(index);
             }
-            NativeLifecycleNotice::Committed { frame, loader, .. } if *frame == self.frame => {
+            NativeLifecycleNotice::Committed {
+                frame, loader, url, ..
+            } if *frame == self.frame => {
                 let request = self
                     .pending_document
                     .filter(|i| self.loader_matches(*i, loader));
                 if request.is_some() {
                     self.pending_document = None;
                 }
-                self.navigation(Some(loader), request)?;
+                self.navigation(Some(loader), request, *url)?;
             }
-            NativeLifecycleNotice::SameDocument { frame } if *frame == self.frame => {
-                self.navigation(None, None)?
+            NativeLifecycleNotice::SameDocument { frame, url } if *frame == self.frame => {
+                self.navigation(None, None, *url)?
             }
             NativeLifecycleNotice::Response {
                 frame,
@@ -443,7 +547,12 @@ impl FrameNavigationWait {
         }
         Ok(())
     }
-    fn navigation(&mut self, loader: Option<&str>, request: Option<usize>) -> Result<()> {
+    fn navigation(
+        &mut self,
+        loader: Option<&str>,
+        request: Option<usize>,
+        url: Option<&str>,
+    ) -> Result<()> {
         if !matches!(self.state, State::Receipt | State::Navigation) {
             return Ok(());
         }
@@ -458,11 +567,23 @@ impl FrameNavigationWait {
             let offset = self.event_offset(i);
             self.arena[offset..offset + loader.len()].copy_from_slice(loader.as_bytes());
         }
+        let url_len = if self.profile.url_bytes > 0 {
+            let url = url.ok_or(NavigationWaitError::InvalidIdentity)?;
+            if url.is_empty() || url.len() > self.profile.url_bytes {
+                return Err(NavigationWaitError::Capacity);
+            }
+            let offset = self.event_offset(i) + self.profile.id_bytes + self.profile.error_bytes;
+            self.arena[offset..offset + url.len()].copy_from_slice(url.as_bytes());
+            url.len()
+        } else {
+            0
+        };
         self.events[i] = Some(Navigation {
             loader_len: loader.map(str::len),
             request,
             failure: None,
             error_len: 0,
+            url_len,
         });
         self.event_count += 1;
         self.match_navigation()
@@ -487,6 +608,7 @@ impl FrameNavigationWait {
             request: Some(request),
             failure: Some(canceled),
             error_len: text.len(),
+            url_len: 0,
         });
         self.event_count += 1;
         self.match_navigation()
@@ -501,14 +623,20 @@ impl FrameNavigationWait {
                 .loader_len
                 .zip(self.receipt_len)
                 .is_some_and(|(a, b)| self.arena[self.event_offset(i)..][..a] == self.arena[..b]);
-            let accepted = match self.receipt_len {
-                Some(_) => event.loader_len.is_some() && (same_loader || event.failure.is_none()),
-                None => event.loader_len.is_none(),
+            let accepted = if self.accept_any_navigation {
+                true
+            } else {
+                match self.receipt_len {
+                    Some(_) => {
+                        event.loader_len.is_some() && (same_loader || event.failure.is_none())
+                    }
+                    None => event.loader_len.is_none(),
+                }
             };
             if !accepted {
                 continue;
             }
-            if self.receipt_len.is_some() && !same_loader {
+            if !self.accept_any_navigation && self.receipt_len.is_some() && !same_loader {
                 return Err(NavigationWaitError::Interrupted);
             }
             if let Some(canceled) = event.failure {

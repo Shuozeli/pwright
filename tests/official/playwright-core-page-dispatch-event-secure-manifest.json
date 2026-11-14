@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-page-dispatch-event-chromium-secure",
+      "role": "browser-backed-official-file",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/page/page-dispatchevent.spec.ts"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "oracleAdapter": "test-mode-playwright-core-cdp",
+      "project": "chromium-page",
+      "requiresBrowser": true,
+      "expectedTestsPerProject": 17,
+      "expectedFiles": 1,
+      "expectedSpecIds": [
+        "abcdd35b469348a13783-1c90651a81ddfebcad6e",
+        "abcdd35b469348a13783-09f156e6ae58df6a3617",
+        "abcdd35b469348a13783-6a25bfea60aeee8ad650",
+        "abcdd35b469348a13783-45e1520268cae7074a79",
+        "abcdd35b469348a13783-54e2b9f275d02f9049ad",
+        "abcdd35b469348a13783-6e6bfe0e7399b1e388ec",
+        "abcdd35b469348a13783-ef1e0195e97a0b45126a",
+        "abcdd35b469348a13783-65465127845dec44a874",
+        "abcdd35b469348a13783-8a499ca33ac41430c246",
+        "abcdd35b469348a13783-819f97815b7f3bdcac2e",
+        "abcdd35b469348a13783-e90ab14015a3c939db20",
+        "abcdd35b469348a13783-5475ce5c6e6c732f2f9a",
+        "abcdd35b469348a13783-def3680ae4b30eecefb6",
+        "abcdd35b469348a13783-b946beaf3394fff76f9f",
+        "abcdd35b469348a13783-8e452a45d0fd6fc6bdfa",
+        "abcdd35b469348a13783-f711babfdb439a496354",
+        "abcdd35b469348a13783-794225a4ed99dcd648d4"
+      ],
+      "fixtureMode": "trusted-tailscale-tls-dual-port",
+      "upstreamTestSourceSha256": "0af6f0562a67f391939881030426b6c0c4c0b4d77ba7d88bd64160b75231e36e",
+      "upstreamFixtureSourceSha256": "4330e0b94c88fdba07401efd3f4cd30a229bb48da037d8c880cd79ba0bae7307",
+      "upstreamServerFixturesSourceSha256": "4c0039a149bd61e8707adddc626b345632561bd343749293ddbe9458f6ac617b"
+    }
+  ]
+}

@@ -226,6 +226,56 @@ impl CdpSession {
             .await?;
         Ok(())
     }
+
+    /// Recursively attach only to the target classes selected by the caller.
+    ///
+    /// The final catch-all exclusion is important: omitting the filter makes
+    /// Chromium attach to every non-browser/non-tab target, including service
+    /// workers that this client may not retain or observe.
+    pub async fn target_set_auto_attach_types(
+        &self,
+        auto_attach: bool,
+        wait_for_debugger_on_start: bool,
+        flatten: bool,
+        included_target_types: &[&str],
+    ) -> Result<()> {
+        let params = auto_attach_params(
+            auto_attach,
+            wait_for_debugger_on_start,
+            flatten,
+            Some(included_target_types),
+        );
+        self.send("Target.setAutoAttach", serde_json::to_value(params)?)
+            .await?;
+        Ok(())
+    }
+}
+
+fn auto_attach_params(
+    auto_attach: bool,
+    wait_for_debugger_on_start: bool,
+    flatten: bool,
+    included_target_types: Option<&[&str]>,
+) -> cdp_gen::SetAutoAttachParams {
+    let filter = included_target_types.map(|target_types| {
+        target_types
+            .iter()
+            .map(|target_type| cdp_gen::FilterEntry {
+                exclude: None,
+                r#type: Some((*target_type).to_owned()),
+            })
+            .chain(std::iter::once(cdp_gen::FilterEntry {
+                exclude: Some(true),
+                r#type: None,
+            }))
+            .collect()
+    });
+    cdp_gen::SetAutoAttachParams {
+        auto_attach,
+        wait_for_debugger_on_start,
+        flatten: Some(flatten),
+        filter,
+    }
 }
 
 fn target_creation_params(url: &str, browser_context_id: &str) -> cdp_gen::CreateTargetParams {
@@ -240,7 +290,7 @@ fn target_creation_params(url: &str, browser_context_id: &str) -> cdp_gen::Creat
 
 #[cfg(test)]
 mod tests {
-    use super::target_creation_params;
+    use super::{auto_attach_params, target_creation_params};
 
     #[test]
     fn default_context_creation_omits_the_native_context_id() {
@@ -261,5 +311,32 @@ mod tests {
         let encoded = serde_json::to_value(params).unwrap();
         // Assert
         assert_eq!(encoded["browserContextId"], "context-a");
+    }
+
+    #[test]
+    fn selected_auto_attach_types_end_with_a_catch_all_exclusion() {
+        // Arrange
+        let target_types = ["page", "iframe", "worker"];
+
+        // Act
+        let encoded =
+            serde_json::to_value(auto_attach_params(true, true, true, Some(&target_types)))
+                .unwrap();
+
+        // Assert
+        assert_eq!(
+            encoded,
+            serde_json::json!({
+                "autoAttach": true,
+                "waitForDebuggerOnStart": true,
+                "flatten": true,
+                "filter": [
+                    {"type": "page"},
+                    {"type": "iframe"},
+                    {"type": "worker"},
+                    {"exclude": true}
+                ]
+            })
+        );
     }
 }

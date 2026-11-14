@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_selectors_misc.py": "44746147b5adaf40bdd879468b34d9fb2d31b4c64d3a397c9c94a47961b41b0f"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_selectors_misc.py::test_should_throw_already_registered_error_when_registering",
+      "capabilities": [
+        "playwright.selectors",
+        "selectors.register",
+        "selector-engine.global-registry",
+        "duplicate-registration-error",
+        "async-api"
+      ]
+    }
+  ]
+}

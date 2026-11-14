@@ -7,6 +7,40 @@ use crate::generated::runtime as cdp_gen;
 use crate::session::CdpSession;
 
 impl CdpSession {
+    /// One fixed binding name per target session. Repeated callers share the
+    /// registration; target detach retires it without per-action cleanup.
+    pub async fn runtime_ensure_binding(&self, name: &'static str) -> Result<()> {
+        #[cfg(not(feature = "runtime-binding"))]
+        {
+            let _ = name;
+            Err(crate::connection::CdpError::Other(
+                "runtime-binding is not selected for this CDP client".into(),
+            ))
+        }
+        #[cfg(feature = "runtime-binding")]
+        {
+            if name.is_empty() || name.len() > 64 {
+                return Err(crate::connection::CdpError::Other(
+                    "Runtime binding name must contain 1..=64 bytes".into(),
+                ));
+            }
+            let installed = self
+                .runtime_binding
+                .get_or_try_init(|| async {
+                    self.send("Runtime.addBinding", serde_json::json!({ "name": name }))
+                        .await?;
+                    Ok::<_, crate::connection::CdpError>(name)
+                })
+                .await?;
+            if *installed != name {
+                return Err(crate::connection::CdpError::Other(
+                    "CDP target session already owns a different Runtime binding".into(),
+                ));
+            }
+            Ok(())
+        }
+    }
+
     pub async fn runtime_evaluate_with_user_gesture(
         &self,
         expression: &str,
@@ -218,6 +252,30 @@ impl CdpSession {
         )?;
         params.object_group = Some(object_group.to_owned());
         params.await_promise = Some(false);
+        params.user_gesture = Some(user_gesture);
+        self.send_to_settlement("Runtime.callFunctionOn", serde_json::to_value(params)?)
+            .await
+    }
+
+    /// Await and retain the resolved result in a pre-owned object group.
+    /// The caller releases the group after bounded by-value projections.
+    pub async fn runtime_call_function_as_object_awaited_in_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+        user_gesture: bool,
+    ) -> Result<Value> {
+        let mut params = call_function_on_params(
+            None,
+            Some(unique_context_id),
+            function_declaration,
+            arguments,
+            false,
+        )?;
+        params.object_group = Some(object_group.to_owned());
+        params.await_promise = Some(true);
         params.user_gesture = Some(user_gesture);
         self.send_to_settlement("Runtime.callFunctionOn", serde_json::to_value(params)?)
             .await

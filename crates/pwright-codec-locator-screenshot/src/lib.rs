@@ -377,6 +377,11 @@ fn validate_options(options: &ScreenshotOptions) -> Result<(), LocatorScreenshot
             "clip is not valid for Locator screenshots",
         ));
     }
+    if options.document_clip {
+        return Err(LocatorScreenshotCodecError::InvalidOptions(
+            "document_clip is an internal Page capture option",
+        ));
+    }
     if options.quality.is_some() && options.format.unwrap_or_default() == ScreenshotFormat::Png {
         return Err(LocatorScreenshotCodecError::InvalidOptions(
             "screenshot quality is only valid for JPEG or WebP",
@@ -421,6 +426,7 @@ fn options_from_wire(options: WireScreenshotOptions) -> ScreenshotOptions {
         full_page: None,
         clip: None,
         scale: options.scale.map(scale_from_wire),
+        document_clip: false,
     }
 }
 

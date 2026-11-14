@@ -3,12 +3,16 @@ use super::{HandlePolicy, NativeHandle, State, publication};
 use crate::evaluation_value::status;
 use napi::{bindgen_prelude::ToNapiValue, sys};
 use pwright_node_host::handles::NamedPendingHandle;
+#[cfg(feature = "element-handle-dom")]
+use pwright_node_host::handles::PendingHandle;
 use std::{
     ptr,
     sync::{Arc, Mutex},
 };
 
 pub(super) struct PropertiesOutput(pub Vec<NamedPendingHandle>, pub HandlePolicy);
+#[cfg(feature = "element-handle-dom")]
+pub(crate) struct HandlesOutput(pub Vec<PendingHandle>, pub HandlePolicy);
 
 struct Recovery {
     states: Vec<Arc<Mutex<State>>>,
@@ -86,6 +90,42 @@ impl ToNapiValue for PropertiesOutput {
                 )
             })?;
             let entry = descriptor(ptr::null(), key, row);
+            status(unsafe { sys::napi_define_properties(env, array, 1, &entry) })?;
+        }
+        recovery.armed = false;
+        Ok(array)
+    }
+}
+
+#[cfg(feature = "element-handle-dom")]
+impl ToNapiValue for HandlesOutput {
+    unsafe fn to_napi_value(env: sys::napi_env, value: Self) -> napi::Result<sys::napi_value> {
+        let mut recovery = Recovery {
+            states: Vec::with_capacity(value.0.len()),
+            armed: true,
+        };
+        let mut array = ptr::null_mut();
+        // SAFETY: the host admitted and validated the complete element batch;
+        // conversion runs inside the active Node callback environment.
+        status(unsafe { sys::napi_create_array_with_length(env, value.0.len(), &mut array) })?;
+        for (index, pending) in value.0.into_iter().enumerate() {
+            let handle =
+                NativeHandle::new(pending, value.1.clone()).map_err(crate::binding_error)?;
+            recovery.states.push(handle.state.clone());
+            let native = unsafe { publication::to_napi_value(env, handle) }?;
+            let index = index.to_string();
+            let mut key = ptr::null_mut();
+            status(unsafe {
+                sys::napi_create_string_utf8(
+                    env,
+                    index.as_ptr().cast(),
+                    isize::try_from(index.len()).map_err(|_| {
+                        napi::Error::from_reason("Handle index exceeds N-API capacity")
+                    })?,
+                    &mut key,
+                )
+            })?;
+            let entry = descriptor(ptr::null(), key, native);
             status(unsafe { sys::napi_define_properties(env, array, 1, &entry) })?;
         }
         recovery.armed = false;

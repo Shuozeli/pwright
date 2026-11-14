@@ -13,8 +13,8 @@ use pwright_selector_model::{
 pub const MAX_SELECTOR_DEPTH: usize = 32;
 pub const MAX_SELECTOR_NODES: usize = 256;
 pub const MAX_SELECTOR_STRING_BYTES: usize = 64 * 1024;
-pub const SELECTOR_RUNTIME_VERSION: u32 = 7;
-pub const SELECTOR_RUNTIME_SYMBOL: &str = "pwright.selector-runtime/7";
+pub const SELECTOR_RUNTIME_VERSION: u32 = 14;
+pub const SELECTOR_RUNTIME_SYMBOL: &str = "pwright.selector-runtime/11";
 const MAX_ESCAPED_BYTES_PER_INPUT_BYTE: usize = 6;
 const MAX_GENERATED_BYTES_PER_SELECTOR_NODE: usize = 1024;
 const MAX_ACTION_WRAPPER_BYTES: usize = 32 * 1024;
@@ -84,6 +84,12 @@ pub fn selector_runtime_install_script() -> String {
 // This runtime is backend-owned rather than part of the portable capability.
 // It deliberately uses only web-platform APIs and traverses open shadow roots.
 pub const SELECTOR_RUNTIME: &str = r#"(() => {
+  // Node is a mutable page global in the main world. nodeType values are
+  // stable web-platform constants and keep selector traversal independent of it.
+  const ELEMENT_NODE = 1;
+  const TEXT_NODE = 3;
+  const COMMENT_NODE = 8;
+  const DOCUMENT_NODE = 9;
   const normalize = value => String(value ?? '').replace(/\s+/g, ' ').trim();
   const matchesText = (actual, expected, exact) => {
     actual = normalize(actual);
@@ -91,19 +97,23 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
     return exact ? actual === expected : actual.toLowerCase().includes(expected.toLowerCase());
   };
   const queryRoots = root => {
-    const roots = [root];
-    for (let i = 0; i < roots.length; ++i) {
-      const current = roots[i];
-      if (current.nodeType === Node.ELEMENT_NODE && current.shadowRoot)
-        roots.push(current.shadowRoot);
+    const roots = [];
+    const visit = current => {
+      roots.push(current);
+      if (current.nodeType === ELEMENT_NODE && current.shadowRoot)
+        visit(current.shadowRoot);
       for (const element of current.querySelectorAll('*')) {
         if (element.shadowRoot)
-          roots.push(element.shadowRoot);
+          visit(element.shadowRoot);
       }
-    }
+    };
+    visit(root);
     return roots;
   };
-  const all = root => queryRoots(root).flatMap(current => Array.from(current.querySelectorAll('*')));
+  const all = root => queryRoots(root).flatMap(current => [
+    ...(current.nodeType === ELEMENT_NODE ? [current] : []),
+    ...current.querySelectorAll('*')
+  ]);
   const composedContains = (ancestor, node) => {
     for (let current = node; current;) {
       if (current === ancestor)
@@ -112,18 +122,70 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
     }
     return false;
   };
-  const css = (root, selector) => queryRoots(root).flatMap(current => Array.from(current.querySelectorAll(selector)));
+  const css = (root, selector) => {
+    const matches = queryRoots(root).flatMap(current => [...current.querySelectorAll(selector)]);
+    // querySelectorAll omits its own root, but a relative :scope selector
+    // explicitly addresses that element (including after a >> composition).
+    if (root.nodeType === ELEMENT_NODE && selector.includes(':scope') && root.matches(selector))
+      matches.unshift(root);
+    return matches;
+  };
+  const xpath = (root, expression) => {
+    let value = expression;
+    if (value.startsWith('/') && root.nodeType !== DOCUMENT_NODE)
+      value = '.' + value;
+    const document = root.nodeType === DOCUMENT_NODE ? root : root.ownerDocument;
+    if (!document) return [];
+    const iterator = document.evaluate(value, root, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE);
+    const result = [];
+    for (let node = iterator.iterateNext(); node; node = iterator.iterateNext()) {
+      if (node.nodeType === ELEMENT_NODE)
+        result.push(node);
+    }
+    return result;
+  };
+  const shouldSkipForText = element => {
+    const document = element.ownerDocument;
+    return ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(element.nodeName) ||
+      Boolean(document?.head && document.head.contains(element));
+  };
+  const elementText = root => {
+    if (shouldSkipForText(root)) return '';
+    if (root instanceof HTMLInputElement && (root.type === 'submit' || root.type === 'button'))
+      return root.value;
+    let value = '';
+    for (let child = root.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === TEXT_NODE) value += child.nodeValue || '';
+      else if (child.nodeType === ELEMENT_NODE) value += elementText(child);
+    }
+    if (root.shadowRoot) value += elementText(root.shadowRoot);
+    return value;
+  };
+  const immediateText = root => {
+    if (shouldSkipForText(root)) return [];
+    if (root instanceof HTMLInputElement && (root.type === 'submit' || root.type === 'button'))
+      return [root.value];
+    const values = [];
+    let current = '';
+    for (let child = root.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === TEXT_NODE) current += child.nodeValue || '';
+      else if (child.nodeType === COMMENT_NODE) continue;
+      else if (current) { values.push(current); current = ''; }
+    }
+    if (current) values.push(current);
+    return values;
+  };
   const text = (root, expected, exact) => {
     const matches = all(root).filter(element =>
-      !['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(element.tagName) &&
-      matchesText(element.textContent, expected, exact));
+      !shouldSkipForText(element) && matchesText(elementText(element), expected, exact));
     return matches.filter(element => !matches.some(other => other !== element && composedContains(element, other)));
   };
+  const textLegacy = (root, expected) => all(root).filter(element =>
+    !shouldSkipForText(element) && immediateText(element).some(value => matchesText(value, expected, true)));
   const textRegex = (root, source, flags) => {
     const matcher = new RegExp(source, flags);
     const matches = all(root).filter(element =>
-      !['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(element.tagName) &&
-      matcher.test(String(element.textContent ?? '')));
+      !shouldSkipForText(element) && matcher.test(elementText(element)));
     return matches.filter(element => !matches.some(other => other !== element && composedContains(element, other)));
   };
   const referencedText = (element, attribute) => normalize((element.getAttribute(attribute) || '')
@@ -259,7 +321,7 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
     return false;
   };
   const retarget = node => {
-    let element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    let element = node?.nodeType === ELEMENT_NODE ? node : node?.parentElement;
     if (!element) return null;
     if (!element.matches('input, textarea, select') && !element.isContentEditable)
       element = element.closest('button, [role=button], [role=checkbox], [role=radio]') || element;
@@ -332,11 +394,47 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
       return true;
     });
   };
-  const domOrder = values => {
-    const order = new Map(all(document).map((element, index) => [element, index]));
-    return values.sort((left, right) => (order.get(left) ?? Number.MAX_SAFE_INTEGER) - (order.get(right) ?? Number.MAX_SAFE_INTEGER));
+  const parentElementOrShadowHost = element => {
+    if (element.parentElement) return element.parentElement;
+    const parent = element.parentNode;
+    return parent?.nodeType === 11 ? parent.host : null;
   };
-  const union = (left, right) => domOrder(Array.from(new Set([...left, ...right])));
+  const domOrder = values => {
+    // Unlike CSS query batches, union/within sort by the composed parent tree.
+    const entries = new Map();
+    const roots = [];
+    const result = [];
+    const append = element => {
+      let entry = entries.get(element);
+      if (entry) return entry;
+      const parent = parentElementOrShadowHost(element);
+      if (parent) append(parent).children.push(element);
+      else roots.push(element);
+      entry = { children: [], taken: false };
+      entries.set(element, entry);
+      return entry;
+    };
+    for (const element of values)
+      append(element).taken = true;
+    const visit = element => {
+      const entry = entries.get(element);
+      if (entry.taken) result.push(element);
+      if (entry.children.length > 1) {
+        const children = new Set(entry.children);
+        entry.children = [];
+        for (let child = element.firstElementChild; child && entry.children.length < children.size; child = child.nextElementSibling) {
+          if (children.has(child)) entry.children.push(child);
+        }
+        for (let child = element.shadowRoot?.firstElementChild; child && entry.children.length < children.size; child = child.nextElementSibling) {
+          if (children.has(child)) entry.children.push(child);
+        }
+      }
+      for (const child of entry.children) visit(child);
+    };
+    for (const root of roots) visit(root);
+    return result;
+  };
+  const union = (left, right) => domOrder([...new Set([...left, ...right])]);
   const within = (bases, query) => {
     const result = [];
     const seen = new Set();
@@ -355,8 +453,8 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
     if (!style) return true;
     if (style.display === 'contents') {
       for (let child = element.firstChild; child; child = child.nextSibling) {
-        if (child.nodeType === Node.ELEMENT_NODE && visible(child)) return true;
-        if (child.nodeType === Node.TEXT_NODE) {
+        if (child.nodeType === ELEMENT_NODE && visible(child)) return true;
+        if (child.nodeType === TEXT_NODE) {
           const range = element.ownerDocument.createRange();
           range.selectNode(child);
           const rect = range.getBoundingClientRect();
@@ -370,7 +468,7 @@ pub const SELECTOR_RUNTIME: &str = r#"(() => {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   };
-  return Object.freeze({ version: 7, css, text, textRegex, label, labelRegex, attribute, attributeRegex, testId, testIdRegex, role, union, within, visible, elementState, retarget, matchesText });
+  return Object.freeze({ version: 14, css, xpath, text, textLegacy, textRegex, label, labelRegex, attribute, attributeRegex, testId, testIdRegex, role, union, within, visible, elementState, retarget, matchesText, elementText });
 })()"#;
 
 #[derive(Default)]
@@ -396,7 +494,7 @@ fn measure_selector_storage_inner(
         Selector::Css(css) => {
             claim_selector_storage(stats, css.as_str(), css.retained_string_capacity())
         }
-        Selector::Text(matcher) | Selector::Label(matcher) => {
+        Selector::Text(matcher) | Selector::LegacyText(matcher) | Selector::Label(matcher) => {
             claim_selector_storage(stats, matcher.value(), matcher.retained_string_capacity())
         }
         Selector::TextRegex(matcher) | Selector::LabelRegex(matcher) => {
@@ -525,6 +623,13 @@ fn compile_selector_inner(
                 matcher.exact()
             ))
         }
+        Selector::LegacyText(matcher) => {
+            claim_selector_string(stats, matcher.value())?;
+            Ok(format!(
+                "__pw.textLegacy({root}, {})",
+                json_string(matcher, "legacy text selector")?
+            ))
+        }
         Selector::TextRegex(matcher) => {
             claim_selector_string(stats, matcher.source())?;
             claim_selector_string(stats, matcher.flags())?;
@@ -614,7 +719,7 @@ fn compile_selector_inner(
                 invalid_response(&format!("could not encode text filter: {error}"))
             })?;
             Ok(format!(
-                "({base}).filter(element => __pw.matchesText(element.textContent || '', {text}, {exact}))"
+                "({base}).filter(element => __pw.matchesText(__pw.elementText(element), {text}, {exact}))"
             ))
         }
         Selector::FilterNotText { base, text, exact } => {
@@ -624,7 +729,7 @@ fn compile_selector_inner(
                 invalid_response(&format!("could not encode negative text filter: {error}"))
             })?;
             Ok(format!(
-                "({base}).filter(element => !__pw.matchesText(element.textContent || '', {text}, {exact}))"
+                "({base}).filter(element => !__pw.matchesText(__pw.elementText(element), {text}, {exact}))"
             ))
         }
         Selector::FilterTextRegex { base, matcher } => {
@@ -633,7 +738,7 @@ fn compile_selector_inner(
             claim_selector_string(stats, matcher.flags())?;
             let (source, flags) = regex_json(matcher, "text filter regex")?;
             Ok(format!(
-                "(() => {{ const matcher = new RegExp({source}, {flags}); return ({base}).filter(element => matcher.test(String(element.textContent ?? ''))); }})()"
+                "(() => {{ const matcher = new RegExp({source}, {flags}); return ({base}).filter(element => matcher.test(__pw.elementText(element))); }})()"
             ))
         }
         Selector::FilterNotTextRegex { base, matcher } => {
@@ -642,7 +747,7 @@ fn compile_selector_inner(
             claim_selector_string(stats, matcher.flags())?;
             let (source, flags) = regex_json(matcher, "negative text filter regex")?;
             Ok(format!(
-                "(() => {{ const matcher = new RegExp({source}, {flags}); return ({base}).filter(element => !matcher.test(String(element.textContent ?? ''))); }})()"
+                "(() => {{ const matcher = new RegExp({source}, {flags}); return ({base}).filter(element => !matcher.test(__pw.elementText(element))); }})()"
             ))
         }
         Selector::FilterHas { base, descendant } => {
@@ -819,6 +924,156 @@ mod tests {
         assert!(script.contains(SELECTOR_RUNTIME_SYMBOL));
         assert!(SELECTOR_RUNTIME.contains(&expected_version));
         assert!(script.len() <= MAX_SELECTOR_RUNTIME_INSTALL_BYTES);
+    }
+
+    #[test]
+    fn selector_runtime_does_not_read_the_mutable_page_node_constructor() {
+        // Arrange
+        let runtime = SELECTOR_RUNTIME;
+
+        // Act
+        let has_mutable_node_reference = runtime.contains("Node.");
+
+        // Assert
+        assert!(!has_mutable_node_reference);
+        assert!(runtime.contains("const ELEMENT_NODE = 1;"));
+        assert!(runtime.contains("const TEXT_NODE = 3;"));
+        assert!(runtime.contains("const COMMENT_NODE = 8;"));
+        assert!(runtime.contains("const DOCUMENT_NODE = 9;"));
+        assert!(runtime.contains("current.nodeType === ELEMENT_NODE"));
+    }
+
+    #[test]
+    fn runtime_exposes_xpath_without_array_from() {
+        // Arrange
+        let runtime = SELECTOR_RUNTIME;
+
+        // Act
+        let has_xpath = runtime.contains("const xpath = (root, expression) =>");
+
+        // Assert
+        assert!(has_xpath);
+        assert!(runtime.contains("document.evaluate(value, root, null"));
+        assert!(runtime.contains("css, xpath, text"));
+        assert!(!runtime.contains("Array.from("));
+    }
+
+    #[test]
+    fn text_runtime_matches_submit_and_button_inputs_by_value() {
+        // Arrange
+        let runtime = SELECTOR_RUNTIME;
+
+        // Act
+        let input_value_branch = runtime.contains(
+            "root instanceof HTMLInputElement && (root.type === 'submit' || root.type === 'button')",
+        );
+
+        // Assert
+        assert!(input_value_branch);
+        assert!(runtime.contains("return root.value"));
+        assert!(runtime.contains("matchesText(elementText(element), expected, exact)"));
+    }
+
+    #[test]
+    fn legacy_text_runtime_matches_immediate_text_chunks() {
+        // Arrange
+        let selector = Selector::legacy_text("save");
+
+        // Act
+        let script = compile_selector(&selector, "document")
+            .expect("legacy text selector should compile within bounds");
+
+        // Assert
+        assert!(SELECTOR_RUNTIME.contains("const immediateText = root =>"));
+        assert!(SELECTOR_RUNTIME.contains("immediateText(element).some"));
+        assert!(script.contains("__pw.textLegacy(document, \"save\")"));
+    }
+
+    #[test]
+    fn user_facing_engines_include_an_element_root_for_relative_chaining() {
+        // Arrange
+        let runtime = SELECTOR_RUNTIME;
+
+        // Act
+        let includes_element_root =
+            runtime.contains("current.nodeType === ELEMENT_NODE ? [current] : []");
+
+        // Assert
+        assert!(includes_element_root);
+        assert!(runtime.contains("...current.querySelectorAll('*')"));
+    }
+
+    #[test]
+    fn scoped_css_can_match_its_own_element_without_including_plain_descendants_root() {
+        // Arrange
+        let runtime = SELECTOR_RUNTIME;
+        let scoped = Selector::css(":scope.target").expect("valid scoped CSS");
+        let plain = Selector::css(".target").expect("valid plain CSS");
+
+        // Act
+        let scoped_source = compile_selector(&scoped, "__root").unwrap();
+        let plain_source = compile_selector(&plain, "__root").unwrap();
+
+        // Assert
+        assert!(runtime.contains("selector.includes(':scope') && root.matches(selector)"));
+        assert!(runtime.contains("matches.unshift(root)"));
+        assert_eq!(scoped_source, "__pw.css(__root, \":scope.target\")");
+        assert_eq!(plain_source, "__pw.css(__root, \".target\")");
+    }
+
+    #[test]
+    fn css_query_roots_recurse_into_nested_shadow_hosts_before_sibling_hosts() {
+        // Arrange
+        let runtime = SELECTOR_RUNTIME;
+        let query_roots = runtime
+            .split("const queryRoots = root => {")
+            .nth(1)
+            .expect("queryRoots runtime should exist")
+            .split("const all = root =>")
+            .next()
+            .expect("queryRoots should end before all");
+
+        // Act
+        let root_position = query_roots.find("roots.push(current);").unwrap();
+        let own_shadow_position = query_roots.find("visit(current.shadowRoot);").unwrap();
+        let descendant_shadow_position = query_roots.find("visit(element.shadowRoot);").unwrap();
+
+        // Assert
+        assert!(root_position < own_shadow_position);
+        assert!(own_shadow_position < descendant_shadow_position);
+        assert!(query_roots.contains("visit(root);"));
+        assert!(!query_roots.contains("for (let i = 0; i < roots.length"));
+        assert!(runtime.contains(
+            "queryRoots(root).flatMap(current => [...current.querySelectorAll(selector)])"
+        ));
+    }
+
+    #[test]
+    fn composed_sort_orders_light_children_before_shadow_children() {
+        // Arrange
+        let runtime = SELECTOR_RUNTIME;
+        let dom_order = runtime
+            .split("const domOrder = values => {")
+            .nth(1)
+            .expect("domOrder runtime should exist")
+            .split("const union =")
+            .next()
+            .expect("domOrder should end before union");
+
+        // Act
+        let light_child_position = dom_order.find("element.firstElementChild").unwrap();
+        let shadow_child_position = dom_order
+            .find("element.shadowRoot?.firstElementChild")
+            .unwrap();
+
+        // Assert
+        assert!(dom_order.contains("append(parent).children.push(element)"));
+        assert!(dom_order.contains("append(element).taken = true"));
+        assert!(light_child_position < shadow_child_position);
+        assert!(dom_order.contains("for (const root of roots) visit(root)"));
+        assert!(!dom_order.contains("all(document)"));
+        assert!(runtime.contains("const parent = element.parentNode;"));
+        assert!(runtime.contains("parent?.nodeType === 11 ? parent.host"));
     }
 
     #[test]

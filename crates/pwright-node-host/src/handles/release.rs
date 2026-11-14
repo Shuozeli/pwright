@@ -51,9 +51,9 @@ pub(super) struct Releases {
     changed: Notify,
     _storage: ResourceLease,
 }
-fn profile() -> Result<DisposalReservationProfile, HostError> {
+fn profile(objects: NonZeroUsize) -> Result<DisposalReservationProfile, HostError> {
     DisposalReservationProfile::new_in_process(
-        NonZeroUsize::new(256).unwrap(),
+        objects,
         NonZeroUsize::new(PENDING).unwrap(),
         RESERVATION_SCOPE,
     )
@@ -74,8 +74,8 @@ fn owner_requirements() -> ResourceRequirements {
         )
         .with_metadata(1, 1)
 }
-pub(super) fn requirements() -> Result<ResourceRequirements, HostError> {
-    Ok(owner_requirements().combine_concurrent(profile()?.requirements()))
+pub(super) fn requirements(objects: NonZeroUsize) -> Result<ResourceRequirements, HostError> {
+    Ok(owner_requirements().combine_concurrent(profile(objects)?.requirements()))
 }
 fn failed(error: impl std::fmt::Display) -> CleanupFailure {
     CleanupFailure::new(format!("pending Handle release failed: {error}"))
@@ -84,6 +84,7 @@ impl Releases {
     pub fn new(
         service: ChromiumHandleDisposeCommandService,
         runtime: &ControlledLifecycleHandle,
+        runtime_objects: NonZeroUsize,
         resources: &ProductionResourceLedger,
     ) -> Result<Arc<Self>, HostError> {
         let storage = resources
@@ -94,7 +95,7 @@ impl Releases {
         Ok(Arc::new(Self {
             service,
             runtime: runtime.clone(),
-            capacity: profile()?
+            capacity: profile(runtime_objects)?
                 .bind(runtime, resources)
                 .map_err(HostError::backend)?,
             slots: Semaphore::new(PENDING),

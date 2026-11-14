@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+cdp-handshake-headers = ["pwright-cdp/cdp-handshake-headers"]
+
 [dependencies]
 pwright-browser-provider = { workspace = true }
 pwright-cdp = { workspace = true }

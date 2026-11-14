@@ -34,7 +34,7 @@ pub struct NativeScreenshotOptions {
     pub timeout_ms: u32,
 }
 
-struct ScreenshotOutput(HostScreenshotOutput);
+pub(crate) struct ScreenshotOutput(pub(crate) HostScreenshotOutput);
 
 impl ToNapiValue for ScreenshotOutput {
     unsafe fn to_napi_value(env: sys::napi_env, value: Self) -> napi::Result<sys::napi_value> {
@@ -46,6 +46,73 @@ impl ToNapiValue for ScreenshotOutput {
         // SAFETY: the buffer was created in this live callback's environment.
         unsafe { BufferSlice::to_napi_value(env, buffer) }
     }
+}
+
+pub(crate) fn screenshot_options(
+    options: NativeScreenshotOptions,
+) -> napi::Result<(ScreenshotOptions, u32)> {
+    let format = match options.format {
+        0 => ScreenshotFormat::Png,
+        1 => ScreenshotFormat::Jpeg,
+        _ => {
+            return Err(binding_error(HostError::InvalidArgument(
+                "screenshot format must be png or jpeg".into(),
+            )));
+        }
+    };
+    let scale = match options.scale {
+        0 => ScreenshotScale::Device,
+        1 => ScreenshotScale::Css,
+        _ => {
+            return Err(binding_error(HostError::InvalidArgument(
+                "screenshot scale must be device or css".into(),
+            )));
+        }
+    };
+    let quality = options
+        .quality
+        .map(|value| {
+            u8::try_from(value).map_err(|_| {
+                binding_error(HostError::InvalidArgument(
+                    "screenshot quality exceeds 100".into(),
+                ))
+            })
+        })
+        .transpose()?;
+    Ok((
+        ScreenshotOptions {
+            format: Some(format),
+            quality,
+            full_page: Some(options.full_page),
+            scale: Some(scale),
+            clip: options.clip.map(|clip| ScreenshotClip {
+                x: clip.x,
+                y: clip.y,
+                width: clip.width,
+                height: clip.height,
+            }),
+            document_clip: false,
+        },
+        options.timeout_ms,
+    ))
+}
+
+#[cfg(feature = "locator-screenshot")]
+pub(crate) fn locator_screenshot_options(
+    options: NativeScreenshotOptions,
+) -> napi::Result<(ScreenshotOptions, u32)> {
+    if options.full_page || options.clip.is_some() {
+        return Err(binding_error(HostError::InvalidArgument(
+            "Locator screenshot does not accept fullPage or clip".into(),
+        )));
+    }
+    let (mut options, timeout_ms) = screenshot_options(options)?;
+    // `Some(false)` is meaningful to the Page screenshot path, but Locator
+    // screenshots must omit Page-only fields entirely before entering the
+    // independently selectable Rust capability.
+    options.full_page = None;
+    options.clip = None;
+    Ok((options, timeout_ms))
 }
 
 #[napi]
@@ -62,51 +129,38 @@ impl NativeSession {
             .admit(FfiLane::Command, screenshot::FFI_ALLOWANCE)
             .map_err(binding_error)?;
         let page_id = boundary::bounded_string(page_id, 20, "Page ID")?;
-        let format = match options.format {
-            0 => ScreenshotFormat::Png,
-            1 => ScreenshotFormat::Jpeg,
-            _ => {
-                return Err(binding_error(HostError::InvalidArgument(
-                    "screenshot format must be png or jpeg".into(),
-                )));
-            }
-        };
-        let scale = match options.scale {
-            0 => ScreenshotScale::Device,
-            1 => ScreenshotScale::Css,
-            _ => {
-                return Err(binding_error(HostError::InvalidArgument(
-                    "screenshot scale must be device or css".into(),
-                )));
-            }
-        };
-        let quality = options
-            .quality
-            .map(|value| {
-                u8::try_from(value).map_err(|_| {
-                    binding_error(HostError::InvalidArgument(
-                        "screenshot quality exceeds 100".into(),
-                    ))
-                })
-            })
-            .transpose()?;
-        let params = ScreenshotOptions {
-            format: Some(format),
-            quality,
-            full_page: Some(options.full_page),
-            scale: Some(scale),
-            clip: options.clip.map(|clip| ScreenshotClip {
-                x: clip.x,
-                y: clip.y,
-                width: clip.width,
-                height: clip.height,
-            }),
-        };
+        let (params, timeout_ms) = screenshot_options(options)?;
         let host = self.host.clone();
         boundary::spawn_published(env, execution, self.publications.clone(), async move {
-            host.page_screenshot(&page_id, params, options.timeout_ms)
+            host.page_screenshot(&page_id, params, timeout_ms)
                 .await
                 .map(ScreenshotOutput)
         })
+    }
+}
+
+#[cfg(all(test, feature = "locator-screenshot"))]
+mod tests {
+    use super::{NativeScreenshotOptions, locator_screenshot_options};
+
+    #[test]
+    fn locator_defaults_omit_page_only_screenshot_fields() {
+        // Arrange
+        let input = NativeScreenshotOptions {
+            format: 0,
+            quality: None,
+            full_page: false,
+            scale: 0,
+            clip: None,
+            timeout_ms: 73,
+        };
+
+        // Act
+        let (options, timeout_ms) = locator_screenshot_options(input).unwrap();
+
+        // Assert
+        assert_eq!(timeout_ms, 73);
+        assert_eq!(options.full_page, None);
+        assert_eq!(options.clip, None);
     }
 }

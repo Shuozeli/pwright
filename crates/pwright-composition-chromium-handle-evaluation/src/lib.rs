@@ -796,6 +796,7 @@ pub struct ChromiumHandleEvaluationCommandService {
     preview_bytes: usize,
     property_limits: CdpHandlePropertyLimits,
     argument_adopter: Option<Arc<dyn ElementHandleArgumentAdopter>>,
+    persistent_element_adopter: Option<Arc<CdpElementHandleAdoptionBatchService>>,
 }
 
 struct ResolvedHandleOperation {
@@ -866,6 +867,7 @@ impl ChromiumHandleEvaluationCommandService {
             preview_bytes: backend.preview_bytes(),
             property_limits: backend.properties(),
             argument_adopter: None,
+            persistent_element_adopter: None,
         }
     }
 
@@ -878,13 +880,14 @@ impl ChromiumHandleEvaluationCommandService {
     /// adoption. Callers choose and budget the backend plus continuation; the
     /// default command service retains no adoption machinery.
     pub fn with_element_handle_adoption<Continuation>(
-        self,
+        mut self,
         adoption: Arc<CdpElementHandleAdoptionBatchService>,
         continuation: Continuation,
     ) -> Self
     where
         Continuation: ReservedCleanupExecutor,
     {
+        self.persistent_element_adopter = Some(Arc::clone(&adoption));
         self.with_argument_adopter(Arc::new(ContinuableElementHandleAdoptionService::new(
             adoption,
             continuation,
@@ -1007,6 +1010,11 @@ impl ChromiumHandleEvaluationCommandService {
         metadata: CallMetadata,
     ) -> Result<HandleValueResult, OperationError<HandleEvaluationErrorDetails>> {
         validate_metadata(metadata, "Handle.jsonValue")?;
+        let resolved = self.resolve_handle(target_id, &[]).await?;
+        if let Some(value) = resolved.target.primitive_value()? {
+            return Ok(HandleValueResult::new(value));
+        }
+        drop(resolved);
         self.evaluate_value(
             target_id,
             CallMetadata::default(),
@@ -1813,7 +1821,7 @@ where
         profile: ChromiumHandleEvaluationProfile,
         resources: &ProductionResourceLedger,
     ) -> Result<Self, ChromiumHandleEvaluationInstallError> {
-        Self::install_with_argument_adopter(bindings, profile, resources, None)
+        Self::install_with_argument_adopter(bindings, profile, resources, None, None)
     }
 
     pub fn install_with_element_adoption<AdoptionContinuation>(
@@ -1845,15 +1853,25 @@ where
                 ChromiumHandleEvaluationSetupError::DuplicateAdoptionResourceScope,
             ));
         }
-        let adoption = CdpElementHandleAdoptionBatchService::new_with_production_resources(
-            adoption_profile,
-            resources,
-        )
-        .map_err(ChromiumHandleEvaluationInstallError::Adoption)?;
-        let adopter: Arc<dyn ElementHandleArgumentAdopter> = Arc::new(
-            ContinuableElementHandleAdoptionService::new(Arc::new(adoption), adoption_continuation),
+        let adoption = Arc::new(
+            CdpElementHandleAdoptionBatchService::new_with_production_resources(
+                adoption_profile,
+                resources,
+            )
+            .map_err(ChromiumHandleEvaluationInstallError::Adoption)?,
         );
-        Self::install_with_argument_adopter(bindings, profile, resources, Some(adopter))
+        let adopter: Arc<dyn ElementHandleArgumentAdopter> =
+            Arc::new(ContinuableElementHandleAdoptionService::new(
+                Arc::clone(&adoption),
+                adoption_continuation,
+            ));
+        Self::install_with_argument_adopter(
+            bindings,
+            profile,
+            resources,
+            Some(adopter),
+            Some(adoption),
+        )
     }
 
     fn install_with_argument_adopter(
@@ -1861,6 +1879,7 @@ where
         profile: ChromiumHandleEvaluationProfile,
         resources: &ProductionResourceLedger,
         argument_adopter: Option<Arc<dyn ElementHandleArgumentAdopter>>,
+        persistent_element_adopter: Option<Arc<CdpElementHandleAdoptionBatchService>>,
     ) -> Result<Self, ChromiumHandleEvaluationInstallError> {
         let profile = profile
             .validate()
@@ -1888,6 +1907,7 @@ where
         if let Some(adopter) = argument_adopter {
             raw = raw.with_argument_adopter(adopter);
         }
+        raw.persistent_element_adopter = persistent_element_adopter;
         let raw = Arc::new(raw);
         let creation = Arc::new(ContinuableHandleEvaluationService::new(
             Arc::clone(&raw),

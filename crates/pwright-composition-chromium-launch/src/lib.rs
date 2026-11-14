@@ -20,10 +20,13 @@ use pwright_composition_chromium::{
 };
 use pwright_core::{Capability, ProductionResourceError};
 use pwright_provider_cdp::ProductionCdpConnector;
+#[cfg(feature = "startup-logs")]
+use pwright_provider_chromium::CapturingTokioChromiumProcessSpawner;
 use pwright_provider_chromium::{
-    ChromiumBrowserShutdown, ChromiumLaunchError, ChromiumLaunchProvider, ChromiumLaunchRequest,
-    ChromiumProcessLease, ChromiumShutdownError, ChromiumShutdownPolicy, ChromiumShutdownReport,
-    DevToolsActivePortWaiter, TokioChromiumChild, TokioChromiumProcessSpawner,
+    ChromiumBrowserShutdown, ChromiumChildProcess, ChromiumLaunchError, ChromiumLaunchProvider,
+    ChromiumLaunchRequest, ChromiumProcessLease, ChromiumProcessSpawner, ChromiumShutdownError,
+    ChromiumShutdownPolicy, ChromiumShutdownReport, DevToolsActivePortWaiter, TokioChromiumChild,
+    TokioChromiumProcessSpawner,
 };
 use pwright_server_wire::AcceptedServerHandshake;
 use pwright_transport::{
@@ -34,6 +37,16 @@ use pwright_transport::{
 mod browser_close;
 
 pub use browser_close::*;
+
+fn take_guarded_lease<Connection, Child: ChromiumChildProcess>(
+    launched: LaunchedBrowser<Connection, ChromiumProcessLease<Child>>,
+) -> (Connection, ChromiumProcessLease<Child>) {
+    let (connection, mut lease) = launched.into_connection_and_lease();
+    // The provider deliberately returns a raw lease. This composition owns
+    // the process from this point, including if binding fails or is cancelled.
+    lease.arm_kill_on_drop();
+    (connection, lease)
+}
 
 /// Reusable optional recipe for launching one dedicated owned Chromium and
 /// binding it to a fresh production composition.
@@ -211,6 +224,30 @@ impl ChromiumLaunchCompositionFactory {
         &self,
         request: ChromiumLaunchRequest,
     ) -> Result<OwnedChromiumComposition<TokioChromiumChild>, ChromiumLaunchCompositionError> {
+        self.launch_with_spawner(request, TokioChromiumProcessSpawner)
+            .await
+    }
+
+    /// Explicitly selects bounded stdout/stderr startup diagnostics for this
+    /// owned process. Attach-only and ordinary owned-launch factories retain
+    /// their original no-capture process policy.
+    #[cfg(feature = "startup-logs")]
+    pub async fn launch_with_startup_logs(
+        &self,
+        request: ChromiumLaunchRequest,
+    ) -> Result<OwnedChromiumComposition<TokioChromiumChild>, ChromiumLaunchCompositionError> {
+        self.launch_with_spawner(request, CapturingTokioChromiumProcessSpawner)
+            .await
+    }
+
+    async fn launch_with_spawner<Spawner>(
+        &self,
+        request: ChromiumLaunchRequest,
+        spawner: Spawner,
+    ) -> Result<OwnedChromiumComposition<TokioChromiumChild>, ChromiumLaunchCompositionError>
+    where
+        Spawner: ChromiumProcessSpawner<Child = TokioChromiumChild>,
+    {
         let expected_config = self.attachment.profile().connection().config();
         if request.connection_config() != expected_config {
             return Err(ChromiumLaunchCompositionError::ConnectionConfigurationMismatch);
@@ -229,7 +266,7 @@ impl ChromiumLaunchCompositionFactory {
         )
         .map_err(ChromiumLaunchCompositionError::Resources)?;
         let provider = ChromiumLaunchProvider::with_parts(
-            TokioChromiumProcessSpawner,
+            spawner,
             DevToolsActivePortWaiter::default(),
             connector,
         );
@@ -237,7 +274,7 @@ impl ChromiumLaunchCompositionFactory {
             .launch(request)
             .await
             .map_err(|error| ChromiumLaunchCompositionError::Launch(Box::new(error)))?;
-        let (connection, lease) = launched.into_connection_and_lease();
+        let (connection, lease) = take_guarded_lease(launched);
 
         match prepared.bind_connection(
             connection,
@@ -434,10 +471,16 @@ impl Error for ChromiumLaunchCompositionError {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
+    use std::future::{Pending, Ready, pending, ready};
     use std::path::{Path, PathBuf};
+    use std::process::ExitStatus;
+    use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll, Waker};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use pwright_backend_cdp::{CdpTopologyLimits, CdpTopologyProductionProfile};
+    use pwright_browser_provider::{BrowserProcessLease, LaunchBrowserProvider, LaunchedBrowser};
     use pwright_cdp::CdpConnectionProductionProfile;
     use pwright_cdp::connection::ConnectionConfig;
     use pwright_composition_chromium::{
@@ -448,15 +491,128 @@ mod tests {
         ObjectId, ProtocolVersion, ResourceClass, ResourceLimits, ResourceRequirements,
         ResourceScope,
     };
-    use pwright_provider_chromium::{ChromiumChannel, ChromiumExecutable, ChromiumLaunchRequest};
+    use pwright_provider_cdp::{CdpConnector, CdpWebSocketEndpoint};
+    use pwright_provider_chromium::{
+        ChromiumChannel, ChromiumChildProcess, ChromiumEndpointWaiter, ChromiumExecutable,
+        ChromiumLaunchProvider, ChromiumLaunchRequest, ChromiumProcessLease,
+        ChromiumProcessSpawner, ChromiumStartupError,
+    };
     use pwright_runtime::RuntimeLimits;
     use pwright_server_wire::ServerSupervisorLimits;
     use pwright_transport::{FrameLimits, NegotiationLimits, VersionPolicy, WireCapabilityId};
 
     use super::{
         ChromiumLaunchCompositionError, ChromiumLaunchCompositionFactory,
-        OwnedBrowserLifecycleInstallationProfile,
+        OwnedBrowserLifecycleInstallationProfile, take_guarded_lease,
     };
+
+    #[derive(Default)]
+    struct FakeProcessState {
+        running: bool,
+        kill_on_drop: bool,
+        start_kills: usize,
+        drop_kills: usize,
+    }
+
+    struct FakeChild {
+        state: Arc<Mutex<FakeProcessState>>,
+    }
+
+    impl ChromiumChildProcess for FakeChild {
+        type WaitFuture<'a> = Pending<std::io::Result<ExitStatus>>;
+
+        fn process_id(&self) -> Option<u32> {
+            Some(4242)
+        }
+
+        fn set_kill_on_drop(&mut self, enabled: bool) {
+            self.state.lock().unwrap().kill_on_drop = enabled;
+        }
+
+        fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
+            Ok(None)
+        }
+
+        fn start_kill(&mut self) -> std::io::Result<()> {
+            self.state.lock().unwrap().start_kills += 1;
+            Ok(())
+        }
+
+        fn wait(&mut self) -> Self::WaitFuture<'_> {
+            pending()
+        }
+    }
+
+    impl Drop for FakeChild {
+        fn drop(&mut self) {
+            let mut state = self.state.lock().unwrap();
+            if state.kill_on_drop && state.running {
+                state.drop_kills += 1;
+                state.running = false;
+            }
+        }
+    }
+
+    struct FakeSpawner(Arc<Mutex<FakeProcessState>>);
+
+    impl ChromiumProcessSpawner for FakeSpawner {
+        type Child = FakeChild;
+
+        fn spawn(&self, _: &Path, _: &[std::ffi::OsString]) -> std::io::Result<Self::Child> {
+            self.0.lock().unwrap().running = true;
+            Ok(FakeChild {
+                state: Arc::clone(&self.0),
+            })
+        }
+    }
+
+    struct FakeWaiter;
+
+    impl ChromiumEndpointWaiter<FakeChild> for FakeWaiter {
+        type Future<'a> = Ready<Result<CdpWebSocketEndpoint, ChromiumStartupError>>;
+
+        fn wait_for_endpoint<'a>(
+            &'a self,
+            _: &'a mut FakeChild,
+            _: &'a Path,
+            _: Duration,
+        ) -> Self::Future<'a> {
+            ready(Ok(CdpWebSocketEndpoint::parse("ws://127.0.0.1:1").unwrap()))
+        }
+    }
+
+    struct FakeConnector;
+
+    impl CdpConnector for FakeConnector {
+        type Connection = ();
+        type Error = Infallible;
+        type Future<'a> = Ready<Result<Self::Connection, Self::Error>>;
+
+        fn connect(&self, _: CdpWebSocketEndpoint, _: ConnectionConfig) -> Self::Future<'_> {
+            ready(Ok(()))
+        }
+    }
+
+    async fn fake_launched_browser() -> (
+        LaunchedBrowser<(), ChromiumProcessLease<FakeChild>>,
+        Arc<Mutex<FakeProcessState>>,
+    ) {
+        let executable_dir = TestDirectory::new("guard-executable");
+        let profile_dir = TestDirectory::new("guard-profile");
+        let state = Arc::new(Mutex::new(FakeProcessState::default()));
+        let provider = ChromiumLaunchProvider::with_parts(
+            FakeSpawner(Arc::clone(&state)),
+            FakeWaiter,
+            FakeConnector,
+        );
+        let request = ChromiumLaunchRequest::new(
+            fake_executable(&executable_dir),
+            profile_dir.path(),
+            ConnectionConfig::default(),
+        );
+        let launched = provider.launch(request).await.unwrap();
+        (launched, state)
+    }
 
     struct TestDirectory {
         path: PathBuf,
@@ -626,6 +782,61 @@ mod tests {
         ));
     }
 
+    #[cfg(all(unix, feature = "startup-logs"))]
+    #[tokio::test]
+    async fn bounded_process_logs_are_selected_only_by_the_explicit_owned_launch_method() {
+        // Arrange
+        let executable_dir = TestDirectory::new("logged-executable");
+        let logged_profile = TestDirectory::new("logged-profile");
+        let default_profile = TestDirectory::new("default-profile");
+        let executable = fake_executable(&executable_dir);
+        std::fs::write(
+            executable.path(),
+            b"#!/bin/sh\nprintf 'composition stdout\\n'\nprintf 'composition stderr\\n' >&2\nexit 1\n",
+        )
+        .expect("synthetic executable should emit diagnostic output");
+        let config = ConnectionConfig::default();
+        let profile = profile(config.clone());
+        let requirements = profile.requirements();
+        let attachment = pwright_composition_chromium::ChromiumAttachFactory::new(
+            profile,
+            exact_limits(requirements),
+            ObjectId::new(1),
+        )
+        .expect("attachment factory should validate");
+        let factory = ChromiumLaunchCompositionFactory::new(attachment);
+        let logged_request =
+            ChromiumLaunchRequest::new(executable.clone(), logged_profile.path(), config.clone())
+                .with_startup_timeout(Duration::from_secs(2));
+        let default_request =
+            ChromiumLaunchRequest::new(executable, default_profile.path(), config)
+                .with_startup_timeout(Duration::from_secs(2));
+
+        // Act
+        let logged = factory.launch_with_startup_logs(logged_request).await;
+        let default = factory.launch(default_request).await;
+
+        // Assert
+        let logged_error = match logged {
+            Ok(_) => panic!("synthetic process must exit before CDP"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            &logged_error,
+            ChromiumLaunchCompositionError::Launch(error)
+                if matches!(error.as_ref(), pwright_provider_chromium::ChromiumLaunchError::StartupWithProcessLogs { .. })
+        ));
+        let diagnostic = logged_error.to_string();
+        assert!(diagnostic.contains("Browser logs:"));
+        assert!(diagnostic.contains("[out] composition stdout"));
+        assert!(diagnostic.contains("[err] composition stderr"));
+        let default_error = match default {
+            Ok(_) => panic!("synthetic process must exit before CDP"),
+            Err(error) => error,
+        };
+        assert!(!default_error.to_string().contains("Browser logs:"));
+    }
+
     #[test]
     fn launch_only_browser_lifecycle_is_added_without_changing_attach_manifest() {
         // Arrange
@@ -663,5 +874,41 @@ mod tests {
                 .support(&capability)
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn taking_provider_success_arms_abandoned_composition_lease() {
+        // Arrange
+        let (launched, state) = fake_launched_browser().await;
+        assert!(!state.lock().unwrap().kill_on_drop);
+
+        // Act
+        let (_, lease) = take_guarded_lease(launched);
+        assert!(state.lock().unwrap().kill_on_drop);
+        drop(lease);
+
+        // Assert
+        let state = state.lock().unwrap();
+        assert_eq!(state.drop_kills, 1);
+        assert!(!state.running);
+    }
+
+    #[tokio::test]
+    async fn cancelling_pending_binding_cleanup_keeps_process_guard_armed() {
+        // Arrange
+        let (launched, state) = fake_launched_browser().await;
+        let (_, lease) = take_guarded_lease(launched);
+        let mut cleanup = lease.terminate();
+        let mut context = Context::from_waker(Waker::noop());
+
+        // Act
+        assert!(matches!(cleanup.as_mut().poll(&mut context), Poll::Pending));
+        drop(cleanup);
+
+        // Assert
+        let state = state.lock().unwrap();
+        assert_eq!(state.start_kills, 1);
+        assert_eq!(state.drop_kills, 1);
+        assert!(!state.running);
     }
 }

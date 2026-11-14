@@ -464,6 +464,11 @@ pub enum CdpTopologyEffect {
         page: ObjectId,
         frame: ObjectId,
     },
+    #[cfg(feature = "frame-detach-events")]
+    FrameRemoved {
+        page: ObjectId,
+        frame: ObjectId,
+    },
     WorldChanged {
         frame: ObjectId,
         kind: CdpWorldKind,
@@ -707,6 +712,38 @@ mod tests {
         assert_eq!(route.ownership(), CdpContextOwnership::External);
         assert_eq!(routes, vec![route]);
         assert!(topology.browser_context_route(ObjectId::new(99)).is_none());
+    }
+
+    #[test]
+    fn reconnecting_page_retains_membership_without_a_command_route() {
+        // Arrange
+        let mut topology = topology();
+        topology
+            .register_context(
+                EPOCH_ONE,
+                "context-a",
+                ObjectId::new(2),
+                CdpContextOwnership::Owned,
+            )
+            .expect("context should register");
+        topology
+            .attach_page(
+                EPOCH_ONE,
+                CdpPageTarget::new("target-a", "session-a", "context-a"),
+                CdpPageObjectIds::new(ObjectId::new(3), ObjectId::new(4)),
+            )
+            .expect("page should attach");
+
+        // Act
+        topology
+            .begin_reconnect(EPOCH_TWO)
+            .expect("new epoch should begin");
+        let memberships = topology.materialized_page_memberships().collect::<Vec<_>>();
+        let command_routes = topology.page_session_routes().count();
+
+        // Assert
+        assert_eq!(memberships, vec![(ObjectId::new(3), ObjectId::new(2))]);
+        assert_eq!(command_routes, 0);
     }
 
     #[test]
@@ -1023,12 +1060,17 @@ mod tests {
             .expect("synchronized detach should complete");
 
         // Assert
-        assert_eq!(
-            confirmed.effects(),
-            &[CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
+        let expected = vec![
+            #[cfg(feature = "frame-detach-events")]
+            CdpTopologyEffect::FrameRemoved {
+                page: ObjectId::new(3),
+                frame: ObjectId::new(5),
+            },
+            CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
                 object_id: ObjectId::new(5),
-            })]
-        );
+            }),
+        ];
+        assert_eq!(confirmed.effects(), expected.as_slice());
         assert_eq!(topology.frame_object_id("frame-a"), None);
         assert_eq!(topology.page_object_id("target-a"), Some(ObjectId::new(3)));
     }
@@ -1060,17 +1102,21 @@ mod tests {
         assert_eq!(topology.frame_object_id("target-a"), None);
         assert_eq!(topology.frame_object_id("new-main"), Some(ObjectId::new(4)));
         assert_eq!(topology.frame_object_id("child"), None);
-        assert_eq!(
-            rebound.effects(),
-            &[
-                CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
-                    object_id: ObjectId::new(5),
-                }),
-                CdpTopologyEffect::MainFrameRebound {
-                    frame: ObjectId::new(4),
-                },
-            ]
-        );
+        let mut expected = Vec::new();
+        #[cfg(feature = "frame-detach-events")]
+        expected.push(CdpTopologyEffect::FrameRemoved {
+            page: ObjectId::new(3),
+            frame: ObjectId::new(5),
+        });
+        expected.extend([
+            CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
+                object_id: ObjectId::new(5),
+            }),
+            CdpTopologyEffect::MainFrameRebound {
+                frame: ObjectId::new(4),
+            },
+        ]);
+        assert_eq!(rebound.effects(), expected.as_slice());
     }
 
     #[test]
@@ -1340,6 +1386,75 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "frame-detach-events")]
+    #[test]
+    fn reconnect_reports_retained_page_child_detaches_child_first_without_closed_page_events() {
+        // Arrange
+        let mut topology = topology();
+        register_context(&mut topology, "context-a", 2);
+        register_context(&mut topology, "context-b", 3);
+        attach_page(&mut topology, "target-a", "session-a", "context-a", 4, 5);
+        attach_page(&mut topology, "target-b", "session-b", "context-b", 6, 7);
+        for (attachment, id) in [
+            (
+                CdpFrameAttachment::local("target-a", "child-a", "target-a"),
+                8,
+            ),
+            (
+                CdpFrameAttachment::local("target-a", "grandchild-a", "child-a"),
+                9,
+            ),
+            (
+                CdpFrameAttachment::local("target-b", "child-b", "target-b"),
+                10,
+            ),
+        ] {
+            topology
+                .attach_frame(EPOCH_ONE, attachment, ObjectId::new(id))
+                .expect("child Frame should attach");
+        }
+        topology
+            .begin_reconnect(EPOCH_TWO)
+            .expect("new reconstruction epoch should begin");
+        topology
+            .observe_context(EPOCH_TWO, "context-a")
+            .expect("retained Context should be present");
+        topology
+            .attach_page(
+                EPOCH_TWO,
+                CdpPageTarget::new("target-a", "new-session-a", "context-a"),
+                CdpPageObjectIds::new(ObjectId::new(99), ObjectId::new(100)),
+            )
+            .expect("retained Page should rebind");
+
+        // Act
+        let update = topology
+            .finish_reconnect()
+            .expect("snapshot reconciliation should complete");
+
+        // Assert
+        let removed = update
+            .effects()
+            .iter()
+            .filter_map(|effect| match effect {
+                CdpTopologyEffect::FrameRemoved { page, frame } => Some((*page, *frame)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            removed,
+            vec![
+                (ObjectId::new(4), ObjectId::new(9)),
+                (ObjectId::new(4), ObjectId::new(8)),
+            ]
+        );
+        assert_eq!(topology.frame_object_id("child-a"), None);
+        assert_eq!(topology.frame_object_id("grandchild-a"), None);
+        assert_eq!(topology.frame_object_id("child-b"), None);
+        assert_eq!(topology.page_object_id("target-a"), Some(ObjectId::new(4)));
+        assert_eq!(topology.page_object_id("target-b"), None);
+    }
+
     #[test]
     fn closing_one_context_removes_exactly_its_owned_subtree() {
         // Arrange
@@ -1447,13 +1562,123 @@ mod tests {
 
         // Assert
         assert_eq!(swapped.disposition(), CdpTopologyDisposition::Idempotent);
+        let expected = vec![
+            #[cfg(feature = "frame-detach-events")]
+            CdpTopologyEffect::FrameRemoved {
+                page: ObjectId::new(3),
+                frame: ObjectId::new(5),
+            },
+            CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
+                object_id: ObjectId::new(5),
+            }),
+        ];
+        assert_eq!(removed.effects(), expected.as_slice());
+        assert_eq!(topology.frame_object_id("frame-a"), None);
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    #[test]
+    fn frame_removal_reports_each_canonical_child_before_its_parent_once() {
+        // Arrange
+        let mut topology = topology();
+        register_context(&mut topology, "context-a", 2);
+        attach_page(&mut topology, "target-a", "session-a", "context-a", 3, 4);
+        topology
+            .attach_frame(
+                EPOCH_ONE,
+                CdpFrameAttachment::local("target-a", "child", "target-a"),
+                ObjectId::new(5),
+            )
+            .unwrap();
+        topology
+            .attach_frame(
+                EPOCH_ONE,
+                CdpFrameAttachment::local("target-a", "grandchild", "child"),
+                ObjectId::new(6),
+            )
+            .unwrap();
+
+        // Act
+        let removed = topology
+            .detach_frame(EPOCH_ONE, "child", CdpFrameDetachReason::Remove)
+            .unwrap();
+        let duplicate = topology
+            .detach_frame(EPOCH_ONE, "child", CdpFrameDetachReason::Remove)
+            .unwrap();
+
+        // Assert
         assert_eq!(
             removed.effects(),
-            &[CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
-                object_id: ObjectId::new(5),
-            })]
+            &[
+                CdpTopologyEffect::FrameRemoved {
+                    page: ObjectId::new(3),
+                    frame: ObjectId::new(6),
+                },
+                CdpTopologyEffect::FrameRemoved {
+                    page: ObjectId::new(3),
+                    frame: ObjectId::new(5),
+                },
+                CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
+                    object_id: ObjectId::new(5),
+                }),
+            ]
         );
-        assert_eq!(topology.frame_object_id("frame-a"), None);
+        assert_eq!(duplicate.disposition(), CdpTopologyDisposition::Idempotent);
+        assert!(duplicate.effects().is_empty());
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    #[test]
+    fn swap_reports_descendants_but_not_preserved_root_and_page_close_reports_none() {
+        // Arrange
+        let mut topology = topology();
+        register_context(&mut topology, "context-a", 2);
+        attach_page(&mut topology, "target-a", "session-a", "context-a", 3, 4);
+        topology
+            .attach_frame(
+                EPOCH_ONE,
+                CdpFrameAttachment::local("target-a", "child", "target-a"),
+                ObjectId::new(5),
+            )
+            .unwrap();
+        topology
+            .attach_frame(
+                EPOCH_ONE,
+                CdpFrameAttachment::local("target-a", "grandchild", "child"),
+                ObjectId::new(6),
+            )
+            .unwrap();
+
+        // Act
+        let swapped = topology
+            .detach_frame(EPOCH_ONE, "child", CdpFrameDetachReason::Swap)
+            .unwrap();
+        let preserved = topology.frame_object_id("child");
+        let closed = topology
+            .detach_target(EPOCH_ONE, "session-a", Some("target-a"))
+            .unwrap();
+
+        // Assert
+        assert_eq!(preserved, Some(ObjectId::new(5)));
+        assert_eq!(topology.frame_object_id("child"), None);
+        assert_eq!(
+            swapped.effects(),
+            &[
+                CdpTopologyEffect::FrameRemoved {
+                    page: ObjectId::new(3),
+                    frame: ObjectId::new(6),
+                },
+                CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
+                    object_id: ObjectId::new(6),
+                }),
+            ]
+        );
+        assert!(
+            !closed
+                .effects()
+                .iter()
+                .any(|effect| matches!(effect, CdpTopologyEffect::FrameRemoved { .. }))
+        );
     }
 
     #[test]
@@ -2438,6 +2663,29 @@ impl CdpTopology {
             .map(|record| record.object_ids.page)
     }
 
+    /// Enumerates portable Page membership independently of command routing.
+    /// A materialized Page remains a collection member while reconnecting even
+    /// though it intentionally has no session route until native rebinding.
+    pub fn materialized_page_memberships(&self) -> impl Iterator<Item = (ObjectId, ObjectId)> + '_ {
+        self.page_by_object
+            .iter()
+            .filter_map(|(object_id, target_id)| {
+                let page = self.pages.get(target_id)?;
+                let context = self.contexts.get(&page.browser_context_id)?;
+                Some((*object_id, context.object_id))
+            })
+    }
+
+    /// Reports whether an authoritative reconnect snapshot is still being
+    /// assembled. Command routes are intentionally incomplete in this state,
+    /// so auxiliary per-Page owners must not interpret route absence as Page
+    /// retirement until `finish_reconnect` commits.
+    pub fn reconnect_in_progress(&self) -> bool {
+        self.pages
+            .values()
+            .any(|page| matches!(page.state, CdpPageState::Reconnecting))
+    }
+
     /// Enumerates command-capable Page routes without copying native IDs.
     /// Pages awaiting context materialization or reconnect session rebinding
     /// are intentionally absent.
@@ -2983,11 +3231,13 @@ impl CdpTopology {
         }
 
         let object_id = frame.object_id;
-        self.remove_frame_subtree(frame_id);
+        let mut effects = Vec::new();
+        self.remove_frame_subtree(frame_id, Some(&mut effects));
         self.refresh_metrics();
-        Ok(CdpTopologyUpdate::applied(vec![
-            CdpTopologyEffect::Lifecycle(ControlMessage::Dispose { object_id }),
-        ]))
+        effects.push(CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
+            object_id,
+        }));
+        Ok(CdpTopologyUpdate::applied(effects))
     }
 
     pub fn detach_target(
@@ -3070,11 +3320,13 @@ impl CdpTopology {
             return Ok(CdpTopologyUpdate::idempotent());
         }
         let object_id = frame.object_id;
-        self.remove_frame_subtree(frame_id);
+        let mut effects = Vec::new();
+        self.remove_frame_subtree(frame_id, Some(&mut effects));
         self.refresh_metrics();
-        Ok(CdpTopologyUpdate::applied(vec![
-            CdpTopologyEffect::Lifecycle(ControlMessage::Dispose { object_id }),
-        ]))
+        effects.push(CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
+            object_id,
+        }));
+        Ok(CdpTopologyUpdate::applied(effects))
     }
 
     pub fn crash_target(
@@ -3369,7 +3621,7 @@ impl CdpTopology {
             .map(|(frame_id, frame)| (frame_id.clone(), frame.object_id))
             .collect::<Vec<_>>();
         for (frame_id, object_id) in unbound_frame_roots {
-            self.remove_frame_subtree(&frame_id);
+            self.remove_frame_subtree(&frame_id, Some(&mut effects));
             effects.push(CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
                 object_id,
             }));
@@ -3752,14 +4004,18 @@ impl CdpTopology {
             let Some(native_id) = self.frame_by_object.get(&child).cloned() else {
                 continue;
             };
-            self.remove_frame_subtree(&native_id);
+            self.remove_frame_subtree(&native_id, Some(effects));
             effects.push(CdpTopologyEffect::Lifecycle(ControlMessage::Dispose {
                 object_id: child,
             }));
         }
     }
 
-    fn remove_frame_subtree(&mut self, frame_id: &str) {
+    fn remove_frame_subtree(
+        &mut self,
+        frame_id: &str,
+        mut _effects: Option<&mut Vec<CdpTopologyEffect>>,
+    ) {
         let Some(root) = self.frames.get(frame_id).map(|frame| frame.object_id) else {
             return;
         };
@@ -3770,6 +4026,19 @@ impl CdpTopology {
                 continue;
             };
             if let Some(frame) = self.frames.remove(&native_id) {
+                #[cfg(feature = "frame-detach-events")]
+                if let Some(effects) = _effects.as_mut() {
+                    let page = self
+                        .pages
+                        .get(&frame.page_target_id)
+                        .expect("materialized Frame belongs to a live Page")
+                        .object_ids
+                        .page;
+                    effects.push(CdpTopologyEffect::FrameRemoved {
+                        page,
+                        frame: object_id,
+                    });
+                }
                 if let FrameHost::Remote { session_id } = frame.host {
                     self.sessions.remove(&session_id);
                     self.remove_worlds_for_session(&session_id, None);

@@ -1,2 +1,2 @@
 import api from './index.cjs';
-export const { chromium, errors, compatibility } = api;
+export const { chromium, firefox, webkit, request, selectors, devices, errors, compatibility } = api;

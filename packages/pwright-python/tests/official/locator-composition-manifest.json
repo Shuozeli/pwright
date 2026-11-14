@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_locators.py": "6761dfaee418ceb9dc3cd21937d936db36db20ddeae15cd0c677586c5900ed77",
+    "tests/sync/test_locators.py": "5f4e47a3225669ef2328ada0c873114b2a9238a9a337b5dcb5328a3d4fc3c1e6"
+  },
+  "cases": [
+    {"id": "tests/async/test_locators.py::test_description_should_return_description_for_chained_locators", "capabilities": ["locator.within", "locator.description", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_description_should_return_description_for_locator_with_multiple_describe_calls", "capabilities": ["locator.within", "locator.description", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_should_respect_first_and_last", "capabilities": ["locator.within", "locator.nth", "locator.count", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_should_respect_nth", "capabilities": ["locator.within", "locator.nth", "locator.count", "async-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_should_respect_first_and_last", "capabilities": ["locator.within", "locator.nth", "locator.count", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_should_respect_nth", "capabilities": ["locator.within", "locator.nth", "locator.count", "sync-api"]}
+  ]
+}

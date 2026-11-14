@@ -370,6 +370,7 @@ mod tests {
             post_data: None,
             is_navigation_request: false,
             redirected_from: None,
+            timing: None,
         }
     }
 
@@ -382,6 +383,7 @@ mod tests {
             status_text: "OK".to_owned(),
             headers: vec![HttpHeader::new("content-type", "application/json")],
             from_service_worker: false,
+            timing: None,
         }
     }
 

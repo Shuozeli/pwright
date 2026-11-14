@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_browsercontext_storage_state.py": "f4c4a8566009253e734b8a4bbe6960a577ff0d72e21d2b8420f8f916bb97d98b",
+    "tests/sync/test_browsercontext_storage_state.py": "1a838b1d393b27a9792ba640f86d89b28af9cba15a2e2b247d800a29924e51bf"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_browsercontext_storage_state.py::test_should_capture_local_storage",
+      "capabilities": ["browser-context.storage-state", "storage-state.local-storage.capture"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_storage_state.py::test_should_set_local_storage",
+      "capabilities": ["browser-context.storage-state.restore", "storage-state.local-storage.restore", "storage-state.indexed-db.restore"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_storage_state.py::test_should_round_trip_through_the_file",
+      "capabilities": ["browser-context.storage-state", "browser-context.storage-state.restore", "storage-state.file-roundtrip", "storage-state.cookies"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_storage_state.py::test_should_serialiser_storage_state_with_lone_surrogates",
+      "capabilities": ["browser-context.storage-state", "storage-state.local-storage.unpaired-surrogate"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_storage_state.py::test_should_serialise_indexed_db",
+      "capabilities": ["browser-context.storage-state", "storage-state.indexed-db.opt-in"]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_storage_state.py::test_should_capture_local_storage",
+      "capabilities": ["browser-context.storage-state", "storage-state.local-storage.capture"]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_storage_state.py::test_should_set_local_storage",
+      "capabilities": ["browser-context.storage-state.restore", "storage-state.local-storage.restore", "storage-state.indexed-db.restore"]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_storage_state.py::test_should_round_trip_through_the_file",
+      "capabilities": ["browser-context.storage-state", "browser-context.storage-state.restore", "storage-state.file-roundtrip", "storage-state.cookies"]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_storage_state.py::test_should_serialise_indexed_db",
+      "capabilities": ["browser-context.storage-state", "storage-state.indexed-db.opt-in"]
+    }
+  ]
+}

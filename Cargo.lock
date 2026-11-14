@@ -3,12 +3,33 @@
 version = 4
 
 [[package]]
+name = "adler2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "alloc-no-stdlib"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2fb6cfd47bf496ff64095c20eaba0c201404ee38714d4142fcfa1dc334fcc7a"
+
+[[package]]
+name = "alloc-stdlib"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5c1865780388bfa186411ab5f247819487fc4864c6e9c3106611fa347586e1"
+dependencies = [
+ "alloc-no-stdlib",
 ]
 
 [[package]]
@@ -173,6 +194,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "brotli"
+version = "9.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8b851b75c23ca7873623d612fe49bd1989aeb03d08fb9432187eb253d3d4c6b"
+dependencies = [
+ "alloc-no-stdlib",
+ "alloc-stdlib",
+ "brotli-decompressor",
+]
+
+[[package]]
+name = "brotli-decompressor"
+version = "6.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "941cd9bd4ddab83cb46fa5a2d428f1c857b24ac78cb876cf7beb710840934bd7"
+dependencies = [
+ "alloc-no-stdlib",
+ "alloc-stdlib",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -317,6 +359,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "crc32fast"
+version = "1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01a7799fd6b852db0e61728dde9a204c423b44d689dbd432522543614b490e78"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -480,6 +531,16 @@ name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+
+[[package]]
+name = "flate2"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e634e2e0ebac1ee034020da1ca582e17ffe4e0f5e985823721e168928136dcb"
+dependencies = [
+ "crc32fast",
+ "miniz_oxide",
+]
 
 [[package]]
 name = "fnv"
@@ -1079,6 +1140,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "miniz_oxide"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
+dependencies = [
+ "adler2",
+ "simd-adler32",
+]
+
+[[package]]
 name = "mio"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1109,6 +1180,8 @@ dependencies = [
  "napi-sys",
  "nohash-hasher",
  "rustc-hash",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -1339,6 +1412,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
+name = "portable-atomic"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85"
+
+[[package]]
 name = "potential_utf"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1491,6 +1570,149 @@ dependencies = [
 ]
 
 [[package]]
+name = "pwright-api-request"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mime_guess",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "pwright-api-request-auth-basic"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "pwright-api-request",
+ "thiserror",
+ "url",
+ "zeroize",
+]
+
+[[package]]
+name = "pwright-api-request-client-certificates"
+version = "0.1.0"
+dependencies = [
+ "openssl",
+ "pwright-api-request-connector-rustls",
+ "rcgen",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "pwright-api-request-connector-http-proxy"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "httparse",
+ "pwright-api-request-transport",
+ "tokio",
+ "tokio-util",
+ "url",
+ "zeroize",
+]
+
+[[package]]
+name = "pwright-api-request-connector-proxy-bypass"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pwright-api-request-transport",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "pwright-api-request-connector-rustls"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pwright-api-request-connector-tokio",
+ "pwright-api-request-transport",
+ "rcgen",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "url",
+ "webpki-roots",
+]
+
+[[package]]
+name = "pwright-api-request-connector-socks5"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pwright-api-request-transport",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "pwright-api-request-connector-tokio"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "pwright-api-request-transport",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "pwright-api-request-cookie"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "httpdate",
+ "pwright-api-request",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "pwright-api-request-decompress"
+version = "0.1.0"
+dependencies = [
+ "brotli",
+ "flate2",
+ "pwright-api-request-transport",
+]
+
+[[package]]
+name = "pwright-api-request-http1"
+version = "0.1.0"
+dependencies = [
+ "httparse",
+ "pwright-api-request",
+ "thiserror",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "pwright-api-request-transport"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pwright-api-request",
+ "pwright-api-request-auth-basic",
+ "pwright-api-request-cookie",
+ "pwright-api-request-http1",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
 name = "pwright-artifact-model"
 version = "0.1.0"
 dependencies = [
@@ -1567,6 +1789,7 @@ dependencies = [
  "pwright-cap-evaluation",
  "pwright-cap-handle-evaluation",
  "pwright-cap-handle-lifecycle",
+ "pwright-cap-history-navigation",
  "pwright-cap-locator",
  "pwright-cap-locator-screenshot",
  "pwright-cap-navigation",
@@ -1774,6 +1997,7 @@ dependencies = [
  "pwright-backend-cdp-selector-runtime",
  "pwright-browser-model",
  "pwright-cap-locator",
+ "pwright-cap-touchscreen",
  "pwright-cdp",
  "pwright-core",
  "pwright-fake",
@@ -1836,6 +2060,7 @@ version = "0.1.0"
 dependencies = [
  "pwright-backend-cdp-common",
  "pwright-browser-backend",
+ "pwright-cap-history-navigation",
  "pwright-cap-navigation",
  "pwright-cdp",
  "pwright-core",
@@ -1848,6 +2073,7 @@ dependencies = [
 name = "pwright-backend-cdp-network-events"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "pwright-browser-model",
  "pwright-cap-network-events",
  "pwright-cdp",
@@ -1937,6 +2163,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pwright-backend-cdp-touchscreen"
+version = "0.1.0"
+dependencies = [
+ "pwright-backend-cdp-common",
+ "pwright-backend-cdp-input",
+ "pwright-browser-backend",
+ "pwright-cap-touchscreen",
+ "pwright-cdp",
+ "pwright-core",
+ "pwright-fake",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "pwright-bridge"
 version = "0.1.0"
 dependencies = [
@@ -1974,6 +2215,10 @@ dependencies = [
 
 [[package]]
 name = "pwright-browser-provider"
+version = "0.1.0"
+
+[[package]]
+name = "pwright-browser-registry"
 version = "0.1.0"
 
 [[package]]
@@ -2051,6 +2296,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "pwright-cap-history-navigation"
+version = "0.1.0"
+dependencies = [
+ "pwright-core",
+]
+
+[[package]]
 name = "pwright-cap-keyboard"
 version = "0.1.0"
 dependencies = [
@@ -2119,6 +2371,14 @@ dependencies = [
 name = "pwright-cap-page-lifecycle"
 version = "0.1.0"
 dependencies = [
+ "pwright-core",
+]
+
+[[package]]
+name = "pwright-cap-touchscreen"
+version = "0.1.0"
+dependencies = [
+ "pwright-cap-locator",
  "pwright-core",
 ]
 
@@ -2798,6 +3058,7 @@ dependencies = [
  "pwright-cap-evaluation",
  "pwright-cap-handle-evaluation",
  "pwright-cap-handle-lifecycle",
+ "pwright-cap-history-navigation",
  "pwright-cap-locator",
  "pwright-cap-locator-screenshot",
  "pwright-cap-navigation",
@@ -2805,6 +3066,7 @@ dependencies = [
  "pwright-cap-page-creation",
  "pwright-cap-page-events",
  "pwright-cap-page-lifecycle",
+ "pwright-cap-touchscreen",
  "pwright-cdp",
  "pwright-client",
  "pwright-client-content",
@@ -2843,6 +3105,9 @@ dependencies = [
  "pwright-core",
  "pwright-fake",
  "pwright-network-model",
+ "pwright-plugin-chromium-frame-lifecycle",
+ "pwright-plugin-chromium-frame-observer",
+ "pwright-plugin-chromium-session-initialization",
  "pwright-plugin-ordered-handle-delivery",
  "pwright-process-metrics",
  "pwright-provider-cdp",
@@ -3319,6 +3584,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pwright-composition-chromium-touchscreen"
+version = "0.1.0"
+dependencies = [
+ "pwright-backend-cdp-input",
+ "pwright-backend-cdp-touchscreen",
+ "pwright-cap-touchscreen",
+ "pwright-cdp",
+ "pwright-core",
+ "pwright-fake",
+ "tokio",
+]
+
+[[package]]
 name = "pwright-connection-control"
 version = "0.1.0"
 dependencies = [
@@ -3392,6 +3670,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pwright-har-replay"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
+]
+
+[[package]]
 name = "pwright-input-model"
 version = "0.1.0"
 
@@ -3430,27 +3719,58 @@ dependencies = [
 name = "pwright-node-addon"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "napi",
  "napi-build",
  "napi-derive",
+ "pwright-api-request",
+ "pwright-api-request-auth-basic",
+ "pwright-api-request-client-certificates",
+ "pwright-api-request-connector-http-proxy",
+ "pwright-api-request-connector-proxy-bypass",
+ "pwright-api-request-connector-rustls",
+ "pwright-api-request-connector-socks5",
+ "pwright-api-request-cookie",
+ "pwright-api-request-decompress",
+ "pwright-api-request-transport",
+ "pwright-browser-registry",
  "pwright-cap-navigation",
  "pwright-node-host",
+ "pwright-owned-process-startup",
+ "pwright-persistent-context-preflight",
+ "pwright-playwright-connect-headers",
+ "pwright-playwright-server-browser-ops",
+ "pwright-playwright-server-connect",
+ "pwright-playwright-server-endpoint-discovery",
+ "pwright-playwright-server-initialize",
+ "pwright-playwright-server-page-events",
+ "pwright-playwright-server-session",
+ "pwright-trace-playwright-v8",
+ "pwright-transport-ws",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-util",
+ "tracing",
+ "url",
 ]
 
 [[package]]
 name = "pwright-node-host"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "futures-util",
+ "mime_guess",
+ "pwright-backend-cdp",
  "pwright-backend-cdp-content",
  "pwright-backend-cdp-context-creation",
  "pwright-backend-cdp-dom-content",
  "pwright-backend-cdp-drag",
  "pwright-backend-cdp-evaluation",
  "pwright-backend-cdp-file-input",
+ "pwright-backend-cdp-handle-evaluation",
+ "pwright-backend-cdp-input",
  "pwright-backend-cdp-locator",
  "pwright-backend-cdp-mouse",
  "pwright-backend-cdp-navigation",
@@ -3458,7 +3778,9 @@ dependencies = [
  "pwright-backend-cdp-page-lifecycle",
  "pwright-backend-cdp-selector-runtime",
  "pwright-backend-cdp-topology",
+ "pwright-backend-cdp-touchscreen",
  "pwright-browser-model",
+ "pwright-browser-provider",
  "pwright-cap-content",
  "pwright-cap-context-creation",
  "pwright-cap-context-lifecycle",
@@ -3466,12 +3788,16 @@ dependencies = [
  "pwright-cap-evaluation",
  "pwright-cap-handle-evaluation",
  "pwright-cap-handle-lifecycle",
+ "pwright-cap-history-navigation",
  "pwright-cap-keyboard",
  "pwright-cap-locator",
+ "pwright-cap-locator-screenshot",
  "pwright-cap-mouse",
  "pwright-cap-navigation",
+ "pwright-cap-network-events",
  "pwright-cap-page-creation",
  "pwright-cap-page-lifecycle",
+ "pwright-cap-touchscreen",
  "pwright-cdp",
  "pwright-codec-content",
  "pwright-codec-context-creation",
@@ -3481,6 +3807,7 @@ dependencies = [
  "pwright-codec-handle-evaluation",
  "pwright-codec-handle-lifecycle",
  "pwright-codec-locator",
+ "pwright-codec-locator-screenshot",
  "pwright-codec-navigation",
  "pwright-codec-page-creation",
  "pwright-codec-page-lifecycle",
@@ -3489,31 +3816,170 @@ dependencies = [
  "pwright-composition-chromium-handle-evaluation",
  "pwright-composition-chromium-handle-lifecycle",
  "pwright-composition-chromium-keyboard",
+ "pwright-composition-chromium-launch",
  "pwright-composition-chromium-locator-evaluation",
  "pwright-composition-chromium-locator-resolution",
  "pwright-composition-chromium-mouse",
+ "pwright-composition-chromium-touchscreen",
  "pwright-core",
  "pwright-fake",
  "pwright-file-input-fs",
  "pwright-file-input-model",
  "pwright-file-input-source",
  "pwright-file-input-tokio",
+ "pwright-har-replay",
  "pwright-input-model",
  "pwright-network-model",
+ "pwright-playwright-connect-headers",
+ "pwright-plugin-chromium-frame-lifecycle",
+ "pwright-plugin-chromium-frame-observer",
+ "pwright-plugin-chromium-session-initialization",
  "pwright-provider-cdp",
+ "pwright-provider-chromium",
  "pwright-runtime",
+ "pwright-runtime-control",
  "pwright-runtime-tokio",
  "pwright-server-wire",
+ "pwright-trace-playwright-v8",
  "pwright-transport",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
  "url",
+ "zeroize",
+]
+
+[[package]]
+name = "pwright-owned-process-startup"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tokio",
+]
+
+[[package]]
+name = "pwright-persistent-context-preflight"
+version = "0.1.0"
+
+[[package]]
+name = "pwright-playwright-connect-headers"
+version = "0.1.0"
+dependencies = [
+ "pwright-transport-ws",
+]
+
+[[package]]
+name = "pwright-playwright-server-browser-ops"
+version = "0.1.0"
+dependencies = [
+ "pwright-playwright-server-client-core",
+ "pwright-playwright-server-session",
+ "pwright-transport-ws",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "pwright-playwright-server-client-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pwright-playwright-server-connect"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "pwright-playwright-server-client-core",
+ "pwright-playwright-server-endpoint-discovery",
+ "pwright-playwright-server-session",
+ "pwright-transport-ws",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "pwright-playwright-server-endpoint-discovery"
+version = "0.1.0"
+dependencies = [
+ "pwright-transport-ws",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "pwright-playwright-server-initialize"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "pwright-transport-ws",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "pwright-playwright-server-page-events"
+version = "0.1.0"
+dependencies = [
+ "pwright-playwright-server-client-core",
+ "serde_json",
+]
+
+[[package]]
+name = "pwright-playwright-server-session"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "pwright-playwright-server-client-core",
+ "pwright-playwright-server-page-events",
+ "pwright-transport-ws",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "pwright-plugin-chromium-frame-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "pwright-backend-cdp-navigation",
+ "pwright-backend-cdp-topology",
+ "pwright-cap-navigation",
+ "pwright-cdp",
+ "pwright-core",
+ "pwright-plugin-chromium-frame-observer",
+ "tokio",
+]
+
+[[package]]
+name = "pwright-plugin-chromium-frame-observer"
+version = "0.1.0"
+dependencies = [
+ "pwright-backend-cdp-topology",
+ "pwright-cdp",
+ "pwright-core",
+]
+
+[[package]]
+name = "pwright-plugin-chromium-session-initialization"
+version = "0.1.0"
+dependencies = [
+ "pwright-backend-cdp-topology",
+ "pwright-core",
 ]
 
 [[package]]
@@ -3608,6 +4074,38 @@ dependencies = [
  "pwright-cdp",
  "pwright-provider-cdp",
  "tokio",
+]
+
+[[package]]
+name = "pwright-python-addon"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pwright-api-request",
+ "pwright-api-request-auth-basic",
+ "pwright-api-request-client-certificates",
+ "pwright-api-request-connector-rustls",
+ "pwright-api-request-cookie",
+ "pwright-api-request-decompress",
+ "pwright-api-request-transport",
+ "pwright-browser-registry",
+ "pwright-cap-navigation",
+ "pwright-node-host",
+ "pwright-owned-process-startup",
+ "pwright-playwright-server-browser-ops",
+ "pwright-playwright-server-connect",
+ "pwright-playwright-server-endpoint-discovery",
+ "pwright-playwright-server-initialize",
+ "pwright-playwright-server-session",
+ "pwright-transport-ws",
+ "pyo3",
+ "pyo3-async-runtimes",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -3953,6 +4451,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pwright-tokio-tungstenite"
+version = "0.26.2-pwright.1"
+dependencies = [
+ "futures-util",
+ "log",
+ "native-tls",
+ "pwright-tungstenite",
+ "tokio",
+ "tokio-native-tls",
+]
+
+[[package]]
 name = "pwright-trace-format"
 version = "0.1.0"
 dependencies = [
@@ -3965,6 +4475,23 @@ name = "pwright-trace-model"
 version = "0.1.0"
 dependencies = [
  "pwright-core",
+]
+
+[[package]]
+name = "pwright-trace-playwright-v8"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pwright-trace-playwright-v8-context"
+version = "0.1.0"
+dependencies = [
+ "pwright-core",
+ "pwright-trace-playwright-v8",
+ "serde_json",
 ]
 
 [[package]]
@@ -4043,6 +4570,108 @@ dependencies = [
  "pwright-transport",
  "pwright-transport-stream",
  "tokio",
+]
+
+[[package]]
+name = "pwright-transport-ws"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "log",
+ "native-tls",
+ "openssl",
+ "pwright-tokio-tungstenite",
+ "rcgen",
+ "tokio",
+ "tokio-native-tls",
+ "url",
+]
+
+[[package]]
+name = "pwright-tungstenite"
+version = "0.26.2-pwright.1"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "native-tls",
+ "rand 0.9.5",
+ "sha1",
+ "thiserror",
+ "utf-8",
+]
+
+[[package]]
+name = "pyo3"
+version = "0.29.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4688ddedf473e32662b9b067670129a8afb8c18e351482c70d62ba4a88171e8b"
+dependencies = [
+ "libc",
+ "once_cell",
+ "portable-atomic",
+ "pyo3-build-config",
+ "pyo3-ffi",
+ "pyo3-macros",
+]
+
+[[package]]
+name = "pyo3-async-runtimes"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3ef68daa7316a3fac65e5e18b2203f010346de1c1c53456811a2624673ab046"
+dependencies = [
+ "futures-channel",
+ "futures-util",
+ "once_cell",
+ "pin-project-lite",
+ "pyo3",
+ "tokio",
+]
+
+[[package]]
+name = "pyo3-build-config"
+version = "0.29.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f41027e41b4bd03f6e60f9f417fe24a6341a6bb744edd62b6f709f2a52ea30e9"
+dependencies = [
+ "target-lexicon",
+]
+
+[[package]]
+name = "pyo3-ffi"
+version = "0.29.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e591a95526fead067432c3b3a33fc74770b87b1e04e73671090d9c2055a2b327"
+dependencies = [
+ "libc",
+ "pyo3-build-config",
+]
+
+[[package]]
+name = "pyo3-macros"
+version = "0.29.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73225868fc1cd84eef2c3c230ddb91273bf1de46aeb8a4248da76d32a0924a1c"
+dependencies = [
+ "proc-macro2",
+ "pyo3-macros-backend",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "pyo3-macros-backend"
+version = "0.29.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "571575aa3749fa6216757dd47d2a3e7ef360f329a40f0666a9fbd14889024952"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -4506,6 +5135,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "simd-adler32"
+version = "0.3.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4596,6 +5231,12 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "target-lexicon"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "tempfile"

@@ -115,6 +115,8 @@ impl TerminalLifecycle {
                             close: Some(page.tree.close_for_teardown()),
                             awaiting: false,
                             creation: None,
+                            #[cfg(feature = "frame-detach-events")]
+                            detached_frame: None,
                         },
                     );
                     before = after;
@@ -134,6 +136,8 @@ impl TerminalLifecycle {
                         close: None,
                         awaiting: false,
                         creation: None,
+                        #[cfg(feature = "frame-detach-events")]
+                        detached_frame: None,
                     },
                 );
                 before = after;

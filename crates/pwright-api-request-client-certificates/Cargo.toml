@@ -1,0 +1,20 @@
+[package]
+name = "pwright-api-request-client-certificates"
+description = "Optional PEM and PKCS#12 client-certificate loader for Pwright API requests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+openssl.workspace = true
+pwright-api-request-connector-rustls.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+rcgen = "0.13.2"

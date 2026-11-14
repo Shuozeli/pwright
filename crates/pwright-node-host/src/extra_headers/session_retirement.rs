@@ -8,8 +8,8 @@ use pwright_cdp::{
     CdpEvent,
     generated::{page, target},
 };
-use pwright_composition_chromium::{ChromiumFrameEventObserver, FrameObservationResult};
 use pwright_core::ObjectId;
+use pwright_plugin_chromium_frame_observer::{ChromiumFrameEventObserver, FrameObservationResult};
 use serde::Deserialize;
 use std::{
     future::Future,
@@ -143,6 +143,22 @@ impl ChromiumFrameEventObserver for Observer {
         self.frames
             .as_ref()
             .is_some_and(|frames| frames.observes_page(page))
+    }
+    fn retains_worker_targets(&self) -> bool {
+        self.frames
+            .as_ref()
+            .is_some_and(|frames| frames.retains_worker_targets())
+    }
+    fn retains_worker_session(&self, session: &str) -> bool {
+        self.frames
+            .as_ref()
+            .is_some_and(|frames| frames.retains_worker_session(session))
+    }
+
+    fn enables_worker_network(&self) -> bool {
+        self.frames
+            .as_ref()
+            .is_some_and(|frames| frames.enables_worker_network())
     }
     fn prepare_page(&self, topology: &CdpTopology, page: ObjectId) -> FrameObservationResult {
         if let Some(frames) = &self.frames {

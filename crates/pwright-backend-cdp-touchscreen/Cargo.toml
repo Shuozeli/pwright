@@ -1,0 +1,21 @@
+[package]
+name = "pwright-backend-cdp-touchscreen"
+description = "Optional bounded Chromium Page Touchscreen services for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-common = { workspace = true }
+pwright-backend-cdp-input = { workspace = true }
+pwright-browser-backend = { workspace = true }
+pwright-cap-touchscreen = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+
+[dev-dependencies]
+pwright-fake = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

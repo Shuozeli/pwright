@@ -1,0 +1,20 @@
+[package]
+name = "pwright-api-request-cookie"
+description = "Bounded global cookie store for Pwright API requests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+async-trait.workspace = true
+httpdate.workspace = true
+pwright-api-request.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

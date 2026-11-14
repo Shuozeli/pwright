@@ -1,10 +1,84 @@
+<!-- agent-updated: 2026-09-22T06:58:47Z -->
+
 # Code Quality Findings
 
-Audit date: 2026-03-26 (initial), 2026-03-26 (re-audit)
+Audit dates: 2026-03-26 (historical audit), 2026-09-21 (current audit)
 
 ---
 
-## Summary
+## Current status (2026-09-21)
+
+The March audit below is retained as historical evidence, but its global
+conclusions are no longer current. In particular, “no new issues,” “all
+workspace tests pass,” and “clean dependency graph” must not be used as present
+completion evidence after the Rust v2 and Node-FFI additions.
+
+The current audit found and repaired these concrete defects:
+
+- rejected or synchronously throwing Node session watches could escape as
+  unhandled rejections and leave connection state published as live;
+- a stale or wrong `.node` binary could satisfy the feature-marker checks
+  without any explicit JS/Rust ABI identity;
+- `connectOverCDP({ timeout: 0 })` disabled the outer attach timeout but
+  silently retained a 30-second per-command timeout;
+- Page, Frame and JSHandle evaluation rejected runtime values that the matching
+  Locator path stringified;
+- CI omitted the package's supported Node versions, the real default addon load
+  and the terminal retained-payload profiles;
+- the native smoke test used a Worker that could keep the test runner alive
+  after a macOS native-load stall; it now uses a bounded child process;
+- the two CDP test clients duplicated call recording and persistent response
+  storage, while the stateful fake repeated Runtime scripting and the canned
+  mock implemented only a partial strict policy;
+- `Clock::deadline_from_now` could truncate or wrap large durations, the fake
+  clock did not implement a real wait, and all three navigation polling loops
+  bypassed clock injection. Deadlines now saturate, `FakeClock::sleep` waits for
+  explicit advancement, and DOM/network-idle/selector polling shares the
+  injected clock boundary.
+
+Current focused evidence is 172/172 Node package tests, real ABI loading for
+default and both terminal retained-payload artifacts, 167/167 bridge library
+tests, 30/30 fake library tests, strict release Clippy, formatting, dependency
+gates and CI-YAML parsing. This is not a claim that the entire workspace is
+currently green: an unrelated pre-existing workspace test process was still
+live during the audit, so the new CI definition remains the authoritative full
+gate once committed and run.
+
+### Structural findings and resolutions
+
+1. **NODE-004 aggregate Node assembly:** the extracted session-init and Frame
+   observation/projection plugins each have an exact five-Pwright-package
+   closure; the extracted Frame lifecycle/navigation-wait plugin has an exact
+   ten-package closure. Together they reduce aggregate-coupled host files from
+   55 to 39. During this migration the default host/addon resolve 236/251
+   packages and the aggregate
+   has 69 direct normal dependencies; no feature-minimal claim is made.
+   Remaining contracts/services still require leaf ownership and a narrow Node
+   assembly. See
+   [node-ffi-compatibility-design.md](node-ffi-compatibility-design.md#discrepancies-and-unfinished-gates).
+2. **Distinct CDP test clients — compatible core resolved:**
+   `MockCdpClient` and `FakeCdpClient` currently occupy 979 and 1,967 source lines
+   respectively. Their identical call-recording/filtering path has one
+   owner in `pwright-fake::CdpCallLog`, selected by
+   `pwright-bridge/test-utils` without entering the production bridge closure.
+   All 15 canned response fields plus the fake navigation override share
+   `CdpResponseSlot` for persistent optional storage.
+   The stateful fake's 11 configurable Runtime entry points now also share
+   `CdpResponseScript` for error/FIFO/fallback precedence while retaining
+   method-local default JSON and gates. One lock now owns the complete script;
+   the previous three-lock representation could expose a partial
+   reconfiguration to concurrent calls. The canned mock's per-method optional
+   defaults and strict behavior remain distinct. `strict()` now rejects every
+   absent configurable response slot through one helper, accepts configured
+   responses, and leaves fixed built-in responses/no-op methods available.
+   Three AAA regressions lock that policy. Method defaults, gates, FIFO/error
+   scripts and the in-memory DOM remain intentionally separate; the clients are
+   not interchangeable, but no known identical response mechanism remains
+   duplicated.
+3. **Distribution boundary:** `@shuozeli/pwright` remains private and
+   source-built. No prebuilt-platform or npm publication claim is made.
+
+## Historical summary (2026-03-26)
 
 The codebase is in **excellent shape**. The initial audit found 8 categories of
 issues. Most were fixed in the same session. The re-audit found no new issues --
@@ -48,7 +122,10 @@ either cosmetic, deferred by design, or acceptable for test-only code.
   2. Extract a macro or trait-blanket pattern that generates the recording+delegation boilerplate so both impls share the same template.
 
   Option 1 is simpler and already partially done -- `FakeCdpClient` has `calls()` and `method_names()`.
-- **Status:** DEFERRED -- This is a large structural refactor (consolidating two test implementations) that risks breaking many tests. Better done as a dedicated task with its own branch and review.
+- **Status:** PARTIAL -- Call recording and the stateful fake's ordered Runtime
+  response script are centralized and release-tested. Full client consolidation
+  remains a large structural refactor; preserve the canned mock's strict/default
+  semantics instead of forcing it through the DOM fake.
 
 ### Duplicate click dispatch pattern in actions.rs and mouse.rs -- DONE
 
@@ -190,7 +267,7 @@ either cosmetic, deferred by design, or acceptable for test-only code.
 
 ---
 
-## Re-Audit Notes (2026-03-26)
+## Historical re-audit notes (2026-03-26)
 
 A full re-audit of the entire codebase confirmed:
 

@@ -7,7 +7,17 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+request-frame = []
+response-security-details = []
+request-timing = [
+    "pwright-cap-network-events/request-timing",
+    "pwright-network-model/request-timing",
+]
+
 [dependencies]
+base64 = { workspace = true }
 pwright-browser-model = { workspace = true }
 pwright-cap-network-events = { workspace = true }
 pwright-cdp = { workspace = true }

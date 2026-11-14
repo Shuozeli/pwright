@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "ciPlatforms": [
+      "linux",
+      "darwin",
+      "win32"
+    ],
+    "ciPythonVersions": [
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "stableChannels": [
+      "chrome",
+      "msedge"
+    ],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/sync/utils.py": "ae98bc4ec9132e71456246209de88e4300c9624bf355d763d1881c2919e29bc4",
+    "tests/sync/test_page_select_option.py": "d75ebf84437d6266eab70de49c0edb41a8214b0f0faf42e70371fe13b6117165"
+  },
+  "cases": [
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_deselect_all_options_when_passed_no_values_for_a_multiple_select",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_deselect_all_options_when_passed_no_values_for_a_select_without_multiple",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_not_throw_when_select_causes_navigation",
+      "capabilities": [
+        "page.select_option",
+        "page.navigation",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_respect_event_bubbling",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_return_an_array_of_matched_values",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_return_an_array_of_one_element_when_multiple_is_not_set",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_return_on_no_matched_values",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_return_on_no_values",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_multiple_options",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_multiple_options_with_attributes",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_only_first_option",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_option_with_empty_value",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_single_option",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_single_option_by_empty_label",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_single_option_by_handle",
+      "capabilities": [
+        "page.select_option",
+        "handle.argument",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_single_option_by_index",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_single_option_by_index_0",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_single_option_by_label",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_select_single_option_by_value",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_throw_when_element_is_not_a__select_",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_unselect_with_null",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_option_should_work_when_re_defining_top_level_event_class",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_select_option.py::test_select_options_should_fall_back_to_selecting_by_label",
+      "capabilities": [
+        "page.select_option",
+        "sync-api"
+      ]
+    }
+  ]
+}

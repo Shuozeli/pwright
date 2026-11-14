@@ -69,6 +69,62 @@ impl NativeFrameTree {
     }
 }
 
+#[cfg(feature = "frame-detach-events")]
+#[napi]
+impl NativeFrameTree {
+    #[napi]
+    pub fn retired_metadata(&self, id: JsString<'_>) -> napi::Result<NativeFrameNode> {
+        if id.utf8_len()? > 20 {
+            return Err(napi::Error::from_reason("Invalid Frame ID"));
+        }
+        // The child Frame owns a one-shot binding and 21-byte ID allowance
+        // admitted before its topology retirement.
+        let id = id
+            .into_utf8()?
+            .as_str()?
+            .parse::<u64>()
+            .map_err(|_| napi::Error::from_reason("Invalid Frame ID"))?;
+        self.binding
+            .tree()
+            .bind_retired(id)
+            .map(|binding| NativeFrameNode { binding })
+            .map_err(binding_error)
+    }
+
+    #[napi]
+    pub fn event_metadata(&self, id: JsString<'_>) -> napi::Result<NativeFrameNode> {
+        if id.utf8_len()? > 20 {
+            return Err(napi::Error::from_reason("Invalid Frame ID"));
+        }
+        let id = id
+            .into_utf8()?
+            .as_str()?
+            .parse::<u64>()
+            .map_err(|_| napi::Error::from_reason("Invalid Frame ID"))?;
+        self.binding
+            .tree()
+            .bind_detach_ancestor(id)
+            .map(|binding| NativeFrameNode { binding })
+            .map_err(binding_error)
+    }
+
+    #[napi]
+    pub fn finish_detached(&self, id: JsString<'_>) -> napi::Result<()> {
+        if id.utf8_len()? > 20 {
+            return Err(napi::Error::from_reason("Invalid Frame ID"));
+        }
+        let id = id
+            .into_utf8()?
+            .as_str()?
+            .parse::<u64>()
+            .map_err(|_| napi::Error::from_reason("Invalid Frame ID"))?;
+        self.binding
+            .tree()
+            .finish_detached(id)
+            .map_err(binding_error)
+    }
+}
+
 #[napi]
 pub struct NativeFrameNode {
     pub(crate) binding: FrameBinding,
@@ -98,5 +154,14 @@ impl NativeFrameNode {
     #[napi]
     pub fn is_detached(&self) -> bool {
         self.binding.node().is_detached()
+    }
+}
+
+#[cfg(feature = "frame-detach-events")]
+#[napi]
+impl NativeFrameNode {
+    #[napi]
+    pub fn parent_id(&self) -> Option<String> {
+        self.binding.node().parent_id().map(|id| id.to_string())
     }
 }

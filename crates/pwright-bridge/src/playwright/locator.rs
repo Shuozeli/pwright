@@ -553,6 +553,7 @@ fn strip_outer_tag(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::clock::FakeClock;
     use crate::test_utils::MockCdpClient;
 
     fn mock_with_element() -> Arc<MockCdpClient> {
@@ -731,13 +732,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_wait_for_visible_times_out_without_box_model() {
+        // Arrange
         let mock = Arc::new(MockCdpClient::new());
         mock.set_query_selector_response(42);
         mock.set_box_model_error(true);
+        let clock = Arc::new(FakeClock::new());
+        let loc =
+            Locator::with_clock_and_kind(mock, SelectorKind::Css("div".to_string()), clock.clone());
 
-        let loc = Locator::new(mock.clone(), "div");
-        let result = loc.wait_for(300, WaitState::Visible).await;
-        assert!(result.is_err());
+        // Act
+        let advance = async {
+            tokio::task::yield_now().await;
+            clock.advance(std::time::Duration::from_millis(300));
+        };
+        let (result, ()) = tokio::join!(loc.wait_for(300, WaitState::Visible), advance);
+
+        // Assert
+        assert!(matches!(result, Err(CdpError::Timeout)));
     }
 
     #[tokio::test]

@@ -1,6 +1,479 @@
-<!-- agent-updated: 2026-09-08T01:19:49Z -->
+<!-- agent-updated: 2026-10-10T07:11:56Z -->
 
 # pwright - Project Guide
+
+The [Core conformance checkpoint](upstream-playwright-conformance.md) now
+records the exact 15-case browserless BrowserType matrix with 11 expected and
+four upstream skips in both candidate and oracle lanes. An additional
+12-case Library preflight matrix passes in both lanes; the latest strict
+Core ledger still has 46,861 candidate `not-run` rows. The
+[Python checkpoint](python-official-conformance.md#cross-engine-browsertype-metadata-checkpoint-2026-10-10)
+adds four paired-green Firefox/WebKit name rows. ABI106 now matches official
+path strings, but executable-path existence cases remain red diagnostics.
+These selected outcomes do not establish full-corpus parity.
+
+Core Page response-wait NODE-432 matches all nine unchanged Chromium Page
+outcomes in candidate and independent oracle lanes: eight expected plus the
+same Chrome-154 cached-image unexpected. The bounded Rust response stream,
+separately selected terminal owner and optional body reader compose without
+adding a second CDP observer. Exact nine-row merges reach candidate 1,542 and
+oracle 1,245 expected outcomes; complete corpora remain open. [Architecture
+and evidence](node-ffi-compatibility-design.md#response-waiter-and-terminal-body-readiness-node-432-2026-10-07).
+
+Core Page request-wait NODE-431 passes all eight unchanged Chromium Page cases
+in candidate and independent oracle lanes. One shared synchronous language
+waiter owns public predicates, cross-realm RegExp, caller stacks and diagnostic
+formatting; Rust retains request observation, bounded queues, URL globbing and
+Page-default timeout state. Exact eight-row merges reach candidate 1,534 and
+oracle 1,237 expected outcomes; complete corpora remain open. [Architecture
+and evidence](node-ffi-compatibility-design.md#page-request-waiter-parity-node-431-2026-10-07).
+
+Core Request post-data NODE-430 composes `page.waitForRequest()` from one
+bounded Rust request-notice stream and the existing Rust URL-glob compiler.
+The optional parser leaf adds Rust JSON/form decoding without selecting Page
+routes, response bodies or request history. Node only arms the public listener
+synchronously, evaluates language predicates and wraps the immutable snapshot.
+Candidate and independent oracle pass the complete unchanged six-case Chromium
+file 6/6 with verified provenance; exact six-row merges bring candidate to
+1,526 expected and oracle to 1,229 expected. Full corpora remain open.
+[Architecture and evidence](node-ffi-compatibility-design.md#bounded-page-request-waiting-and-post-data-decoding-node-430-2026-10-06).
+
+Core extra HTTP headers NODE-429 completes the seven unchanged Chromium
+Context/Page cases with candidate/oracle outcome parity. The new independently
+selected `response-request` composition returns the actual Rust-captured
+navigation Request snapshot and removes the old masked TypeError. Chrome 154
+passes the Referer assertion still marked as an upstream expected failure, so
+both lanes honestly record the same one unexpected pass. [Architecture and
+evidence](node-ffi-compatibility-design.md#navigation-response-request-snapshots-node-429-2026-10-06).
+
+Core Touchscreen NODE-428 completes all nine unchanged Chromium Library
+`tap.spec.ts` cases in candidate and independent oracle lanes. Rust keeps raw
+coordinate input separate from selector/Handle actionability, hit-target,
+trial and modifier semantics. Final artifact `5fb122e...b91` has verified
+provenance; strict nine-row merges bring candidate to 1,521 expected and oracle
+to 1,219 expected. Full corpora remain open. [Architecture and
+evidence](node-ffi-compatibility-design.md#composable-touchscreen-and-tap-actions-node-428-2026-10-06).
+
+Core Touch NODE-427 completes the unchanged Chromium Library
+`locator-dispatchevent-touch.spec.ts` case 1/1 in candidate and independent
+oracle lanes. The Rust dispatch program materializes native `Touch` objects,
+and the existing Context device-emulation registry is selected through an
+independent thin Node feature/port for `hasTouch`. Final artifact
+`69a91ea...de1` has verified provenance; strict one-row merges bring candidate
+to 1,512 expected and oracle to 1,210 expected. Full corpora remain open.
+[Architecture and evidence](node-ffi-compatibility-design.md#touch-event-materialization-and-context-emulation-node-427-2026-10-06).
+
+Core Locator NODE-426 completes all 24 unchanged Chromium Page cases in
+`locator-query.spec.ts`. Oracle is 24/24; an honest candidate 12/24 baseline
+drove typed regex filters, existing Rust ordered-text expectations,
+structural/deferred FrameLocator composition and a bounded private before-query
+rendezvous. Final candidate/oracle pass 24/24 with artifact
+`c12153d...d1bc` and verified provenance. Strict 24-row merges bring the
+candidate ledger to 1,511 expected and the oracle to 1,209 expected. All 123
+Locator Chromium cases are now accounted for; the full corpora remain open.
+[Architecture and
+evidence](node-ffi-compatibility-design.md#locator-query-composition-node-426-2026-10-06).
+
+NODE-425 completes all 16 unchanged Chromium Page cases in
+`locator-misc-2.spec.ts`. Oracle is 16/16; an honest candidate 12/16 baseline
+drove thin public viewport, Locator screenshot and text-selection ports over
+existing Rust capabilities. A 15/16 intermediate run isolated the last issue
+to typed unknown-key presentation. Final candidate/oracle pass 16/16 with
+artifact `3edcb5c...71db` and verified provenance. Strict 16-row merges bring
+the candidate ledger to 1,487 expected and the oracle to 1,185 expected; 24
+Locator Chromium cases remain. [Architecture and
+evidence](node-ffi-compatibility-design.md#locator-miscellaneous-viewport-capture-and-selection-node-425-2026-10-06).
+
+NODE-424 completes all 13 unchanged Chromium Page cases in
+`locator-misc-1.spec.ts`. Corrected oracle is 13/13; an honest candidate 11/13
+baseline showed only the missing thin `dispatchEvent` port and the unselected
+existing upload leaf. Rust retains strict resolution, bounded event conversion
+and the static browser program; `file-input` is composed only into the explicit
+official profile. Final candidate/oracle pass 13/13 with artifact
+`356f84b...c39e` and verified provenance. Strict 13-row merges bring the
+candidate ledger to 1,471 expected and the oracle to 1,169 expected; 40 Locator
+Chromium cases remain. [Architecture and
+evidence](node-ffi-compatibility-design.md#locator-miscellaneous-actions-node-424-2026-10-06).
+
+NODE-423 completes all 22 unchanged Chromium Page cases in
+`locator-frame.spec.ts`. Corrected oracle is 22/22; an honest candidate 3/22
+baseline drove thin nested/indexed/semantic FrameLocator composition, the
+independent `Route.fulfill()` leaf and Rust-owned frame replacement, retry,
+missing-frame and owner-diagnostic semantics. Final candidate/oracle pass
+22/22 with artifact `fbc48ff...1382b` and verified provenance. Strict 22-row
+merges bring the candidate ledger to 1,458 expected and the oracle to 1,156
+expected; 53 Locator Chromium cases remain. [Architecture and
+evidence](node-ffi-compatibility-design.md#locator-framelocator-composition-node-423-2026-10-06).
+
+NODE-422 completes all 22 unchanged Chromium Page cases in
+`locator-convenience.spec.ts`. An honest candidate 13/22 versus oracle 22/22
+baseline drove thin public Locator description formatting and
+`evaluateHandle`; strict resolution, bounded deferred conversion, rich Node
+preview, result ownership and cleanup remain in Rust. Final candidate/oracle
+pass 22/22 with artifact `23f0bf4...390f05`. Strict 22-row merges bring the
+candidate ledger to 1,436 expected and the oracle to 1,134 expected; 75 Locator
+Chromium cases remain. [Architecture and evidence](node-ffi-compatibility-design.md#locator-convenience-composition-node-422-2026-10-06).
+
+NODE-421 reverifies five complete Locator files: evaluate 6, list 1, highlight
+1, click 5 and is-visible 8. Candidate and oracle pass 21/21 with verified
+provenance and no artifact change. The candidate ledger refreshes exactly the
+same 21 expected rows and stays at 1,414 expected; the oracle promotes the same
+21 rows to reach 1,112 expected. All 11 Locator files now have fixed manifests
+covering 123 Chromium Page tests; the remaining 97 are not yet claimed as
+passing. [Evidence](node-ffi-compatibility-design.md#supported-locator-file-reverification-node-421-2026-10-06).
+
+NODE-420 completes the unchanged five-case Chromium
+`locator-element-handle.spec.ts` file. Candidate red evidence is 0/5 against
+oracle 5/5. Node now exposes thin public `Locator.elementHandle(s)` delegates;
+Rust composes typed parents with XPath descendants as one bounded immutable
+program and owns strict waiting, batch snapshots and Handle publication. Final
+candidate/oracle pass 5/5 with verified provenance. Exactly five rows advance
+the Core ledgers: candidate reaches 1,414 expected / one skipped / two
+unexpected / 47,060 not run; oracle reaches 1,091 expected / one unexpected /
+47,385 not run. [Architecture and evidence](node-ffi-compatibility-design.md#locator-elementhandle-composition-node-420-2026-10-06).
+
+NODE-418 records complete ElementHandle query-selector 7/7 and eval-on-selector
+6/6 candidate/oracle passes, plus an honest convenience candidate 5/15 versus
+oracle 15/15 baseline. NODE-419 moves attribute, HTML, input-value and
+visibility/state behavior into one exact-owner Rust capability with thin
+ElementHandle/Page/Frame facades. The complete candidate file now has a
+preserved 12/15 result; Rust `nth=<i32>` composition and retained-Node rich
+preview then close all three reds. Final artifact `0247543...db47f` passes the
+complete unchanged candidate file 15/15 with verified provenance. Exactly ten
+unexpected rows become expected, bringing the Core ledger to 1,409 expected /
+one skipped / two unexpected / 47,065 not run. Host release is 609 passed plus
+14 explicit live-browser ignores; package units are 346/346 with strict
+TypeScript and full feature-union Clippy green. [Architecture and
+evidence](node-ffi-compatibility-design.md#elementhandle-dom-reads-and-official-red-baseline-node-418419-2026-10-06).
+
+NODE-417 adds composable Page/Frame `$` and `$$` selector plans. Rust retains
+XPath separately from typed CSS, compiles explicit and automatic XPath plus
+mixed chains, and publishes `$$` as one ordered native Handle batch. The full
+official Chromium query-selector file passes candidate/oracle 17/17; exactly
+17 rows advance the Core ledger to 1,396 expected / one skipped / two
+unexpected / 47,078 not run. [Architecture and evidence](node-ffi-compatibility-design.md#composable-page-and-frame-query-selectors-node-417-2026-10-06).
+
+NODE-416 replaces the Page/Frame `$` count-plus-Handle split with one
+Rust-owned optional ElementHandle program. Candidate and oracle pass the same
+five remaining selector-registration rows 5/5, and exactly five rows advance
+the Core ledger to 1,379 expected / one skipped / two unexpected / 47,095 not
+run. [Architecture and evidence](node-ffi-compatibility-design.md#atomic-optional-page-query-node-416-2026-10-06).
+
+NODE-414 routes browser-backed `$eval`/`$$eval` through the Rust registered
+selector plan and passes the first official Chromium execution row 1/1 in both
+candidate and oracle lanes. Exactly one row advances the Core ledger to 1,374
+expected / one skipped / two unexpected / 47,100 not run. Positive custom
+`page.$` Handle publication and the remaining selector rows stay open.
+[Evidence](node-ffi-compatibility-design.md#browser-backed-selector-execution-node-414-2026-10-06).
+
+NODE-413 adds an independent Node `selector-registration` profile over the
+existing bounded Rust registry. The initial candidate 0/9 versus oracle 9/9
+browserless discrepancy is repaired to 9/9 in both lanes across three library
+and six BiDi projects. Exactly nine rows advance the Core ledger to 1,373
+expected / one skipped / two unexpected / 47,101 not run. Browser-backed
+custom-engine rows remain open. [Evidence](node-ffi-compatibility-design.md#node-selector-registration-capability-node-413-2026-10-06).
+
+NODE-411 proves the NODE-408 static launcher metadata across all six official
+BiDi/Firefox library projects at candidate/oracle 12/12 without starting a
+browser. Exactly 12 rows advance the Core ledger to 1,364 expected / one
+skipped / two unexpected / 47,110 not run. [Evidence](upstream-playwright-conformance.md).
+
+NODE-410 adds thin async/sync `BrowserContext.expect_page()` facades over the
+existing bounded lifecycle owner. The initial candidate 7/9 discrepancy is
+repaired to candidate/oracle 9/9; exactly nine rows advance the Python ledger
+to 1,201 passes / eight skips / 5,317 not run without an ABI or native-artifact
+change. [Architecture and evidence](python-ffi-compatibility-design.md#abi-104-browsercontext-expect-page-facade-2026-10-06).
+
+NODE-409 verifies the unchanged Rust request-timing owner across all four sync
+Chromium rows. Candidate passes 4/4, while the Chrome 154 oracle is 2/4 due to
+zero DNS timing on ordinary navigation and redirect. Only the common SSL and
+subresource passes advance the Python ledger to 1,192 passes / eight skips /
+5,326 not run. [Evidence](python-official-conformance.md#sync-request-timing-checkpoint-2026-10-06).
+
+NODE-408 adds the complete pinned 143-entry Playwright device registry as
+licensed static compatibility data. The official browserless launcher slice
+moves from candidate 3/6 versus oracle 6/6 to 6/6 in both lanes; exactly six
+rows advance the Core ledger to 1,352 expected / one skipped / two unexpected /
+47,122 not run. [Architecture and evidence](node-ffi-compatibility-design.md#complete-device-registry-checkpoint-node-408-2026-10-06).
+
+NODE-407 completes sync service-worker policy at candidate/oracle 2/2 under
+trusted Tailscale HTTPS. Both async and sync Chromium files are now complete,
+and the Python ledger reaches 1,190 passes / eight skips / 5,328 not run.
+[Evidence](python-official-conformance.md#sync-service-worker-policy-checkpoint-2026-10-06).
+
+NODE-406 confirms the existing Rust Keyboard `+` mapping in candidate and
+oracle, promoting exactly one row and bringing the Python ledger to 1,188
+passes / eight skips / 5,330 not run. Two candidate/oracle shared environment
+reds remain unpromoted. [Evidence](python-official-conformance.md#keyboard-plus-and-shared-environment-checkpoint-2026-10-06).
+
+NODE-403 preserves caller-thread provenance on sync Playwright errors without
+changing ABI104/90. Candidate and oracle pass the same seven Chromium Page rows
+7/7; exactly seven rows advance the Python ledger to 1,187 passes / eight skips
+/ 5,331 not run. Two headed-Inspector `Page.pause` rows remain explicitly
+unrun. [Architecture and evidence](python-ffi-compatibility-design.md#abi-104-sync-caller-stack-parity-2026-10-06).
+
+NODE-402 verifies the two remaining sync request-fulfillment Chromium rows at
+candidate/oracle 2/2 without a code or ABI change. Both async and sync files
+are now 3/3, and the cumulative Python ledger reaches 1,180 passes / eight
+skips / 5,338 not run. [Evidence](python-official-conformance.md#sync-request-fulfill-parity-checkpoint-2026-10-06).
+
+NODE-401 completes the official 25-row TodoMVC Chromium profile at candidate
+25/25 and Playwright 1.58.0 oracle 25/25. Rust fixes nested-arrow expression
+classification, Python supplies only the inactive tracing teardown shape, and
+exactly 25 rows advance the Python ledger to 1,178 passes / eight skips / 5,340
+not run. [Architecture and evidence](python-ffi-compatibility-design.md#abi-104-complete-todomvc-profile-2026-10-06).
+
+NODE-400 advances Python to ABI104 with Rust-owned exact/regex value and class
+expectations, including mixed ordered class arrays. Four unchanged upstream
+Chromium cases pass in both candidate and oracle lanes, advancing the Python
+ledger to 1,153 passes / eight skips / 5,365 not run. [Architecture and
+evidence](python-ffi-compatibility-design.md#abi-104-composable-typed-string-matchers-2026-10-06).
+
+NODE-398 resolves the two official Python profiles to 95 fixture definitions
+and all per-invocation override chains with zero unresolved providers. The 25
+TodoMVC cases now carry the plugin Page closure, and all current outcomes are
+partitioned by fixture-induced runtime. [Definition evidence](python-official-conformance.md#profile-aware-fixture-definition-checkpoint-2026-10-06).
+
+NODE-397 records direct, initial and complete fixture-name closures under each
+frozen official profile. It separates core-only server/asyncio dependencies
+from the TodoMVC plugin closure without executing fixtures. [Fixture
+evidence](python-official-conformance.md#profile-aware-pytest-fixture-closure-checkpoint-2026-10-06).
+
+NODE-396 reconstructs upstream's separate core and examples CI jobs, replaces
+exactly 25 obsolete root-only IDs with official `[chromium]` IDs, and rebases
+only pristine not-run evidence. [Profile evidence](python-official-conformance.md#official-ci-profile-reconstruction-checkpoint-2026-10-06).
+
+NODE-393 records all source-declared pytest inputs across the 6,526 Python
+invocations and cross-tabulates their outcomes without mislabeling them as the
+separate transitive fixture closure. NODE-397 now verifies both layers in the
+correct official profiles. [Audit
+evidence](python-official-conformance.md#direct-pytest-input-inventory-checkpoint-2026-10-06).
+
+NODE-392 adds a fail-closed browserless official-Python lane for exact
+manifest cases while retaining the upstream autouse Tailscale fixture servers.
+Candidate and oracle agree on three lifecycle passes and three
+shared topology failures; two newly green Firefox/WebKit rows move the ledger
+to 1,149 passed / eight skipped / 5,369 not run without an ABI or runtime
+change. [Evidence and policy](python-official-conformance.md#browserless-sync-lifecycle-checkpoint-2026-10-06).
+
+NODE-391 introduces an applicable Core queue for 6,279 public behaviors that
+use private test helpers. It preserves exact local implementation tests and
+product infrastructure separately, leaving 3,458 explicitly internal rows.
+[Evidence and completion status](upstream-playwright-conformance.md).
+
+NODE-390 replaces source-wide private-client exclusion with bounded
+per-invocation evidence. The full audit restores 1,361 public-behavior rows
+and six product rows without changing outcomes; current counts are 32,148
+public candidates, 10,305 internal, 5,580 product and 444 public-with-hook.
+[Evidence and completion status](upstream-playwright-conformance.md).
+
+NODE-389 preserves the 67 official example-application invocations while
+classifying their assertions as product infrastructure rather than public API
+compatibility. The role-bearing 48,477-row audit now records 30,814 public
+candidates and 5,574 product-infrastructure invocations.
+[Evidence and completion status](upstream-playwright-conformance.md).
+
+NODE-388 corrects Core applicability accounting for 477 upstream
+repository-local EventEmitter tests without changing an outcome. The complete
+audit now records 30,881 public candidates and 11,672
+implementation-internal invocations while preserving all 48,477 rows.
+[Evidence and completion status](upstream-playwright-conformance.md).
+
+NODE-387 advances the optional Python package to ABI 103 with one Rust-owned
+ElementHandle focus/input command and thin Page/Frame selector facades. The
+fresh installed wheel closes every deterministic discrepancy in the complete
+async Chromium keyboard tranche; only verified green evidence advances the
+ledger to 1,147 passes / eight skips / 5,371 not run.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-103-composable-elementhandle-keyboard-checkpoint-2026-10-06).
+
+NODE-386 advances the optional Python package to ABI 102 with a composable
+Page Keyboard facade over the existing Rust host. The fixed official focus
+tranche passes 5/5 from the final installed wheel and oracle; cumulative
+candidate execution reaches 1,121 passes with no recorded failure.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-102-composable-page-keyboard-checkpoint-2026-10-06).
+
+NODE-385 advances the optional Python package to ABI 101 with composable
+Rust-owned Request timing and an exact bounded notice-publication fence. The
+fixed official Chromium tranche passes 4/4 from the final installed wheel and
+oracle; cumulative candidate execution reaches 1,119 passes while two focus
+failures remain explicit.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-101-composable-resource-timing-checkpoint-2026-10-06).
+
+NODE-384 closes the two remaining Chromium rows in upstream
+`test_request_fulfill.py` at candidate/oracle 2/2 without a runtime change;
+cumulative candidate execution reaches 1,110 passes.
+[Evidence](python-ffi-compatibility-design.md#abi-100-request-fulfill-evidence-checkpoint-2026-10-06).
+
+NODE-383 advances the optional Python package to ABI 100 with bounded,
+Rust-owned composite JSHandle arguments and atomic property batches. The fixed
+official tranche passes 15/15 after a preserved 6/15 candidate baseline;
+cumulative candidate execution reaches 1,108 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-100-composite-jshandle-checkpoint-2026-10-06).
+
+NODE-382 advances the optional Python package to ABI 99 with a separately
+selectable native-directory input route. It passes every directory behavior
+in the fixed official tranche while preserving ordinary remote payload
+limits; cumulative candidate execution reaches 1,093 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-99-native-directory-input-checkpoint-2026-10-06).
+
+NODE-346 advances the optional Python package to ABI 93 with Rust-owned
+redirect continuation, bounded header replay and exact request-history
+identity. Candidate/oracle pass 2/2; the full Page-route file is 43 pass / 1
+fail and cumulative Python execution reaches 853 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-93-rust-owned-route-redirect-checkpoint-2026-10-05).
+
+NODE-345 advances the optional Python package to ABI 92 with separately
+selectable Rust-owned `APIResponse` route fulfillment. Candidate/oracle pass
+1/1; the full Page-route file is 41 pass / 3 fail and cumulative Python
+execution reaches 851 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-92-rust-owned-apiresponse-route-fulfillment-checkpoint-2026-10-05).
+
+NODE-344 keeps the optional Python package at ABI 91 and handles matching
+browser-generated CORS preflights entirely in the bounded Rust route owner.
+Candidate/oracle pass 2/2; the full Page-route file is 40 pass / 4 fail and
+cumulative Python execution reaches 850 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-91-native-cors-preflight-checkpoint-2026-10-05).
+
+NODE-343 advances the optional Python package to ABI 91 with exact routed
+Request-to-Response correlation through the bounded Rust request-history
+owner. Candidate/oracle pass 1/1; the full Page-route file is 38 pass / 6 fail
+and cumulative Python execution reaches 848 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-91-exact-routed-requestresponse-checkpoint-2026-10-05).
+
+NODE-342 advances the optional Python package to ABI 90 with composable
+regex/predicate route matching at the language boundary and separately
+selectable bounded Rust file fulfillment. Candidate/oracle pass 2/2; the full
+Page-route file is 37 pass / 7 fail and cumulative Python execution reaches
+847 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-90-composable-route-binding-and-fulfill-path-checkpoint-2026-10-05).
+
+NODE-340 advances the optional Python package to ABI 89 with exact routed and
+ordinary Request Frame identity, `Response.frame` and
+`ElementHandle.content_frame()`. Candidate/oracle pass the selected rows 6/6
+plus 1/1; the complete Page-route file is 35 pass / 9 fail and cumulative
+Python execution reaches 845 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-89-exact-request-frame-identity-checkpoint-2026-10-05).
+
+NODE-339 advances the optional Python package to ABI 87 with one bounded
+Rust-owned Page request lifecycle stream. The two unchanged Playwright Python
+1.58.0 route-abort rows pass installed candidate/oracle 2/2 and repeat 10/10;
+the complete Page-route file is 34 pass / 10 fail and cumulative Python
+execution reaches 839 passes.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-87-request-lifecycle-events-checkpoint-2026-10-05).
+
+NODE-338 keeps the optional Python package at ABI 86 and moves Playwright's
+fixed HTTP reason-phrase mapping into Rust-owned route fulfillment. The
+unchanged Chromium 422 row passes installed candidate/oracle 1/1 and repeat
+5/5; the full Page-route file reaches 32 pass / 12 fail and cumulative Python
+execution reaches 837 passes.
+[Evidence](python-ffi-compatibility-design.md#abi-86-routefulfill-status-text-checkpoint-2026-10-05).
+
+NODE-337 keeps the optional Python package at ABI 86 and promotes two more
+unchanged Playwright Python 1.58.0 Page-route rows for native `Referer` and
+`Origin` lowercase publication. Candidate/oracle pass 2/2 and repeat 10/10;
+the complete Page-route file is 31 pass / 13 fail and cumulative Python
+execution reaches 836 passes.
+[Evidence](python-ffi-compatibility-design.md#abi-86-public-route-header-evidence-checkpoint-2026-10-05).
+
+NODE-336 advances the optional Python package to ABI 86 with bounded
+Rust-owned Page and BrowserContext extra HTTP headers. Three unchanged
+Playwright Python 1.58.0 rows pass installed candidate/oracle 3/3 and repeat
+15/15; cumulative execution is 834 passed, zero failed, seven skipped and
+5,685 not run.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-86-page-and-context-extra-http-headers-checkpoint-2026-10-05).
+
+NODE-335 advances the optional Python package to ABI 85 with bounded Rust-
+owned `Route.fallback()` traversal and handler-specific Page/BrowserContext
+`unroute()`. Eight unchanged Playwright Python 1.58.0 rows pass installed
+candidate/oracle 8/8 and repeat 40/40; cumulative execution is 831 passed,
+zero failed, seven skipped and 5,688 not run.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-85-route-fallback-and-handler-unroute-checkpoint-2026-10-05).
+
+NODE-334 advances the optional Python package to ABI 84 with atomic Rust-owned
+finite route-use budgets for Page and BrowserContext. Three unchanged
+Playwright Python 1.58.0 rows pass installed candidate/oracle 3/3 and repeat
+15/15; cumulative execution is 823 passed, zero failed, seven skipped and
+5,696 not run.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-84-finite-route-use-checkpoint-2026-10-05).
+
+NODE-333 keeps ABI 83 and makes route-glob `?` literal in both the Rust
+matcher and bounded Chromium Fetch-pattern compiler. The unchanged official
+row passes installed candidate/oracle 1/1 and repeat 5/5; cumulative Python
+execution is 820 passed, zero failed, seven skipped and 5,699 not run.
+[Semantics, bounds and evidence](python-ffi-compatibility-design.md#abi-83-route-glob-question-mark-checkpoint-2026-10-05).
+
+NODE-332 advances the optional Python package to ABI 83 with bounded Rust-
+owned URL, method, header and POST-data overrides for `Route.continue_()`.
+Ten unchanged Playwright Python 1.58.0 rows pass installed candidate and
+oracle 10/10; cumulative execution is 819 passed, zero failed, seven skipped
+and 5,700 not run. The full Page-route file is now 23 pass / 21 fail / 0
+errors.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-83-route-continue-override-checkpoint-2026-10-05).
+
+NODE-331 executes the complete 44-case async Page-route Chromium file. The
+candidate baseline is 18 passed, 25 failed and one error; the 18 existing green
+rows pass candidate/oracle 18/18 and raise cumulative Python execution to 809
+passed, zero failed, seven skipped and 5,710 not run.
+[Baseline and evidence](python-ffi-compatibility-design.md#abi-82-full-page-route-baseline-checkpoint-2026-10-05).
+
+NODE-330 promotes six additional unchanged ABI 82 unroute-all rows without an
+implementation change. Candidate and oracle pass async/sync default removal
+4/4 plus in-flight wait/fulfill 2/2; cumulative Python execution is 791
+passed, zero failed, seven skipped and 5,728 not run.
+[Evidence](python-ffi-compatibility-design.md#abi-82-expanded-unroute-all-evidence-checkpoint-2026-10-05).
+
+NODE-329 advances the optional Python package to ABI 82 with Rust-owned Page
+and BrowserContext `unroute_all()` plus cancellation-safe wait settlement. Two
+unchanged Playwright Python 1.58.0 HAR-abort rows pass installed
+candidate/oracle 2/2 and candidate stress 20/20; cumulative Python execution
+is 785 passed, zero failed, seven skipped and 5,734 not run.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-82-scoped-unroute-all-checkpoint-2026-10-05).
+
+NODE-328 advances the optional Python package to ABI 81 with bounded Rust-owned
+ordinary BrowserContext routes. Four unchanged Playwright Python 1.58.0 HAR
+URL-filter composition rows pass installed candidate/oracle 4/4 and stress
+passes async 20/20 plus sync 20/20; cumulative Python execution is 783 passed,
+zero failed, seven skipped and 5,736 not run.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-81-browsercontext-route-composition-checkpoint-2026-10-05).
+
+NODE-327 keeps Python ABI 80 and maps a missing HAR `log.entries` member to an
+empty bounded archive so the existing fallback policy continues the request.
+Candidate/oracle pass 2/2 and stress passes 10/10 per API; cumulative Python
+execution is 779 passed, zero failed, seven skipped and 5,740 not run.
+[Semantics and evidence](python-ffi-compatibility-design.md#abi-80-missing-entries-har-fallback-checkpoint-2026-10-04).
+
+NODE-326 advances the optional Python package to ABI 80 with bounded Rust-owned
+BrowserContext HAR scope and future-Page/OOPIF initialization. Six unchanged
+Playwright Python 1.58.0 rows pass installed candidate/oracle 6/6 and stress
+passes async 30/30 plus sync 30/30; cumulative Python execution is 777 passed,
+zero failed, seven skipped and 5,742 not run.
+[Architecture, bounds and evidence](python-ffi-compatibility-design.md#abi-80-browsercontext-har-replay-checkpoint-2026-10-04).
+
+NODE-325 promotes the complete unchanged async/sync Page HAR URL-filter/no-
+fallback pair on the same ABI 79 wheel. Candidate/oracle pass 2/2 and separate
+stress lanes pass 10/10 each; cumulative Python execution is 771 passed, zero
+failed, seven skipped and 5,748 not run.
+[Evidence and route-composition boundary](python-ffi-compatibility-design.md#abi-79-page-har-url-filter-composition-checkpoint-2026-10-04).
+
+NODE-324 promotes the complete unchanged async/sync Page HAR method/redirect
+pair on the same ABI 79 wheel. Candidate/oracle pass 2/2 and separate stress
+lanes pass 10/10 each; cumulative Python execution is 769 passed, zero failed,
+seven skipped and 5,750 not run.
+[Evidence and harness boundary](python-ffi-compatibility-design.md#abi-79-async-and-sync-page-har-evidence-checkpoint-2026-10-04).
+
+NODE-323 advances the optional Python package to ABI 79 with bounded plain-HAR
+replay composed over the existing Page-route Fetch owner. The fixed official
+Playwright Python 1.58.0 row passes installed candidate/oracle 1/1 and candidate
+stress 10/10; cumulative Python execution is 767 passed, zero failed, seven
+skipped and 5,752 not run.
+[Architecture, resource bounds and evidence](python-ffi-compatibility-design.md#abi-79-persistent-context-plain-har-replay-checkpoint-2026-10-04).
+
+NODE-322 advances the optional Python package to ABI 78 with bounded
+Rust-owned Context HTTP credentials and navigation response-body retrieval.
+The fixed official Playwright Python 1.58.0 selection passes installed
+candidate/oracle 11/11 and candidate stress 110/110; cumulative Python
+execution is 766 passed, zero failed, seven skipped and 5,753 not run.
+[Architecture, resource bounds and evidence](python-ffi-compatibility-design.md#abi-78-http-credentials-and-response-body-checkpoint-2026-10-04).
 
 NODE-050: the opt-in Node addon is now built and verified through real public
 Mouse/Keyboard/Locator calls. Internal Frame lifecycle coverage expands to 18.
@@ -232,6 +705,8 @@ pwright-script       Declarative YAML script runner (Phase 1 done)
 pwright-fake         In-memory browser fake for testing
                      DOM tree, CSS selector engine, HTML parser
                      FakeCdpClient implementing CdpClient trait
+                     shared CDP call recorder for fake and opt-in bridge mocks;
+                     ordered error/response/fallback script for Runtime fakes
 
 pwright-cdp-gen      CDP protocol code generator (standalone binary)
                      Generates typed Rust structs from protocol JSON spec
@@ -825,6 +1300,24 @@ pwright-plugin-ordered-handle-delivery
                          before Result, tracks physical Result delivery, and
                          performs ordered abandonment/explicit disposal
 
+pwright-plugin-chromium-session-initialization
+                         Optional five-package Chromium Page/OOPIF setup
+                         contract; owns no connection, task, executor, process,
+                         or topology driver and is consumed directly by the
+                         Node host instead of through the aggregate
+
+pwright-plugin-chromium-frame-observer
+                         Optional five-package synchronous Frame event, URL,
+                         and ownership projection contracts; owns no connection,
+                         queue, task, executor, native domain, or topology driver
+                         and is consumed by host adapters without the aggregate
+
+pwright-plugin-chromium-frame-lifecycle
+                         Optional ten-package bounded Frame lifecycle and
+                         navigation-wait observer; consumes the frame-observer
+                         contract directly and is selected by the Node host
+                         without routing its lifecycle adapter through the aggregate
+
 pwright-backend-cdp-page-events
                          Isolated Page load/topology-effect normalization over
                          the bounded CDP topology leaf
@@ -1161,7 +1654,10 @@ Real Chrome via `chromedp/headless-shell` with in-process test server.
 | `docs/architecture.md` | Crate internals and design principles |
 | `docs/architecture-v2.md` | Composable v2 architecture checkpoints and boundaries |
 | `docs/design-tasks-v2.md` | Ordered v2 design questions and implementation evidence |
+| `docs/api-request-design.md` | Optional browser-independent API request owner, transport boundary, resource limits and full-conformance gates |
 | `docs/node-ffi-compatibility-design.md` | Playwright-compatible Node-API boundary and differential verification plan |
+| `docs/python-ffi-compatibility-design.md` | Playwright-compatible Python/PyO3 boundary, packaging, ownership and differential verification plan |
+| `docs/python-official-conformance.md` | Pinned official Playwright Python corpus, public/private inventory, exact-test runner and checkpoints |
 | `docs/knowledge/playwright-design-course.md` | Playwright architecture lessons and source anchors |
 | `docs/knowledge/pwright-tracing.md` | Optional base tracing boundary, contributor separation, state machine, resource contract, atomic file-sink format, and Playwright source evidence |
 | `docs/knowledge/pwright-artifacts-and-streams.md` | Playwright remote Artifact/Stream evidence, Pwright pull-transfer decisions, two-phase read semantics, resources, and remaining protocol gates |

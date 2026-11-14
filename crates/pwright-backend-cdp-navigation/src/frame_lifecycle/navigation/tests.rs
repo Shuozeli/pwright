@@ -29,6 +29,31 @@ fn fixture(wait: WaitUntil) -> (FrameNavigationWait, ProductionResourceLedger) {
     .unwrap();
     (operation, resources)
 }
+fn matched_fixture(wait: WaitUntil) -> (FrameNavigationWait, ProductionResourceLedger) {
+    let profile = FrameNavigationWaitProfile::new(ResourceScope::Connection, 4, 4, 32, 64, 128)
+        .unwrap()
+        .with_url_bytes(128)
+        .unwrap();
+    let plan = profile.requirements();
+    let resources = ProductionResourceLedger::new(
+        ResourceLimits::deny_all(plan.scopes, plan.leases).with_class(
+            ResourceClass::BackendStateBytes,
+            profile.bytes,
+            profile.bytes,
+        ),
+        plan,
+    )
+    .unwrap();
+    let operation = FrameNavigationWait::new(
+        profile,
+        &resources,
+        FRAME,
+        wait,
+        Some(Duration::from_secs(1)),
+    )
+    .unwrap();
+    (operation, resources)
+}
 fn snapshot(load: bool) -> Option<LifecycleSnapshot> {
     Some(LifecycleSnapshot {
         document: Some(DocumentGeneration(1)),
@@ -63,6 +88,18 @@ fn commit(operation: &mut FrameNavigationWait, loader: &str) -> Result<()> {
             frame: FRAME,
             loader,
             document: DocumentGeneration(1),
+            url: None,
+        },
+    )
+}
+fn commit_url(operation: &mut FrameNavigationWait, loader: &str, url: &str) -> Result<()> {
+    operation.observe(
+        NOW,
+        &NativeLifecycleNotice::Committed {
+            frame: FRAME,
+            loader,
+            document: DocumentGeneration(1),
+            url: Some(url),
         },
     )
 }
@@ -105,6 +142,23 @@ fn response(operation: &mut FrameNavigationWait) -> serde_json::Value {
 }
 
 #[test]
+fn completed_response_exposes_its_bounded_document_request_identity() {
+    // Arrange
+    let (mut operation, _) = fixture(WaitUntil::Load);
+    start(&mut operation, 1, "document-request", None);
+    respond(&mut operation, 1, 200);
+    commit(&mut operation, "document-request").unwrap();
+    operation.receipt(NOW, Some("document-request")).unwrap();
+
+    // Act
+    let outcome = operation.poll(NOW, snapshot(true)).unwrap();
+
+    // Assert
+    assert!(matches!(outcome, NavigationPoll::Complete { .. }));
+    assert_eq!(operation.response_request_id(), Some("document-request"));
+}
+
+#[test]
 fn commit_and_response_before_receipt_remain_owned_without_body_completion() {
     // Arrange
     let (mut operation, resources) = fixture(WaitUntil::Load);
@@ -121,6 +175,179 @@ fn commit_and_response_before_receipt_remain_owned_without_body_completion() {
     assert_eq!(response(&mut operation), json!({"status":500}));
     assert_eq!(resources.metrics().unwrap().active_leases, 1);
     drop(operation);
+    assert_eq!(resources.metrics().unwrap().active_leases, 0);
+}
+
+#[test]
+fn wait_for_next_navigation_selects_the_first_document_without_a_command_receipt() {
+    // Arrange
+    let (mut operation, _) = fixture(WaitUntil::Load);
+    operation.wait_for_next_navigation(NOW).unwrap();
+    start(&mut operation, 1, "next", None);
+    respond(&mut operation, 1, 201);
+
+    // Act
+    commit(&mut operation, "next").unwrap();
+
+    // Assert
+    assert_eq!(response(&mut operation), json!({"status":201}));
+}
+
+#[test]
+fn wait_for_next_navigation_accepts_a_same_document_navigation() {
+    // Arrange
+    let (mut operation, _) = fixture(WaitUntil::Commit);
+    operation.wait_for_next_navigation(NOW).unwrap();
+
+    // Act
+    operation
+        .observe(
+            NOW,
+            &NativeLifecycleNotice::SameDocument {
+                frame: FRAME,
+                url: None,
+            },
+        )
+        .unwrap();
+
+    // Assert
+    assert_eq!(response(&mut operation), serde_json::Value::Null);
+}
+
+#[test]
+fn matched_registration_selects_later_same_document_event_without_reregistering() {
+    // Arrange
+    let (mut operation, _) = matched_fixture(WaitUntil::Load);
+    for url in [
+        "https://test/first",
+        "https://test/second",
+        "https://test/third",
+    ] {
+        operation
+            .observe(
+                NOW,
+                &NativeLifecycleNotice::SameDocument {
+                    frame: FRAME,
+                    url: Some(url),
+                },
+            )
+            .unwrap();
+    }
+
+    // Act
+    assert_eq!(
+        operation.candidate(0).unwrap(),
+        Some(NavigationCandidate::Url("https://test/first"))
+    );
+    assert_eq!(
+        operation.candidate(1).unwrap(),
+        Some(NavigationCandidate::Url("https://test/second"))
+    );
+    assert_eq!(
+        operation.candidate(2).unwrap(),
+        Some(NavigationCandidate::Url("https://test/third"))
+    );
+    operation.select_candidate(NOW, 2).unwrap();
+
+    // Assert
+    assert_eq!(response(&mut operation), serde_json::Value::Null);
+}
+
+#[test]
+fn matched_registration_preserves_selected_document_response() {
+    // Arrange
+    let (mut operation, _) = matched_fixture(WaitUntil::Load);
+    start(&mut operation, 1, "first", None);
+    respond(&mut operation, 1, 201);
+    commit_url(&mut operation, "first", "https://test/first").unwrap();
+    start(&mut operation, 2, "second", None);
+    respond(&mut operation, 2, 202);
+    commit_url(&mut operation, "second", "https://test/second").unwrap();
+
+    // Act
+    operation.select_candidate(NOW, 1).unwrap();
+
+    // Assert
+    assert_eq!(response(&mut operation), json!({"status": 202}));
+    assert_eq!(operation.response_request_id(), Some("second"));
+}
+
+#[test]
+fn matched_registration_keeps_original_deadline_after_nonmatching_event() {
+    // Arrange
+    let (mut operation, _) = matched_fixture(WaitUntil::Load);
+    commit_url(&mut operation, "first", "https://test/first").unwrap();
+
+    // Act
+    let result = operation.select_candidate(Duration::from_secs(1), 0);
+
+    // Assert
+    assert_eq!(result, Err(NavigationWaitError::Timeout));
+    assert_eq!(
+        operation.poll(NOW, snapshot(true)),
+        Err(NavigationWaitError::Timeout)
+    );
+}
+
+#[test]
+fn concurrent_matchers_select_different_events_without_shared_cursor() {
+    // Arrange
+    let profile = FrameNavigationWaitProfile::new(ResourceScope::Connection, 4, 1, 32, 64, 128)
+        .unwrap()
+        .with_url_bytes(128)
+        .unwrap();
+    let plan = profile
+        .requirements()
+        .combine_concurrent(profile.requirements());
+    let resources = ProductionResourceLedger::new(
+        ResourceLimits::deny_all(plan.scopes, plan.leases).with_class(
+            ResourceClass::BackendStateBytes,
+            profile.bytes * 2,
+            profile.bytes * 2,
+        ),
+        plan,
+    )
+    .unwrap();
+    let mut first =
+        FrameNavigationWait::new(profile, &resources, FRAME, WaitUntil::Load, None).unwrap();
+    let mut second =
+        FrameNavigationWait::new(profile, &resources, FRAME, WaitUntil::Load, None).unwrap();
+    for url in ["https://test/first", "https://test/second"] {
+        let notice = NativeLifecycleNotice::SameDocument {
+            frame: FRAME,
+            url: Some(url),
+        };
+        first.observe(NOW, &notice).unwrap();
+        second.observe(NOW, &notice).unwrap();
+    }
+
+    // Act
+    first.select_candidate(NOW, 0).unwrap();
+    second.select_candidate(NOW, 1).unwrap();
+
+    // Assert
+    assert_eq!(response(&mut first), serde_json::Value::Null);
+    assert_eq!(response(&mut second), serde_json::Value::Null);
+    assert_eq!(resources.metrics().unwrap().active_leases, 2);
+    drop(first);
+    drop(second);
+    assert_eq!(resources.metrics().unwrap().active_leases, 0);
+}
+
+#[test]
+fn dropping_unselected_matcher_reclaims_bounded_event_arena() {
+    // Arrange
+    let (mut operation, resources) = matched_fixture(WaitUntil::Load);
+    commit_url(&mut operation, "first", "https://test/first").unwrap();
+    assert_eq!(
+        operation.candidate(0).unwrap(),
+        Some(NavigationCandidate::Url("https://test/first"))
+    );
+
+    // Act
+    drop(operation);
+
+    // Assert
     assert_eq!(resources.metrics().unwrap().active_leases, 0);
 }
 
@@ -208,7 +435,13 @@ fn hash_requires_same_document_event_and_requested_existing_lifecycle() {
     );
     // Act
     operation
-        .observe(NOW, &NativeLifecycleNotice::SameDocument { frame: FRAME })
+        .observe(
+            NOW,
+            &NativeLifecycleNotice::SameDocument {
+                frame: FRAME,
+                url: None,
+            },
+        )
         .unwrap();
     // Assert
     assert_eq!(
@@ -226,7 +459,13 @@ fn hash_ignores_new_document_success_and_failure_before_its_event() {
     fail(&mut operation, 1, false).unwrap();
     commit(&mut operation, "new").unwrap();
     operation
-        .observe(NOW, &NativeLifecycleNotice::SameDocument { frame: FRAME })
+        .observe(
+            NOW,
+            &NativeLifecycleNotice::SameDocument {
+                frame: FRAME,
+                url: None,
+            },
+        )
         .unwrap();
     // Act
     operation.receipt(NOW, None).unwrap();
@@ -297,6 +536,7 @@ fn unrelated_frame_events_do_not_consume_slots_or_complete_wait() {
                     frame: ObjectId::new(3),
                     document: DocumentGeneration(1),
                     loader: "doc",
+                    url: None,
                 },
             )
             .unwrap();

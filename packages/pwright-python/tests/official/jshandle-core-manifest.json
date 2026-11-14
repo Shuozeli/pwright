@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_jshandle.py": "b7f7257a1c2ad2010ae1b56e04181f194e8c2e0a49b7305506fb017291799300"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_accept_object_handle_as_argument",
+      "capabilities": ["page.evaluate_handle", "page.evaluate", "handle.argument"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_accept_handle_to_primitive_types",
+      "capabilities": ["page.evaluate_handle", "page.evaluate", "handle.argument"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_accept_object_handle_to_unserializable_value",
+      "capabilities": ["page.evaluate_handle", "page.evaluate", "handle.argument"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_json_value_work",
+      "capabilities": ["page.evaluate_handle", "handle.json_value"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_json_value_should_work_for_circular_object",
+      "capabilities": ["page.evaluate_handle", "handle.json_value", "serialization.cycles"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_as_element_work",
+      "capabilities": ["page.evaluate_handle", "handle.as_element"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_as_element_return_none_for_non_elements",
+      "capabilities": ["page.evaluate_handle", "handle.as_element"]
+    }
+  ]
+}

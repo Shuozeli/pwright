@@ -64,6 +64,75 @@ async fn nested_slots_preserve_graph_references_and_repeated_handle_identity() {
     assert_eq!(cleanup.shutdown().await.metrics.completed, 1);
 }
 
+#[cfg(all(feature = "locator-dom-actions", feature = "element-handle-dom"))]
+#[tokio::test]
+async fn dispatch_event_envelope_preserves_the_live_data_transfer_owner() {
+    // Arrange
+    let (owner, _) = owners();
+    let cleanup = TokioCleanupExecutor::new(1);
+    let (initializer, ticket, admission) = ticket(
+        2,
+        owner.admit().unwrap(),
+        &cleanup,
+        Arc::new(AtomicUsize::new(0)),
+    );
+    let pending = Arc::new(owner.retain(initializer, ticket, admission).unwrap());
+    let event_init = EvaluationValue::Object {
+        id: None,
+        properties: vec![EvaluationProperty::new(
+            "dataTransfer",
+            EvaluationValue::Undefined,
+        )],
+    };
+    let argument = OwnedHandleArgument::from_slots(
+        event_init,
+        vec![HandleArgumentSlot::new(1, pending.clone())],
+    )
+    .unwrap();
+
+    // Act
+    let argument = argument.for_dispatch_event("drop".into()).unwrap();
+
+    // Assert
+    let (value, retained) = argument.into_parts();
+    let HandleEvaluationValue::Object { properties, .. } = value else {
+        panic!("dispatch envelope lost");
+    };
+    assert_eq!(
+        properties[0].value,
+        HandleEvaluationValue::String("drop".into())
+    );
+    let HandleEvaluationValue::Object {
+        properties: event_init,
+        ..
+    } = &properties[1].value
+    else {
+        panic!("event initializer lost");
+    };
+    assert_eq!(
+        event_init[0].value,
+        HandleEvaluationValue::Handle(ObjectId::new(2))
+    );
+    assert_eq!(retained.len(), 1);
+    assert!(Arc::ptr_eq(&retained[0], &pending));
+    pending.dispose().await.unwrap();
+    assert_eq!(cleanup.shutdown().await.metrics.completed, 1);
+}
+
+#[cfg(all(feature = "locator-dom-actions", feature = "element-handle-dom"))]
+#[test]
+fn dispatch_event_envelope_rejects_non_object_initializers() {
+    // Arrange
+    let argument =
+        OwnedHandleArgument::from_slots(EvaluationValue::Bool(true), Vec::new()).unwrap();
+
+    // Act
+    let result = argument.for_dispatch_event("click".into());
+
+    // Assert
+    assert!(matches!(result, Err(HostError::InvalidArgument(_))));
+}
+
 #[tokio::test]
 async fn slots_cannot_overwrite_values_or_reference_missing_positions() {
     // Arrange

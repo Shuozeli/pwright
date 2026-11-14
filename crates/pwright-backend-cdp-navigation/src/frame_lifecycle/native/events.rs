@@ -14,6 +14,7 @@ impl CdpFrameLifecycle {
         now: Duration,
         id: ObjectId,
         loader: &'a str,
+        url: Option<&'a str>,
     ) -> Result<NativeLifecycleNotice<'a>> {
         let index = self
             .frame_index(id)
@@ -55,6 +56,7 @@ impl CdpFrameLifecycle {
             frame: id,
             document,
             loader,
+            url,
         })
     }
 
@@ -74,7 +76,12 @@ impl CdpFrameLifecycle {
                 let Some(id) = routes.event_frame(session, field(frame, "id")?) else {
                     return Ok(NativeLifecycleNotice::Ignored);
                 };
-                self.commit_native(now, id, field(frame, "loaderId")?)
+                self.commit_native(
+                    now,
+                    id,
+                    field(frame, "loaderId")?,
+                    frame.get("url").and_then(Value::as_str),
+                )
             }
             "Page.lifecycleEvent" => {
                 let event = match field(p, "name")? {
@@ -117,7 +124,10 @@ impl CdpFrameLifecycle {
                 if self.frame_index(frame).is_none() {
                     return Err(NativeLifecycleError::UnknownFrame);
                 }
-                Ok(NativeLifecycleNotice::SameDocument { frame })
+                Ok(NativeLifecycleNotice::SameDocument {
+                    frame,
+                    url: p.get("url").and_then(Value::as_str),
+                })
             }
             "Network.requestWillBeSent" => self.start(now, session, p, routes),
             "Network.responseReceived" | "Network.loadingFinished" | "Network.loadingFailed" => {

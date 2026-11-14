@@ -213,6 +213,7 @@ impl FfiBudget {
                     lane,
                     queued: false,
                     _lease: lease,
+                    additional: Vec::new(),
                     future: None,
                 }),
                 outcome: None,
@@ -278,6 +279,7 @@ struct Permit {
     lane: FfiLane,
     queued: bool,
     _lease: ResourceLease,
+    additional: Vec<ResourceLease>,
     future: Option<ResourceLease>,
 }
 
@@ -340,6 +342,15 @@ pub struct FfiExecution<T: Send> {
 }
 
 impl<T: Send> FfiExecution<T> {
+    /// A typed handle that can charge a result-dependent allocation after the
+    /// foreign call has produced its bounded native value. The added lease is
+    /// retained by the original ticket through foreign-runtime conversion.
+    pub fn reservation(&self) -> FfiReservation<T> {
+        FfiReservation {
+            entry: Arc::clone(&self.ticket.entry),
+        }
+    }
+
     /// Charge the actual inline body before boxing it at the FFI boundary.
     /// Its reservation stays through settlement (conservative after execution).
     pub fn reserve_future(&mut self, bytes: usize) -> Result<(), HostError> {
@@ -388,42 +399,26 @@ impl<T: Send> FfiExecution<T> {
         }
         .run()
     }
-}
 
-// Field order covers even an unpolled run future: its single captured owner
-// destroys the user's future before releasing that future's admission/token.
-struct ExecutionWork<T: Send, F> {
-    future: F,
-    execution: FfiExecution<T>,
-}
+    /// Execute a bounded synchronous foreign-runtime read while retaining the
+    /// same admission, shutdown tracking and conversion-time ownership used by
+    /// asynchronous calls. The returned ticket must be delivered by the
+    /// caller while its foreign runtime is still available.
+    pub fn run_sync(self, operation: impl FnOnce() -> Result<T, HostError>) -> FfiTicket<T> {
+        let outcome = if self.stopped.is_cancelled() {
+            Err(HostError::TargetClosed)
+        } else {
+            operation()
+        };
+        self.settle(outcome)
+    }
 
-impl<T: Send, F: Future<Output = Result<T, HostError>>> ExecutionWork<T, F> {
-    async fn run(self) -> FfiTicket<T> {
-        let Self { future, execution } = self;
-        let FfiExecution {
+    fn settle(self, outcome: Result<T, HostError>) -> FfiTicket<T> {
+        let Self {
             ticket,
             running,
-            stopped,
-        } = execution;
-        #[cfg(feature = "retained-file-input")]
-        let outcome = {
-            // This lexical holder owns the actual future, not just a Pin
-            // reference. Drop it before exposing a settled result or releasing
-            // a cancelled phase's permit. A revoker never drops Running storage.
-            tokio::pin!(future);
-            tokio::select! {
-                biased;
-                () = stopped.cancelled() => Err(HostError::TargetClosed),
-                () = ticket.entry.cancelled.cancelled() => Err(HostError::TargetClosed),
-                result = &mut future => result,
-            }
-        };
-        #[cfg(not(feature = "retained-file-input"))]
-        let outcome = tokio::select! {
-            biased;
-            () = stopped.cancelled() => Err(HostError::TargetClosed),
-            result = future => result,
-        };
+            stopped: _,
+        } = self;
         let (discarded, permit) = {
             let mut state = ticket
                 .entry
@@ -460,6 +455,77 @@ impl<T: Send, F: Future<Output = Result<T, HostError>>> ExecutionWork<T, F> {
         drop(permit);
         drop(running);
         ticket
+    }
+}
+
+pub struct FfiReservation<T: Send> {
+    entry: Arc<Entry<T>>,
+}
+
+impl<T: Send> Clone for FfiReservation<T> {
+    fn clone(&self) -> Self {
+        Self {
+            entry: Arc::clone(&self.entry),
+        }
+    }
+}
+
+impl<T: Send> FfiReservation<T> {
+    pub fn reserve_additional(&self, bytes: u64) -> Result<(), HostError> {
+        if bytes == 0 {
+            return Ok(());
+        }
+        let mut state = self.entry.state.lock().map_err(HostError::backend)?;
+        #[cfg(feature = "retained-file-input")]
+        if state.revoked {
+            return Err(HostError::TargetClosed);
+        }
+        let permit = state.permit.as_mut().ok_or(HostError::TargetClosed)?;
+        let lease = permit
+            .budget
+            .0
+            .resources
+            .reserve(
+                ResourceScope::extension(122, 1),
+                ResourceClass::BackendStateBytes,
+                bytes,
+            )
+            .map_err(|error| HostError::ResourceExhausted(error.to_string()))?;
+        permit.additional.push(lease);
+        Ok(())
+    }
+}
+
+// Field order covers even an unpolled run future: its single captured owner
+// destroys the user's future before releasing that future's admission/token.
+struct ExecutionWork<T: Send, F> {
+    future: F,
+    execution: FfiExecution<T>,
+}
+
+impl<T: Send, F: Future<Output = Result<T, HostError>>> ExecutionWork<T, F> {
+    async fn run(self) -> FfiTicket<T> {
+        let Self { future, execution } = self;
+        #[cfg(feature = "retained-file-input")]
+        let outcome = {
+            // This lexical holder owns the actual future, not just a Pin
+            // reference. Drop it before exposing a settled result or releasing
+            // a cancelled phase's permit. A revoker never drops Running storage.
+            tokio::pin!(future);
+            tokio::select! {
+                biased;
+                () = execution.stopped.cancelled() => Err(HostError::TargetClosed),
+                () = execution.ticket.entry.cancelled.cancelled() => Err(HostError::TargetClosed),
+                result = &mut future => result,
+            }
+        };
+        #[cfg(not(feature = "retained-file-input"))]
+        let outcome = tokio::select! {
+            biased;
+            () = execution.stopped.cancelled() => Err(HostError::TargetClosed),
+            result = future => result,
+        };
+        execution.settle(outcome)
     }
 }
 
@@ -571,6 +637,27 @@ mod tests {
     }
 
     #[test]
+    fn synchronous_reads_stay_charged_through_conversion() {
+        // Arrange
+        let budget = budget();
+        let execution = budget.admit(FfiLane::Command, 8).unwrap();
+
+        // Act
+        let ticket = execution.run_sync(|| Ok("snapshot"));
+        let value = ticket
+            .deliver(|value| {
+                assert_eq!(budget.metrics().unwrap().pending, 1);
+                assert_eq!(budget.metrics().unwrap().queued_commands, 1);
+                value.unwrap()
+            })
+            .unwrap();
+
+        // Assert
+        assert_eq!(value, "snapshot");
+        assert_eq!(budget.metrics().unwrap(), FfiMetrics::default());
+    }
+
+    #[test]
     fn future_byte_exhaustion_preserves_only_the_existing_reservation() {
         // Arrange
         let budget = budget();
@@ -593,6 +680,40 @@ mod tests {
         let rejected = execution.reserve_future(17);
         // Assert
         assert!(matches!(rejected, Err(HostError::ResourceExhausted(_))));
+        drop(execution);
+        assert_eq!(budget.metrics().unwrap(), FfiMetrics::default());
+    }
+
+    #[test]
+    fn result_dependent_bytes_stay_reserved_through_delivery() {
+        // Arrange
+        let budget = budget();
+        let execution = budget.admit::<()>(FfiLane::Command, 8).unwrap();
+        let reservation = execution.reservation();
+
+        // Act
+        reservation.reserve_additional(16).unwrap();
+        let ticket = execution.run_sync(|| Ok(()));
+
+        // Assert
+        assert_eq!(budget.metrics().unwrap().reserved_bytes, 24);
+        ticket.deliver(|result| result.unwrap()).unwrap();
+        assert_eq!(budget.metrics().unwrap(), FfiMetrics::default());
+    }
+
+    #[test]
+    fn rejected_result_reservation_keeps_the_original_admission_intact() {
+        // Arrange
+        let budget = budget();
+        let execution = budget.admit::<()>(FfiLane::Command, 24).unwrap();
+        let reservation = execution.reservation();
+
+        // Act
+        let rejected = reservation.reserve_additional(9);
+
+        // Assert
+        assert!(matches!(rejected, Err(HostError::ResourceExhausted(_))));
+        assert_eq!(budget.metrics().unwrap().reserved_bytes, 24);
         drop(execution);
         assert_eq!(budget.metrics().unwrap(), FfiMetrics::default());
     }

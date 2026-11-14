@@ -696,9 +696,9 @@ pub async fn tab_close(state: &mut CliState, tab_id: Option<&str>) -> Result<()>
 pub async fn tab_select(state: &mut CliState, tab_id: &str) -> Result<()> {
     let browser = connect(state).await?;
     let tab = browser
-        .resolve_tab(tab_id)
+        .activate_tab(tab_id)
         .await
-        .context(format!("tab '{}' not found", tab_id))?;
+        .context(format!("failed to activate tab '{}'", tab_id))?;
 
     state.active_tab = tab.tab_id.clone();
     state.target_id = tab.target_id.clone();

@@ -2550,6 +2550,10 @@ impl<S, Cancellation, Deadlines, Cleanup>
         &self.service
     }
 
+    pub const fn limits(&self) -> RuntimeLimits {
+        self.limits
+    }
+
     /// Installs a connection-local resource ledger before lifecycle or call
     /// state is retained.
     pub fn with_resource_ledger(self, ledger: ResourceLedger) -> Result<Self, RuntimeStateError> {
@@ -3108,9 +3112,15 @@ where
                     } else {
                         match handler_cancellation.cancel(context, reason).await {
                             Ok(()) if reason == termination.cleanup_reason() => {
-                                Err(termination.operation_error(metadata.timeout))
+                                Err(handler_cancellation
+                                    .terminal_error_after_cancel(context, reason, metadata.timeout)
+                                    .unwrap_or_else(|| {
+                                        termination.operation_error(metadata.timeout)
+                                    }))
                             }
-                            Ok(()) => Err(cancellation_error(reason, metadata.timeout)),
+                            Ok(()) => Err(handler_cancellation
+                                .terminal_error_after_cancel(context, reason, metadata.timeout)
+                                .unwrap_or_else(|| cancellation_error(reason, metadata.timeout))),
                             Err(error) => Err(error.reclassify(FailureKind::Cleanup)),
                         }
                     }
@@ -3124,7 +3134,9 @@ where
                     };
                     drop(operation);
                     match handler_cancellation.cancel(context, reason).await {
-                        Ok(()) => Err(cancellation_error(reason, metadata.timeout)),
+                        Ok(()) => Err(handler_cancellation
+                            .terminal_error_after_cancel(context, reason, metadata.timeout)
+                            .unwrap_or_else(|| cancellation_error(reason, metadata.timeout))),
                         Err(error) => Err(error.reclassify(FailureKind::Cleanup)),
                     }
                 }
@@ -3813,6 +3825,34 @@ mod tests {
             } else {
                 ready(Ok(()))
             }
+        }
+    }
+
+    struct EnrichedCancellation {
+        cleanup_calls: Arc<AtomicUsize>,
+    }
+
+    impl CommandCancellation<TestCommand> for EnrichedCancellation {
+        type Future<'a> = Ready<Result<(), OperationError<()>>>;
+
+        fn cancel(
+            &self,
+            _context: OperationContext,
+            _reason: CancellationReason,
+        ) -> Self::Future<'_> {
+            self.cleanup_calls.fetch_add(1, Ordering::SeqCst);
+            ready(Ok(()))
+        }
+
+        fn terminal_error_after_cancel(
+            &self,
+            _context: OperationContext,
+            reason: CancellationReason,
+            _timeout: Option<Duration>,
+        ) -> Option<OperationError<()>> {
+            (reason == CancellationReason::DeadlineExceeded).then(|| {
+                OperationError::new(FailureKind::Timeout, "bounded backend progress", Some(()))
+            })
         }
     }
 
@@ -6002,6 +6042,50 @@ mod tests {
                 .1,
             CancellationReason::DeadlineExceeded
         );
+        assert_eq!(dispatcher.pending_call_count(), Ok(0));
+    }
+
+    #[test]
+    fn successful_cleanup_can_enrich_the_original_deadline_error() {
+        // Arrange
+        let operation_drops = Arc::new(AtomicUsize::new(0));
+        let cleanup_calls = Arc::new(AtomicUsize::new(0));
+        let deadlines = ManualDeadlineScheduler::new();
+        let deadline_state = Arc::clone(&deadlines.state);
+        let dispatcher = ControlledDispatcher::new(
+            DropAwarePendingService {
+                drops: Arc::clone(&operation_drops),
+            },
+            EnrichedCancellation {
+                cleanup_calls: Arc::clone(&cleanup_calls),
+            },
+            deadlines,
+            RuntimeLimits::new(1, 1),
+        );
+        dispatcher
+            .register_object(ObjectId::new(2), None, ObjectKindTag::new(3))
+            .expect("target should register");
+        let metadata = CallMetadata::new(Some(Duration::from_millis(25)), None);
+        let mut future = Box::pin(dispatcher.call(command(5, 2, 41, metadata)));
+        assert!(poll_once(future.as_mut()).is_pending());
+
+        // Act
+        deadline_state.expired.store(true, Ordering::SeqCst);
+        let outcome = poll_once(future.as_mut());
+
+        // Assert
+        let Poll::Ready(Ok(result)) = outcome else {
+            panic!("expired operation should complete");
+        };
+        let error = result
+            .outcome()
+            .as_ref()
+            .expect_err("operation should time out");
+        assert_eq!(error.kind(), FailureKind::Timeout);
+        assert_eq!(error.message(), "bounded backend progress");
+        assert_eq!(error.details(), Some(&()));
+        assert_eq!(operation_drops.load(Ordering::SeqCst), 1);
+        assert_eq!(cleanup_calls.load(Ordering::SeqCst), 1);
         assert_eq!(dispatcher.pending_call_count(), Ok(0));
     }
 

@@ -30,6 +30,13 @@ impl CommandSpec for OwnerFrame {
 pub(super) struct Params {
     admission: ReadAdmission,
     source_frame: ObjectId,
+    relation: FrameRelation,
+}
+
+#[derive(Clone, Copy)]
+enum FrameRelation {
+    Owner,
+    Content,
 }
 
 enum SourceContext {
@@ -132,25 +139,31 @@ impl TargetedService<Params> for Installation {
         let service = self.create.clone();
         let worlds = self.worlds.clone();
         let future = async move {
+            let Params {
+                admission,
+                source_frame,
+                relation,
+            } = call;
             let ReadAdmission {
                 call: _call,
                 work: _work,
                 native: _native,
-            } = call.admission;
+            } = admission;
             // Retain the session/world registration through native cleanup.
             // Shutdown retires inspector sessions before draining this work;
             // a descriptor clone alone does not register that native lifetime.
-            let _snapshot = worlds.snapshot(call.source_frame).await.map_err(|error| {
+            let _snapshot = worlds.snapshot(source_frame).await.map_err(|error| {
                 OperationError::new(
                     pwright_core::FailureKind::TargetClosed,
                     error.to_string(),
                     Some(HostError::TargetClosed),
                 )
             })?;
-            service
-                .owner_frame_native_id(target)
-                .await
-                .map_err(map_leaf_error)
+            match relation {
+                FrameRelation::Owner => service.owner_frame_native_id(target).await,
+                FrameRelation::Content => service.content_frame_native_id(target).await,
+            }
+            .map_err(map_leaf_error)
         };
         Box::pin(Creation::new(future, continuation))
     }
@@ -182,10 +195,30 @@ impl HostSession {
         &self,
         handle: &PendingHandle,
     ) -> Result<Option<String>, HostError> {
+        self.handle_frame_relation(handle, FrameRelation::Owner, "ownerFrame")
+            .await
+    }
+
+    /// Returns the canonical portable ID of a retained frame-owner element's
+    /// child Frame. Ordinary elements return None.
+    pub async fn handle_content_frame(
+        &self,
+        handle: &PendingHandle,
+    ) -> Result<Option<String>, HostError> {
+        self.handle_frame_relation(handle, FrameRelation::Content, "contentFrame")
+            .await
+    }
+
+    async fn handle_frame_relation(
+        &self,
+        handle: &PendingHandle,
+        relation: FrameRelation,
+        api: &'static str,
+    ) -> Result<Option<String>, HostError> {
         if !handle.is_element() {
-            return Err(HostError::InvalidArgument(
-                "ownerFrame requires an ElementHandle".into(),
-            ));
+            return Err(HostError::InvalidArgument(format!(
+                "{api} requires an ElementHandle"
+            )));
         }
         let (target, call_id, _operation) =
             self.admit_operation(&handle.initializer().object_id.get().to_string())?;
@@ -207,6 +240,7 @@ impl HostSession {
             Params {
                 admission,
                 source_frame: handle.initializer().parent_id,
+                relation,
             },
         );
         let dispatch = runtime.dispatch_with(command, installation.as_ref(), installation.clone());

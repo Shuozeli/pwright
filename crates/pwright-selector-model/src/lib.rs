@@ -853,6 +853,7 @@ fn validate_role_options(role: AriaRole, options: &RoleOptions) -> Result<(), Ro
 pub enum Selector {
     Css(CssSelector),
     Text(TextMatcher),
+    LegacyText(TextMatcher),
     TextRegex(RegexMatcher),
     Label(TextMatcher),
     LabelRegex(RegexMatcher),
@@ -929,6 +930,10 @@ impl Selector {
 
     pub fn text(value: impl Into<String>, exact: bool) -> Self {
         Self::Text(TextMatcher::new(value, exact))
+    }
+
+    pub fn legacy_text(value: impl Into<String>) -> Self {
+        Self::LegacyText(TextMatcher::new(value, true))
     }
 
     pub fn text_regex(matcher: RegexMatcher) -> Self {
@@ -1089,6 +1094,9 @@ impl Display for Selector {
                 text.value(),
                 text.exact()
             ),
+            Self::LegacyText(text) => {
+                write!(formatter, "legacy_text({:?})", text.value())
+            }
             Self::TextRegex(regex) => write!(
                 formatter,
                 "get_by_text_regex({:?}, flags={:?})",
@@ -1107,8 +1115,8 @@ impl Display for Selector {
                 regex.source(),
                 regex.flags()
             ),
-            Self::Role(role) => write!(formatter, "get_by_role({})", role.role()),
-            Self::RolePattern(role) => write!(formatter, "get_by_role({})", role.role()),
+            Self::Role(role) => format_role_selector(formatter, role.role(), role.options()),
+            Self::RolePattern(role) => format_role_selector(formatter, role.role(), role.options()),
             Self::AttributeText { attribute, matcher } => write!(
                 formatter,
                 "get_by_{}({:?}, exact={})",
@@ -1175,9 +1183,40 @@ impl Display for Selector {
     }
 }
 
+fn format_role_selector(
+    formatter: &mut Formatter<'_>,
+    role: AriaRole,
+    options: &RoleOptions,
+) -> fmt::Result {
+    write!(formatter, "get_by_role({:?}", role.to_string())?;
+    if let Some(name) = &options.name {
+        write!(formatter, ", name={:?}", name.value())?;
+    } else if let Some(name) = &options.name_regex {
+        write!(formatter, ", name=/{}/{}", name.source(), name.flags())?;
+    }
+    formatter.write_str(")")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{RegexMatcher, RegexMatcherError, Selector};
+    use super::{AriaRole, RegexMatcher, RegexMatcherError, RoleOptions, Selector};
+
+
+    #[test]
+    fn role_display_uses_playwright_call_log_shape() {
+        // Arrange
+        let selector = Selector::role(
+            AriaRole::Button,
+            RoleOptions::new().with_name("Hello Python", false),
+        )
+        .unwrap();
+
+        // Act
+        let display = selector.to_string();
+
+        // Assert
+        assert_eq!(display, "get_by_role(\"button\", name=\"Hello Python\")");
+    }
 
     #[test]
     fn css_selector_rejects_an_empty_recipe_without_backend_work() {

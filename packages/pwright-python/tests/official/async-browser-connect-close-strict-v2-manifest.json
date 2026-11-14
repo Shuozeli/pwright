@@ -1,0 +1,54 @@
+{
+  "schema": 2,
+  "kind": "playwright-python-browser-connect-close-strict-v2",
+  "evidenceScope": "strict-public-behavior-browser-connect-early-ws-close-post-fix",
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "requiresBrowser": false,
+  "requiresFixtureServers": true,
+  "fixtureTransportAdaptation": "exact-localhost-ws-to-tailscale-magicdns-only",
+  "tests": [
+    "tests/async/test_browsertype_connect.py::test_should_print_custom_ws_close_error[chromium]",
+    "tests/async/test_browsertype_connect.py::test_should_print_custom_ws_close_error[firefox]",
+    "tests/async/test_browsertype_connect.py::test_should_print_custom_ws_close_error[webkit]"
+  ],
+  "expectedOutcomes": {"oracle": "passed", "candidate": "passed"},
+  "upstreamSources": {
+    "tests/async/test_browsertype_connect.py": "d47290f5acb45246ce2bae150d3c583d340806821b660be08d798ac3572e7b11",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/async/utils.py": "ee618a20d789a28f953ba23a2c24249f3b21f7bd00b1a2d2435aa75ce9b0b478",
+    "pyproject.toml": "96e2d4dcd75b40a101c77d12b4e29ea4d91efc6fd58992a67ed8cc837e2e1e08"
+  },
+  "supportSources": {
+    "packages/pwright-python/tests/official/shim/playwright/__init__.py": "4a4a4068ad5bd2d944489d7bd4f34e9fcaf54889f526e60fdd0c87d0b6cfde22",
+    "packages/pwright-python/tests/official/shim/playwright/async_api.py": "00470fd538f6e0fa29cc86656571c7fc3f00fbf9984cb7be142415da2e307752",
+    "packages/pwright-python/tests/official/shim/playwright/_public_types.py": "4d3723a1273dd195ce1b87e0735f50f0b4887bec443ebbf29fead391e76af04c",
+    "packages/pwright-python/tests/official/shim/pwright_candidate_runtime.py": "80ba62b8c653a0d72f5869ef6fd4d70482163affa8ecb5e59d2c568b9406d2e9",
+    "packages/pwright-python/tests/official/runtime/pwright_official_server_runtime.py": "e15c5e1661d302a952aee85bd56f2ecc36515dd71f57f7c57c59292746283bd9",
+    "packages/pwright-python/tests/official/runtime/pwright_official_oracle_runtime.py": "3990f6ef4cc47eb8bcdc6a896c14383df0971126783368e774f67dadb73b0206",
+    "scripts/run_playwright_python_ws_transport_strict.py": "ccb393668ce2f0b10642270b2e8c2b76572e16fc9ca418ba3199bdc1c30b03cc",
+    "scripts/verify_playwright_python_ws_transport_strict.py": "18829acee6e1666df6c9d7d0f3419dc85a9315bfea987a3a74b1ff30faf06dc7"
+  },
+  "pythonRuntimeSha256": "bc56ea9cdc0fface1eb75712f871a454324f6cbfec4e30311b197f208a7f3d07",
+  "oraclePackageTreeSha256": "d7655707035107f13a81db0e1d52d839c2bf42bf2008478fba610299cd6da149",
+  "oracleDriverNodeSha256": "6f2e835e57feb7a29ffcd53a4d4eb60224ec264a1e002c3ba6d99999ea29807d",
+  "candidateWheelSha256": "2ad72324788ed7ae24eeb6f265e035f64a654e75ebc342ddb2537730f659bc1d",
+  "candidatePackageTreeSha256": "9e34e81d7e562c8f8ee3c156e36af7dcfa108e0c6304f99e89100624ceca0d70",
+  "candidateNativeSha256": "8253410aecce44474cf8215ab0cde322fdbef882359cad7f8829511e0056cfc3",
+  "candidateRuntimeLibraries": {
+    "libcrypto-a12805a1.3.dylib": "bfa24a48f50688de796e559941e03882248d3b26bc3be1f78e3b9b560f6badbd",
+    "libssl-ffd8ac69.3.dylib": "a5486ffa809746d423d1f47bc6319664aba9560805fe1c923b6be4d6d3c22069"
+  },
+  "captureReady": true,
+  "captureSourceSha256": {
+    "scripts/run_playwright_python_connect_close_strict_v2.py": "ddbb66d36b145de668e7bd6a669f9d4399b68eb691f6385f94e499ad0411a2ca",
+    "packages/pwright-python/tests/official/ws_connect_guard_strict_v2/pwright_official_connect_guard_v2.py": "f1cc02ce09be1688d2a5882afbc36ee22987871a517cab134a52e55374083d66"
+  },
+  "captureSourcePaths": [
+    "scripts/run_playwright_python_connect_close_strict_v2.py",
+    "packages/pwright-python/tests/official/ws_connect_guard_strict_v2/pwright_official_connect_guard_v2.py"
+  ]
+}

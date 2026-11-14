@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+request-timing = ["pwright-cap-network-events/request-timing"]
+
 [dependencies]
 pwright-cap-network-events = { workspace = true }
 pwright-codec-binary = { workspace = true }

@@ -308,14 +308,24 @@ impl Owners {
     }
 
     pub fn admit_batch(self: &Arc<Self>) -> Result<BatchAdmission, HostError> {
+        let available = MAX_HANDLES - self.capacity.owners.load(Ordering::Acquire);
+        self.admit_batch_exact(available)
+    }
+
+    pub fn admit_batch_exact(self: &Arc<Self>, count: usize) -> Result<BatchAdmission, HostError> {
         let state = self.state.lock().map_err(HostError::backend)?;
         if state.closed {
             return Err(HostError::TargetClosed);
         }
-        let call = Arc::new(self.capacity.admit(Kind::Call)?);
         let available = MAX_HANDLES - self.capacity.owners.load(Ordering::Acquire);
-        let mut entries = Vec::with_capacity(available);
-        for _ in 0..available {
+        if count > available {
+            return Err(HostError::ResourceExhausted(
+                "Handle result ownership capacity exceeded".into(),
+            ));
+        }
+        let call = Arc::new(self.capacity.admit(Kind::Call)?);
+        let mut entries = Vec::with_capacity(count);
+        for _ in 0..count {
             entries.push(Admission {
                 owner: Arc::new(self.capacity.admit(Kind::Owner)?),
                 call: call.clone(),
@@ -570,6 +580,13 @@ impl PendingHandle {
 
     pub fn initializer(&self) -> &HandleInitializer {
         &self.initializer
+    }
+
+    /// Replace only the bounded, immutable language-facing preview captured
+    /// before publication. This does not alter native identity or ownership.
+    pub(crate) fn with_preview(mut self, preview: String) -> Self {
+        self.initializer.preview = preview;
+        self
     }
 
     pub fn is_element(&self) -> bool {

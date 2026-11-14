@@ -35,7 +35,7 @@ pub(crate) struct Queue {
 }
 
 impl Queue {
-    pub(super) async fn run<T>(
+    pub(crate) async fn run<T>(
         &self,
         page: ObjectId,
         timeout_ms: u32,

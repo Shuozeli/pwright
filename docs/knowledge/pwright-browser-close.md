@@ -1,4 +1,23 @@
-<!-- agent-updated: 2026-09-10T15:40:39Z -->
+<!-- agent-updated: 2026-10-10T08:05:07Z -->
+
+Owned host shutdown one-flight checkpoint (2026-10-10): on first
+`HostSession::close`, the unique process lease moves to one detached Tokio
+shutdown task. Concurrent callers await the same retained provider report,
+and canceling one caller cannot abandon the started shutdown. Two fake-future
+release tests, all-feature release check, rustfmt and diff checks pass. The
+retained report proves only the direct child waited/reaped; it is not yet
+exposed to Node/Python or conformance provenance. Chrome descendants,
+pre-close-drop reaping and temporary-profile deletion remain unproven.
+
+Owned Chromium launch lease guard (2026-10-10): the launch provider still
+returns a raw successful lease with kill-on-drop disabled. The optional launch
+composition now arms that lease synchronously as it takes ownership, before
+binding the production CDP connection. Dropping an unbound or abandoned
+composition lease requests process termination; cancelling a pending
+bind-failure cleanup retains the same guard. Two fake-process release tests
+cover takeover and cleanup cancellation without starting a browser. The guard
+targets the spawned child; descendant process-tree supervision remains a
+separate launcher prerequisite.
 
 NODE-130: Deletion-only Context routing can prune exact local Page/Frame/provider and subscription membership while preserving unrelated Contexts. It does not mint native world destruction or implement terminal shutdown; exact native receipt marking and full close/terminal publication remain coordinator responsibilities.
 [Deletion-only close route contract and evidence](pwright-close-cascade.md#node-130-deletion-only-close-route-retirement).
@@ -574,7 +593,10 @@ retains the only process lease. Its CDP connection carries a production plan
 and ledger-identity proof until the prepared composition consumes it; a foreign
 plan or ledger is rejected. The ordinary attach composition cannot call owned
 shutdown or construct a remote-close grant, both enforced by compile-fail
-tests.
+tests. Composition takeover arms kill-on-drop immediately after provider
+success, before binding. The provider's standalone successful raw lease keeps
+its existing drop behavior. On binding failure, the termination future holds
+the armed lease across an await, so dropping that future still requests kill.
 
 Owned shutdown borrows the owner rather than consuming it when the future is
 created. Dropping an unpolled future therefore leaves process authority intact.

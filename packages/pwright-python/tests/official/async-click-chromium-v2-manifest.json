@@ -1,0 +1,546 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "ciPlatforms": [
+      "linux",
+      "darwin",
+      "win32"
+    ],
+    "ciPythonVersions": [
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "stableChannels": [
+      "chrome",
+      "msedge"
+    ],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/async/utils.py": "ee618a20d789a28f953ba23a2c24249f3b21f7bd00b1a2d2435aa75ce9b0b478",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/async/test_click.py": "ea614c3891174eda1f74964c8c1d4ba84b214b74e03fa194ad878636938338e7"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_click.py::test_check_radio",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_check_the_box",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_check_the_box_by_aria_role",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_check_the_box_by_label",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_check_the_box_inside_label_without_id",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_check_the_box_outside_label",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_a_button_in_scrolling_container_with_offset",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_a_partially_obscured_button",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_a_rotated_button",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_a_very_large_button_with_offset",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_an_offscreen_element_when_scroll_behavior_is_smooth",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_disabled_div",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_links_which_cause_navigation",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_not_throw_when_page_closes",
+      "capabilities": [
+        "page.mouse",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_offscreen_buttons",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_on_a_span_with_an_inline_element_inside",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_on_checkbox_input_and_toggle",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_on_checkbox_label_and_toggle",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_svg",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_after_a_cross_origin_navigation_",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_after_navigation",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_if_window_node_is_removed",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_inside_an_iframe",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_when_window_inner_width_is_corrupted",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_with_device_scale_factor_set",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_with_em_border_with_offset",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_with_offset_with_page_scale",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_the_button_with_px_border_with_offset",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_when_one_of_inline_box_children_is_outside_of_viewport",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_with_disabled_javascript",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_with_tweened_mouse_movement",
+      "capabilities": [
+        "locator.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_click_wrapped_links",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_climb_dom_for_inner_label_with_pointer_events_none",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_climb_up_to_role_button",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_double_click_the_button",
+      "capabilities": [
+        "page.dblclick",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_fail_when_element_detaches_after_animation",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_fail_when_element_is_animating_from_outside_the_viewport_with_force",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_fail_when_obscured_and_not_waiting_for_hit_target",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_fire_contextmenu_event_on_right_click",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_not_check_the_checked_box",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_not_hang_with_touch_enabled_viewports",
+      "capabilities": [
+        "page.mouse",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_not_retarget_when_element_changes_on_hover",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_not_retarget_when_element_is_recycled_on_hover",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_not_uncheck_the_unchecked_box",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_report_nice_error_when_element_is_detached_and_force_clicked",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_retry_when_element_detaches_after_animation",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_retry_when_element_is_animating_from_outside_the_viewport",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_scroll_and_click_the_button",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_select_the_text_by_triple_clicking",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_timeout_waiting_for_button_to_be_enabled",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_timeout_waiting_for_display_none_to_be_gone",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_timeout_waiting_for_hit_target",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_timeout_waiting_for_stable_position",
+      "capabilities": [
+        "element-handle.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_timeout_waiting_for_visbility_hidden_to_be_gone",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_timeout_when_click_opens_alert",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_uncheck_the_box",
+      "capabilities": [
+        "page.check-uncheck",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_update_modifiers_correctly",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_waitFor_visible_when_already_visible",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_waitFor_visible_when_parent_is_hidden",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_BUTTON_to_be_clickable_when_it_has_pointer_events_none",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_LABEL_to_be_clickable_when_it_has_pointer_events_none",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_becoming_hit_target",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_button_to_be_enabled",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_display_none_to_be_gone",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_input_to_be_enabled",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_select_to_be_enabled",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_stable_position",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_for_visibility_hidden_to_be_gone",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    },
+    {
+      "id": "tests/async/test_click.py::test_wait_with_force",
+      "capabilities": [
+        "page.click",
+        "async-api"
+      ]
+    }
+  ]
+}

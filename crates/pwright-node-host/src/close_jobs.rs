@@ -357,8 +357,9 @@ mod tests {
             sender,
         };
         // Act
-        reply.finish(Err(HostError::TargetClosed)).send();
+        let send_result = reply.finish(Err(HostError::TargetClosed)).send();
         // Assert
+        assert!(send_result.is_ok());
         assert!(receiver.await.unwrap().is_ok());
     }
 
@@ -371,8 +372,9 @@ mod tests {
             sender,
         };
         // Act
-        reply.finish(Err(HostError::TargetClosed)).send();
+        let send_result = reply.finish(Err(HostError::TargetClosed)).send();
         // Assert
+        assert!(send_result.is_ok());
         assert!(matches!(
             receiver.await.unwrap(),
             Err(HostError::TargetClosed)

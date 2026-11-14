@@ -1,0 +1,206 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "sourceInventory": {
+    "specTs": 518,
+    "specTsx": 25,
+    "specJs": 15,
+    "total": 558,
+    "testsTree": 510,
+    "examplesTree": 48
+  },
+  "nonCollectedSpecs": [
+    {
+      "path": "tests/installation/fixture-scripts/docker.spec.js",
+      "classification": "nested-fixture-script",
+      "parentSuite": "installation",
+      "reason": "The installation config explicitly ignores fixture-scripts; installation tests copy and execute this fixture in isolated package-manager or Docker scenarios."
+    },
+    {
+      "path": "tests/installation/fixture-scripts/failing.spec.js",
+      "classification": "nested-fixture-script",
+      "parentSuite": "installation",
+      "reason": "The installation config explicitly ignores fixture-scripts; the parent installation test executes this intentionally failing fixture and asserts its diagnostics."
+    },
+    {
+      "path": "tests/installation/fixture-scripts/plugin.spec.ts",
+      "classification": "nested-fixture-script",
+      "parentSuite": "installation",
+      "reason": "The installation config explicitly ignores fixture-scripts; package-manager plugin tests execute this fixture after installing a staged package."
+    },
+    {
+      "path": "tests/installation/fixture-scripts/sample.spec.js",
+      "classification": "nested-fixture-script",
+      "parentSuite": "installation",
+      "reason": "The installation config explicitly ignores fixture-scripts; package-manager installation tests execute this copied sample through npm, pnpm, and yarn scenarios."
+    }
+  ],
+  "suites": [
+    {
+      "id": "library",
+      "role": "official-entrypoint",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "candidateAdapter": "test-mode-playwright-core",
+      "oracleAdapter": "test-mode-playwright-core-cdp",
+      "expectedTests": 12844,
+      "expectedFiles": 268
+    },
+    {
+      "id": "android",
+      "role": "official-entrypoint",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/android/playwright.config.ts",
+      "expectedTests": 2174,
+      "expectedFiles": 131
+    },
+    {
+      "id": "bidi",
+      "role": "official-entrypoint",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "expectedTests": 24603,
+      "expectedFiles": 251
+    },
+    {
+      "id": "electron",
+      "role": "official-entrypoint",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/electron/playwright.config.ts",
+      "expectedTests": 2175,
+      "expectedFiles": 129
+    },
+    {
+      "id": "installation",
+      "role": "official-entrypoint",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/installation/playwright.config.ts",
+      "expectedTests": 59,
+      "expectedFiles": 19
+    },
+    {
+      "id": "mcp",
+      "role": "official-entrypoint",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/mcp/playwright.config.ts",
+      "expectedTests": 900,
+      "expectedFiles": 49
+    },
+    {
+      "id": "stress",
+      "role": "official-entrypoint",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/stress/playwright.config.ts",
+      "expectedTests": 3333,
+      "expectedFiles": 4
+    },
+    {
+      "id": "playwright-test",
+      "role": "official-entrypoint",
+      "runner": "tests/playwright-test/stable-test-runner/node_modules/@playwright/test/cli.js",
+      "config": "tests/playwright-test/playwright.config.ts",
+      "expectedTests": 1755,
+      "expectedFiles": 102
+    },
+    {
+      "id": "components-aggregate",
+      "role": "official-entrypoint",
+      "runner": "packages/playwright/cli.js",
+      "args": [
+        "tests/components/test-all.spec.js"
+      ],
+      "expectedTests": 30,
+      "expectedFiles": 1
+    },
+    {
+      "id": "component-react-vite",
+      "role": "nested-component-corpus",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/components/ct-react-vite/playwright.config.ts",
+      "expectedTests": 120,
+      "expectedFiles": 7
+    },
+    {
+      "id": "component-react17",
+      "role": "nested-component-corpus",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/components/ct-react17/playwright.config.ts",
+      "expectedTests": 84,
+      "expectedFiles": 6
+    },
+    {
+      "id": "component-svelte-vite",
+      "role": "nested-component-corpus",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/components/ct-svelte-vite/playwright.config.ts",
+      "expectedTests": 39,
+      "expectedFiles": 6
+    },
+    {
+      "id": "component-svelte",
+      "role": "nested-component-corpus",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/components/ct-svelte/playwright.config.ts",
+      "expectedTests": 33,
+      "expectedFiles": 6
+    },
+    {
+      "id": "component-vue-cli",
+      "role": "nested-component-corpus",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/components/ct-vue-cli/playwright.config.ts",
+      "expectedTests": 102,
+      "expectedFiles": 12
+    },
+    {
+      "id": "component-vue-vite",
+      "role": "nested-component-corpus",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/components/ct-vue-vite/playwright.config.ts",
+      "expectedTests": 159,
+      "expectedFiles": 18
+    },
+    {
+      "id": "example-github-api",
+      "role": "official-example",
+      "runner": "packages/playwright/cli.js",
+      "config": "examples/github-api/playwright.config.ts",
+      "expectedTests": 2,
+      "expectedFiles": 1
+    },
+    {
+      "id": "example-mock-battery",
+      "role": "official-example",
+      "runner": "packages/playwright/cli.js",
+      "config": "examples/mock-battery/playwright.config.js",
+      "expectedTests": 4,
+      "expectedFiles": 3
+    },
+    {
+      "id": "example-mock-filesystem",
+      "role": "official-example",
+      "runner": "packages/playwright/cli.js",
+      "config": "examples/mock-filesystem/playwright.config.js",
+      "expectedTests": 2,
+      "expectedFiles": 2
+    },
+    {
+      "id": "example-svgomg",
+      "role": "official-example",
+      "runner": "packages/playwright/cli.js",
+      "config": "examples/svgomg/playwright.config.ts",
+      "expectedTests": 18,
+      "expectedFiles": 1
+    },
+    {
+      "id": "example-todomvc",
+      "role": "official-example",
+      "runner": "packages/playwright/cli.js",
+      "config": "examples/todomvc/playwright.config.ts",
+      "expectedTests": 41,
+      "expectedFiles": 41
+    }
+  ]
+}

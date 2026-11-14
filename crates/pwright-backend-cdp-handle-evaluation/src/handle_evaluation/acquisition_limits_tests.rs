@@ -7,14 +7,17 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 fn service(fake: &Arc<FakeCdpClient>, error_bytes: usize) -> CdpHandleEvaluationService {
+    let defaults = CdpEvaluationLimits::default();
     CdpHandleEvaluationService::from_evaluation(
         CdpEvaluationService::with_limits_in_unique_context(
             fake.clone(),
             "tiny-error-world",
-            CdpEvaluationLimits {
+            CdpEvaluationLimits::new(
+                defaults.source_bytes,
+                defaults.generated_script_bytes,
                 error_bytes,
-                ..CdpEvaluationLimits::default()
-            },
+                defaults.value,
+            ),
         ),
         32,
         64,

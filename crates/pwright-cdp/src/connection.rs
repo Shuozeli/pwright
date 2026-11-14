@@ -14,6 +14,10 @@ use serde_json::Value;
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, oneshot};
 use tokio_tungstenite::tungstenite::Message;
+#[cfg(feature = "cdp-handshake-headers")]
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+#[cfg(feature = "cdp-handshake-headers")]
+use tokio_tungstenite::tungstenite::http::{HeaderName, HeaderValue};
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config};
 use tracing::{debug, error, trace, warn};
@@ -95,6 +99,100 @@ impl From<tokio_tungstenite::tungstenite::Error> for CdpError {
 
 pub type Result<T> = std::result::Result<T, CdpError>;
 
+/// Bounded, validated headers for the CDP WebSocket upgrade. Header values
+/// are deliberately omitted from Debug and validation errors.
+#[cfg(feature = "cdp-handshake-headers")]
+#[derive(Clone, Default)]
+pub struct CdpHandshakeHeaders(Vec<(HeaderName, HeaderValue)>);
+
+#[cfg(feature = "cdp-handshake-headers")]
+pub const CDP_HANDSHAKE_HEADER_MAX_COUNT: usize = 32;
+#[cfg(feature = "cdp-handshake-headers")]
+pub const CDP_HANDSHAKE_HEADER_MAX_NAME_BYTES: usize = 256;
+#[cfg(feature = "cdp-handshake-headers")]
+pub const CDP_HANDSHAKE_HEADER_MAX_VALUE_BYTES: usize = 4096;
+#[cfg(feature = "cdp-handshake-headers")]
+pub const CDP_HANDSHAKE_HEADER_MAX_BATCH_BYTES: usize = 8192;
+
+#[cfg(feature = "cdp-handshake-headers")]
+impl std::fmt::Debug for CdpHandshakeHeaders {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CdpHandshakeHeaders")
+            .field("count", &self.0.len())
+            .finish()
+    }
+}
+
+#[cfg(feature = "cdp-handshake-headers")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum CdpHandshakeHeadersError {
+    #[error("CDP handshake header count exceeds 32")]
+    TooMany,
+    #[error("CDP handshake header name exceeds 256 bytes")]
+    NameTooLong,
+    #[error("CDP handshake header value exceeds 4096 bytes")]
+    ValueTooLong,
+    #[error("CDP handshake headers exceed 8192 bytes")]
+    BatchTooLarge,
+    #[error("invalid CDP handshake header name")]
+    InvalidName,
+    #[error("invalid CDP handshake header value")]
+    InvalidValue,
+}
+
+#[cfg(feature = "cdp-handshake-headers")]
+impl CdpHandshakeHeadersError {
+    pub const fn is_limit(self) -> bool {
+        matches!(
+            self,
+            Self::TooMany | Self::NameTooLong | Self::ValueTooLong | Self::BatchTooLarge
+        )
+    }
+}
+
+#[cfg(feature = "cdp-handshake-headers")]
+impl CdpHandshakeHeaders {
+    pub fn new(
+        pairs: Vec<(String, String)>,
+    ) -> std::result::Result<Self, CdpHandshakeHeadersError> {
+        if pairs.len() > CDP_HANDSHAKE_HEADER_MAX_COUNT {
+            return Err(CdpHandshakeHeadersError::TooMany);
+        }
+        let mut total_bytes = 0usize;
+        let mut parsed = Vec::with_capacity(pairs.len());
+        for (name, value) in pairs {
+            if name.len() > CDP_HANDSHAKE_HEADER_MAX_NAME_BYTES {
+                return Err(CdpHandshakeHeadersError::NameTooLong);
+            }
+            if value.len() > CDP_HANDSHAKE_HEADER_MAX_VALUE_BYTES {
+                return Err(CdpHandshakeHeadersError::ValueTooLong);
+            }
+            total_bytes = total_bytes
+                .checked_add(name.len())
+                .and_then(|sum| sum.checked_add(value.len()))
+                .ok_or(CdpHandshakeHeadersError::BatchTooLarge)?;
+            if total_bytes > CDP_HANDSHAKE_HEADER_MAX_BATCH_BYTES {
+                return Err(CdpHandshakeHeadersError::BatchTooLarge);
+            }
+            let name = HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| CdpHandshakeHeadersError::InvalidName)?;
+            let value = HeaderValue::from_str(&value)
+                .map_err(|_| CdpHandshakeHeadersError::InvalidValue)?;
+            parsed.push((name, value));
+        }
+        Ok(Self(parsed))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&HeaderName, &HeaderValue)> {
+        self.0.iter().map(|(name, value)| (name, value))
+    }
+}
+
 type CommandResult = std::result::Result<Value, CdpError>;
 
 struct CommandResource {
@@ -150,6 +248,41 @@ struct PreparedCommand {
     response: oneshot::Receiver<RetainedCommandResult>,
     _registration: PendingRegistration,
     resource: Option<Arc<CommandResource>>,
+}
+
+/// A command admitted to the ordered CDP write queue. The caller must retain
+/// this handle through its response to preserve the pending-command owner.
+pub struct EnqueuedCommand {
+    response: EnqueuedResponse,
+    _registration: PendingRegistration,
+    response_timeout: Option<Duration>,
+}
+
+enum EnqueuedResponse {
+    Pending(oneshot::Receiver<RetainedCommandResult>),
+    Settled(Value),
+}
+
+impl EnqueuedCommand {
+    pub async fn response(self) -> Result<Value> {
+        let Self {
+            response,
+            _registration,
+            response_timeout,
+        } = self;
+        let response = match response {
+            EnqueuedResponse::Settled(value) => return Ok(value),
+            EnqueuedResponse::Pending(response) => response,
+        };
+        let Some(timeout) = response_timeout else {
+            return response.await.map_err(|_| CdpError::ChannelDropped)?.result;
+        };
+        match tokio::time::timeout(timeout, response).await {
+            Ok(Ok(retained)) => retained.result,
+            Ok(Err(_)) => Err(CdpError::ChannelDropped),
+            Err(_) => Err(CdpError::Timeout),
+        }
+    }
 }
 
 struct OutboundMessage {
@@ -295,6 +428,8 @@ pub struct CdpConnection {
     resources: Option<ConnectionResourceBudget>,
     _reader_resource: Option<ResourceLease>,
     _event_delivery_resource: Option<ResourceLease>,
+    #[cfg(feature = "cdp-ws-close-reason")]
+    peer_close_reason: Arc<Mutex<Option<Box<str>>>>,
     shutdown: tokio_util::sync::CancellationToken,
     io_tasks: tokio_util::task::TaskTracker,
 }
@@ -318,10 +453,14 @@ const DEFAULT_PENDING_COMMAND_CAPACITY: usize = 256;
 /// plus base64 and JSON overhead.
 const MAX_CDP_WEBSOCKET_BYTES: usize = 128 << 20;
 
+fn command_response_timeout(timeout: Duration) -> Option<Duration> {
+    (!timeout.is_zero()).then_some(timeout)
+}
+
 /// Configuration for a CDP connection.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ConnectionConfig {
-    /// Timeout for individual CDP commands.
+    /// Timeout for individual CDP commands. Zero disables the response timer.
     pub timeout: Duration,
     /// Capacity of the write channel (commands queued to send).
     pub write_channel_capacity: usize,
@@ -428,6 +567,7 @@ pub struct CdpConnectionProductionProfile {
     config: ConnectionConfig,
     reader_wire_bytes: u64,
     command_wire_bytes: u64,
+    retained_event_bytes: u64,
     reclaiming_event_subscribers: Option<usize>,
     event_delivery_resource_bytes: u64,
     requirements: ResourceRequirements,
@@ -448,6 +588,8 @@ impl CdpConnectionProductionProfile {
         let wire_bytes =
             reader_wire_bytes.saturating_add(pending.saturating_mul(command_wire_bytes));
         let event_bytes = events.saturating_mul(usize_to_u64(config.max_event_bytes));
+        let retained_event_bytes = usize_to_u64(config.event_channel_capacity)
+            .saturating_mul(usize_to_u64(config.max_event_bytes));
         let leases = config
             .pending_command_capacity
             .saturating_add(config.event_channel_capacity)
@@ -462,6 +604,7 @@ impl CdpConnectionProductionProfile {
             config,
             reader_wire_bytes,
             command_wire_bytes,
+            retained_event_bytes,
             reclaiming_event_subscribers: None,
             event_delivery_resource_bytes: 0,
             requirements,
@@ -470,6 +613,33 @@ impl CdpConnectionProductionProfile {
             #[cfg(feature = "large-commands")]
             large_commands: None,
         }
+    }
+
+    /// Replaces the conservative `event item capacity * maximum event size`
+    /// retained-payload declaration with an independent aggregate byte bound.
+    ///
+    /// The item limit still bounds the number of queued events. The byte limit
+    /// may reject the connection earlier when many large events are retained;
+    /// one additional maximum-size event remains declared so the reader can
+    /// parse and admit the next item before bounded fanout replacement.
+    pub fn with_retained_event_byte_capacity(mut self, retained_bytes: u64) -> Result<Self> {
+        let one_event = usize_to_u64(self.config.max_event_bytes);
+        if retained_bytes < one_event {
+            return Err(CdpError::InvalidConfiguration(
+                "retained event byte capacity is smaller than one maximum-size event",
+            ));
+        }
+        let event_bytes =
+            retained_bytes
+                .checked_add(one_event)
+                .ok_or(CdpError::InvalidConfiguration(
+                    "retained event byte capacity overflow",
+                ))?;
+        self.requirements =
+            self.requirements
+                .with_class(ResourceClass::EventBytes, event_bytes, event_bytes);
+        self.retained_event_bytes = retained_bytes;
+        Ok(self)
     }
 
     pub fn with_reclaiming_event_fanout(mut self, max_subscribers: usize) -> Result<Self> {
@@ -575,6 +745,10 @@ impl CdpConnectionProductionProfile {
         self.reclaiming_event_subscribers
     }
 
+    pub const fn retained_event_bytes(&self) -> u64 {
+        self.retained_event_bytes
+    }
+
     pub const fn event_delivery_resource_bytes(&self) -> u64 {
         self.event_delivery_resource_bytes
     }
@@ -603,6 +777,17 @@ impl CdpConnection {
 
     pub fn is_closed(&self) -> bool {
         self.shutdown.is_cancelled()
+    }
+
+    /// A bounded reason carried by the peer's WebSocket close frame, if any.
+    /// Local cancellation, EOF, and transport errors do not fabricate one.
+    #[cfg(feature = "cdp-ws-close-reason")]
+    pub fn peer_close_reason(&self) -> Option<String> {
+        self.peer_close_reason
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|reason| reason.to_string())
     }
 
     /// Terminally stop this client's I/O and reject pending/new commands.
@@ -642,7 +827,38 @@ impl CdpConnection {
     /// Connect with full configuration.
     pub async fn connect_with_config(ws_url: &str, config: ConnectionConfig) -> Result<Arc<Self>> {
         let event_delivery = CdpEventDelivery::legacy(config.event_channel_capacity);
-        Self::connect_with_parts(ws_url, config, event_delivery, None, None, None).await
+        Self::connect_with_parts(
+            ws_url,
+            config,
+            event_delivery,
+            None,
+            None,
+            None,
+            #[cfg(feature = "cdp-handshake-headers")]
+            None,
+        )
+        .await
+    }
+
+    /// Attach with caller-supplied WebSocket upgrade headers. This opt-in
+    /// transport option does not change the CDP command or event profile.
+    #[cfg(feature = "cdp-handshake-headers")]
+    pub async fn connect_with_config_and_headers(
+        ws_url: &str,
+        config: ConnectionConfig,
+        headers: &CdpHandshakeHeaders,
+    ) -> Result<Arc<Self>> {
+        let event_delivery = CdpEventDelivery::legacy(config.event_channel_capacity);
+        Self::connect_with_parts(
+            ws_url,
+            config,
+            event_delivery,
+            None,
+            None,
+            None,
+            Some(headers),
+        )
+        .await
     }
 
     /// Connect using an explicitly declared production resource profile.
@@ -650,6 +866,32 @@ impl CdpConnection {
         ws_url: &str,
         profile: CdpConnectionProductionProfile,
         resources: &ProductionResourceLedger,
+    ) -> std::result::Result<Arc<Self>, CdpProductionConnectError> {
+        Self::connect_production_inner(
+            ws_url,
+            profile,
+            resources,
+            #[cfg(feature = "cdp-handshake-headers")]
+            None,
+        )
+        .await
+    }
+
+    #[cfg(feature = "cdp-handshake-headers")]
+    pub async fn connect_with_production_resources_and_headers(
+        ws_url: &str,
+        profile: CdpConnectionProductionProfile,
+        resources: &ProductionResourceLedger,
+        headers: &CdpHandshakeHeaders,
+    ) -> std::result::Result<Arc<Self>, CdpProductionConnectError> {
+        Self::connect_production_inner(ws_url, profile, resources, Some(headers)).await
+    }
+
+    async fn connect_production_inner(
+        ws_url: &str,
+        profile: CdpConnectionProductionProfile,
+        resources: &ProductionResourceLedger,
+        #[cfg(feature = "cdp-handshake-headers")] headers: Option<&CdpHandshakeHeaders>,
     ) -> std::result::Result<Arc<Self>, CdpProductionConnectError> {
         profile.config.validate()?;
         let ledger = resources.claim(profile.requirements())?;
@@ -688,6 +930,8 @@ impl CdpConnection {
             Some(budget),
             Some(reader_resource),
             event_delivery_resource,
+            #[cfg(feature = "cdp-handshake-headers")]
+            headers,
         )
         .await?)
     }
@@ -699,6 +943,7 @@ impl CdpConnection {
         resources: Option<ConnectionResourceBudget>,
         reader_resource: Option<ResourceLease>,
         event_delivery_resource: Option<ResourceLease>,
+        #[cfg(feature = "cdp-handshake-headers")] headers: Option<&CdpHandshakeHeaders>,
     ) -> Result<Arc<Self>> {
         config.validate()?;
         #[cfg(feature = "large-commands")]
@@ -714,6 +959,18 @@ impl CdpConnection {
         debug!(url = ws_url, "connecting to CDP WebSocket");
 
         let websocket_config = cdp_websocket_config(config.max_websocket_bytes);
+        #[cfg(feature = "cdp-handshake-headers")]
+        let (ws_stream, _response) =
+            if let Some(headers) = headers.filter(|headers| !headers.is_empty()) {
+                let mut request = ws_url.into_client_request()?;
+                for (name, value) in headers.iter() {
+                    request.headers_mut().insert(name.clone(), value.clone());
+                }
+                connect_async_with_config(request, Some(websocket_config), false).await?
+            } else {
+                connect_async_with_config(ws_url, Some(websocket_config), false).await?
+            };
+        #[cfg(not(feature = "cdp-handshake-headers"))]
         let (ws_stream, _response) =
             connect_async_with_config(ws_url, Some(websocket_config), false).await?;
         let (ws_write, ws_read) = ws_stream.split();
@@ -742,14 +999,18 @@ impl CdpConnection {
         let shutdown_r = shutdown.clone();
         let shutdown_failsafe = shutdown.clone();
         let pending_failsafe = Arc::clone(&pending);
+        #[cfg(feature = "cdp-ws-close-reason")]
+        let peer_close_reason = Arc::new(Mutex::new(None));
+        #[cfg(feature = "cdp-ws-close-reason")]
+        let reader_close_reason = Arc::clone(&peer_close_reason);
         let max_response_bytes = config.max_response_bytes;
         let max_event_bytes = config.max_event_bytes;
         let max_protocol_error_bytes = config.max_protocol_error_bytes;
         let reader_resources = resources.clone();
         io_tasks.spawn(async move {
-            tokio::select! {
-                _ = shutdown_r.cancelled() => {}
-                _ = Self::reader_loop(
+            let close_reason = tokio::select! {
+                _ = shutdown_r.cancelled() => None,
+                reason = Self::reader_loop(
                     ws_read,
                     pending_clone,
                     reader_event_delivery.clone(),
@@ -757,8 +1018,16 @@ impl CdpConnection {
                     max_event_bytes,
                     max_protocol_error_bytes,
                     reader_resources,
-                ) => {}
+                ) => reason,
+            };
+            #[cfg(feature = "cdp-ws-close-reason")]
+            if let Some(reason) = close_reason {
+                *reader_close_reason
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(reason);
             }
+            #[cfg(not(feature = "cdp-ws-close-reason"))]
+            let _ = close_reason;
             // The selected future may be dropped on cancellation, so cleanup
             // must live outside reader_loop and run on every exit path.
             fail_all_pending(&pending_failsafe);
@@ -781,6 +1050,8 @@ impl CdpConnection {
             resources,
             _reader_resource: reader_resource,
             _event_delivery_resource: event_delivery_resource,
+            #[cfg(feature = "cdp-ws-close-reason")]
+            peer_close_reason,
             shutdown,
             io_tasks,
         });
@@ -809,8 +1080,31 @@ impl CdpConnection {
             method,
             params,
             session_id,
-            Some(self.default_timeout),
+            command_response_timeout(self.default_timeout),
         )
+    }
+
+    /// Wait only for bounded write-queue admission, then return the separately
+    /// retained response owner. This is for an opt-in pre-resume command fence:
+    /// acknowledgement may depend on the paused target's navigation or dialog.
+    pub async fn enqueue_command_with_session(
+        &self,
+        method: &str,
+        params: Value,
+        session_id: Option<&str>,
+    ) -> Result<EnqueuedCommand> {
+        let prepared = self.prepare_command(method, params, session_id)?;
+        let timeout = if self.default_timeout.is_zero() {
+            DEFAULT_TIMEOUT
+        } else {
+            self.default_timeout
+        };
+        tokio::time::timeout(
+            timeout,
+            self.enqueue_prepared(prepared, command_response_timeout(self.default_timeout)),
+        )
+        .await
+        .map_err(|_| CdpError::Timeout)?
     }
 
     /// Retain the response registration until protocol settlement, without the
@@ -843,6 +1137,17 @@ impl CdpConnection {
         prepared: Result<PreparedCommand>,
         response_timeout: Option<Duration>,
     ) -> Result<Value> {
+        self.enqueue_prepared(prepared?, response_timeout)
+            .await?
+            .response()
+            .await
+    }
+
+    async fn enqueue_prepared(
+        &self,
+        prepared: PreparedCommand,
+        response_timeout: Option<Duration>,
+    ) -> Result<EnqueuedCommand> {
         if self.is_closed() {
             return Err(CdpError::Closed);
         }
@@ -851,7 +1156,7 @@ impl CdpConnection {
             mut response,
             _registration,
             resource,
-        } = prepared?;
+        } = prepared;
 
         let enqueue = self.write_tx.send(OutboundMessage {
             message: Message::Text(raw.into()),
@@ -866,21 +1171,25 @@ impl CdpConnection {
             // admission. Dropping enqueue releases unsent wire ownership.
             tokio::select! {
                 biased;
-                result = &mut response => return result.map_err(|_| CdpError::ChannelDropped)?.result,
+                result = &mut response => return match result.map_err(|_| CdpError::ChannelDropped)?.result {
+                    Err(error) => Err(error),
+                    Ok(value) => Ok(EnqueuedCommand {
+                        response: EnqueuedResponse::Settled(value),
+                        _registration,
+                        response_timeout,
+                    }),
+                },
                 sent = enqueue => sent.map_err(|_| CdpError::Closed)?,
             }
         } else {
             enqueue.await.map_err(|_| CdpError::Closed)?;
         }
 
-        let Some(timeout) = response_timeout else {
-            return response.await.map_err(|_| CdpError::ChannelDropped)?.result;
-        };
-        match tokio::time::timeout(timeout, response).await {
-            Ok(Ok(retained)) => retained.result,
-            Ok(Err(_)) => Err(CdpError::ChannelDropped),
-            Err(_) => Err(CdpError::Timeout),
-        }
+        Ok(EnqueuedCommand {
+            response: EnqueuedResponse::Pending(response),
+            _registration,
+            response_timeout,
+        })
     }
 
     fn prepare_command(
@@ -1078,7 +1387,9 @@ impl CdpConnection {
         max_event_bytes: usize,
         max_protocol_error_bytes: usize,
         resources: Option<ConnectionResourceBudget>,
-    ) {
+    ) -> Option<Box<str>> {
+        #[cfg(feature = "cdp-ws-close-reason")]
+        let mut close_reason = None;
         while let Some(msg_result) = ws_read.next().await {
             let msg = match msg_result {
                 Ok(m) => m,
@@ -1090,9 +1401,30 @@ impl CdpConnection {
 
             let text = match msg {
                 Message::Text(t) => t,
-                Message::Close(_) => {
+                Message::Close(frame) => {
+                    #[cfg(feature = "cdp-ws-close-reason")]
+                    if let Some(frame) = frame
+                        && !frame.reason.is_empty()
+                        && frame.reason.len() <= 123
+                    {
+                        close_reason = Some(frame.reason.to_string().into_boxed_str());
+                    }
+                    #[cfg(not(feature = "cdp-ws-close-reason"))]
+                    let _ = frame;
                     debug!("WebSocket closed by remote");
                     break;
+                }
+                Message::Binary(_) => {
+                    #[cfg(feature = "cdp-ws-invalid-frame")]
+                    {
+                        // CDP is text/JSON. Do not log or retain the binary
+                        // payload: an invalid peer must settle pending calls
+                        // promptly rather than waiting for their deadline.
+                        warn!("unexpected binary CDP WebSocket frame");
+                        break;
+                    }
+                    #[cfg(not(feature = "cdp-ws-invalid-frame"))]
+                    continue;
                 }
                 _ => continue,
             };
@@ -1100,8 +1432,19 @@ impl CdpConnection {
             let value: Value = match serde_json::from_str(&text) {
                 Ok(v) => v,
                 Err(e) => {
-                    warn!("Failed to parse CDP message: {}", e);
-                    continue;
+                    #[cfg(feature = "cdp-ws-invalid-frame")]
+                    {
+                        let _ = e;
+                        // CDP frames must contain JSON. Keep the peer's text
+                        // out of diagnostics and settle any pending command.
+                        warn!("invalid JSON CDP WebSocket frame");
+                        break;
+                    }
+                    #[cfg(not(feature = "cdp-ws-invalid-frame"))]
+                    {
+                        warn!("Failed to parse CDP message: {}", e);
+                        continue;
+                    }
                 }
             };
 
@@ -1242,6 +1585,11 @@ impl CdpConnection {
         }
 
         debug!("CDP reader loop ended");
+        #[cfg(feature = "cdp-ws-close-reason")]
+        let result = close_reason;
+        #[cfg(not(feature = "cdp-ws-close-reason"))]
+        let result = None;
+        result
     }
 }
 
@@ -1341,11 +1689,14 @@ fn compact_string(value: &str) -> String {
 mod tests {
     mod dom_description;
     mod event_admission;
+    #[cfg(feature = "cdp-handshake-headers")]
+    mod handshake_headers;
     #[cfg(feature = "large-commands")]
     mod large_commands;
     mod retained_result;
     mod session_retirement;
     mod settlement;
+    mod ws_invalid_frame;
     use super::*;
 
     fn test_connection(config: ConnectionConfig) -> CdpConnection {
@@ -1366,6 +1717,8 @@ mod tests {
             resources: None,
             _reader_resource: None,
             _event_delivery_resource: None,
+            #[cfg(feature = "cdp-ws-close-reason")]
+            peer_close_reason: Arc::new(Mutex::new(None)),
             shutdown: tokio_util::sync::CancellationToken::new(),
             io_tasks: tokio_util::task::TaskTracker::new(),
         }
@@ -1462,6 +1815,8 @@ mod tests {
                 }),
                 _reader_resource: Some(reader_resource),
                 _event_delivery_resource: event_delivery_resource,
+                #[cfg(feature = "cdp-ws-close-reason")]
+                peer_close_reason: Arc::new(Mutex::new(None)),
                 shutdown: tokio_util::sync::CancellationToken::new(),
                 io_tasks: tokio_util::task::TaskTracker::new(),
             },
@@ -1544,6 +1899,21 @@ mod tests {
         assert_eq!(config.max_event_bytes, MAX_CDP_WEBSOCKET_BYTES);
         assert_eq!(config.max_websocket_bytes, MAX_CDP_WEBSOCKET_BYTES);
         assert_eq!(config.max_protocol_error_bytes, 64 * 1024);
+    }
+
+    #[test]
+    fn zero_command_timeout_disables_the_response_deadline() {
+        // Arrange
+        let unlimited = Duration::ZERO;
+        let bounded = Duration::from_secs(30);
+
+        // Act
+        let unlimited_response = command_response_timeout(unlimited);
+        let bounded_response = command_response_timeout(bounded);
+
+        // Assert
+        assert_eq!(unlimited_response, None);
+        assert_eq!(bounded_response, Some(bounded));
     }
 
     #[test]
@@ -2040,6 +2410,65 @@ mod tests {
             28
         );
         assert_eq!(profile.requirements().leases, 7);
+        assert_eq!(profile.retained_event_bytes(), 21);
+    }
+
+    #[test]
+    fn production_profile_bounds_many_small_events_without_multiplying_maximum_size() {
+        // Arrange
+        let profile = CdpConnectionProductionProfile::new(
+            ResourceScope::Connection,
+            ConnectionConfig {
+                event_channel_capacity: 8,
+                max_event_bytes: 7,
+                ..ConnectionConfig::default()
+            },
+        );
+
+        // Act
+        let bounded = profile
+            .with_retained_event_byte_capacity(21)
+            .expect("three maximum-size retained events should validate");
+
+        // Assert
+        assert_eq!(bounded.retained_event_bytes(), 21);
+        assert_eq!(
+            bounded
+                .requirements()
+                .class(ResourceClass::EventItem)
+                .global,
+            9
+        );
+        assert_eq!(
+            bounded
+                .requirements()
+                .class(ResourceClass::EventBytes)
+                .global,
+            28
+        );
+    }
+
+    #[test]
+    fn production_profile_rejects_event_byte_capacity_smaller_than_one_event() {
+        // Arrange
+        let profile = CdpConnectionProductionProfile::new(
+            ResourceScope::Connection,
+            ConnectionConfig {
+                max_event_bytes: 7,
+                ..ConnectionConfig::default()
+            },
+        );
+
+        // Act
+        let error = profile
+            .with_retained_event_byte_capacity(6)
+            .expect_err("one maximum-size event must fit in retained storage");
+
+        // Assert
+        assert_eq!(
+            error.to_string(),
+            "invalid CDP connection configuration: retained event byte capacity is smaller than one maximum-size event"
+        );
     }
 
     #[test]

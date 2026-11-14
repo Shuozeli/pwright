@@ -20,7 +20,7 @@ function debugCapture(env) {
 // Executes the production facade and its ordinary adapters. Only native module
 // loading is replaced: this proves forwarding/cache behavior, not Rust brands,
 // native timeout policy, Handle inheritance, session authority or browser work.
-function fixture({ selected = true, env = {}, initializeError, cleanupError } = {}) {
+function fixture({ selected = true, env = {}, initializeError, cleanupError, signalWait } = {}) {
   const events = [];
   const sessions = [];
   const capturedDebug = debugCapture(env);
@@ -53,7 +53,7 @@ function fixture({ selected = true, env = {}, initializeError, cleanupError } = 
         sessionSignal() {
           events.push({ action: 'signal' });
           // Unresolved observation only: no timer, worker, native task or I/O.
-          return { wait: () => new Promise(() => {}) };
+          return { wait: signalWait ?? (() => new Promise(() => {})) };
         },
         async close() {
           events.push({ action: 'close' });
@@ -66,6 +66,11 @@ function fixture({ selected = true, env = {}, initializeError, cleanupError } = 
           assert.equal(this, session);
           events.push({ action: 'legacyEvaluate', args });
           return { isElement: () => false };
+        },
+        async frameEvaluate(...args) {
+          assert.equal(this, session);
+          events.push({ action: 'evaluate', args });
+          return 'evaluated';
         },
       };
       if (selected) Object.assign(session, {
@@ -290,6 +295,26 @@ for (const selected of [false, true]) test(`expression conversion remains once a
   await browser.close();
 });
 
+test('Page and Frame evaluation stringify non-function runtime values like Locator evaluation', async () => {
+  // Arrange
+  const f = fixture();
+  const browser = await f.api.chromium.connectOverCDP('http://example.invalid:9222');
+  const page = browser.contexts()[0].pages()[0];
+  const child = page.frames()[1];
+  f.events.length = 0;
+  // Act
+  const values = await Promise.all([page.evaluate(42), child.evaluate(false)]);
+  const handle = await page.evaluateHandle(null);
+  // Assert
+  assert.deepEqual(values, ['evaluated', 'evaluated']);
+  assert.deepEqual(f.events.filter(value => value.action === 'evaluate').map(value => value.args.slice(1, 3)), [
+    ['42', false], ['false', false],
+  ]);
+  assert.deepEqual(f.events.find(value => value.action === 'scopedEvaluate').args.slice(1, 3), ['null', false]);
+  await handle.dispose();
+  await browser.close();
+});
+
 test('lifecycle preparation does not query unpublished Page membership and first post-commit Handle creation succeeds', async () => {
   // Arrange
   const f = fixture();
@@ -410,4 +435,66 @@ test('initialization and unpublished-session cleanup failures retain both errors
   });
   assert.equal(f.events.filter(value => value.action === 'close').length, 1);
   assert.equal(f.events.some(value => value.action === 'signal'), false);
+});
+
+test('session watch rejection closes the session and publishes one disconnect without an unhandled rejection', async () => {
+  // Arrange
+  const failure = new Error('session signal failed');
+  let rejectWatch;
+  const f = fixture({ signalWait: () => new Promise((_, reject) => { rejectWatch = reject; }) });
+  const browser = await f.api.chromium.connectOverCDP('http://example.invalid:9222');
+  const unhandled = [];
+  const onUnhandled = error => unhandled.push(error);
+  let disconnects = 0;
+  browser.on('disconnected', () => { disconnects++; });
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    // Act
+    rejectWatch(failure);
+    await new Promise(resolve => setImmediate(resolve));
+    // Assert
+    assert.equal(browser.isConnected(), false);
+    assert.equal(browser._watchFailure, failure);
+    assert.equal(f.events.filter(value => value.action === 'close').length, 1);
+    assert.equal(disconnects, 1);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
+
+test('session watch and cleanup failures preserve both causes and still disconnect locally', async () => {
+  // Arrange
+  const failure = new Error('session signal failed');
+  const cleanup = new Error('session cleanup failed');
+  let rejectWatch;
+  const f = fixture({
+    cleanupError: cleanup,
+    signalWait: () => new Promise((_, reject) => { rejectWatch = reject; }),
+  });
+  const browser = await f.api.chromium.connectOverCDP('http://example.invalid:9222');
+  let disconnects = 0;
+  browser.on('disconnected', () => { disconnects++; });
+  // Act
+  rejectWatch(failure);
+  await new Promise(resolve => setImmediate(resolve));
+  // Assert
+  assert.equal(browser.isConnected(), false);
+  assert.ok(browser._watchFailure instanceof AggregateError);
+  assert.equal(browser._watchFailure.cause, failure);
+  assert.deepEqual(browser._watchFailure.errors, [failure, cleanup]);
+  assert.equal(disconnects, 1);
+});
+
+test('synchronous session watch failure is contained and closes the session', async () => {
+  // Arrange
+  const failure = new Error('synchronous session signal failure');
+  const f = fixture({ signalWait: () => { throw failure; } });
+  // Act
+  const browser = await f.api.chromium.connectOverCDP('http://example.invalid:9222');
+  await new Promise(resolve => setImmediate(resolve));
+  // Assert
+  assert.equal(browser.isConnected(), false);
+  assert.equal(browser._watchFailure, failure);
+  assert.equal(f.events.filter(value => value.action === 'close').length, 1);
 });

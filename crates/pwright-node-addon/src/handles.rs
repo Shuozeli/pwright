@@ -1,12 +1,22 @@
 //! Language-owned wrappers and conversion only; all Handle commands use Rust.
 
+#[cfg(all(feature = "element-handle-dom", feature = "locator-bounding-box"))]
+use crate::locator::LocatorBoundingBoxOutput;
 use crate::{
     NativeSession, binding_error, boundary,
     deferred_conversion::{EvaluationCall, EvaluationResult, EvaluationTarget},
     evaluation_value::{self, EvaluationOutput},
 };
+#[cfg(feature = "element-handle-dom")]
+use napi::bindgen_prelude::Either;
+#[cfg(all(feature = "element-handle-dom", feature = "touchscreen-input"))]
+use napi::bindgen_prelude::Object;
 use napi::{Env, JsString, Unknown, bindgen_prelude::PromiseRaw};
 use napi_derive::napi;
+#[cfg(feature = "element-handle-dom")]
+use pwright_node_host::element_handle_dom::{ElementHandleDomRead, ElementHandleDomValue};
+#[cfg(feature = "element-handle-wait-for-selector")]
+use pwright_node_host::element_handle_wait_for_selector::ElementHandleSelectorWaitState;
 use pwright_node_host::{
     HostError,
     evaluation::FFI_ALLOWANCE,
@@ -15,17 +25,34 @@ use pwright_node_host::{
 };
 use std::sync::{Arc, Mutex};
 
+#[cfg(any(
+    feature = "element-handle-dom",
+    feature = "element-handle-select-option-value",
+    feature = "element-handle-wait-for-selector"
+))]
+const SELECTOR_BYTES: usize = 64 * 1024;
+
 #[cfg(feature = "retained-file-input")]
 pub(crate) mod file_input;
 mod properties;
 mod publication;
 mod wrapper;
+#[cfg(feature = "element-handle-dom")]
+pub(crate) use properties::HandlesOutput;
 pub(crate) use publication::to_napi_value;
 pub(crate) use wrapper::{ArgumentReference, read_argument};
 
 enum State {
     Live(Arc<PendingHandle>),
     Disposed(HandleRelease),
+}
+
+#[cfg(feature = "wait-for-function")]
+#[napi(object)]
+pub struct WaitForFunctionCallOptions {
+    pub is_function: bool,
+    pub polling_ms: u32,
+    pub timeout_ms: Option<u32>,
 }
 
 /// Immutable producer metadata, carried through native-to-language publication.
@@ -161,6 +188,23 @@ impl NativeSession {
         let host = self.host.clone();
         boundary::spawn_published(env, execution, self.publications.clone(), async move {
             host.handle_owner_frame(&handle).await
+        })
+    }
+
+    #[napi]
+    pub fn handle_content_frame<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, boundary::SMALL_ALLOWANCE)
+            .map_err(binding_error)?;
+        let handle = handle.read_for_owner_frame()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.handle_content_frame(&handle).await
         })
     }
 
@@ -333,6 +377,481 @@ impl NativeSession {
             host.handle_get_properties(&handle)
                 .await
                 .map(|values| properties::PropertiesOutput(values, policy))
+        })
+    }
+}
+
+#[cfg(feature = "wait-for-function")]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn frame_wait_for_function<'env>(
+        &self,
+        env: &'env Env,
+        frame_id: JsString<'env>,
+        page_id: JsString<'env>,
+        source: JsString<'env>,
+        argument: Unknown<'env>,
+        options: WaitForFunctionCallOptions,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let frame = boundary::bounded_string(frame_id, 20, "frame ID")?;
+        let page = boundary::bounded_string(page_id, 20, "page ID")?;
+        let source = evaluation_value::source(env, source, options.is_function)?;
+        let timeout_ms = options
+            .timeout_ms
+            .map_or_else(|| self.host.page_default_timeout(&page, false), Ok)
+            .map_err(binding_error)?;
+        let input = self.conversions.prepare(env, argument)?;
+        let polling = if options.polling_ms == 0 {
+            pwright_node_host::wait_for_function::Polling::AnimationFrame
+        } else {
+            pwright_node_host::wait_for_function::Polling::Interval(options.polling_ms)
+        };
+        self.conversions.schedule(
+            env,
+            EvaluationCall {
+                publications: self.publications.clone(),
+                execution,
+                host: self.host.clone(),
+                target: EvaluationTarget::FrameWaitForFunction(frame, polling, timeout_ms),
+                source,
+                is_function: options.is_function,
+                input,
+            },
+        )
+    }
+}
+
+#[cfg(feature = "frame-element")]
+#[napi]
+impl NativeSession {
+    /// Return the exact DOM owner in the parent Frame's main world. The host
+    /// retains native acquisition and publication through cancellation.
+    #[napi]
+    pub fn frame_element<'env>(
+        &self,
+        env: &'env Env,
+        frame_id: JsString<'env>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let frame = boundary::bounded_string(frame_id, 20, "frame ID")?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.frame_prepare_element(&frame)
+                .await
+                .map(|value| EvaluationResult::Handle(value, HandlePolicy::default()))
+        })
+    }
+}
+
+#[cfg(feature = "page-bindings")]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn take_page_binding_handle<'env>(
+        &self,
+        env: &'env Env,
+        call_id: JsString<'env>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let call_id = boundary::bounded_string(call_id, 20, "binding call ID")?;
+        let call_id = pwright_node_host::HostSession::parse_page_binding_call_id(&call_id)
+            .map_err(binding_error)?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.take_page_binding_handle(call_id)
+                .await
+                .map(|value| EvaluationResult::Handle(value, HandlePolicy::default()))
+        })
+    }
+}
+
+#[cfg(feature = "element-handle-scroll-into-view")]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn element_handle_scroll_into_view_if_needed<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_scroll_into_view_if_needed(&handle, timeout_ms)
+                .await
+        })
+    }
+}
+
+#[cfg(feature = "element-handle-wait-for-selector")]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn element_handle_wait_for_selector<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        selector: JsString<'env>,
+        state: JsString<'env>,
+        strict: bool,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let wait_permit = self.wait_admissions.admit().map_err(binding_error)?;
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let draft = self
+            .queries
+            .prepare_leaf(selector.utf8_len()?)
+            .map_err(binding_error)?;
+        let selector = boundary::bounded_string(selector, SELECTOR_BYTES, "selector")?;
+        let query = draft.element_handle(selector).map_err(binding_error)?;
+        let state = boundary::bounded_string(state, 16, "ElementHandle wait state")?;
+        let state = state
+            .parse::<ElementHandleSelectorWaitState>()
+            .map_err(binding_error)?;
+        let policy = handle.policy.clone();
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published_wait(
+            env,
+            execution,
+            self.publications.clone(),
+            wait_permit,
+            async move {
+                host.element_handle_wait_for_selector(&handle, query, state, strict, timeout_ms)
+                    .await
+                    .map(|value| match value {
+                        Some(value) => EvaluationResult::Handle(value, policy),
+                        None => EvaluationResult::Value(EvaluationOutput(
+                            pwright_node_host::evaluation::EvaluationValue::Null,
+                        )),
+                    })
+            },
+        )
+    }
+}
+
+#[cfg(feature = "element-handle-select-option-value")]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn element_handle_select_option_value<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        value: JsString<'env>,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let wait_permit = self.wait_admissions.admit().map_err(binding_error)?;
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let value = boundary::bounded_string(value, SELECTOR_BYTES, "selectOption value")?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published_wait(
+            env,
+            execution,
+            self.publications.clone(),
+            wait_permit,
+            async move {
+                host.element_handle_select_option_value(&handle, value, timeout_ms)
+                    .await
+            },
+        )
+    }
+}
+
+#[cfg(feature = "element-handle-dom")]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn element_handle_preview<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_preview(&handle).await
+        })
+    }
+
+    #[napi]
+    pub fn element_handle_inner_text<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_inner_text(&handle).await
+        })
+    }
+
+    #[napi]
+    pub fn element_handle_text_content<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_text_content(&handle).await
+        })
+    }
+
+    #[napi]
+    pub fn element_handle_focus<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_focus(&handle).await
+        })
+    }
+
+    #[napi]
+    pub fn element_handle_dom_read<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        operation: JsString<'env>,
+        attribute: Option<JsString<'env>>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let operation = boundary::bounded_string(operation, 32, "ElementHandle DOM operation")?;
+        let operation = operation
+            .parse::<ElementHandleDomRead>()
+            .map_err(binding_error)?;
+        let attribute = attribute
+            .map(|name| boundary::bounded_string(name, SELECTOR_BYTES, "attribute name"))
+            .transpose()?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            let value = host
+                .element_handle_dom_read(&handle, operation, attribute)
+                .await?;
+            Ok(match value {
+                ElementHandleDomValue::Bool(value) => Either::A(value),
+                ElementHandleDomValue::Text(value) => Either::B(value),
+            })
+        })
+    }
+
+    #[napi]
+    pub fn element_handle_query_selector<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        selector: JsString<'env>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let draft = self
+            .queries
+            .prepare_leaf(selector.utf8_len()?)
+            .map_err(binding_error)?;
+        let selector = boundary::bounded_string(selector, SELECTOR_BYTES, "selector")?;
+        let query = draft.element_handle(selector).map_err(binding_error)?;
+        let policy = handle.policy.clone();
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_query_selector(&handle, query)
+                .await
+                .map(|value| value.map(|value| EvaluationResult::Handle(value, policy)))
+        })
+    }
+
+    #[napi]
+    pub fn element_handle_query_selector_all<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        selector: JsString<'env>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let draft = self
+            .queries
+            .prepare_leaf(selector.utf8_len()?)
+            .map_err(binding_error)?;
+        let selector = boundary::bounded_string(selector, SELECTOR_BYTES, "selector")?;
+        let query = draft.element_handle(selector).map_err(binding_error)?;
+        let policy = handle.policy.clone();
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_query_selector_all(&handle, query)
+                .await
+                .map(|values| properties::HandlesOutput(values, policy))
+        })
+    }
+
+    #[napi]
+    pub fn element_handle_eval_on_selector_all<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        selector: JsString<'env>,
+        source: JsString<'env>,
+        is_function: bool,
+        argument: Unknown<'env>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let draft = self
+            .queries
+            .prepare_leaf(selector.utf8_len()?)
+            .map_err(binding_error)?;
+        let selector = boundary::bounded_string(selector, SELECTOR_BYTES, "selector")?;
+        let query = draft.element_handle(selector).map_err(binding_error)?;
+        let source = evaluation_value::source(env, source, is_function)?;
+        let input = self.conversions.prepare(env, argument)?;
+        let handle = handle.read_for_evaluation();
+        self.conversions.schedule(
+            env,
+            EvaluationCall {
+                publications: self.publications.clone(),
+                execution,
+                host: self.host.clone(),
+                target: EvaluationTarget::HandleElementQueryAll(handle, query),
+                source,
+                is_function,
+                input,
+            },
+        )
+    }
+}
+
+#[cfg(all(feature = "element-handle-dom", feature = "touchscreen-input"))]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn element_handle_tap<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        timeout_ms: u32,
+        options: Object<'env>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let options = crate::locator::actions::tap_options(&options)?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_tap(&handle, options, timeout_ms).await
+        })
+    }
+}
+
+#[cfg(all(feature = "element-handle-dom", feature = "locator-bounding-box"))]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn element_handle_bounding_box<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, boundary::SMALL_ALLOWANCE)
+            .map_err(binding_error)?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_bounding_box(&handle)
+                .await
+                .map(|value| value.map(LocatorBoundingBoxOutput::from))
+        })
+    }
+}
+
+#[cfg(all(feature = "element-handle-dom", feature = "locator-dom-actions"))]
+#[napi]
+impl NativeSession {
+    #[napi]
+    pub fn element_handle_dispatch_event<'env>(
+        &self,
+        env: &'env Env,
+        handle: &NativeHandle,
+        event_type: JsString<'env>,
+        event_init: Unknown<'env>,
+    ) -> napi::Result<PromiseRaw<'env, Unknown<'env>>> {
+        let execution = self
+            .ffi
+            .admit(FfiLane::Command, FFI_ALLOWANCE)
+            .map_err(binding_error)?;
+        let event_type = boundary::bounded_string(
+            event_type,
+            pwright_node_host::locator::MAX_EVENT_TYPE_BYTES,
+            "event type",
+        )?;
+        let event_init = self
+            .conversions
+            .prepare(env, event_init)?
+            .materialize_owned(env)?;
+        let handle = handle.read()?;
+        let host = self.host.clone();
+        boundary::spawn_published(env, execution, self.publications.clone(), async move {
+            host.element_handle_dispatch_event_owned(&handle, event_type, event_init)
+                .await
         })
     }
 }

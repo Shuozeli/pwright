@@ -64,6 +64,12 @@ pub trait CdpClient: Send + Sync {
     async fn page_stop_loading(&self) -> Result<()>;
     async fn page_enable(&self) -> Result<()>;
     async fn page_set_lifecycle_events_enabled(&self, enabled: bool) -> Result<()>;
+    async fn page_set_intercept_file_chooser_dialog(&self, enabled: bool) -> Result<()> {
+        let _ = enabled;
+        Err(crate::connection::CdpError::Other(
+            "Page.setInterceptFileChooserDialog is not implemented by this CDP client".into(),
+        ))
+    }
     async fn page_capture_screenshot(
         &self,
         params: page::CaptureScreenshotParams,
@@ -98,6 +104,16 @@ pub trait CdpClient: Send + Sync {
     async fn page_navigate_to_history_entry(&self, entry_id: i64) -> Result<()>;
     async fn page_bring_to_front(&self) -> Result<()>;
     async fn page_set_document_content(&self, frame_id: &str, html: &str) -> Result<()>;
+    async fn page_handle_java_script_dialog(
+        &self,
+        accept: bool,
+        prompt_text: Option<&str>,
+    ) -> Result<()> {
+        let _ = (accept, prompt_text);
+        Err(crate::connection::CdpError::Other(
+            "Page.handleJavaScriptDialog is not implemented by this CDP client".into(),
+        ))
+    }
     async fn page_close(&self) -> Result<()>;
     async fn page_get_main_frame_id(&self) -> Result<String> {
         Err(crate::connection::CdpError::Other(
@@ -187,6 +203,16 @@ pub trait CdpClient: Send + Sync {
     async fn dom_get_outer_html(&self, node_id: i64) -> Result<String>;
     async fn dom_describe_node(&self, backend_node_id: i64) -> Result<Value>;
     async fn dom_set_file_input_files(&self, node_id: i64, files: &[String]) -> Result<()>;
+    async fn dom_set_file_input_files_by_object_id(
+        &self,
+        object_id: &str,
+        files: &[String],
+    ) -> Result<()> {
+        let _ = (object_id, files);
+        Err(crate::connection::CdpError::Other(
+            "DOM.setFileInputFiles by object ID is not implemented by this CDP client".into(),
+        ))
+    }
     async fn dom_request_node(&self, object_id: &str) -> Result<i64>;
 
     // ── Input domain ──
@@ -254,9 +280,28 @@ pub trait CdpClient: Send + Sync {
         x: f64,
         y: f64,
     ) -> Result<()>;
+    async fn input_dispatch_touch_event_with_modifiers(
+        &self,
+        event_type: TouchEventType,
+        x: f64,
+        y: f64,
+        modifiers: Option<i32>,
+    ) -> Result<()> {
+        let _ = modifiers;
+        self.input_dispatch_touch_event(event_type, x, y).await
+    }
 
     // ── Runtime domain ──
     async fn runtime_evaluate(&self, expression: &str) -> Result<Value>;
+    /// Install one fixed internal binding per target session. The selected
+    /// binding survives execution-context replacement and is retired with the
+    /// session; callers must verify the emitting execution context themselves.
+    async fn runtime_ensure_binding(&self, name: &'static str) -> Result<()> {
+        let _ = name;
+        Err(crate::connection::CdpError::Other(
+            "Runtime.addBinding is not implemented by this CDP client".into(),
+        ))
+    }
     /// Explicit user-script evaluation policy; ordinary internal reads keep
     /// their existing activation semantics.
     async fn runtime_evaluate_with_user_gesture(
@@ -371,6 +416,29 @@ pub trait CdpClient: Send + Sync {
         );
         Err(crate::connection::CdpError::Other(
             "group-owned retained Runtime.callFunctionOn settlement is not implemented by this CDP client"
+                .to_owned(),
+        ))
+    }
+    /// Await a user function and retain its resolved object result in a
+    /// caller-owned group. This is selected separately from synchronous handle
+    /// acquisition so large value readers cannot alter ordinary Handle rules.
+    async fn runtime_call_function_as_object_awaited_in_group_to_settlement(
+        &self,
+        unique_context_id: &str,
+        function_declaration: &str,
+        arguments: Vec<Value>,
+        object_group: &str,
+        user_gesture: bool,
+    ) -> Result<Value> {
+        let _ = (
+            unique_context_id,
+            function_declaration,
+            arguments,
+            object_group,
+            user_gesture,
+        );
+        Err(crate::connection::CdpError::Other(
+            "awaited group-owned Runtime.callFunctionOn settlement is not implemented by this CDP client"
                 .to_owned(),
         ))
     }
@@ -568,6 +636,26 @@ pub trait CdpClient: Send + Sync {
         wait_for_debugger_on_start: bool,
         flatten: bool,
     ) -> Result<()>;
+    /// Auto-attach only to the explicit target classes. An implementation must
+    /// add a final catch-all exclusion instead of falling back to CDP's broad
+    /// default filter.
+    async fn target_set_auto_attach_types(
+        &self,
+        auto_attach: bool,
+        wait_for_debugger_on_start: bool,
+        flatten: bool,
+        included_target_types: &[&str],
+    ) -> Result<()> {
+        let _ = (
+            auto_attach,
+            wait_for_debugger_on_start,
+            flatten,
+            included_target_types,
+        );
+        Err(crate::connection::CdpError::Other(
+            "filtered Target.setAutoAttach is not implemented by this CDP client".into(),
+        ))
+    }
 
     // ── Events ──
     fn event_session_id(&self) -> Option<&str>;
@@ -631,6 +719,7 @@ cdp_delegate_impl! {
     async fn page_stop_loading(&self) -> Result<()>;
     async fn page_enable(&self) -> Result<()>;
     async fn page_set_lifecycle_events_enabled(&self, enabled: bool) -> Result<()>;
+    async fn page_set_intercept_file_chooser_dialog(&self, enabled: bool) -> Result<()>;
     async fn page_capture_screenshot(&self, params: page::CaptureScreenshotParams) -> Result<String>;
     async fn page_get_layout_metrics(&self) -> Result<page::GetLayoutMetricsReturns>;
     async fn page_print_to_pdf(&self, params: Value) -> Result<String>;
@@ -642,6 +731,7 @@ cdp_delegate_impl! {
     async fn page_navigate_to_history_entry(&self, entry_id: i64) -> Result<()>;
     async fn page_bring_to_front(&self) -> Result<()>;
     async fn page_set_document_content(&self, frame_id: &str, html: &str) -> Result<()>;
+    async fn page_handle_java_script_dialog(&self, accept: bool, prompt_text: Option<&str>) -> Result<()>;
     async fn page_close(&self) -> Result<()>;
     async fn page_get_main_frame_id(&self) -> Result<String>;
     async fn page_get_frame_tree(&self) -> Result<page::FrameTree>;
@@ -664,6 +754,7 @@ cdp_delegate_impl! {
     async fn dom_get_outer_html(&self, node_id: i64) -> Result<String>;
     async fn dom_describe_node(&self, backend_node_id: i64) -> Result<Value>;
     async fn dom_set_file_input_files(&self, node_id: i64, files: &[String]) -> Result<()>;
+    async fn dom_set_file_input_files_by_object_id(&self, object_id: &str, files: &[String]) -> Result<()>;
     async fn dom_request_node(&self, object_id: &str) -> Result<i64>;
     async fn input_dispatch_mouse_event(&self, event_type: MouseEventType, x: f64, y: f64, button: Option<MouseButton>, click_count: Option<i32>, buttons: Option<i32>, modifiers: Option<i32>) -> Result<()>;
     async fn input_dispatch_key_event(&self, event_type: KeyEventType, key: &str, code: &str, windows_virtual_key_code: Option<i64>) -> Result<()>;
@@ -672,7 +763,9 @@ cdp_delegate_impl! {
     async fn input_dispatch_text_key_event(&self, key: &str, code: &str, windows_virtual_key_code: Option<i64>, text: &str) -> Result<()>;
     async fn input_insert_text(&self, text: &str) -> Result<()>;
     async fn input_dispatch_touch_event(&self, event_type: TouchEventType, x: f64, y: f64) -> Result<()>;
+    async fn input_dispatch_touch_event_with_modifiers(&self, event_type: TouchEventType, x: f64, y: f64, modifiers: Option<i32>) -> Result<()>;
     async fn runtime_evaluate(&self, expression: &str) -> Result<Value>;
+    async fn runtime_ensure_binding(&self, name: &'static str) -> Result<()>;
     async fn runtime_evaluate_with_user_gesture(&self, expression: &str, unique_context_id: Option<&str>) -> Result<Value>;
     async fn runtime_evaluate_in_unique_context(
         &self,
@@ -686,6 +779,7 @@ cdp_delegate_impl! {
     async fn runtime_call_function_as_object_in_unique_context(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>) -> Result<Value>;
     async fn runtime_call_function_as_object_in_unique_context_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>) -> Result<Value>;
     async fn runtime_call_function_as_object_in_group_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str, user_gesture: bool) -> Result<Value>;
+    async fn runtime_call_function_as_object_awaited_in_group_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str, user_gesture: bool) -> Result<Value>;
     async fn runtime_call_function_raw_in_group_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str, user_gesture: bool) -> Result<Value>;
     async fn runtime_call_function_by_value_in_unique_context(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>) -> Result<Value>;
     async fn runtime_call_function_by_value_in_group_to_settlement(&self, unique_context_id: &str, function_declaration: &str, arguments: Vec<Value>, object_group: &str) -> Result<Value>;
@@ -726,4 +820,5 @@ cdp_delegate_impl! {
     async fn target_detach(&self, session_id: &str) -> Result<()>;
     async fn target_detach_in_parent(&self, parent_session_id: Option<&str>, session_id: &str) -> Result<()>;
     async fn target_set_auto_attach(&self, auto_attach: bool, wait_for_debugger_on_start: bool, flatten: bool) -> Result<()>;
+    async fn target_set_auto_attach_types(&self, auto_attach: bool, wait_for_debugger_on_start: bool, flatten: bool, included_target_types: &[&str]) -> Result<()>;
 }

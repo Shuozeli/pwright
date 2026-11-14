@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_fetch_browser_context.py": "1649d6dd1e419386399ef2b1b451ff28f227a826fba2f7020da2fb34643e7570",
+    "tests/sync/test_fetch_browser_context.py": "b0acbbd8954c1e9f6cfff56f84df684c878debbaba461271d108bdc814dfe425"
+  },
+  "cases": [
+    {"id": "tests/async/test_fetch_browser_context.py::test_get_should_work", "capabilities": ["browser-context.request", "api-request.get"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_fetch_should_work", "capabilities": ["browser-context.request", "api-request.fetch"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_throw_on_network_error", "capabilities": ["browser-context.request", "api-request.network-error"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_add_session_cookies_to_request", "capabilities": ["browser-context.request", "browser-context.cookie-sharing"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_query_params", "capabilities": ["browser-context.request", "api-request.params"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_params_passed_as_object", "capabilities": ["browser-context.request", "api-request.params"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_params_passed_as_strings", "capabilities": ["browser-context.request", "api-request.params"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_fail_on_status_code", "capabilities": ["browser-context.request", "api-request.fail-on-status-code"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_ignore_https_errors_option", "capabilities": ["browser-context.request", "api-request.ignore-https-errors"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_not_add_context_cookie_if_cookie_header_passed_as_parameter", "capabilities": ["browser-context.request", "browser-context.cookie-sharing", "api-request.explicit-cookie-precedence"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_http_credentials_send_immediately_for_browser_context", "capabilities": ["browser-context.request", "api-request.http-credentials-send-always"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_support_http_credentials_send_immediately_for_browser_new_page", "capabilities": ["page.request", "api-request.http-credentials-send-always"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_post_data", "capabilities": ["browser-context.request", "api-request.data"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_application_x_www_form_urlencoded", "capabilities": ["browser-context.request", "api-request.form"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_support_multipart_form_data", "capabilities": ["browser-context.request", "api-request.multipart"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_add_default_headers", "capabilities": ["browser-context.request", "api-request.browser-user-agent"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_work_after_context_dispose", "capabilities": ["browser-context.request", "browser-context.close-reason"]},
+    {"id": "tests/async/test_fetch_browser_context.py::test_should_retry_ECONNRESET", "capabilities": ["browser-context.request", "api-request.retry-connection-reset"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_get_should_work", "capabilities": ["browser-context.request", "api-request.get"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_fetch_should_work", "capabilities": ["browser-context.request", "api-request.fetch"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_throw_on_network_error", "capabilities": ["browser-context.request", "api-request.network-error"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_add_session_cookies_to_request", "capabilities": ["browser-context.request", "browser-context.cookie-sharing"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_support_query_params", "capabilities": ["browser-context.request", "api-request.params"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_support_params_passed_as_object", "capabilities": ["browser-context.request", "api-request.params"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_support_params_passed_as_strings", "capabilities": ["browser-context.request", "api-request.params"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_support_fail_on_status_code", "capabilities": ["browser-context.request", "api-request.fail-on-status-code"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_support_ignore_https_errors_option", "capabilities": ["browser-context.request", "api-request.ignore-https-errors"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_not_add_context_cookie_if_cookie_header_passed_as_parameter", "capabilities": ["browser-context.request", "browser-context.cookie-sharing", "api-request.explicit-cookie-precedence"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_support_post_data", "capabilities": ["browser-context.request", "api-request.data"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_support_application_x_www_form_urlencoded", "capabilities": ["browser-context.request", "api-request.form"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_support_multipart_form_data", "capabilities": ["browser-context.request", "api-request.multipart"]},
+    {"id": "tests/sync/test_fetch_browser_context.py::test_should_add_default_headers", "capabilities": ["browser-context.request", "api-request.browser-user-agent"]}
+  ]
+}

@@ -240,6 +240,7 @@ impl FrameTrees {
     pub(super) fn reconcile_collections(
         &self,
         view: ChromiumFrameOwnershipView<'_>,
+        effects: &[CdpTopologyEffect],
     ) -> Result<(), HostError> {
         let projection = {
             let state = self.state.lock().map_err(HostError::backend)?;
@@ -249,7 +250,11 @@ impl FrameTrees {
                 .map(|value| (value.contexts.clone(), value.native.clone()))
         };
         let Some((metadata, previous)) = projection else {
-            return self.reconcile(view.frames(), |page| view.contains_page(page));
+            return self.reconcile_with_effects(
+                view.frames(),
+                |page| view.contains_page(page),
+                effects,
+            );
         };
         let mut same = previous.is_some();
         let mut additions = false;
@@ -289,7 +294,11 @@ impl FrameTrees {
             value.contexts().len() == context_count && value.pages().len() == page_count
         });
         if same {
-            return self.reconcile(view.frames(), |page| view.contains_page(page));
+            return self.reconcile_with_effects(
+                view.frames(),
+                |page| view.contains_page(page),
+                effects,
+            );
         }
         let reserved = {
             let mut state = self.state.lock().map_err(HostError::backend)?;
@@ -314,7 +323,7 @@ impl FrameTrees {
             }
         };
         let mut batch = self.urls.publications().begin_collection(reserved)?;
-        self.reconcile(view.frames(), |page| view.contains_page(page))?;
+        self.reconcile_with_effects(view.frames(), |page| view.contains_page(page), effects)?;
         for context in view.collection_contexts() {
             if let Some(snapshot) = metadata.visible(context.id, context.owned)? {
                 batch.reservation().add_context(context.id, snapshot)?;
@@ -327,14 +336,31 @@ impl FrameTrees {
                     .add_page(page.id, page.context, self.get(page.id)?)?;
             }
         }
-        let (ready_selected, previous_view) = {
+        let (ready_selected, previous_view, internal_pages) = {
             let state = self.state.lock().map_err(HostError::backend)?;
             let collection = state.collections.as_ref().expect("selected collection");
-            (collection.ready.is_some(), collection.planned.clone())
+            (
+                collection.ready.is_some(),
+                collection.planned.clone(),
+                state
+                    .pages
+                    .iter()
+                    .filter(|entry| entry.internal)
+                    .map(|entry| entry.id)
+                    .collect::<Vec<_>>(),
+            )
         };
         let planned = batch.commit_view(|revision| {
             if !ready_selected {
-                return Ok(crate::CollectionView::full(revision.clone()));
+                let mut visible = crate::CollectionView::full(revision.clone());
+                for page in revision.pages() {
+                    if internal_pages.contains(&page.id) {
+                        visible = visible
+                            .with_visibility(crate::CollectionMember::Page(page.id), false)
+                            .map_err(HostError::backend)?;
+                    }
+                }
+                return Ok(visible);
             }
             let mut visible = previous_view
                 .as_ref()
@@ -351,6 +377,15 @@ impl FrameTrees {
                 {
                     visible = visible
                         .with_visibility(crate::CollectionMember::Context(context.id), true)
+                        .map_err(HostError::backend)?;
+                }
+            }
+            for page in revision.pages() {
+                if internal_pages.contains(&page.id)
+                    && visible.pages().iter().any(|entry| entry.id == page.id)
+                {
+                    visible = visible
+                        .with_visibility(crate::CollectionMember::Page(page.id), false)
                         .map_err(HostError::backend)?;
                 }
             }

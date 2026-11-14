@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "ciPlatforms": [
+      "linux",
+      "darwin",
+      "win32"
+    ],
+    "ciPythonVersions": [
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "stableChannels": [
+      "chrome",
+      "msedge"
+    ],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": false,
+    "requiresFixtureServers": true
+  },
+  "executionMode": "same-thread-asyncio-loop",
+  "files": {
+    "tests/sync/test_sync.py": "f371ee96a8eacc0721e7e3514223992d37ecba8fec86e6396584de4049e03579"
+  },
+  "cases": [
+    {
+      "id": "tests/sync/test_sync.py::test_sync_playwright_multiple_times",
+      "capabilities": [
+        "playwright.lifecycle.browserless"
+      ]
+    },
+    {
+      "id": "tests/sync/test_sync.py::test_sync_playwright_stop_multiple_times",
+      "capabilities": [
+        "playwright.lifecycle.browserless"
+      ]
+    }
+  ]
+}

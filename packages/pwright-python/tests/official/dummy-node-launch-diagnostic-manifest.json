@@ -1,0 +1,35 @@
+{
+  "schema": 2,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "executionPolicy": "macos-sandbox-dummy-node-diagnostic-v1",
+  "evidenceScope": "diagnostic-only-no-general-conformance-credit",
+  "browser": "chromium",
+  "requiresBrowser": false,
+  "requiresFixtureServers": true,
+  "tests": {
+    "async": "tests/async/test_launcher.py::test_browser_type_launch_should_reject_if_launched_browser_fails_immediately",
+    "sync": "tests/sync/test_launcher.py::test_browser_type_launch_should_reject_if_launched_browser_fails_immediately"
+  },
+  "upstreamSources": {
+    "tests/async/test_launcher.py": "648549470d4ba7f393c792b3774b45f358c1be63f1388509038a39a4e33564b3",
+    "tests/sync/test_launcher.py": "c5e1554d855450ef1c8aacb15eee7307401bb8a7878e8c1f77359d6110f0d94f",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/assets/dummy_bad_browser_executable.js": "9928a78e7de42f29dfc61783a2f31673b387d7d6ea27cda5bc4472e4338c1f7f",
+    "pyproject.toml": "96e2d4dcd75b40a101c77d12b4e29ea4d91efc6fd58992a67ed8cc837e2e1e08"
+  },
+  "runtimeTrees": {
+    "oracle": "d7655707035107f13a81db0e1d52d839c2bf42bf2008478fba610299cd6da149",
+    "candidate": "96ec860880d03b2a09432a7ec1aec14de3598aac5327735be25b8641742cbf4f",
+    "shim": "91695bbdc103345adc694882c3f9dc02dfd39929ca138265d8e7769830d7c15b",
+    "runtime": "e96012831782637189411c2cea2177a26b87b2b813cc8f9abb82894d0a3c0551"
+  },
+  "candidateNativeSha256": "e3ebe18e4b1577ee18de03a72b5d9b72f320d46986e3f5e92a38316f6f28c465",
+  "oracleDriverNodeSha256": "6f2e835e57feb7a29ffcd53a4d4eb60224ec264a1e002c3ba6d99999ea29807d",
+  "systemNodeSha256": "1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040"
+}

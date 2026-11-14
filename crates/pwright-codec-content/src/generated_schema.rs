@@ -82,6 +82,7 @@ pub struct PwrightContentScreenshotOptions {
     pub full_page: Option<bool>,
     pub clip: Option<PwrightContentScreenshotClip>,
     pub scale: Option<PwrightContentScreenshotScale>,
+    pub document_clip: Option<bool>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -431,6 +432,12 @@ impl BinaryEncode for PwrightContentScreenshotOptions {
                         Ok(())
                     })?;
                 }
+                if let Some(value) = &self.document_clip {
+                    record.field(6, "pwright.content.screenshot_options.document_clip", |writer| {
+                        writer.u8(u8::from(*value))?;
+                        Ok(())
+                    })?;
+                }
                 Ok(())
             })?;
             Ok(())
@@ -446,6 +453,7 @@ impl BinaryDecode for PwrightContentScreenshotOptions {
             let mut full_page = None;
             let mut clip = None;
             let mut scale = None;
+            let mut document_clip = None;
             let mut record = pwright_codec_binary::decode_extensible_record(reader, "pwright.content.screenshot_options", BinarySizeRange::new(Some(0_u32), Some(128_u32)))?;
             while let Some(mut field) = record.next_field()? {
                 match field.tag() {
@@ -479,6 +487,12 @@ impl BinaryDecode for PwrightContentScreenshotOptions {
                         field.finish()?;
                         scale = Some(decoded_value);
                     }
+                    6 => {
+                        let reader = field.reader();
+                        let decoded_value = match reader.u8()? { 0 => false, 1 => true, value => return Err(BinaryValueDecodeError::InvalidBoolean { field: "pwright.content.screenshot_options.document_clip", value }) };
+                        field.finish()?;
+                        document_clip = Some(decoded_value);
+                    }
                     _ => {}
                 }
             }
@@ -489,6 +503,7 @@ impl BinaryDecode for PwrightContentScreenshotOptions {
                 full_page,
                 clip,
                 scale,
+                document_clip,
             })
         })
     }
@@ -719,6 +734,7 @@ const TYPE_7_FIELDS: &[BinaryExtensibleFieldSchema] = &[
     BinaryExtensibleFieldSchema::new(3, BinaryFieldSchema::new("full_page", BinaryFieldKind::Bool, BinaryCardinality::Optional)),
     BinaryExtensibleFieldSchema::new(4, BinaryFieldSchema::message("clip", "pwright.content.screenshot_clip", BinaryCardinality::Optional)),
     BinaryExtensibleFieldSchema::new(5, BinaryFieldSchema::enumeration("scale", "pwright.content.screenshot_scale", BinaryCardinality::Optional)),
+    BinaryExtensibleFieldSchema::new(6, BinaryFieldSchema::new("document_clip", BinaryFieldKind::Bool, BinaryCardinality::Optional)),
 ];
 
 pub const PWRIGHT_CONTENT_SCREENSHOT_OPTIONS_SCHEMA: BinaryExtensibleRecordSchema = BinaryExtensibleRecordSchema::new("pwright.content.screenshot_options", ProtocolVersion::new(1, 0), BinarySizeRange::new(Some(0_u32), Some(128_u32)), TYPE_7_FIELDS);

@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+"""PATH-interposed proof of the pinned Firefox/WebKit dummy Node process."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ASSET_SHA256 = "9928a78e7de42f29dfc61783a2f31673b387d7d6ea27cda5bc4472e4338c1f7f"
+NONCE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def main() -> None:
+    upstream = Path(os.environ["PWRIGHT_PYTHON_DUMMY_UPSTREAM"])
+    asset = upstream / "tests/assets/dummy_bad_browser_executable.js"
+    receipt = Path(os.environ["PWRIGHT_PYTHON_DUMMY_PROCESS_RECEIPT"])
+    node = Path(os.environ["PWRIGHT_PYTHON_DUMMY_REAL_NODE"])
+    nonce = os.environ["PWRIGHT_PYTHON_DUMMY_NONCE"]
+    api = os.environ["PWRIGHT_PYTHON_DUMMY_API"]
+    mode = os.environ["PWRIGHT_OFFICIAL_MODE"]
+    browser = os.environ["PWRIGHT_PYTHON_DUMMY_BROWSER"]
+    if (
+        len(sys.argv) < 2
+        or not upstream.is_absolute()
+        or sys.argv[1] != str(asset)
+        or asset.is_symlink()
+        or not asset.is_file()
+        or asset.resolve() != asset
+        or hashlib.sha256(asset.read_bytes()).hexdigest() != ASSET_SHA256
+        or not os.access(asset, os.X_OK)
+        or not receipt.is_absolute()
+        or receipt.is_symlink()
+        or not receipt.is_file()
+        or not node.is_absolute()
+        or node.is_symlink()
+        or not node.is_file()
+        or node.resolve() != node
+        or NONCE.fullmatch(nonce) is None
+        or api not in {"async", "sync"}
+        or mode != "oracle"
+        or browser not in {"firefox", "webkit"}
+    ):
+        raise SystemExit("non-Chromium dummy Node rejected an unpinned process")
+
+    argv = [str(node), *sys.argv[1:]]
+    child = subprocess.Popen(argv)
+    try:
+        exit_code = child.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait()
+        raise SystemExit("non-Chromium dummy Node child did not exit promptly") from None
+    if exit_code != 1:
+        raise SystemExit(f"non-Chromium dummy Node exited with {exit_code}, not one")
+
+    row = {
+        "event": "dummy-node-exited",
+        "api": api,
+        "mode": mode,
+        "browser": browser,
+        "runNonce": nonce,
+        "executablePath": str(asset),
+        "assetSha256": ASSET_SHA256,
+        "exitCode": exit_code,
+        "childPid": child.pid,
+        "node": str(node),
+        "nodeSha256": hashlib.sha256(node.read_bytes()).hexdigest(),
+        "argv": argv,
+    }
+    descriptor = os.open(receipt, os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        os.write(descriptor, (json.dumps(row, sort_keys=True) + "\n").encode())
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

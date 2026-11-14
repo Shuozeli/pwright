@@ -1,0 +1,168 @@
+#!/usr/bin/python3
+"""Run only the pinned failing Node asset and attest its final exit status."""
+
+import ctypes
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+class ProcessInfo(ctypes.Structure):
+    _fields_ = [
+        ("pid", ctypes.c_uint32),
+        ("ppid", ctypes.c_uint32),
+        ("pgid", ctypes.c_uint32),
+        ("status", ctypes.c_uint32),
+        ("comm", ctypes.c_char * 16),
+        ("flags", ctypes.c_uint32),
+        ("uid", ctypes.c_uint32),
+        ("gid", ctypes.c_uint32),
+        ("ruid", ctypes.c_uint32),
+        ("rgid", ctypes.c_uint32),
+        ("svuid", ctypes.c_uint32),
+        ("svgid", ctypes.c_uint32),
+        ("reserved", ctypes.c_uint32),
+    ]
+
+
+LIBPROC = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+LIBPROC.proc_pidinfo.argtypes = [
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_uint64,
+    ctypes.c_void_p,
+    ctypes.c_int,
+]
+LIBPROC.proc_pidinfo.restype = ctypes.c_int
+LIBPROC.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+LIBPROC.proc_pidpath.restype = ctypes.c_int
+
+
+def process_snapshot(pid: int) -> dict[str, object]:
+    info = ProcessInfo()
+    read = LIBPROC.proc_pidinfo(pid, 13, 0, ctypes.byref(info), ctypes.sizeof(info))
+    executable = ctypes.create_string_buffer(4096)
+    path_size = LIBPROC.proc_pidpath(pid, executable, len(executable))
+    if read != ctypes.sizeof(info) or info.pid != pid or path_size <= 0:
+        raise ValueError("dummy Core strict process snapshot is missing")
+    return {
+        "pid": pid,
+        "ppid": int(info.ppid),
+        "uid": int(info.uid),
+        "executable": executable.value.decode(),
+    }
+
+
+def ancestry(harness_pid: int) -> list[dict[str, object]]:
+    chain = []
+    pid = os.getpid()
+    for _ in range(12):
+        entry = process_snapshot(pid)
+        if entry["uid"] != os.getuid() or (chain and chain[-1]["ppid"] != pid):
+            raise ValueError("dummy Core strict process ancestry differs")
+        chain.append(entry)
+        if pid == harness_pid:
+            return chain
+        pid = int(entry["ppid"])
+        if pid < 2:
+            break
+    raise ValueError("dummy Core strict process ancestry does not reach the harness")
+
+
+def main() -> int:
+    asset = Path(os.environ["PWRIGHT_DUMMY_PROCESS_ASSET"])
+    receipt = Path(os.environ["PWRIGHT_DUMMY_PROCESS_RECEIPT"])
+    real_node = Path(os.environ["PWRIGHT_DUMMY_REAL_NODE"])
+    if (
+        len(sys.argv) < 2
+        or Path(sys.argv[1]) != asset
+        or asset.is_symlink()
+        or not asset.is_file()
+        or hashlib.sha256(asset.read_bytes()).hexdigest()
+        != "9928a78e7de42f29dfc61783a2f31673b387d7d6ea27cda5bc4472e4338c1f7f"
+        or receipt.is_symlink()
+        or not receipt.is_file()
+        or real_node.is_symlink()
+        or not real_node.is_file()
+    ):
+        raise SystemExit("dummy Core guard rejected an unpinned Node invocation")
+    run_id = os.environ.get("PWRIGHT_DUMMY_STRICT_RUN_ID")
+    profile = None
+    profile_stat = None
+    if run_id:
+        profiles = [
+            arg.removeprefix("--user-data-dir=")
+            for arg in sys.argv[2:]
+            if arg.startswith("--user-data-dir=")
+        ]
+        if len(profiles) != 1:
+            raise ValueError("dummy Core strict launch has no unique owned profile")
+        profile = Path(profiles[0])
+        if (
+            not profile.is_absolute()
+            or profile.is_symlink()
+            or not profile.is_dir()
+            or (
+                os.environ["PWRIGHT_DUMMY_LAUNCH_MODE"] == "candidate"
+                and profile.resolve() != profile
+            )
+            or (
+                os.environ["PWRIGHT_DUMMY_LAUNCH_MODE"] == "candidate"
+                and not profile.name.startswith("pwright-node-")
+            )
+        ):
+            raise ValueError(
+                "dummy Core strict launch profile is not a live owned directory"
+            )
+        stat = profile.stat()
+        if stat.st_uid != os.getuid():
+            raise ValueError("dummy Core strict launch profile has another owner")
+        profile_stat = {"device": stat.st_dev, "inode": stat.st_ino, "uid": stat.st_uid}
+    chain = ancestry(int(os.environ["PWRIGHT_DUMMY_HARNESS_PID"])) if run_id else None
+    child = subprocess.Popen([str(real_node), *sys.argv[1:]])
+    child_snapshot = process_snapshot(child.pid) if run_id else None
+    result = child.wait()
+    if run_id and (
+        child_snapshot is None
+        or child_snapshot["ppid"] != os.getpid()
+        or child_snapshot["uid"] != os.getuid()
+        or child_snapshot["executable"] != str(real_node)
+    ):
+        raise ValueError("dummy Core strict child process ownership differs")
+    with receipt.open("a") as stream:
+        event = {"event": "dummy-node-exited", "exitCode": result, "asset": str(asset)}
+        if run_id:
+            event.update(
+                {
+                    "runId": run_id,
+                    "mode": os.environ["PWRIGHT_DUMMY_LAUNCH_MODE"],
+                    "guardPid": os.getpid(),
+                    "guardParentPid": os.getppid(),
+                    "childPid": child.pid,
+                    "childReaped": child.returncode == result,
+                    "childSnapshot": child_snapshot,
+                    "ancestry": chain,
+                    "candidateProfile": os.environ.get("PWRIGHT_NATIVE_PROFILE"),
+                    "harnessPid": int(os.environ["PWRIGHT_DUMMY_HARNESS_PID"]),
+                    "browserProfilePath": str(profile),
+                    "browserProfileStat": profile_stat,
+                    "browserArguments": sys.argv[2:],
+                }
+            )
+        stream.write(json.dumps(event, sort_keys=True) + "\n")
+    return result
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        if os.environ.get("PWRIGHT_DUMMY_STRICT_RUN_ID"):
+            with Path(os.environ["PWRIGHT_DUMMY_PROCESS_RECEIPT"]).open("a") as stream:
+                stream.write(
+                    json.dumps({"event": "guard-error", "message": str(error)}) + "\n"
+                )
+        raise

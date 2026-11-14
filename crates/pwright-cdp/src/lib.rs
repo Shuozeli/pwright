@@ -8,6 +8,12 @@ pub mod generated;
 pub mod session;
 
 pub use client_trait::{CdpClient, SessionFactory};
+#[cfg(feature = "cdp-handshake-headers")]
+pub use connection::{
+    CDP_HANDSHAKE_HEADER_MAX_BATCH_BYTES, CDP_HANDSHAKE_HEADER_MAX_COUNT,
+    CDP_HANDSHAKE_HEADER_MAX_NAME_BYTES, CDP_HANDSHAKE_HEADER_MAX_VALUE_BYTES, CdpHandshakeHeaders,
+    CdpHandshakeHeadersError,
+};
 pub use connection::{
     CdpConnection, CdpConnectionProductionProfile, CdpEventSubscriptionError,
     CdpProductionConnectError,

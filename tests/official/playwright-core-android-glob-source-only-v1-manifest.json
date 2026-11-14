@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "core464-private-android-glob",
+      "role": "implementation-internal-source-only",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/android/playwright.config.ts",
+      "args": ["tests/page/interception.spec.ts:73"],
+      "sourceOnlyAdapter": "upstream-private-source-only-no-pwright-runtime",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "private-android-glob-v1",
+      "upstreamSourceSetSha256": "11f3507c4440e13baddbc535544bf737061b20ff622cc3888f40b9b74b8ac291",
+      "expectedInvocationIdsSha256": "72d82784c03962b8ad3974f25d022aef3f5b33ea2591e0df6ba3327273ea2155",
+      "expectedFileSpecIdsSha256": "b73728a8e39ede506d8cb4fe49eeae4e44af8a35484a79e511df1bdc5bd2662c",
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "expectedProjectIds": ["android-page"],
+      "expectedInvocations": [
+        {
+          "line": 73,
+          "projectId": "android-page",
+          "specId": "c569f641042bf346bcbd-ff0d174e7981f09583b5"
+        }
+      ]
+    }
+  ]
+}

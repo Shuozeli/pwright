@@ -7,7 +7,12 @@ license.workspace = true
 
 [features]
 default = []
+cdp-handshake-headers = []
+cdp-ws-close-reason = []
+cdp-ws-invalid-frame = []
 large-commands = []
+runtime-binding = []
+fill-navigation-commit = ["runtime-binding"]
 
 [dependencies]
 pwright-core = { workspace = true }

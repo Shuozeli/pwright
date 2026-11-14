@@ -1,0 +1,15 @@
+[package]
+name = "pwright-playwright-connect-headers"
+description = "Bounded Playwright connection header policy without browser ownership"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+server-ws = ["dep:pwright-transport-ws"]
+
+[dependencies]
+pwright-transport-ws = { workspace = true, optional = true }

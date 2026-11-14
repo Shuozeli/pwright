@@ -40,6 +40,7 @@ struct Fixture {
 
 async fn fixture() -> Fixture {
     let limits = RuntimeLimits::new(256, 16);
+    let runtime_objects = std::num::NonZeroUsize::new(limits.live_objects).unwrap();
     let evaluation = CdpEvaluationProductionProfile::new(
         ResourceScope::extension(166, 3),
         CdpEvaluationLimits::new(4096, 32768, 4096, crate::evaluation::value_limits()),
@@ -54,7 +55,7 @@ async fn fixture() -> Fixture {
         .combine_concurrent(requirements())
         .combine_concurrent(crate::handles::publication::requirements())
         .combine_concurrent(crate::handles::pending::requirements())
-        .combine_concurrent(crate::handles::release::requirements().unwrap());
+        .combine_concurrent(crate::handles::release::requirements(runtime_objects).unwrap());
     let mut budget = ResourceLimits::deny_all(plan.scopes, plan.leases);
     for class in ResourceClass::ALL {
         let amount = plan.class(class);
@@ -102,6 +103,7 @@ async fn fixture() -> Fixture {
     let releases = Releases::new(
         ChromiumHandleDisposeCommandService::new(runtime.lifecycle_handle(), routes.clone()),
         &runtime.lifecycle_handle(),
+        runtime_objects,
         &resources,
     )
     .unwrap();
@@ -147,7 +149,7 @@ async fn fixture() -> Fixture {
 }
 
 impl Fixture {
-    async fn begin(&self, names: &[&str]) -> Pin<Box<dyn Future<Output = Outcome> + Send>> {
+    async fn stage(&self, names: &[&str]) -> (PendingNativeHandleBatchCreation, BatchContext) {
         let mut admission = self.owners.admit_batch().unwrap();
         // This fixture selects four backend result slots, while the real host
         // installs a profile matching its complete available owner admission.
@@ -179,8 +181,24 @@ impl Fixture {
             )
             .await
             .unwrap();
+        (native, context)
+    }
+
+    async fn begin(&self, names: &[&str]) -> Pin<Box<dyn Future<Output = Outcome> + Send>> {
+        let (native, context) = self.stage(names).await;
         let queue = self.queue.clone();
         Box::pin(async move { queue.publish(native, context).await })
+    }
+
+    #[cfg(feature = "console-argument-handles")]
+    async fn begin_event(&self, names: &[&str]) -> Pin<Box<dyn Future<Output = Outcome> + Send>> {
+        let (native, context) = self.stage(names).await;
+        let received = self.queue.enqueue_event(native, context);
+        Box::pin(async move {
+            received
+                .await
+                .map_err(|error| failure(HostError::backend(error)))?
+        })
     }
 
     async fn complete<F: Future>(&self, future: F) -> F::Output {
@@ -430,6 +448,7 @@ async fn stale_source_world_rejects_and_compensates_all_native_siblings() {
     let fixture = fixture().await;
     let mut result = fixture.begin(&["first", "second"]).await;
     assert!(poll_once(result.as_mut()).is_pending());
+    assert!(poll_once(Box::pin(fixture.queue.changed()).as_mut()).is_ready());
     fixture.frames.unbind(ObjectId::new(2)).unwrap();
     // Act
     fixture.queue.finish_ready().unwrap();
@@ -437,11 +456,49 @@ async fn stale_source_world_rejects_and_compensates_all_native_siblings() {
         Err(error) => error,
         Ok(_) => panic!("stale batch source was published"),
     };
+    let terminal_wakeup = poll_once(Box::pin(fixture.queue.changed()).as_mut());
     // Assert
     assert_eq!(error.kind(), FailureKind::TargetClosed);
+    assert!(terminal_wakeup.is_ready());
     assert_eq!(fixture.released("native-first"), 1);
     assert_eq!(fixture.released("native-second"), 1);
     assert_eq!(fixture.routes.metrics().unwrap().current, 1);
+    assert_eq!(fixture.drain().await, 0);
+}
+
+#[tokio::test]
+#[cfg(feature = "console-argument-handles")]
+async fn event_source_close_is_reported_before_native_compensation_settles() {
+    // Arrange
+    let fixture = fixture().await;
+    let mut result = fixture.begin_event(&["first", "second"]).await;
+    assert!(poll_once(result.as_mut()).is_pending());
+    assert!(poll_once(Box::pin(fixture.queue.changed()).as_mut()).is_ready());
+    fixture.frames.unbind(ObjectId::new(2)).unwrap();
+
+    // Act
+    fixture.queue.finish_ready().unwrap();
+    let error = match poll_once(result.as_mut()) {
+        Poll::Ready(Err(error)) => error,
+        Poll::Ready(Ok(_)) => panic!("stale event source was published"),
+        Poll::Pending => panic!("event delivery waited for native compensation"),
+    };
+
+    // Assert
+    assert_eq!(error.kind(), FailureKind::TargetClosed);
+    assert_eq!(fixture.released("native-first"), 0);
+    assert_eq!(fixture.released("native-second"), 0);
+    assert!(poll_once(Box::pin(fixture.queue.changed()).as_mut()).is_ready());
+
+    fixture
+        .complete(async {
+            while fixture.released("native-first") == 0 || fixture.released("native-second") == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
+    assert_eq!(fixture.released("native-first"), 1);
+    assert_eq!(fixture.released("native-second"), 1);
     assert_eq!(fixture.drain().await, 0);
 }
 

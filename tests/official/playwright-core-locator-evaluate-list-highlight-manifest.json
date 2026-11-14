@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-locator-evaluate-list-highlight-chromium",
+      "role": "browser-backed-official-files",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/page/locator-evaluate.spec.ts",
+        "tests/page/locator-list.spec.ts",
+        "tests/page/locator-highlight.spec.ts"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "oracleAdapter": "test-mode-playwright-core-cdp",
+      "project": "chromium-page",
+      "requiresBrowser": true,
+      "expectedTestsPerProject": 8,
+      "expectedFiles": 3
+    }
+  ]
+}

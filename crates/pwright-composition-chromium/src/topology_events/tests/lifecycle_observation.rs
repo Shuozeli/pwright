@@ -128,6 +128,90 @@ async fn discovered_page_enables_lifecycle_before_debugger_resume() {
 }
 
 #[tokio::test]
+async fn discovered_page_queues_lifecycle_subscription_while_network_enable_is_pending() {
+    // Arrange
+    let (observation, _, _, _) = owner(3);
+    let mut f = discovery_fixture(16);
+    f.factory.set_frame_tree(
+        "target-a",
+        frame_tree(serde_json::json!({
+            "frame": frame_value("target-a", None)
+        })),
+    );
+    f.driver = f.driver.with_frame_event_observer(observation).unwrap();
+    f.factory
+        .create_session("session-a".into(), "target-a".into());
+    let client = f.factory.client("target-a");
+    let gate = Arc::new(tokio::sync::Notify::new());
+    client.set_network_gate(Some(Arc::clone(&gate)));
+    f.sender
+        .send(attached_page_event("target-a", "session-a", None, None))
+        .unwrap();
+    let mut receive = Box::pin(f.driver.receive_once(&f.runtime));
+
+    // Act
+    assert!(matches!(
+        receive
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop())),
+        Poll::Pending
+    ));
+
+    // Assert
+    assert_eq!(
+        client.method_names(),
+        ["Network.enable", "Page.setLifecycleEventsEnabled"]
+    );
+    gate.notify_one();
+    receive.await.unwrap();
+}
+
+#[tokio::test]
+async fn recursive_popup_sends_page_observation_and_resume_while_lifecycle_ack_is_pending() {
+    // Arrange
+    let (observation, _, _, _) = owner(3);
+    let mut f = discovery_fixture_with_startup(16, false, true);
+    f.factory.set_frame_tree(
+        "target-a",
+        frame_tree(serde_json::json!({
+            "frame": frame_value("target-a", None)
+        })),
+    );
+    f.driver = f.driver.with_frame_event_observer(observation).unwrap();
+    f.factory
+        .create_session("session-a".into(), "target-a".into());
+    let client = f.factory.client("target-a");
+    let gate = Arc::new(tokio::sync::Notify::new());
+    client.set_network_gate(Some(Arc::clone(&gate)));
+    f.sender
+        .send(attached_page_event("target-a", "session-a", None, None))
+        .unwrap();
+    let mut receive = Box::pin(f.driver.receive_once(&f.runtime));
+
+    // Act
+    assert!(matches!(
+        receive
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop())),
+        Poll::Pending
+    ));
+
+    // Assert
+    let methods = client.method_names();
+    let index = |method: &str| {
+        methods
+            .iter()
+            .position(|candidate| candidate == method)
+            .unwrap()
+    };
+    assert!(index("Page.enable") < index("Runtime.runIfWaitingForDebugger"));
+    assert!(index("Network.enable") < index("Runtime.runIfWaitingForDebugger"));
+    assert!(index("Page.setLifecycleEventsEnabled") < index("Runtime.runIfWaitingForDebugger"));
+    gate.notify_one();
+    receive.await.unwrap();
+}
+
+#[tokio::test]
 async fn stale_renderer_snapshot_cannot_replace_the_current_document() {
     // Arrange
     let (observation, _, sink, _) = owner(3);

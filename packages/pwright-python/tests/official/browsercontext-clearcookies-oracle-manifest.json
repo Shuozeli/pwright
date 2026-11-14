@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_browsercontext_clearcookies.py": "f2e002736d5f0b5c813b3fd2a7b79e9cd98e275db680a9bf492dd71bd07cbec6"
+  },
+  "cases": [
+    {"id": "tests/async/test_browsercontext_clearcookies.py::test_should_clear_cookies", "capabilities": ["browser-context.clear-cookies"]},
+    {"id": "tests/async/test_browsercontext_clearcookies.py::test_should_isolate_cookies_when_clearing", "capabilities": ["browser-context.clear-cookies", "browser-context.isolation"]},
+    {"id": "tests/async/test_browsercontext_clearcookies.py::test_should_remove_cookies_by_domain", "capabilities": ["browser-context.clear-cookies", "cookie.domain"]},
+    {"id": "tests/async/test_browsercontext_clearcookies.py::test_should_remove_cookies_by_name", "capabilities": ["browser-context.clear-cookies", "cookie.name"]},
+    {"id": "tests/async/test_browsercontext_clearcookies.py::test_should_remove_cookies_by_name_and_domain", "capabilities": ["browser-context.clear-cookies", "cookie.name", "cookie.domain"]},
+    {"id": "tests/async/test_browsercontext_clearcookies.py::test_should_remove_cookies_by_name_regex", "capabilities": ["browser-context.clear-cookies", "cookie.name-regex"]},
+    {"id": "tests/async/test_browsercontext_clearcookies.py::test_should_remove_cookies_by_path", "capabilities": ["browser-context.clear-cookies", "cookie.path"]}
+  ]
+}

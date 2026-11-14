@@ -117,7 +117,7 @@ async fn run_oopif_evaluation(recursive_attachment: bool) {
     let topology_events = if recursive_attachment {
         topology_events
             .with_parallel_recursive_attachment()
-            .expect("four-way profile should validate")
+            .expect("five-owner startup profile should validate")
     } else {
         topology_events
     };

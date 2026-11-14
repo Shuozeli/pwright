@@ -111,6 +111,118 @@ async fn ordinary_commands_keep_their_existing_response_deadline() {
 }
 
 #[tokio::test]
+async fn enqueue_fence_preserves_first_request_headers_under_write_backpressure() {
+    // Arrange: a one-slot fake wire holds Network.enable while the header
+    // command waits for admission. No command acknowledgement is supplied.
+    let mut connection = test_connection(ConnectionConfig {
+        timeout: Duration::from_secs(1),
+        pending_command_capacity: 4,
+        write_channel_capacity: 1,
+        ..ConnectionConfig::default()
+    });
+    let (sender, mut wire) = tokio::sync::mpsc::channel(1);
+    connection.write_tx = sender;
+    let connection = Arc::new(connection);
+    let enable = connection
+        .enqueue_command_with_session("Network.enable", serde_json::json!({}), Some("popup"))
+        .await
+        .unwrap();
+    let mut header = Box::pin(connection.enqueue_command_with_session(
+        "Network.setExtraHTTPHeaders",
+        serde_json::json!({"headers":{"foo":"bar"}}),
+        Some("popup"),
+    ));
+    assert!(
+        header
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+            .is_pending()
+    );
+    let enabled_frame: Value =
+        serde_json::from_str(wire.recv().await.unwrap().message.to_text().unwrap()).unwrap();
+
+    // Act: the header fence opens only after its command is queued. The fake
+    // peer snapshots the first request when debugger resume reaches the wire.
+    let header = header.await.unwrap();
+    let header_frame: Value =
+        serde_json::from_str(wire.recv().await.unwrap().message.to_text().unwrap()).unwrap();
+    let mut resume = Box::pin(connection.send_command_with_session(
+        "Runtime.runIfWaitingForDebugger",
+        serde_json::json!({}),
+        Some("popup"),
+    ));
+    assert!(
+        resume
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+            .is_pending()
+    );
+    let resume_frame: Value =
+        serde_json::from_str(wire.recv().await.unwrap().message.to_text().unwrap()).unwrap();
+    let first_request_headers = header_frame["params"]["headers"].clone();
+
+    // Assert: both session commands precede resume even with a full queue.
+    assert_eq!(enabled_frame["method"], "Network.enable");
+    assert_eq!(header_frame["method"], "Network.setExtraHTTPHeaders");
+    assert_eq!(resume_frame["method"], "Runtime.runIfWaitingForDebugger");
+    assert_eq!(first_request_headers["foo"], "bar");
+    for frame in [&enabled_frame, &header_frame, &resume_frame] {
+        assert_eq!(frame["sessionId"], "popup");
+    }
+    peer_frames(
+        &connection,
+        vec![enabled_frame, header_frame, resume_frame]
+            .iter()
+            .map(|frame| serde_json::json!({"id":frame["id"],"result":{}}))
+            .collect(),
+    )
+    .await;
+    enable.response().await.unwrap();
+    header.response().await.unwrap();
+    resume.await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn enqueue_fence_fails_closed_when_the_write_queue_cannot_drain() {
+    // Arrange
+    let mut connection = test_connection(ConnectionConfig {
+        timeout: Duration::from_secs(1),
+        pending_command_capacity: 2,
+        write_channel_capacity: 1,
+        ..ConnectionConfig::default()
+    });
+    let (sender, wire) = tokio::sync::mpsc::channel(1);
+    connection.write_tx = sender;
+    let connection = Arc::new(connection);
+    let first = connection
+        .enqueue_command_with_session("Network.enable", Value::Null, Some("popup"))
+        .await
+        .unwrap();
+    let mut header = Box::pin(connection.enqueue_command_with_session(
+        "Network.setExtraHTTPHeaders",
+        serde_json::json!({"headers":{"foo":"bar"}}),
+        Some("popup"),
+    ));
+    assert!(
+        header
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+            .is_pending()
+    );
+
+    // Act
+    tokio::time::advance(Duration::from_secs(2)).await;
+    let result = header.await;
+
+    // Assert: no header command was admitted, and its response owner retired.
+    assert!(matches!(result, Err(CdpError::Timeout)));
+    assert_eq!(connection.pending.len(), 1);
+    drop(first);
+    drop(wire);
+    assert!(connection.pending.is_empty());
+}
+
+#[tokio::test]
 async fn transport_termination_settles_the_retained_wait_as_an_error() {
     // Arrange
     let (connection, mut wire) = connection();

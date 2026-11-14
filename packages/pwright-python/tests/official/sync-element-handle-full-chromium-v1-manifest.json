@@ -1,0 +1,427 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "ciPlatforms": [
+      "linux",
+      "darwin",
+      "win32"
+    ],
+    "ciPythonVersions": [
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "stableChannels": [
+      "chrome",
+      "msedge"
+    ],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/sync/utils.py": "ae98bc4ec9132e71456246209de88e4300c9624bf355d763d1881c2919e29bc4",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/sync/test_element_handle.py": "be252d4988a72bb4a4b5d6295429cd96795931135bdec7512b892840294820c2"
+  },
+  "cases": [
+    {
+      "id": "tests/sync/test_element_handle.py::test_a_nice_preview",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_bounding_box",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_bounding_box_force_a_layout",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_bounding_box_handle_nested_frames",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_bounding_box_return_null_for_invisible_elements",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_bounding_box_when_inline_box_child_is_outside_of_viewport",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_bounding_box_with_SVG_nodes",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_bounding_box_with_page_scale",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_check_the_box",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_click",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_click_for_TextNodes",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_click_for_shadow_dom_v1",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_click_throw_for__br__elements_with_force",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_click_throw_for_detached_nodes",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_click_throw_for_hidden_nodes_with_force",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_click_throw_for_recursively_hidden_nodes_with_force",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_click_with_node_removed",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_content_frame",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_content_frame_for_document_element",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_content_frame_for_non_iframes",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_double_click_the_button",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_fill_input",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_fill_input_when_Node_is_removed",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_focus_a_button",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_get_attribute",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_hover",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_hover_when_node_is_removed",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_inner_html",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_inner_text",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_inner_text_should_throw",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_input_value",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_is_checked_should_work",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_is_editable_should_work",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_is_enabled_and_is_disabled_should_work",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_is_visible_and_is_hidden_should_work",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_owner_frame",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_owner_frame_for_cross_frame_evaluations",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_owner_frame_for_cross_process_iframes",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_owner_frame_for_detached_elements",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_owner_frame_for_document",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_owner_frame_for_iframe_elements",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_scroll",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_scroll_should_throw_for_detached_element",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_select_input",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_select_single_option",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_select_text_select_plain_div",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_select_text_timeout_waiting_for_invisible_element",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_select_textarea",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_set_checked",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_should_allow_disposing_twice",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_should_timeout_waiting_for_visible",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_text_content",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    },
+    {
+      "id": "tests/sync/test_element_handle.py::test_uncheck_the_box",
+      "capabilities": [
+        "element-handle",
+        "sync-api"
+      ]
+    }
+  ]
+}

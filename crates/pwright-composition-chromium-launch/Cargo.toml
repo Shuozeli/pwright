@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+startup-logs = ["pwright-provider-chromium/startup-logs"]
+
 [dependencies]
 pwright-browser-provider = { workspace = true }
 pwright-cap-browser-events = { workspace = true }

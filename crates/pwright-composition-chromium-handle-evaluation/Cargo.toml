@@ -8,7 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [features]
-native-creation = []
+native-creation = ["dep:serde_json"]
 frame-value = []
 handle-value = []
 retained-reference = []
@@ -26,6 +26,7 @@ pwright-core = { workspace = true }
 pwright-runtime = { workspace = true }
 pwright-server-handle-evaluation = { workspace = true }
 pwright-transport = { workspace = true }
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 pwright-browser-model = { workspace = true }

@@ -8,27 +8,275 @@ use napi::{
 };
 use pwright_node_host::{HostError, LifecycleNotice, LifecycleNoticeView};
 
-pub(super) type Callback<'env> =
-    Function<'env, FnArgs<(u32, String, String, Option<String>)>, Unknown<'env>>;
+#[cfg(feature = "page-dialogs")]
+use crate::page_dialogs::NativeDialog;
+
+#[cfg(feature = "page-dialogs")]
+type NativeDialogArgument = NativeDialog;
+#[cfg(not(feature = "page-dialogs"))]
+type NativeDialogArgument = String;
+
+type CallbackArguments = (
+    u32,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<u32>,
+    Option<u32>,
+    Option<NativeDialogArgument>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+pub(super) type Callback<'env> = Function<'env, FnArgs<CallbackArguments>, Unknown<'env>>;
 
 type CreationConverter<'env> =
     Function<'env, FnArgs<(Option<ContextDescriptor>, Option<PageDescriptor>)>, Unknown<'env>>;
 
-pub(super) fn arguments(
-    view: &LifecycleNoticeView<'_>,
-) -> napi::Result<(u32, String, String, Option<String>)> {
-    let (kind, context, page, opener) = match view.notice {
-        LifecycleNotice::PageClose { context, page } => (0, context, Some(page), None),
-        LifecycleNotice::ContextClose { context } => (1, context, None, None),
-        LifecycleNotice::ContextPage { context, page } => (2, context, Some(page), None),
+pub(super) fn arguments(view: &LifecycleNoticeView<'_>) -> napi::Result<CallbackArguments> {
+    let (
+        kind,
+        context,
+        page,
+        opener,
+        message_type,
+        text,
+        arguments,
+        url,
+        line,
+        column,
+        dialog,
+        dialog_type,
+        dialog_message,
+        dialog_default_value,
+    ) = match &view.notice {
+        LifecycleNotice::PageClose { context, page } => (
+            0,
+            *context,
+            Some(*page),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+        LifecycleNotice::ContextClose { context } => (
+            1, *context, None, None, None, None, None, None, None, None, None, None, None, None,
+        ),
+        LifecycleNotice::ContextPage { context, page } => (
+            2,
+            *context,
+            Some(*page),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
         LifecycleNotice::Popup { opener, popup } => {
             let page = view
                 .revision
                 .pages()
                 .iter()
-                .find(|page| page.id == popup)
+                .find(|page| page.id == *popup)
                 .ok_or_else(|| invalid("popup descriptor is missing"))?;
-            (3, page.context, Some(popup), Some(opener))
+            (
+                3,
+                page.context,
+                Some(*popup),
+                Some(*opener),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        LifecycleNotice::PageDomContentLoaded { context, page } => (
+            4,
+            *context,
+            Some(*page),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+        LifecycleNotice::PageLoad { context, page } => (
+            5,
+            *context,
+            Some(*page),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+        LifecycleNotice::PageMainFrameNavigated { context, page } => (
+            7,
+            *context,
+            Some(*page),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+        #[cfg(feature = "frame-events")]
+        LifecycleNotice::PageFrameAttached {
+            context,
+            page,
+            frame,
+        } => (
+            11,
+            *context,
+            Some(*page),
+            Some(*frame),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+        #[cfg(feature = "frame-events")]
+        LifecycleNotice::PageFrameNavigated {
+            context,
+            page,
+            frame,
+        } => (
+            12,
+            *context,
+            Some(*page),
+            Some(*frame),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+        #[cfg(feature = "frame-detach-events")]
+        LifecycleNotice::PageFrameDetached {
+            context,
+            page,
+            frame,
+        } => (
+            10,
+            *context,
+            Some(*page),
+            // The kind discriminant makes this existing identity slot a Frame
+            // ID for detach, without widening the callback ABI for old builds.
+            Some(*frame),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+        LifecycleNotice::PageConsole {
+            context,
+            page,
+            message,
+        } => (
+            6,
+            *context,
+            Some(*page),
+            None,
+            Some(message.message_type().to_owned()),
+            Some(message.text().to_owned()),
+            Some(message.arguments_json().to_owned()),
+            Some(message.location_url().to_owned()),
+            Some(message.line_number()),
+            Some(message.column_number()),
+            None,
+            None,
+            None,
+            None,
+        ),
+        #[cfg(feature = "page-dialogs")]
+        LifecycleNotice::PageDialog {
+            context,
+            page,
+            dialog,
+        } => (
+            9,
+            *context,
+            Some(*page),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(NativeDialog::new(dialog.action())),
+            Some(dialog.kind().as_str().to_owned()),
+            Some(dialog.message().to_owned()),
+            Some(dialog.default_value().to_owned()),
+        ),
+        // Host-only features may be unified into this dependency by another
+        // crate. Never assign an unsupported notice a JS lifecycle kind.
+        unsupported => {
+            let message = if matches!(unsupported, LifecycleNotice::PageError { .. }) {
+                "Page error notice reached a Node profile without a page-error conversion port"
+            } else {
+                "Lifecycle notice reached a Node profile without a conversion port"
+            };
+            return Err(invalid(message));
         }
     };
     Ok((
@@ -36,6 +284,16 @@ pub(super) fn arguments(
         context.get().to_string(),
         page.map(|id| id.get().to_string()).unwrap_or_default(),
         opener.map(|id| id.get().to_string()),
+        message_type,
+        text,
+        arguments,
+        url,
+        line,
+        column,
+        dialog,
+        dialog_type,
+        dialog_message,
+        dialog_default_value,
     ))
 }
 
@@ -50,7 +308,7 @@ pub(super) fn finish<'env>(
     if prepared.get_type()? == ValueType::Undefined {
         return Ok(None);
     }
-    let LifecycleNotice::ContextPage { context, page } = view.notice else {
+    let LifecycleNotice::ContextPage { context, page } = &view.notice else {
         return emitter(prepared);
     };
     if prepared.get_type()? != ValueType::Object {
@@ -70,7 +328,7 @@ pub(super) fn finish<'env>(
                 .revision
                 .contexts()
                 .iter()
-                .find(|value| value.id == context)
+                .find(|value| value.id == *context)
                 .ok_or_else(|| invalid("ready Context descriptor is missing"))?;
             let binding = value.settings.bind().map_err(binding_error)?;
             Ok::<_, napi::Error>(ContextDescriptor {
@@ -85,7 +343,7 @@ pub(super) fn finish<'env>(
                 .revision
                 .pages()
                 .iter()
-                .find(|value| value.id == page && value.context == context)
+                .find(|value| value.id == *page && value.context == *context)
                 .ok_or_else(|| invalid("ready Page descriptor is missing"))?;
             // Both admissions precede native wrapper/ID conversion. Partial
             // failure releases the first binding without advancing the notice.

@@ -9,6 +9,7 @@ use crate::{
 use pwright_cap_handle_evaluation::HandleEvaluationValue;
 use std::{iter::Peekable, sync::Arc, vec::IntoIter};
 
+#[derive(Clone)]
 pub struct HandleArgumentSlot {
     index: usize,
     handle: Arc<PendingHandle>,
@@ -21,6 +22,7 @@ impl HandleArgumentSlot {
     }
 }
 
+#[derive(Clone)]
 pub struct OwnedHandleArgument {
     value: HandleEvaluationValue,
     handles: Vec<Arc<PendingHandle>>,
@@ -31,7 +33,7 @@ impl OwnedHandleArgument {
         slots: Vec<HandleArgumentSlot>,
     ) -> Result<Self, HostError> {
         value
-            .validate(evaluation::value_limits())
+            .validate(evaluation::input_value_limits())
             .map_err(|error| HostError::InvalidArgument(error.to_string()))?;
         if slots.len() > evaluation::MAX_NODES
             || slots.windows(2).any(|pair| pair[0].index >= pair[1].index)
@@ -50,6 +52,44 @@ impl OwnedHandleArgument {
 
     pub fn has_handles(&self) -> bool {
         !self.handles.is_empty()
+    }
+
+    /// Add the fixed dispatch-event envelope without projecting live Handle
+    /// leaves into a value-only tree. The original owners remain retained by
+    /// this argument until the browser evaluation has settled.
+    #[cfg(all(feature = "locator-dom-actions", feature = "element-handle-dom"))]
+    pub(crate) fn for_dispatch_event(mut self, event_type: String) -> Result<Self, HostError> {
+        if event_type.is_empty() || event_type.len() > crate::locator::MAX_EVENT_TYPE_BYTES {
+            return Err(HostError::InvalidArgument(format!(
+                "event type must contain between 1 and {} UTF-8 bytes",
+                crate::locator::MAX_EVENT_TYPE_BYTES
+            )));
+        }
+        if !matches!(
+            self.value,
+            HandleEvaluationValue::Null | HandleEvaluationValue::Object { .. }
+        ) {
+            return Err(HostError::InvalidArgument(
+                "event initializer must be an object or null".into(),
+            ));
+        }
+        self.value = HandleEvaluationValue::Object {
+            id: None,
+            properties: vec![
+                pwright_cap_handle_evaluation::HandleEvaluationProperty::new(
+                    "type",
+                    HandleEvaluationValue::String(event_type),
+                ),
+                pwright_cap_handle_evaluation::HandleEvaluationProperty::new(
+                    "eventInit",
+                    self.value,
+                ),
+            ],
+        };
+        self.value
+            .validate(evaluation::input_value_limits())
+            .map_err(|error| HostError::InvalidArgument(error.to_string()))?;
+        Ok(self)
     }
 
     pub fn into_value(self) -> Result<EvaluationValue, HostError> {

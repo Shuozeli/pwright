@@ -4,6 +4,7 @@ use pwright_composition_chromium_handle_evaluation::native_creation::{
 };
 
 mod batch;
+mod frame_owner_element;
 mod live;
 mod target;
 
@@ -21,6 +22,229 @@ async fn staged(fixture: &Fixture) -> PendingNativeHandleCreation {
         )
         .await
         .unwrap()
+}
+
+fn source_route(
+    fixture: &Fixture,
+    execution_context_id: i64,
+    unique_context_id: &str,
+) -> ChromiumHandleEvaluationRoute {
+    ChromiumHandleEvaluationRoute::from_service(
+        ObjectId::new(3),
+        CdpEvaluationService::with_limits_in_execution_context(
+            fixture.primary.clone(),
+            execution_context_id,
+            unique_context_id,
+            profile(1).backend().evaluation().limits(),
+        ),
+    )
+    .expect("source world should be valid")
+}
+
+#[tokio::test]
+async fn utility_world_element_is_adopted_and_published_in_the_canonical_world() {
+    // Arrange
+    let fixture = fixture_with_adoption(1);
+    fixture.primary.set_evaluate_response(serde_json::json!({
+        "result": {
+            "type": "object",
+            "subtype": "node",
+            "objectId": "utility-node",
+            "description": "DIV"
+        }
+    }));
+    fixture.primary.set_object_backend_node("utility-node", 71);
+    fixture.primary.set_adopted_node_response(
+        71,
+        101,
+        serde_json::json!({
+            "object": {
+                "type": "object",
+                "subtype": "node",
+                "objectId": "main-node",
+                "description": "DIV"
+            }
+        }),
+    );
+    let source = source_route(&fixture, 202, "utility-world");
+
+    // Act
+    let pending = fixture
+        .installation
+        .raw_service()
+        .stage_evaluate_element_program_in_world(
+            ObjectId::new(4),
+            CallMetadata::default(),
+            source,
+            EvaluateHandleParams::expression("document.body").into(),
+        )
+        .await
+        .expect("utility element should be adopted");
+    let identity = pending.world_identity();
+    let result = pending.commit_or_defer();
+
+    // Assert
+    let NativeHandleCreationCommit::Published(handle) = result else {
+        panic!("adopted creation did not publish")
+    };
+    assert_eq!(identity.execution_context_id(), 101);
+    assert_eq!(identity.unique_context_id(), "world-1");
+    assert!(fixture.runtime.is_object_live(handle.object_id).unwrap());
+    assert_eq!(
+        fixture.primary.method_names(),
+        vec![
+            "Runtime.callFunctionOn",
+            "DOM.describeNode",
+            "DOM.resolveNode",
+            "Runtime.releaseObject",
+        ]
+    );
+    let cleanup = fixture.adoption_continuation.metrics().unwrap();
+    assert_eq!(cleanup.reserved, 0);
+    assert_eq!(cleanup.queued, 0);
+}
+
+#[tokio::test]
+async fn optional_canonical_element_program_consumes_null_without_handle_publication() {
+    // Arrange
+    let fixture = fixture(1);
+    fixture.primary.set_evaluate_response(serde_json::json!({
+        "result": { "type": "object", "subtype": "null", "value": null }
+    }));
+    let before = fixture.runtime.live_object_count().unwrap();
+
+    // Act
+    let result = fixture
+        .installation
+        .raw_service()
+        .stage_evaluate_optional_element_program(
+            ObjectId::new(4),
+            CallMetadata::default(),
+            EvaluateHandleParams::expression("null").into(),
+        )
+        .await
+        .expect("null should be a valid absent query result");
+
+    // Assert
+    assert!(result.is_none());
+    assert_eq!(fixture.runtime.live_object_count().unwrap(), before);
+    assert_eq!(
+        fixture.primary.method_names(),
+        vec!["Runtime.callFunctionOn"]
+    );
+    let metrics = fixture.installation.lifecycle().routes().metrics().unwrap();
+    assert_eq!(metrics.current, 0);
+    assert_eq!(metrics.reserved, 0);
+}
+
+#[tokio::test]
+async fn optional_utility_world_null_skips_element_adoption() {
+    // Arrange
+    let fixture = fixture_with_adoption(1);
+    fixture.primary.set_evaluate_response(serde_json::json!({
+        "result": { "type": "object", "subtype": "null", "value": null }
+    }));
+    let source = source_route(&fixture, 202, "utility-world");
+
+    // Act
+    let result = fixture
+        .installation
+        .raw_service()
+        .stage_evaluate_optional_element_program_in_world(
+            ObjectId::new(4),
+            CallMetadata::default(),
+            source,
+            EvaluateHandleParams::expression("null").into(),
+        )
+        .await
+        .expect("utility-world null should be a valid absent query result");
+
+    // Assert
+    assert!(result.is_none());
+    assert_eq!(
+        fixture.primary.method_names(),
+        vec!["Runtime.callFunctionOn"]
+    );
+    let metrics = fixture.installation.lifecycle().routes().metrics().unwrap();
+    assert_eq!(metrics.current, 0);
+    assert_eq!(metrics.reserved, 0);
+}
+
+#[tokio::test]
+async fn optional_element_program_releases_non_node_objects_and_preserves_failure() {
+    // Arrange
+    let fixture = fixture(1);
+    fixture.primary.set_evaluate_response(serde_json::json!({
+        "result": {
+            "type": "object",
+            "objectId": "not-a-node",
+            "description": "Object"
+        }
+    }));
+
+    // Act
+    let result = fixture
+        .installation
+        .raw_service()
+        .stage_evaluate_optional_element_program(
+            ObjectId::new(4),
+            CallMetadata::default(),
+            EvaluateHandleParams::expression("({})").into(),
+        )
+        .await;
+
+    // Assert
+    let Err(error) = result else {
+        panic!("a non-Node object must not become an optional ElementHandle")
+    };
+    assert_eq!(error.kind(), FailureKind::ProtocolViolation);
+    assert_eq!(
+        fixture.primary.method_names(),
+        vec!["Runtime.callFunctionOn", "Runtime.releaseObject"]
+    );
+    let metrics = fixture.installation.lifecycle().routes().metrics().unwrap();
+    assert_eq!(metrics.current, 0);
+    assert_eq!(metrics.reserved, 0);
+}
+
+#[tokio::test]
+async fn unselected_cross_world_adoption_releases_the_source_and_route_reservation() {
+    // Arrange
+    let fixture = fixture(1);
+    fixture.primary.set_evaluate_response(serde_json::json!({
+        "result": {
+            "type": "object",
+            "subtype": "node",
+            "objectId": "utility-node",
+            "description": "DIV"
+        }
+    }));
+    let source = source_route(&fixture, 202, "utility-world");
+
+    // Act
+    let result = fixture
+        .installation
+        .raw_service()
+        .stage_evaluate_element_program_in_world(
+            ObjectId::new(4),
+            CallMetadata::default(),
+            source,
+            EvaluateHandleParams::expression("document.body").into(),
+        )
+        .await;
+
+    // Assert
+    let Err(error) = result else {
+        panic!("missing adoption capability must reject")
+    };
+    assert_eq!(error.kind(), FailureKind::UnsupportedCapability);
+    assert_eq!(
+        fixture.primary.method_names(),
+        vec!["Runtime.callFunctionOn", "Runtime.releaseObject"]
+    );
+    let metrics = fixture.installation.lifecycle().routes().metrics().unwrap();
+    assert_eq!(metrics.current, 0);
+    assert_eq!(metrics.reserved, 0);
 }
 
 #[tokio::test]

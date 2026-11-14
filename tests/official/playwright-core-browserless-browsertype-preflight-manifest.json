@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-browsertype-preflight-chromium",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:34",
+        "tests/library/browsertype-launch.spec.ts:46",
+        "tests/library/browsertype-launch.spec.ts:51",
+        "tests/library/browsertype-launch-server.spec.ts:29"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "chromium-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 4,
+      "expectedFiles": 2
+    },
+    {
+      "id": "library-browsertype-preflight-firefox",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:34",
+        "tests/library/browsertype-launch.spec.ts:46",
+        "tests/library/browsertype-launch.spec.ts:51",
+        "tests/library/browsertype-launch-server.spec.ts:29"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "firefox-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 4,
+      "expectedFiles": 2
+    },
+    {
+      "id": "library-browsertype-preflight-webkit",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:34",
+        "tests/library/browsertype-launch.spec.ts:46",
+        "tests/library/browsertype-launch.spec.ts:51",
+        "tests/library/browsertype-launch-server.spec.ts:29"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "webkit-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 4,
+      "expectedFiles": 2
+    }
+  ]
+}

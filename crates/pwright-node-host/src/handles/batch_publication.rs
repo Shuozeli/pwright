@@ -36,6 +36,14 @@ struct Entry {
     native: Option<PendingNativeHandleBatchCreation>,
     context: Option<BatchContext>,
     reply: Option<oneshot::Sender<Outcome>>,
+    rejection_delivery: RejectionDelivery,
+}
+
+#[derive(Clone, Copy)]
+enum RejectionDelivery {
+    AfterCompensation,
+    #[cfg(feature = "console-argument-handles")]
+    EventSourceClosed,
 }
 struct Inbox {
     closed: bool,
@@ -43,7 +51,7 @@ struct Inbox {
 }
 pub(super) struct BatchPublications {
     inbox: Mutex<Inbox>,
-    changed: Notify,
+    changed: Arc<Notify>,
     owners: Arc<Owners>,
     _storage: ResourceLease,
 }
@@ -77,7 +85,7 @@ impl BatchPublications {
                 closed: false,
                 ready: std::array::from_fn(|_| None),
             }),
-            changed: Notify::new(),
+            changed: Arc::new(Notify::new()),
             owners,
             _storage: storage,
         }))
@@ -85,8 +93,27 @@ impl BatchPublications {
     pub async fn publish(
         &self,
         native: PendingNativeHandleBatchCreation,
-        mut context: BatchContext,
+        context: BatchContext,
     ) -> Outcome {
+        let received = self.enqueue(native, context, RejectionDelivery::AfterCompensation);
+        received
+            .await
+            .map_err(|error| failure(HostError::backend(error)))?
+    }
+    #[cfg(feature = "console-argument-handles")]
+    pub fn enqueue_event(
+        &self,
+        native: PendingNativeHandleBatchCreation,
+        context: BatchContext,
+    ) -> oneshot::Receiver<Outcome> {
+        self.enqueue(native, context, RejectionDelivery::EventSourceClosed)
+    }
+    fn enqueue(
+        &self,
+        native: PendingNativeHandleBatchCreation,
+        mut context: BatchContext,
+        rejection_delivery: RejectionDelivery,
+    ) -> oneshot::Receiver<Outcome> {
         let (reply, received) = oneshot::channel();
         // No local/runtime publication may precede admitted sibling ownership.
         let count = native.len();
@@ -95,6 +122,7 @@ impl BatchPublications {
                 native: Some(native),
                 context: Some(context),
                 reply: Some(reply),
+                rejection_delivery,
             });
         } else {
             context.admission.entries.truncate(count);
@@ -104,13 +132,13 @@ impl BatchPublications {
                     native: Some(native),
                     context: Some(context),
                     reply: Some(reply),
+                    rejection_delivery,
                 },
                 true,
-            )?;
+            )
+            .unwrap_or_else(drop);
         }
         received
-            .await
-            .map_err(|error| failure(HostError::backend(error)))?
     }
     fn park(&self, entry: Entry, notify: bool) -> Result<(), OperationError<HostError>> {
         {
@@ -173,6 +201,8 @@ impl BatchPublications {
                         native,
                         entry.context.take().expect("rejected batch owns context"),
                         entry.reply.take(),
+                        Arc::clone(&self.changed),
+                        entry.rejection_delivery,
                     );
                 }
             }
@@ -292,6 +322,8 @@ fn rejected(
     native: FailedNativeHandleBatchCreation,
     context: BatchContext,
     reply: Option<oneshot::Sender<Outcome>>,
+    changed: Arc<Notify>,
+    _rejection_delivery: RejectionDelivery,
 ) {
     let BatchContext {
         admission,
@@ -300,6 +332,23 @@ fn rejected(
         lifetime,
         releases,
     } = context;
+    #[cfg(feature = "console-argument-handles")]
+    let mut reply = reply;
+    #[cfg(not(feature = "console-argument-handles"))]
+    let reply = reply;
+    #[cfg(feature = "console-argument-handles")]
+    if matches!(_rejection_delivery, RejectionDelivery::EventSourceClosed)
+        && native.error().kind() == FailureKind::TargetClosed
+        && let Some(reply) = reply.take()
+    {
+        // The immutable browser event was captured before its source world
+        // retired. Language delivery must not wait for native compensation:
+        // a later detach would otherwise overtake this event. The pre-admitted
+        // cleanup job below still attempts every native sibling and reports
+        // cleanup failure through the executor's shutdown result.
+        let _ = reply.send(Err(map_leaf_error(native.error().clone())));
+        changed.notify_one();
+    }
     recovery.submit(Box::pin(async move {
         let (_admission, _reservations) = (admission, reservations);
         let (primary, native) = native.release_native().await;
@@ -315,6 +364,10 @@ fn rejected(
                 ),
             };
             let _ = reply.send(Err(error));
+            // A serialized event producer may be waiting for this batch's
+            // terminal outcome before it can publish an earlier native event.
+            // Wake the driver so queued detach events cannot overtake it.
+            changed.notify_one();
         }
         result
     }));

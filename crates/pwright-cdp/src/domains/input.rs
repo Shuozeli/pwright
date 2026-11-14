@@ -245,18 +245,44 @@ impl CdpSession {
         x: f64,
         y: f64,
     ) -> Result<()> {
+        self.input_dispatch_touch_event_with_modifiers(event_type, x, y, None)
+            .await
+    }
+
+    /// Complete typed Touchscreen payload used by Playwright-shaped input.
+    /// TouchEnd intentionally carries no points; coordinates remain arguments
+    /// so one call shape can represent both halves of a tap.
+    pub async fn input_dispatch_touch_event_with_modifiers(
+        &self,
+        event_type: TouchEventType,
+        x: f64,
+        y: f64,
+        modifiers: Option<i32>,
+    ) -> Result<()> {
         let touch_points = match event_type {
-            TouchEventType::End => json!([]),
-            TouchEventType::Start => json!([{ "x": x, "y": y }]),
+            TouchEventType::End => Vec::new(),
+            TouchEventType::Start => vec![cdp_gen::TouchPoint {
+                x,
+                y,
+                radius_x: None,
+                radius_y: None,
+                rotation_angle: None,
+                force: None,
+                tangential_pressure: None,
+                tilt_x: None,
+                tilt_y: None,
+                twist: None,
+                id: None,
+            }],
         };
-        self.send(
-            "Input.dispatchTouchEvent",
-            json!({
-                "type": event_type.as_str(),
-                "touchPoints": touch_points,
-            }),
-        )
-        .await?;
+        let params = cdp_gen::DispatchTouchEventParams {
+            r#type: event_type.as_str().to_string(),
+            touch_points,
+            modifiers: modifiers.map(i64::from),
+            timestamp: None,
+        };
+        self.send("Input.dispatchTouchEvent", serde_json::to_value(params)?)
+            .await?;
         Ok(())
     }
 }

@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "core463-private-fit-to-width",
+      "role": "implementation-internal-source-only",
+      "runner": "tests/playwright-test/stable-test-runner/node_modules/@playwright/test/cli.js",
+      "config": "tests/playwright-test/playwright.config.ts",
+      "args": ["tests/playwright-test/fit-to-width.spec.ts"],
+      "sourceOnlyAdapter": "upstream-private-source-only-no-pwright-runtime",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "private-fit-to-width-v1",
+      "upstreamSourceSetSha256": "b79360d265bc9f66eda62558a41e6e62b1f8ea3fae94b976ebe936a4a975b0cf",
+      "expectedInvocationIdsSha256": "99b4845c0c87acbb50f4d5ba1caa0cc1d747c77443f95740211c45e6a5dd6282",
+      "expectedFileSpecIdsSha256": "efa42c756737f3d2f704707742eca8f44c7febe189a57150e8131d69971959ba",
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1,
+      "expectedProjectIds": ["playwright-test"],
+      "expectedInvocations": [
+        {"line": 20, "projectId": "playwright-test", "specId": "43ecc55b07560c6b6ffc-c2e63de005eea391e61b"},
+        {"line": 25, "projectId": "playwright-test", "specId": "43ecc55b07560c6b6ffc-9aca4b4e10409bacd54b"}
+      ]
+    }
+  ]
+}

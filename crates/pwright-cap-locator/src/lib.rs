@@ -31,6 +31,11 @@ pub mod v2 {
     pub use super::{ClickOptionsV2 as ClickOptions, ClickParamsV2 as ClickParams};
 }
 
+#[cfg(feature = "select-option-timeout-progress")]
+mod select_option_progress;
+#[cfg(feature = "select-option-timeout-progress")]
+pub use select_option_progress::SelectOptionProgress;
+
 pub use pwright_input_model::{INPUT_TEXT_MAX_BYTES, InputText};
 pub use pwright_selector_model::{
     AriaRole, AriaRoleParseError, AriaTriState, CssSelector, CssSelectorError, LocatorErrorDetails,
@@ -753,12 +758,24 @@ impl SelectOptionOptions {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct SelectOptionParams {
     pub selector: Selector,
     pub values: Vec<SelectOptionValue>,
     pub options: SelectOptionOptions,
+    #[cfg(feature = "select-option-timeout-progress")]
+    progress: Option<SelectOptionProgress>,
 }
+
+impl PartialEq for SelectOptionParams {
+    fn eq(&self, other: &Self) -> bool {
+        self.selector == other.selector
+            && self.values == other.values
+            && self.options == other.options
+    }
+}
+
+impl Eq for SelectOptionParams {}
 
 impl SelectOptionParams {
     pub fn new(
@@ -770,7 +787,24 @@ impl SelectOptionParams {
             selector: selector.into(),
             values: values.into().into_inner(),
             options,
+            #[cfg(feature = "select-option-timeout-progress")]
+            progress: None,
         }
+    }
+
+    /// Attach a one-call, non-wire diagnostic observer. The default request
+    /// never allocates one, and it never changes selector or value equality.
+    #[cfg(feature = "select-option-timeout-progress")]
+    #[doc(hidden)]
+    pub fn with_progress(mut self, progress: SelectOptionProgress) -> Self {
+        self.progress = Some(progress);
+        self
+    }
+
+    #[cfg(feature = "select-option-timeout-progress")]
+    #[doc(hidden)]
+    pub fn progress(&self) -> Option<&SelectOptionProgress> {
+        self.progress.as_ref()
     }
 }
 
@@ -1385,7 +1419,7 @@ mod tests {
         );
         assert_eq!(
             LocatorCapability::DESCRIPTOR.plugin.version,
-            pwright_core::ProtocolVersion::new(1, 23)
+            pwright_core::ProtocolVersion::new(1, 24)
         );
         assert_eq!(Press::COMMAND, PRESS_COMMAND_ID);
         assert_eq!(Press::METHOD, PRESS_METHOD);
@@ -1711,7 +1745,7 @@ mod tests {
             <super::v2::LocatorCapability as Capability>::DESCRIPTOR
                 .plugin
                 .version,
-            pwright_core::ProtocolVersion::new(2, 6)
+            pwright_core::ProtocolVersion::new(2, 7)
         );
         assert_eq!(
             super::v2::Click::COMMAND,
@@ -1805,6 +1839,25 @@ mod tests {
         assert_eq!(params.values, vec![descriptor]);
         assert_eq!(params.options.force, Some(false));
         assert!(empty.values.is_empty());
+    }
+
+    #[cfg(feature = "select-option-timeout-progress")]
+    #[test]
+    fn select_option_progress_does_not_change_request_value_equality() {
+        // Arrange
+        let request = SelectOptionParams::new(
+            Selector::test_id("color"),
+            "Blue",
+            SelectOptionOptions::new(),
+        );
+
+        // Act
+        let observed = request
+            .clone()
+            .with_progress(crate::SelectOptionProgress::new());
+
+        // Assert
+        assert_eq!(request, observed);
     }
 
     #[test]

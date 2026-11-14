@@ -44,6 +44,7 @@ fn typed_output_keeps_its_lease_after_native_arena_and_installation_drop() {
             Duration::ZERO,
             &NativeLifecycleNotice::SameDocument {
                 frame: ObjectId::new(9),
+                url: None,
             },
         )
         .unwrap();
@@ -73,6 +74,7 @@ fn typed_output_keeps_its_lease_after_native_arena_and_installation_drop() {
     assert_eq!(result.outcome().as_ref().unwrap().frame_id, 9);
     assert_eq!(result.value().unwrap().frame_id, 9);
     assert!(result.outcome().as_ref().unwrap().response.is_none());
+    assert_eq!(result.response_request_id(), None);
     assert!(ledger.scope_metrics(RESULT_SCOPE).unwrap().is_some());
     assert!(ledger.scope_metrics(SLOTS_SCOPE).unwrap().is_some());
     drop(result);
@@ -87,6 +89,13 @@ fn foreign_error_projection_preserves_timeout_and_retains_the_result_owner() {
     let slots = ResultSlots::new(&resources).unwrap();
     let output = FrameGotoOutput {
         outcome: Err(wait_error(NavigationWaitError::Timeout, None, 123)),
+        response_request_id: None,
+        #[cfg(feature = "response-request")]
+        response_request: None,
+        #[cfg(feature = "response-finished")]
+        response_finished_owner: None,
+        #[cfg(feature = "response-security-details")]
+        response_security_details: None,
         timeout_ms: 123,
         _permit: slots.admit(&resources).unwrap(),
     };

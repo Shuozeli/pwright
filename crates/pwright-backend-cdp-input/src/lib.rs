@@ -13,6 +13,7 @@ mod production;
 mod typing;
 
 pub use input::{CdpInputCoordinator, CdpInputPolicy, CdpInputTransaction, CdpModifiers};
+pub use interleaved::{CdpCheckedMouseDownError, CdpOwnedMousePress};
 pub use interleaved::{
     CdpMouseDispatcher, DirectMouseDispatch, MouseDispatchKind, MouseDispatchOperation,
     MouseDispatchRequest, MouseLiveState, MouseStateReader,

@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_page_base_url.py": "381dcf7e204f6bf8f5e83e3388a67c0aa26ff3522db5b1e8d7feb39a143ff80a"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_page_base_url.py::test_should_construct_a_new_url_when_a_base_url_in_browser_new_persistent_context_is_passed",
+      "capabilities": [
+        "chromium.launch_persistent_context",
+        "browser-context.default",
+        "browser-context.base-url",
+        "page.goto",
+        "browser-context.close",
+        "browser-process.shutdown"
+      ]
+    }
+  ]
+}

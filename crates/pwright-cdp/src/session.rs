@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use serde_json::Value;
+#[cfg(feature = "runtime-binding")]
+use tokio::sync::OnceCell;
 
 use crate::CdpClient;
 use crate::client_trait::SessionFactory;
@@ -11,10 +13,13 @@ use crate::events::{CdpEvent, CdpEventReceiver};
 ///
 /// Browser-level commands use session_id = None.
 /// Tab-level commands use the session_id returned by Target.attachToTarget.
+#[derive(Clone)]
 pub struct CdpSession {
     conn: Arc<CdpConnection>,
     session_id: Option<String>,
     target_id: String,
+    #[cfg(feature = "runtime-binding")]
+    pub(crate) runtime_binding: Arc<OnceCell<&'static str>>,
 }
 
 impl CdpSession {
@@ -24,6 +29,8 @@ impl CdpSession {
             conn,
             session_id: None,
             target_id: String::new(),
+            #[cfg(feature = "runtime-binding")]
+            runtime_binding: Arc::new(OnceCell::new()),
         }
     }
 
@@ -40,6 +47,8 @@ impl CdpSession {
             conn,
             session_id: Some(session_id),
             target_id,
+            #[cfg(feature = "runtime-binding")]
+            runtime_binding: Arc::new(OnceCell::new()),
         }
     }
 

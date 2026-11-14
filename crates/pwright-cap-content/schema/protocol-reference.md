@@ -98,6 +98,7 @@
 | `3` | `full_page` | `bool` | optional | — |
 | `4` | `clip` | `pwright.content.screenshot_clip` | optional | — |
 | `5` | `scale` | `pwright.content.screenshot_scale` | optional | — |
+| `6` | `document_clip` | `bool` | optional | — |
 
 ### `pwright.content.screenshot_scale`
 

@@ -49,11 +49,12 @@ fn fixture(count: usize, fail: bool) -> Fixture {
 }
 fn fixture_with_failure(count: usize, failure: Option<FailureKind>) -> Fixture {
     let limits = RuntimeLimits::new(256, 16);
+    let runtime_objects = std::num::NonZeroUsize::new(limits.live_objects).unwrap();
     let routes = ChromiumHandleRouteProfile::new(ResourceScope::extension(157, 3), count, 64, 64);
     let plan = limits
         .resource_requirements()
         .combine_concurrent(routes.requirements())
-        .combine_concurrent(requirements().unwrap());
+        .combine_concurrent(requirements(runtime_objects).unwrap());
     let mut budget = ResourceLimits::deny_all(plan.scopes, plan.leases);
     for class in ResourceClass::ALL {
         let amount = plan.class(class);
@@ -94,6 +95,7 @@ fn fixture_with_failure(count: usize, failure: Option<FailureKind>) -> Fixture {
     let releases = Releases::new(
         ChromiumHandleDisposeCommandService::new(runtime.lifecycle_handle(), routes.clone()),
         &runtime.lifecycle_handle(),
+        runtime_objects,
         &resources,
     )
     .unwrap();

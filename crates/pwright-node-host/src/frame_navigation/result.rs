@@ -29,20 +29,29 @@ const HEADERS: usize = 256;
 const URL_BYTES: usize = 16 * 1024;
 const STATUS_BYTES: usize = 1024;
 // Includes parser scratch, escaped strings, final owned strings, both bounded
-// header arrays, error formatting and owner metadata. Native JSON has a separate
-// arena lease. Allocator bookkeeping and the caller's task stack are external.
+// header arrays, error formatting, owner metadata and the copied native
+// document request identity. Native JSON has a separate arena lease. Allocator
+// bookkeeping and the caller's task stack are external.
 const RESULT_BYTES: u64 = 384 * 1024;
 // At most twice the bounded source for geometrically grown parser scratch,
 // once for escaped owned strings and once for final string copies, plus both
 // header arrays and a fixed allowance for structs/error metadata.
 const _: () = assert!(
-    RESULT_BYTES as usize >= 4 * SOURCE_BYTES + 2 * HEADERS * std::mem::size_of::<Header>() + 4096
+    RESULT_BYTES as usize
+        >= 4 * SOURCE_BYTES + 2 * HEADERS * std::mem::size_of::<Header>() + 4096 + 256
 );
 const RESULT_SCOPE: ResourceScope = ResourceScope::extension(126, 3);
 const SLOTS_SCOPE: ResourceScope = ResourceScope::extension(126, 4);
 
 pub struct FrameGotoOutput {
     outcome: Result<FrameGotoResult, OperationError<NavigationErrorDetails>>,
+    response_request_id: Option<String>,
+    #[cfg(feature = "response-request")]
+    response_request: Option<Arc<crate::network_events::RequestHistoryOwner>>,
+    #[cfg(feature = "response-finished")]
+    response_finished_owner: Option<Arc<crate::network_events::ResponseFinishedOwner>>,
+    #[cfg(feature = "response-security-details")]
+    response_security_details: Option<Option<crate::network_events::CdpResponseSecurityDetails>>,
     timeout_ms: u32,
     _permit: ResultPermit,
 }
@@ -59,6 +68,63 @@ impl FrameGotoOutput {
         self.outcome
             .as_ref()
             .map_err(|error| HostError::operation(error.clone(), self.timeout_ms))
+    }
+
+    /// Native document request identity retained independently from the
+    /// bounded lifecycle arena for an eventual response-body capability.
+    pub fn response_request_id(&self) -> Option<&str> {
+        self.response_request_id.as_deref()
+    }
+
+    #[cfg(feature = "response-request")]
+    pub fn response_request(&self) -> Option<&crate::network_events::RequestHistoryOwner> {
+        self.response_request.as_deref()
+    }
+
+    #[cfg(feature = "response-request")]
+    pub fn response_request_foreign_copy_bytes(&self) -> u64 {
+        self.response_request().map_or(
+            0,
+            crate::network_events::RequestHistoryOwner::foreign_copy_bytes,
+        )
+    }
+
+    #[cfg(feature = "response-request")]
+    pub(super) fn attach_response_request(
+        &mut self,
+        request: Arc<crate::network_events::RequestHistoryOwner>,
+    ) {
+        self.response_request = Some(request);
+    }
+
+    #[cfg(feature = "response-finished")]
+    pub fn response_finished_owner(
+        &self,
+    ) -> Option<&Arc<crate::network_events::ResponseFinishedOwner>> {
+        self.response_finished_owner.as_ref()
+    }
+
+    #[cfg(all(feature = "response-request", feature = "response-finished"))]
+    pub(super) fn attach_response_finished_owner(
+        &mut self,
+        owner: Arc<crate::network_events::ResponseFinishedOwner>,
+    ) {
+        self.response_finished_owner = Some(owner);
+    }
+
+    #[cfg(feature = "response-security-details")]
+    pub fn response_security_details(
+        &self,
+    ) -> Option<Option<&crate::network_events::CdpResponseSecurityDetails>> {
+        self.response_security_details.as_ref().map(Option::as_ref)
+    }
+
+    #[cfg(feature = "response-security-details")]
+    pub(super) fn attach_response_security_details(
+        &mut self,
+        details: Option<Option<crate::network_events::CdpResponseSecurityDetails>>,
+    ) {
+        self.response_security_details = details;
     }
 }
 
@@ -143,6 +209,7 @@ pub(super) fn project(
     permit: ResultPermit,
     timeout_ms: u32,
 ) -> Result<FrameGotoOutput, HostError> {
+    let response_request_id = owner.response_request_id().map(str::to_owned);
     let outcome = match owner.outcome() {
         Some(Ok(NavigationPoll::Complete {
             frame,
@@ -173,6 +240,13 @@ pub(super) fn project(
     drop(owner);
     Ok(FrameGotoOutput {
         outcome,
+        response_request_id,
+        #[cfg(feature = "response-request")]
+        response_request: None,
+        #[cfg(feature = "response-finished")]
+        response_finished_owner: None,
+        #[cfg(feature = "response-security-details")]
+        response_security_details: None,
         timeout_ms,
         _permit: permit,
     })

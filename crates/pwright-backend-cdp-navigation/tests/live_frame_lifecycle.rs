@@ -123,7 +123,7 @@ impl Observer {
                         loader: actual,
                         ..
                     } if id == frame && Some(actual) == loader => committed = true,
-                    NativeLifecycleNotice::SameDocument { frame: id }
+                    NativeLifecycleNotice::SameDocument { frame: id, .. }
                         if id == frame && loader.is_none() =>
                     {
                         let state = self.snapshot(frame)?;

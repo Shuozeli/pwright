@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_request_continue.py": "e75e0688e4532dd7e59d849af62b9670cb4003f5af317189de5d1ee0ba71e67d"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_request_continue.py::test_request_continue_should_work",
+      "capabilities": ["page.route", "route.continue"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_request_continue_should_amend_http_headers",
+      "capabilities": ["page.route", "route.continue.headers"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_request_continue_should_amend_method",
+      "capabilities": ["page.route", "route.continue.method"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_request_continue_should_amend_method_on_main_request",
+      "capabilities": ["page.route", "route.continue.method", "navigation.main-request"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_request_continue_should_amend_post_data",
+      "capabilities": ["page.route", "route.continue.post-data"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_should_override_request_url",
+      "capabilities": ["page.route", "route.continue.url"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_should_raise_except",
+      "capabilities": ["page.route", "route.continue.url", "route.continue.error"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_should_amend_utf8_post_data",
+      "capabilities": ["page.route", "route.continue.post-data", "post-data.utf8"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_should_amend_binary_post_data",
+      "capabilities": ["page.route", "route.continue.post-data", "post-data.binary"]
+    },
+    {
+      "id": "tests/async/test_request_continue.py::test_continue_should_not_change_multipart_form_data_body",
+      "capabilities": ["page.route", "route.continue", "post-data.multipart"]
+    }
+  ]
+}

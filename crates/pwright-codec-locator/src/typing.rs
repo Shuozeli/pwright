@@ -160,9 +160,9 @@ mod tests {
             params(),
         );
         let wire1 =
-            WireProtocol::new_exact_directional(one, ProtocolVersion::new(1, 23), limits, limits);
+            WireProtocol::new_exact_directional(one, ProtocolVersion::new(1, 24), limits, limits);
         let wire2 =
-            WireProtocol::new_exact_directional(two, ProtocolVersion::new(2, 6), limits, limits);
+            WireProtocol::new_exact_directional(two, ProtocolVersion::new(2, 7), limits, limits);
         // Act
         let decoded1 = wire1
             .decode::<Command<PressSequentially>>(wire1.encode(&first).unwrap())

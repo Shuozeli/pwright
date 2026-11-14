@@ -1,0 +1,11 @@
+.venv/
+.work/
+dist/
+dist-a/
+dist-b/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.whl
+python/pwright/_native.abi3.so
+python/shuozeli_pwright.dylibs/

@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-page-set-content-public-chromium",
+      "role": "browser-backed-official-file",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": ["tests/page/page-set-content.spec.ts"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "oracleAdapter": "test-mode-playwright-core-cdp",
+      "project": "chromium-page",
+      "requiresBrowser": true,
+      "expectedTestsPerProject": 15,
+      "expectedFiles": 1,
+      "upstreamTestSourceSha256": "3909ec532e104dc20176328f3870c1768141b2a270facbaf187169fa73c312c4",
+      "pinnedGrepInvert": "should handle timeout properly(?: 2)?$",
+      "expectedSpecIds": [
+        "c6caa8e9215c015092b9-0101804939ab8131ed65",
+        "c6caa8e9215c015092b9-5c750d9508725255b6e1",
+        "c6caa8e9215c015092b9-3488cfc8358f52722d20",
+        "c6caa8e9215c015092b9-b367503f10defa02a65e",
+        "c6caa8e9215c015092b9-0827822058855f6939be",
+        "c6caa8e9215c015092b9-e492a3c61c857875b014",
+        "c6caa8e9215c015092b9-93b3a864264624f064a9",
+        "c6caa8e9215c015092b9-44171ca42836474de913",
+        "c6caa8e9215c015092b9-aa1c0f5526440b2d79bc",
+        "c6caa8e9215c015092b9-89fbd4ff39e85aecb321",
+        "c6caa8e9215c015092b9-a537de17432cecee977f",
+        "c6caa8e9215c015092b9-3916f2df42df7ce0529e",
+        "c6caa8e9215c015092b9-64a792155ca067c4b902",
+        "c6caa8e9215c015092b9-ad90987bcb55c5d92d6f",
+        "c6caa8e9215c015092b9-676e50e204946282d0d4"
+      ],
+      "excludedSpecIds": [
+        "c6caa8e9215c015092b9-9e5f7b7da96772c4c51b",
+        "c6caa8e9215c015092b9-be921e910219a009586c"
+      ],
+      "expectedSpecIdsSha256": "c29dbc52e8347553b38ba2873b593fa30df47f0b0f60c18e659914be5bf61c9d",
+      "upstreamFullSpecIdsSha256": "8adebc2af56898da76a85c8b839bcf70d0acd9168f1616ff039e77e9bb3c8d5a"
+    }
+  ]
+}

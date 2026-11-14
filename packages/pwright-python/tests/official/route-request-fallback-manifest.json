@@ -1,0 +1,509 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "ciPlatforms": [
+      "linux",
+      "darwin",
+      "win32"
+    ],
+    "ciPythonVersions": [
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "stableChannels": [
+      "chrome",
+      "msedge"
+    ],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_page_request_fallback.py": "589a31db90fede923193cd0153b2033b40ff840117c8019447530bb72d181ff8",
+    "tests/sync/test_page_request_fallback.py": "d8db5ef84297554e3e08a1cd62e06a7ed7b6b57ecf929abd322a1c8d1543ae9c",
+    "tests/async/test_browsercontext_request_fallback.py": "c7c3a27b8f38b6e359d832fcbd2ea8aed0b3fe2f05fe053edb5bcfa68c14bbd2",
+    "tests/sync/test_browsercontext_request_fallback.py": "a9e822e92398db1726eef073e273a7450dd90a0c0156f0038edfef8407a075fd"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_work",
+      "capabilities": [
+        "page.route",
+        "route.fallback"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_fall_back",
+      "capabilities": [
+        "page.route",
+        "route.fallback"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_fall_back_async_delayed",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.async"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_chain_once",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.chain"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_not_chain_fulfill",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "route.fulfill"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_not_chain_abort",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "route.abort"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_fall_back_after_exception",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.handler.error"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_amend_http_headers",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.headers",
+        "request.headers",
+        "request.header_value"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_delete_header_with_undefined_value",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.headers.delete"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_amend_method",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.method"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_override_request_url",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.url",
+        "response.url"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_amend_post_data",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.post-data"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_amend_binary_post_data",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.post-data",
+        "route.fallback.post-data.binary"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_chain_fallback_with_dynamic_url",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "route.fallback.url"
+      ]
+    },
+    {
+      "id": "tests/async/test_page_request_fallback.py::test_should_amend_json_post_data",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.post-data",
+        "route.fallback.post-data.json"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_work",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_fall_back",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_fall_back_async_delayed",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.async"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_chain_once",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.chain"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_fall_back_after_exception",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.handler.error"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_amend_http_headers",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.headers",
+        "request.headers",
+        "request.header_value"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_delete_header_with_undefined_value",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.headers.delete"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_amend_method",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.method"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_override_request_url",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.url",
+        "response.url"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_amend_post_data",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.post-data"
+      ]
+    },
+    {
+      "id": "tests/async/test_browsercontext_request_fallback.py::test_should_amend_binary_post_data",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.post-data",
+        "route.fallback.post-data.binary"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_work",
+      "capabilities": [
+        "page.route",
+        "route.fallback"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_fall_back",
+      "capabilities": [
+        "page.route",
+        "route.fallback"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_fall_back_async_delayed",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.async"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_chain_once",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.chain"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_not_chain_fulfill",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "route.fulfill"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_not_chain_abort",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "route.abort"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_fall_back_after_exception",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.handler.error"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_amend_http_headers",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.headers",
+        "request.headers",
+        "request.header_value"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_delete_header_with_undefined_value",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.headers.delete"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_amend_method",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.method"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_override_request_url",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.url",
+        "response.url"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_amend_post_data",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.post-data"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_amend_binary_post_data",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.post-data",
+        "route.fallback.post-data.binary"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_chain_fallback_with_dynamic_url",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "route.fallback.url"
+      ]
+    },
+    {
+      "id": "tests/sync/test_page_request_fallback.py::test_should_amend_json_post_data",
+      "capabilities": [
+        "page.route",
+        "route.fallback",
+        "route.fallback.post-data",
+        "route.fallback.post-data.json"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_work",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_fall_back",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_fall_back_async_delayed",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.async"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_chain_once",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.chain"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_not_chain_fulfill",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "route.fulfill"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_not_chain_abort",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "route.abort"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_fall_back_after_exception",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.handler.error"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_amend_http_headers",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.headers",
+        "request.headers",
+        "request.header_value"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_delete_header_with_undefined_value",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.headers.delete"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_amend_method",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.method"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_override_request_url",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.url",
+        "response.url"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_amend_post_data",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.post-data"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_amend_binary_post_data",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.post-data",
+        "route.fallback.post-data.binary"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_request_fallback.py::test_should_chain_fallback_into_page",
+      "capabilities": [
+        "browser_context.route",
+        "route.fallback",
+        "route.fallback.chain",
+        "page.route"
+      ]
+    }
+  ]
+}

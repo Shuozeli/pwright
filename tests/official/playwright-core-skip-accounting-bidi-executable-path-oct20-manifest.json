@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "bidi-executable-path-channel-upstream-skip",
+      "role": "browser-independent-official-skip-accounting",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-basic.spec.ts:21"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "expectedSpecIds": [
+        "6b03a5a0308bccda8853-8f00ac6037b31965609c",
+        "6b03a5a0308bccda8853-5eecc771241ce10e2a82",
+        "6b03a5a0308bccda8853-b6ab9e1b006054096f4c",
+        "6b03a5a0308bccda8853-2d52c804bd8345f8cc1c",
+        "6b03a5a0308bccda8853-1c7ff9339ad9172832e9",
+        "6b03a5a0308bccda8853-a3da7cd10022d3943c8c"
+      ],
+      "upstreamSources": {
+        "tests/library/browsertype-basic.spec.ts": "5f51d798d443c1b2d9884dd47bd5776382098ca61e76bd317a11d37bf50f81d8",
+        "tests/bidi/playwright.config.ts": "9d9e2bb9df999850649c3126091a9492dd38957f581be5bc85871abbf9a0a6d8",
+        "tests/config/browserTest.ts": "0ef5440e164d262e7c3d01523448b5d3c4d50b99060604c20f168f04419a13d5",
+        "tests/config/testMode.ts": "7c12e6bd3fa7e2e3e4ff296277f4a60656d4d8a0c536cb55d9d6c1e83016f575",
+        "tests/config/serverFixtures.ts": "4c0039a149bd61e8707adddc626b345632561bd343749293ddbe9458f6ac617b"
+      }
+    }
+  ]
+}

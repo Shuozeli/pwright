@@ -1,4 +1,1986 @@
-<!-- agent-updated: 2026-09-19T21:23:32Z -->
+<!-- agent-updated: 2026-10-12T07:11:38Z -->
+
+## Typed `*` capture selector checkpoint (2026-10-12)
+
+The Rust query planner now preserves one CSS/text capture point for Page
+`$eval` and `$$eval`. It retains separate prefix and suffix trees until the
+terminal command; later filters and descendant Locator composition modify
+the suffix, then the existing typed `FilterHas` selector returns each
+matching captured ancestor once in DOM order. An initial eager rewrite
+applied later filters to the wrong element and was corrected after source
+review. Multiple captures and capture with `nth` retain Playwright-shaped
+errors; unsupported custom-engine captures fail closed. The selected release
+host source and test compilation pass with handles and selector registration
+enabled; the selector module passes 89/89 release tests. New native packaging and official
+browser comparisons remain pending.
+
+## Browser-root CDP session checkpoint (2026-10-12)
+
+The opt-in `browser-cdp-session` feature composes with, but remains separate
+from, Page/main-Frame `cdp-session`. Rust attaches each public Browser session
+at the connection root, distinguishes its lifetime from Page/Context owners,
+and shares one eight-session native capacity and bounded event lease path.
+Both Page-creation entry points capture a discovery-enabled Browser-session
+fence before native creation; the host waits for the exact new target ID, and
+the Node facade publishes queued target events before returning the Page.
+The fence handles omitted and explicit first-match-wins CDP discovery filters
+that include Page targets. If the post-create event flush fails, the facade
+closes the newly created Context or Page before rejecting, preserving both
+the primary and cleanup errors if compensation also fails.
+Retirement, discovery disable/re-enable, queue overflow, and an expired event
+history terminate this fence without silently treating an unrelated event as
+success. The post-edit single-job release addon check and 32/32 focused CDP
+host tests pass. The separate topology-driver test target remains unverified:
+its release compilation raised swap by over 600 MiB and was stopped; a
+test-only ownership compile error found there is corrected but not rechecked.
+A new native artifact and unchanged official browser tests are still
+required; the old combined artifact does not attest this feature.
+The normal browserless Node suite passes 773/773, including four cleanup
+adapter tests, with strict TypeScript. Both CDP leaf release checks and
+zero-added-package dependency proof pass on the current source; a combined
+native artifact still must be rebuilt. Selected release host source and test
+compilation pass; topology-driver test execution remains open.
+
+The CDP-session Node conversion now uses the crate-wide `napi` facade, and its
+two opt-in raw classes are conditionally listed in the module-local TypeTag
+registry. The native-class source audit, full `pnpm test:boundary` gate, and
+single-job `cdp-session` addon release check pass; the selected release
+module-local class-tag proof passes 1/1. This boundary correction does not
+add official browser-test or conformance-ledger credit.
+
+## Retained ElementHandle selectOption value slice (2026-10-12)
+
+The separate opt-in `element-handle-select-option-value` leaf adds
+`ElementHandle.selectOption('blue')` with a string value or label to the
+original retained Handle. The Rust host owns the timeout/retry, bounded DOM
+selection and event dispatch; Node only validates a small argument shape and
+forwards the Handle. Descriptor and Option-Handle overloads, `force`, and
+navigation-commit semantics are explicitly not implemented. The isolated
+feature depends only on `handles` and `timeout-settings`, not Locator DOM
+actions or geometry. Focused Rust release tests pass 5/5; Node browserless
+units pass 738/738, strict types, dependency boundary and Clippy pass. The
+cumulative `official-conformance-page-retained-select-option-value` release
+addon has SHA-256
+`bae00851f127108b003264f46a4ea8982a9ee4ad1b3de1ab3b70ef2335faaa06`
+and independently passed native-load smoke. The pinned official
+`elementhandle-misc.spec.ts` file has not been rerun, so its ledger remains
+unchanged.
+
+## Playwright CSS pseudo-selector source checkpoint (2026-10-12)
+
+The Rust Locator query parser now recognizes direct and `css=` `:visible`,
+one-based `:nth-match` across bounded CSS arms, and the root
+`:is(:nth-match(...), :nth-match(...))` composition needed by the pinned
+Core `selectors-misc.spec.ts` cases. It composes existing typed visible,
+DOM-order union, and nth selectors; quoted, escaped, bracketed, and nested
+argument separators do not split arms. The complete shape is preflighted and
+reserved before constructing the retained tree. Unsupported nested Playwright
+CSS extensions fail closed instead of being silently delegated to native CSS.
+Ten new AAA tests bring the focused release host lane to 63/63; strict release
+Clippy passes. This source-only checkpoint does not claim that the official
+`:visible` or `:nth-match` browser cases pass, because the dedicated CDP
+endpoint remains unavailable. The unchanged official ledger has no new credit.
+
+A pinned-upstream source audit then found and repaired three parser edges:
+case-insensitive pseudo names, integer-valued CSS number spellings such as
+`1.0` and `1e0`, and pseudo-looking text inside CSS comments. The expanded
+focused release host lane passes 24/24 and strict Clippy. The selector runtime
+also now traverses nested Shadow Roots in upstream CSS order and sorts typed
+unions/within results in composed DOM order; its injection version is 14 so an
+older script is replaced. Runtime release tests pass 12/12, strict Clippy
+passes, and a fake-DOM dynamic check covers nested/sibling Shadow Roots. These
+remain browserless checks, not official conformance results.
+
+## Page/Frame waitForSelector retained wait (2026-10-11)
+
+The opt-in `handles` Node addon now exposes `NativeLocator.waitForSelectorElement`
+backed by Rust `HostLocator::wait_for_element`. Its native-artifact proof
+requires the new method, so an older `handles` binary fails closed.
+`Page.waitForSelector` and `Frame.waitForSelector` map Playwright's four states,
+default non-strict first match, strict selection, and Page/Context inherited
+timeout to one Rust-owned wait and optional retained `ElementHandle`
+publication. Typed and Browser-program selectors, including XPath, now poll
+one state-and-element browser result per attempt; the positive-state Handle is
+the node actually observed. Hidden/detached completion returns `null`.
+The Node boundary validates options and retains the upstream legacy
+`waitFor: 'visible'` alias. This is an implementation and browserless-test
+checkpoint only; it has not rerun the pinned official Chromium
+`page-wait-for-selector-1` file. Registered/Layout selector plans and complete
+upstream timeout call logs remain open. The language wrapper matches the invalid-state
+diagnostic and adds the selector/state call-log header on typed native wait
+failures; full per-attempt element previews are still absent.
+When a Frame is confirmed detached, the wrapper also maps the Rust-recognized
+CDP execution-context-loss variants (including context-ID loss and inspected
+target closure) to `frame.waitForSelector: Frame was detached`. It preserves
+the original backend error for an active/unknown Frame and for Page calls.
+This source-only adapter check passes 27/27 focused and 735/735 full Node
+browserless tests; the pinned official detached-Frame case has not been rerun.
+
+The separate `element-handle-wait-for-selector` leaf now evaluates CSS/XPath
+descendants against the original retained Handle and returns the matched node
+from the same state-observation snapshot. It never re-queries from Page/Frame
+or follows a replacement execution world after navigation. Omitted timeout
+uses the creation world's Page/Context setting; explicit zero is unlimited.
+The language wrapper adds the locator call-log header on typed failures.
+The `official-conformance-page-retained-wait` profile composes this leaf with
+the earlier Page and scroll capabilities. Its release addon SHA-256 is
+`905b9b7dd8bc171e0aab2d401899730da640854d7f10d22084d6ac6dc676c533`;
+native-load, 735/735 Node package units, strict types, and dependency boundaries
+pass. The environment now shares one immediate-fail quota of 24 selector waits
+across Sessions, leaving eight of 32 FFI Command slots for unblockers;
+focused release tests and strict full-profile Clippy pass, while
+browser-backed concurrency proof is pending. The four pinned Core
+`ElementHandle.waitForSelector` failures retain their ledger outcomes until an
+official browser rerun; broader selector engines and preview-history parity
+remain open.
+
+## Retained ElementHandle scroll leaf (2026-10-11)
+
+`element-handle-scroll-into-view` is an independent opt-in Node addon leaf:
+it depends on `handles` and the matching Rust host leaf, not on
+`element-handle-dom` or Locator DOM actions. `ElementHandle.scrollIntoViewIfNeeded`
+forwards the exact retained native Handle to Rust. An omitted timeout now
+resolves through the Rust-owned Page/Context default; explicit zero remains
+zero. The native artifact checks its marker and N-API method together; the
+unselected facade rejects the call. The isolated
+`official-conformance-page-retained-scroll` profile adds
+this leaf to the pinned Core Page feature union without altering the earlier
+Page profile. At that checkpoint browserless Node units passed 710/710. The isolated
+release addon with inherited timeout and a stale-binary guard has SHA-256
+`60d757a38a958732aff254e87bf92e9d1af2e7be34b301f795c07f312b338d3c`;
+its native-load smoke passes. The cumulative full-Page profile now also builds
+and passes native-load smoke (SHA-256
+`5122f41c5e7d93672662367b8b6ed9a4e65e778ba0db1d9230cc34459d41d405`),
+710/710 browserless package units, strict types, and dependency boundaries.
+Its official browser behavior remains unverified.
+
+## Retained ElementHandle focus and Text-node click (2026-10-11)
+
+The selected `element-handle-dom` Node addon now exposes the host's existing
+exact-retained-Handle focus command. `ElementHandle.focus()` only forwards its
+native owner; the facade rejects options until timeout/no-wait semantics are
+implemented and fails explicitly when the profile is absent. No selector or
+second owner is constructed. A separate retained-click backend repair
+retargets a Text node to its current parent Element within actionability and
+both pre-input route checks while keeping each CDP call bound to the original
+Text-node object ID. It checks connectivity and current Frame identity on
+every phase without consulting the mutable page-global `Node`. The Node package
+passes 693/693 browserless tests, strict types and selected-addon release
+check / Clippy; the fake-CDP locator release suite passes 146/146. A rebuilt
+native addon and unchanged
+official Core/Python browser reruns remain required for conformance credit.
+
+## Opt-in official URL expectation bridge (2026-10-10)
+
+The pinned complete 64-case Core Page.goto rerun passes 61/64 candidate
+versus 63/64 independent oracle expected outcomes. One candidate-only failure
+is `toHaveURL` after a JavaScript redirect: upstream reads
+`page.context()._options.baseURL`, then invokes
+`page.mainFrame()._expect('to.have.url')`. The opt-in `wait-for-url` Node
+profile now supplies that Context field and a narrow Frame expectation port.
+JavaScript preserves serialized string/RegExp matcher semantics while Rust's
+`frameWaitForUrl(..., 'commit', timeout)` retains observation, lifecycle,
+admission and timeout ownership. The selected Page exposes the official
+matcher identity, accepts the matcher's optional `signal`/`title` fields
+(a live cancellation signal fails closed), and returns the official
+`received: { value: url }` shape. Unsupported expressions fail closed, and
+the unselected default profile retains its v1 shape. Twelve focused AAA
+tests, 587 package tests, strict types and dependency boundaries pass. This source
+change postdates that earlier paired official report. A fresh complete 64-case
+candidate/oracle rerun now gives :492 official candidate pass evidence, but
+candidate :217 unexpectedly fails with a network Request Frame/topology
+invariant error; one later isolated candidate :217 diagnostic and a second
+complete 64-case candidate rerun both pass :217. That second run is 62/64
+candidate versus 63/64 oracle expected outcomes, and the new immutable Core
+strict ledger promotes exactly :492 to expected. The intermittency/sequence
+dependence of :217 remains unresolved. The other candidate-only Page.goto
+failure, `:859`, still needs exact Rust Frame-detach publication, not a JS
+alias. See `docs/upstream-playwright-conformance.md` for the reports.
+
+## Opt-in exact Frame-detach event source checkpoint
+
+The pinned Page.goto :859 failure waits for
+`page.waitForEvent('framedetached')` before awaiting navigation. A new opt-in
+`frame-detach-events` source path carries exact CDP `FrameRemoved` effects
+through bounded host publication, N-API metadata, and the Node Page emitter.
+It publishes tree retirement before the event and preserves the canonical
+Frame wrapper, including child-first unobserved descendants. Each live child
+pre-admits a detach notice, worst-case tree revision/queue slot, and one-shot
+Frame binding; the selected capacity adds 127 binding states and 254
+revision/publication slots, while the unselected default remains unchanged.
+A later tree revision now retains an unconsumed retired identity until the
+event-loop completion port releases its unused binding. Focused release
+`frame_tree` and `frame_trees` suites pass 33/33 and 28/28; Node package tests
+pass 592/592 after a JS cleanup test, strict types and dependency boundaries pass, host strict release
+Clippy passes, and default/selected addon release checks compile (both still
+show an unrelated existing `prepare_input` dead-code warning).
+
+This remains **source-only and incomplete**. Initial child admission still
+occurs after the topology transaction commits, so exhaustion can leave a
+committed child without a publishable Frame; a transactional precommit
+ownership reservation is required. Reconnect cleanup now captures exact
+`FrameRemoved` effects for retained-Page children and publishes them in
+child-first order; feature-on topology release tests pass 53/53 and default
+tests pass 50/50. JS now calls the completion port even if detached-wrapper
+materialization throws, preserving the original exception. Partial ancestor
+cache rollback remains unimplemented. The selected full-profile addon has not been rebuilt or native-loaded,
+and unchanged official :859 has not been rerun. Do not claim general
+`framedetached` support or strict-ledger credit from the local tests.
+
+The next repair must prepare child ownership *before* runtime/routes/topology
+commit, not merely preallocate a `FrameNode` after it. A selected-only RAII
+plan should derive bounded child additions from the candidate topology,
+prevalidate identity and reserve URL entries, detach lifecycle/tree/binding,
+and each affected Page's revision/queue slot. Any failed reservation drops the
+uncommitted candidate; successful commit consumes the prepared objects with no
+further fallible admission. `context_storage_state::Observer` must forward
+the new preparation hook. Focused tests need to exhaust each resource in turn,
+exercise Nth-child rollback and route-preparation failure, then prove successful
+attach→navigate→detach identity and event ordering. The CDP event cursor also
+needs explicit retry/resync semantics when precommit preparation rejects an
+already-read event. This is a reviewed design, not an implemented guarantee.
+
+## Page.goto main-Frame routing source checkpoint (2026-10-10)
+
+When `frame-navigation` is selected, the Node `Page.goto` facade now sends
+the resolved URL and effective Page navigation timeout to the existing Rust
+`frameGoto` port for its main Frame. Without that optional native method it
+retains the v1 `pageGoto` route. This mirrors upstream Playwright's Page-to-
+main-Frame delegation without moving navigation logic into JavaScript. The
+focused adapter passes 30/30; package tests pass 575/575, and strict
+TypeScript and dependency-boundary checks pass. The change postdates all
+recorded Core Page.goto browser reports and native artifacts. No official
+browser outcome or strict ledger row changes until a freshly built addon runs
+the unchanged upstream cases in both lanes.
+
+## Official Page.goto burst artifact (2026-10-10)
+
+The explicitly selected `official-conformance-page-goto-burst-20` artifact
+composes the existing official Core Page feature union with only
+`frame-navigation-burst-20`. Node's fixed-path loader checks the compiled
+burst marker alongside the official capability markers and retained
+`ElementHandle.dispatchEvent` method. This adds no JS browser operation or
+Cargo feature definition; the default, prior official, and standalone burst
+profiles retain their separate paths and feature sets. The release addon
+SHA-256 is
+`3dfb2ac8698de70f5b2416688b2d15de879251d9d7bf5c5549474ecb9fbd5c83`.
+Browserless Node units pass 565/565, strict types and dependency boundaries
+pass, and all three selected artifact native-load probes pass 1/1 each. The
+unchanged pinned 64-case official Page.goto file has not run against this
+artifact.
+
+## Opt-in trace-directory owned launch (2026-10-10)
+
+`PWRIGHT_NATIVE_PROFILE=playwright-trace` adds a narrow Node-to-N-API-to-Rust
+port for Chromium `launch({ executablePath, tracesDir })`. A nonempty string
+is resolved against the call's cwd, recursively prepared before executable
+validation or temporary-profile allocation, and retained as a caller-owned
+directory in the Rust host. An empty string follows upstream's falsey path
+behavior. Default and legacy `owned-launch` profiles remain unchanged. The
+selected addon SHA-256 is
+`13d6db323b599d57608d99b7f18f8a06856c6425e1931dfdb718f74d356c765d`;
+four browserless native tests, 533 Node units, native-load, types and boundary
+checks pass locally. The exact Core dummy-Node line-64 diagnostic passes 1/1
+for both oracle and candidate, but its process guard does not attest browser
+profile ownership and no strict-ledger row is promoted. The Rust v8 JSONL
+writer is independent and not yet wired to Context tracing; `.network`, ZIP,
+snapshots and body capture remain absent. The CI selected-profile gate has
+not run on GitHub Actions; its build clears the repository's global
+`RUSTFLAGS=-D warnings` because nine existing host/addon dead-code warnings
+remain in this profile.
+
+## Owned-launch fixture option boundary (2026-10-10)
+
+The Node launch adapter now merges Playwright worker defaults only after the
+explicit `userDataDir` and `port` assertions. It accepts the pinned fixture's
+`handleSIGINT: false` after boolean validation because this profile does not
+install a SIGINT handler; `true` and non-boolean values still fail before
+native acquisition. At this earlier checkpoint, an exact official Core
+dummy-process diagnostic advanced past this check but stopped at inherited
+`tracesDir`, which was unsupported.
+It must not be silently ignored: upstream creates its directory and carries
+the path into Context tracing. A separate opt-in tracing capability is needed
+before positive support. Node package tests pass 529/529 and strict types pass;
+the official candidate line-64 case remained diagnostic-only and `not-run` in
+strict accounting.
+The selected Rust owned-launch composition now captures bounded startup
+stdout/stderr and passes a `Browser logs:` failure through HostError, while
+the default provider remains noncapturing. The rebuilt opt-in owned-launch
+addon passes a browserless public Node-to-N-API-to-Rust synthetic-process smoke
+test (1/1) with bounded logs and cleanup. CI now builds and tests this profile
+on Node 20, though GitHub Actions has not run the new step. The original
+`owned-launch` profile still rejects the inherited `tracesDir`.
+
+## Opt-in native persistent-Context preflight (2026-10-10)
+
+The `persistent-context-preflight` Node profile proves two dedicated N-API
+ports: `persistentContextCertificateError` and
+`persistentContextArgumentError`. Its marker and both exports are checked
+fail-closed against the selected artifact; no default, browser-registry or
+owned-launch profile acquires this Rust leaf. Certificate materialization
+stays in the JS client: it completes all `Promise.all` file reads, converts
+material to JS-truthiness booleans (including empty `Buffer` as truthy), then
+calls the Rust certificate decision. Only after a successful certificate
+decision does JS unwrap boxed strings and call the Rust engine-argument
+decision. JS throws the exact public `Error` prefix. Valid options still end
+at the unsupported persistent-launch boundary.
+For the selected Rust profile, pinned classic Firefox rejects `-juggler*`
+after profile-argument misuse; `moz-*` BiDi Firefox does not apply that
+classic-only check and continues to reject page arguments. A truthy non-array
+`ignoreDefaultArgs` bypasses default-argument validation, but `[]` does not.
+The default JS profile remains unchanged, including its separate classic
+Firefox `-juggler*` discrepancy.
+
+Release artifact SHA-256 is
+`e1288f11e26c9d54aadb6f35f985a5c444fb4154539bada11a358cef18677ca3`.
+The pure Rust leaf passes 28/28 release units and strict Clippy; the selected
+addon release build and native-load pass. Default and selected Node
+profiles each pass 512/512 browserless units, the real native bridge 4/4,
+and the selected focused suite 23 passed / one intentional skip. The pinned
+Playwright Core v1.58.0 guarded, browserless public-method comparison covers
+16 rejection and three accepted-preflight inputs. Strict TypeScript,
+formatting and exact dependency closure checks
+pass. These synthetic tests do not promote an unchanged official corpus row,
+prove positive TLS parsing, or demonstrate owned browser launch. The default
+focused suite passes 15 with nine intentional opt-in skips; its classic
+Firefox discrepancy remains open.
+The Node 20 CI job now builds and validates this opt-in profile separately.
+That job does not set the local pinned-Core oracle path, so its public-method
+oracle comparisons remain skipped in CI; the guarded comparison above is
+reproducible locally against the pinned checkout.
+The added boxed-empty certificate cases initially failed in both Node paths:
+raw object truthiness bypassed the official origin/material errors. Both paths
+now unwrap protocol strings before the Rust or JS truthiness decision. The
+real native test script selects its profile to prevent an all-skipped pass.
+
+## Response waiter and terminal body readiness (NODE-432, 2026-10-07)
+
+The fixed manifest selects all nine `chromium-page` invocations from the
+unchanged `page-wait-for-response.spec.ts` file with no title filter. Candidate
+v1 passed 1/9. Oracle v1 and a clean-Chrome v2 both recorded 8/9 because Chrome
+154 does not emit the second request expected by the cached-image case.
+Candidate v2 reached 7/9: its remaining candidate-only failure was an async
+predicate whose `response.text()` raced CDP completion and received
+`No resource with given identifier found`.
+
+The repair preserves separate portable and browser-native identities in each
+Response notice. `response-events` still publishes through the existing fixed
+256-item Rust queue. The separately selected `response-finished` feature
+attaches an opaque bounded Rust owner, and both `Response.finished()` and body
+readiness share one cached native wait. Only `response-body` uses the native
+CDP request identity after that wait. Node remains responsible for synchronous
+listener arming and language predicates; it does not subscribe to CDP, infer
+responses from request events or retain another response registry.
+
+Minimal release artifacts prove the feature boundary. `response-events`
+(`8ac46030c57f5429608ded9202a6320213e8d4ab9372d283a91a872dd79d49d1`)
+has no response-finished marker, completion method or body capability.
+`response-finished`
+(`c744980497c6533bb6195af0a32451c14e724b230721452665db4038357a815a`)
+adds completion but still omits body. The full official artifact is
+`30bb029c4d89f3f179b886d226d9e761ffa6bed01724e92afdeef149760db853`.
+
+Final candidate v3 and paired oracle v3 have identical normalized results:
+eight expected outcomes and the same cached-image unexpected result. Candidate
+report/provenance SHA-256 values are
+`1184ec4468625640f5813a40ce810bafc64d618999ad17fe164eeb7b7f45229d`
+and `98c3ef41c3f33db6bc27cafe443e0637cc6e9fab44a84779cc0a6b17b8469dd2`;
+oracle values are
+`3ae728c3616190e864b8a71cf4d8402f9961e34082ca9ceefb8fb000fe2cba59`
+and `562462ea3359330ce0458c4e02d0888aee8528e710ca077be6c32a9202066fd7`.
+Manifest SHA-256 is
+`e68c6447de393e52b6ddbbf7bf2e0cd4387bf4c3b837ebb352e76c476a3ff596`.
+Candidate source SHA-256 is
+`07c4c8edebe84a65532f25ac9fee233eddde2eb110cc748812bf57bf44cd11ae`.
+
+Exact nine-row merges reach candidate 1,542 expected / one skipped / four
+unexpected / 46,930 not run
+(`7bfaf60461d835f5f7e87a197801ef9e3c72aed23adcc1cfdccfe4448245de7a`)
+and oracle 1,245 expected / three unexpected / 47,229 not run
+(`ae0fc98c9a2582ac39d88c44c59efcf7094d2bf29f792b63266f32ec19ff0322`).
+Both 48,477-row audits retain classification hash
+`32520af75e4ac14352a9060e6f7156900bb52c4a3d99fe927311ba7490328af0`.
+Their summary SHA-256 values are
+`1b45e84c5246f7cb309141301d1d2ddc5446fdacc68c42b3485e219eefe77aaa`
+and `4d5b20e06caf7bf6288602337f14815a4af864675962b9a72d288b9ed8a8cfc3`;
+the normalized nine-row projection is identical at
+`d1ac62096c1eeab0ea8f16d078975c829c6601db8b2168f68acc35be22401aa1`.
+Package 407/407, strict types, boundaries, native loads, exact official host
+850 passed / 29 explicit ignores, strict addon Clippy, formatting and diff
+checks pass. The complete Core and Python corpora remain open.
+
+## Page request waiter parity (NODE-431, 2026-10-07)
+
+The complete unchanged Chromium Page `page-wait-for-request.spec.ts` file has
+eight public-API cases and no title filter. Oracle v1 passed 8/8. Preserved
+candidate v1 passed 4/8 and exposed four independent gaps: explicit timeout
+wording, ignored Page-default timeout, absent long-matcher call log, and loss
+of the upstream `window.builtins` fixture after document replacement. The last
+item was a candidate-runner input defect, not request-wait behavior: upstream
+installs its UtilityScript builtins in every execution context, while the
+preload had installed them only in the initial document.
+
+The runtime repair shares one synchronous EventEmitter waiter between Page
+`waitForEvent()` and `waitForRequest()`. It preserves public predicate and
+cross-realm RegExp evaluation in JavaScript, captures the API call stack before
+returning, reads the Rust-owned effective Page default timeout, emits the
+quoted event `TimeoutError`, caps matcher logs at 50 Unicode code points, and
+retires listeners and timers on resolve, rejection, timeout and observable
+Page close. Rust remains authoritative for Context subscription activation,
+request observation, bounded queue admission, lifecycle state, default-timeout
+state, base-URL resolution and URL-glob compilation. No second observer or
+native per-wait task exists.
+
+The official candidate preload now installs only the pinned upstream builtins
+fixture through a Context init script so every document receives the same test
+input. This is harness reproduction and is not candidate runtime behavior.
+Candidate v2 passed 7/8 and isolated an off-by-one log preview; Playwright's
+50-code-point cap includes the ellipsis. Final candidate v3 and paired oracle
+v2 pass 8/8. Report SHA-256 values are
+`e2d90b8701e5d7a9ff8c126165e8d632101e422339c32bc7addd63641789e5d1`
+and `b7a837a697d6670d4bf3aaa71366eee8beac3586cea4f05ddf25915d3535df0`;
+verified provenance sidecars hash to
+`5b3b143c23be31643a821a4e663256eb92322b683d10727a45adf00724a8075a`
+and `7ae11e60cddd36f07b7058725a4bde63229d5ac2de7acedfc564dd05434264af`.
+Manifest `b5936ea...cdcd`, artifact `fc00727...54790` and candidate source
+`76aa0e9...d0b8c` are recorded by provenance.
+
+Strict eight-row merges reach candidate 1,534 expected / one skipped / three
+unexpected / 46,939 not run (`c19a233...7abc`) and oracle 1,237 expected / two
+unexpected / 47,238 not run (`4030917...5241`). Both changed-row sets normalize
+to `b44d380...f892`; both 48,477-row audits retain classification hash
+`32520af...8af0`. Package 393/393, strict types, boundary checks, three native
+load profiles, minimal feature checks, exact official host 843 passed / 29
+explicit ignores, strict addon Clippy, formatting and diff checks pass. The
+complete Core and Python corpora remain open.
+
+## Bounded Page request waiting and post-data decoding (NODE-430, 2026-10-06)
+
+`page.waitForRequest()` reuses the existing Rust `request-events` installation
+instead of creating another request registry or one native waiter per call.
+The host activates request observation before publishing a new Context, admits
+request, request-finished and request-failed snapshots into a fixed 256-entry,
+16 MiB queue, and exposes one bounded N-API watch. The Node Browser consumes
+that stream sequentially and publishes the shared `Request` facade to the
+exact Page. Terminal notices delete the short-lived wrapper cache.
+
+The public waiter installs its Page EventEmitter listener synchronously before
+returning its Promise. String matching delegates glob compilation and base-URL
+resolution to the existing metadata-only Rust owner; JavaScript performs only
+the final RegExp or public predicate call. Timeouts reuse the Page's Rust-owned
+default timeout and retire only the language listener. This preserves
+Playwright's Promise-all arming behavior without introducing an asynchronous
+native arm race.
+
+Post-data decoding is a second optional leaf. Rust parses JSON or URL-encoded
+form bytes and preserves the official invalid-JSON diagnostic before N-API
+materializes the value. The base request-event snapshot contains raw bytes but
+does not link `serde_json`. Building `request-events` and
+`request-post-data-json` separately exposed two N-API object-shape bugs hidden
+by the full feature union; the request snapshot now uses mutually exclusive
+complete object definitions, and CI compiles both minimal unions explicitly.
+AAA tests cover synchronous arming, skipped and asynchronous predicates,
+predicate failure, timeout cleanup, stable Request identity, terminal cache
+retirement, Rust parser behavior and foreign-copy accounting.
+
+The first official post-implementation run passed 5/6 and exposed one final
+binding ambiguity: N-API omits an `Option` field both for a parsed null and for
+an unavailable capability. Request snapshots now include an explicit
+parser-selected boolean only in the parser-enabled object shape. Candidate v3
+and oracle v3 then record the same 6/6 outcomes; the two Chromium
+expected-failure attempts both reach their real file/blob and `sendBeacon`
+assertions with null post data. Verified report hashes are
+`3349ede...67955` and `7452f56...8e2c`; exact six-row merges produce candidate
+`8e8e6b7...be91` and oracle `55be77a...57aa`, while both 48,477-row audits
+remain `32520af...8af0`. Full-corpus conformance remains open.
+
+## Navigation Response request snapshots (NODE-429, 2026-10-06)
+
+`Response.request()` is an independently selectable composition, not part of
+header mutation. The addon `response-request` feature composes
+`frame-navigation` with the host's existing bounded `request-history` owner.
+When Page, Frame, reload or history navigation receives a native request ID,
+the Rust host resolves that ID to the immutable captured `NetworkRequestRecord`
+and retains its shared owner beside `ResponseMetadata`. It never rebuilds the
+sent request from Page or Context header settings.
+
+Before N-API clones URL, method, resource type, headers, post data, navigation
+state and Frame identity, the host computes and reserves a conservative
+foreign-copy allowance from that exact retained record. The Node layer then
+wraps the snapshot through the same public `Request` facade used by route and
+network APIs. `Request.headers()` exposes lowercase keys as Playwright does,
+while the retained header array remains the source of truth. Profiles without
+the leaf report an explicit unsupported operation instead of fabricating a
+partial request.
+
+The two complete unchanged Chromium files record identical candidate/oracle
+outcomes: Context is two expected; Page is four expected plus one shared
+unexpected pass because Chrome 154 now satisfies a Referer assertion still
+annotated with upstream `test.fail`. This replaces the old candidate's masked
+`TypeError: response.request is not a function` with the real assertion result.
+Artifact `4d06472...9f17`, source `669a396...77b5`, manifest
+`eb26ee2...d8f` and all four report/provenance pairs verify. Exact ledger diffs
+touch only the seven intended keys; full-corpus conformance remains open.
+
+## Composable Touchscreen and tap actions (NODE-428, 2026-10-06)
+
+Raw coordinate touch input and selector-driven tap actions are two independent
+Rust selections. `touchscreen-input` owns Page-scoped input serialization,
+modifier state, paired Chromium `touchStart` / `touchEnd` submission,
+cancellation cleanup and the narrow `page.touchscreen.tap(x, y)` N-API port.
+The selector action composes strict Page, Frame, Locator and ElementHandle
+resolution, actionability, hit-target interception, trial mode and temporary
+modifiers over that primitive. Node validates public values and delegates; it
+does not synthesize DOM touch or mouse events.
+
+The complete pinned Chromium Library `tap.spec.ts` tranche contains nine
+unchanged invocations. A preserved v2 candidate failed 0/9 because the
+candidate fixture adapter had not forwarded `hasTouch`; after that explicit
+Context prerequisite was applied, preserved v3-v5 candidates pass 8/9. The
+only remaining red is the public requirement that tap return without waiting
+for a navigation whose response is deliberately held.
+
+The navigation investigation found two distinct ordering boundaries. First,
+Playwright's Chromium driver submits `touchStart` and `touchEnd` together
+before awaiting either reply, so both Rust input policies now do the same while
+retaining an active-touch cleanup record until `touchEnd` succeeds. Second,
+Playwright invokes tap with `waitAfter: 'disabled'`; Pwright was nevertheless
+awaiting both a topology publication fence and a Page-binding publication
+fence after the native input completed. Tap alone now bypasses those two
+post-action fences. Other Locator actions retain the existing publication
+boundary.
+
+After the two foreign pages exited naturally, final candidate v6 and the
+independent Playwright 1.58.0 oracle each passed all nine unchanged tests with
+no title filter. Candidate/oracle report SHA-256 values are
+`f165c1c1244c86d82c71e424f9294539d5e5b222b19408019db32c45edc71086`
+and `e3eb0bd0b4a0dd7dbe12b0be4cb774ab4a9f2a41170fd0cf6e9ae7cea21e664e`;
+verified provenance values are
+`63a140749fd0654ba7a136121e8e822acd073f13d6c673b76c61caa92294ce35`
+and `e886e57be1b57fc46b41e25180b492fa2d07b366b375d3ab08ab31b3c736e07b`.
+The focused manifest is `076d0c7...705b3`, candidate source is
+`e0c5f40...cfb74`, and the explicitly selected official artifact is
+`5fb122e3837f9df2742aa6ebbf82c38e0f3e379b60e426f2d9f60853b9459b91`.
+
+Strict candidate and oracle comparisons each promote the same nine inventory
+keys from not-run to expected, with one attempt and zero inventory drift.
+Candidate reaches 1,521 expected / one skipped / two unexpected / 46,953 not
+run, ledger `d084416...8bac`; oracle reaches 1,219 expected / one unexpected /
+47,257 not run, ledger `1589687...8b0`. Both invocation audits remain
+`32520af...8af0`. Package 375/375, strict TypeScript, both native-load profiles,
+ABI/dependency boundaries, backend release 89/89, exact-profile host release
+801 passed plus 22 explicit browser ignores, formatting, diff check and strict
+host/addon Clippy pass. Complete-corpus conformance remains open.
+
+## Touch event materialization and Context emulation (NODE-427, 2026-10-06)
+
+The complete unchanged Chromium Library
+`locator-dispatchevent-touch.spec.ts` file now passes 1/1 in both the Pwright
+candidate and independent Playwright 1.58.0 oracle. No title, assertion or
+project is filtered. Browser safety preflight initially found an unrelated
+nonblank dedicated-Chrome page, so no official red run was started. Two direct
+candidate diagnostics instead isolated the discrepancies without disturbing
+that page: `TouchEvent` rejected plain records because they were not real
+`Touch` objects, and after constructing them the public fixture stopped at the
+explicit unsupported `Browser.newContext({ hasTouch: true })` boundary. These
+diagnostics are not presented as official report evidence.
+
+The Rust host's static `DISPATCH_EVENT_SOURCE` now recognizes a TouchEvent
+constructor and materializes all three touch lists with the browser's native
+`Touch` constructor. Existing Touch instances are preserved; plain records get
+the resolved Locator element as their default target. Strict Locator
+resolution, timeout, event construction, browser execution and error
+classification remain in the selected `locator-dom-actions` Rust capability.
+Node forwards only the public event name and initializer.
+
+Context touch emulation already existed as `DeviceContextOptions` plus a
+bounded 16-Context Rust registry installed by the session-initialization fence.
+The missing layer was selection. The addon now exposes an independent
+`device-emulation` feature marker and the narrow boolean
+`newContextWithHasTouch` port. `context-api-request` and `page-viewport`
+declare that prerequisite instead of receiving it implicitly, and the package
+has a standalone `device-emulation` artifact profile. The official and
+Context-request-proxy profiles name the leaf explicitly. The public adapter
+validates the boolean, rejects unsupported feature combinations before native
+work and otherwise delegates creation once; it owns no CDP command, registry,
+emulation state or teardown.
+
+The rebuilt official artifact SHA-256 is
+`69a91eae35af4047d44f508be17f36629e4653ff64c4802fd79ff789962a7de1`.
+Candidate source SHA-256 is
+`250a6d1de2abdcefadfedd8b903a107afd6de2cd502ef277cc615f9d2329b5d1`;
+the focused manifest is `0b300d7...d354`. Candidate and oracle reports pass
+1/1 with SHA-256 values `9b5a550...918b` and `2ed7cd4...be5e`;
+their verified provenance sidecars are `e3907f9...cb73` and
+`51acd91...bd3`. A separate task-owned Context smoke reproduces all three
+official TouchEvent strings and reports `navigator.maxTouchPoints === 1`.
+
+Strict ledger comparison promotes exactly the same single `library` /
+`chromium-library` row from not-run to expected, with one attempt and zero
+inventory-field changes. Candidate reaches 1,512 expected / one skipped / two
+unexpected / 46,962 not run (`7d0d844...1260`); oracle reaches 1,210 expected /
+one unexpected / 47,266 not run (`fb3aef0...06ed`). Both invocation audits
+retain `32520af...8af0`. Package 368/368, strict TypeScript, native load,
+dependency boundaries, formatting and diff checks pass. The exact selected
+host release suite passes 796 non-ignored tests plus 22 explicit browser-only
+ignores in its library target and 818 plus 30 ignores across all selected
+targets; strict host and addon Clippy also pass. Full Core and Python corpus
+execution remains open.
+
+## Locator query composition (NODE-426, 2026-10-06)
+
+The complete unchanged Chromium Page `locator-query.spec.ts` file records an
+honest candidate 12/24 against independent Playwright 1.58.0 oracle 24/24. No
+title, assertion or project is filtered. The 12 reds cover seven
+regular-expression `hasText` / `hasNotText` filters, three ordered text-array
+expectations, one invalid nested FrameLocator composition and one private
+before-query timing hook.
+
+The Locator facade accepts `string | RegExp` for the two text filters. A
+cross-realm-safe RegExp check extracts only source and flags; the addon applies
+the existing Rust `HostLocator::filter_regex` recipe with an exclusion bit.
+Matching, descendant scoping and strict resolution remain Rust-owned. The
+ordered-array matcher similarly exposes the existing
+`HostLocator::expect_texts` operation and passes bounded exact strings plus
+normalization, case, `useInnerText` and negation policy. The official cases in
+this tranche contain exact strings. Mixed regular-expression arrays remain an
+explicit unsupported boundary for the later expectation tranche, not an
+implicit success or skip.
+
+Two independently-created FrameLocator wrappers are now equivalent when their
+typed selector recipes are equal; JavaScript object identity is irrelevant.
+When `and()` or `or()` receives different lazy iframe-owner paths, the Rust
+host retains both recipes as a deferred invalid combination. Construction is
+therefore synchronous and side-effect free just like Playwright, while the
+first host operation raises the official cross-frame diagnostic. A preserved
+23/24 intermediate candidate shows that only this error timing remained after
+the browser semantics were complete.
+
+`Locator.count({ __testHookBeforeQuery })` is classified
+`public-api-with-implementation-private-hook`: it is implemented solely to run
+the unchanged official behavior test and is not advertised as a general
+public option. Node validates that no other option is present and turns the
+callback into one bounded thread-safe promise. Rust's
+`count_with_before_query` selects the current execution-world record, awaits
+that promise, and then evaluates count using the same record. If the hook
+navigates the page, the old world is destroyed and the retriable context-loss
+path yields the same result as Playwright's server-side `queryCount` ordering.
+
+Final artifact SHA-256 is `c12153d...d1bc`. Candidate and oracle pass 24/24
+with verified reports `54e5e20...d913` and `60508d7...5f8c`;
+candidate/oracle provenance is `deecead...ad7` / `fb1b7c8...2413`.
+Preserved evidence includes the 12/24 red report `f674c52...ca65` and the
+23/24 intermediate report `442f10b...b79d`. Strict diffs promote exactly the
+same 24 rows without changing inventory. Candidate becomes 1,511 expected /
+one skipped / two unexpected / 46,963 not run (`083773b...7d1`); oracle
+becomes 1,209 expected / one unexpected / 47,267 not run
+(`6961c30...eaf`). Both invocation audits hash to `32520af...8af0`.
+
+Package 363/363, strict TypeScript, native load, dependency boundaries,
+formatting, diff check and exact feature-union Clippy pass. The exact official
+Node-profile host library target passes 795 non-ignored tests plus 22 explicit
+browser-only ignores; across all selected host targets the totals are 817 plus
+30 explicit ignores. This closes all 123 Locator Chromium cases, while the
+full official Python and Core corpora remain open.
+
+## Locator miscellaneous viewport, capture and selection (NODE-425, 2026-10-06)
+
+The complete unchanged Chromium Page `locator-misc-2.spec.ts` file records an
+honest candidate 12/16 against independent Playwright 1.58.0 oracle 16/16. No
+title, assertion or project is filtered. The four reds are the missing public
+`Locator.selectText()` and `Page.setViewportSize()` methods, the latter also
+blocking the Locator screenshot and bounding-box cases, plus the wrong public
+capitalization/prefix for unknown keyboard keys.
+
+`page-viewport` and `locator-screenshot` were already independent Rust host
+features. The Node addon adds feature markers and one narrow method for each;
+the public wrappers normalize only Playwright option shapes. Page-scoped
+device overrides, strict selector resolution, actionability, scrolling,
+stability, final document geometry, CDP capture and bounded result bytes remain
+Rust-owned. Locator capture explicitly removes Page-only `full_page` and
+`clip` options at the binding boundary: `Some(false)` is a real Page option,
+not an acceptable substitute for absence in the Locator capability. An AAA
+Rust regression locks that distinction.
+
+`selectText` reuses the existing `locator-dom-actions` feature and action
+resolver. A preserved 15/16 real-Chrome run proves viewport, selection,
+screenshot and geometry behavior. The only remaining failure showed that
+`Press` enters the keyboard-specific host route. That route now receives an
+explicit typed-error mapper in both ordinary and drag-aware compositions;
+only `InvalidValue("unknown key: ...")` is translated to Playwright's
+`Unknown key: ...`, while all other errors keep their existing mapping.
+
+Final artifact SHA-256 is `3edcb5c...71db`. Candidate and oracle pass 16/16
+with verified reports `fe9ba30...482c` and `f7010a8...5173`;
+candidate/oracle provenance is `c53a522...bc90` / `969c169...06fd`.
+Preserved evidence includes the 12/16 red report `8290864...96ad6` and the
+15/16 intermediate report `eec922c...739b0d`. Strict diffs promote exactly the
+same 16 rows without changing inventory. Candidate becomes 1,487 expected /
+one skipped / two unexpected / 46,987 not run (`8c78583...c841`); oracle
+becomes 1,185 expected / one unexpected / 47,291 not run
+(`7d75835...4ef9`). Both invocation audits hash to `32520af...8af0`.
+
+Package 360/360, strict TypeScript, native load, dependency boundaries,
+formatting, diff check and exact feature-union Clippy pass. The exact official
+Node-profile host library target passes 793 non-ignored tests plus 22 explicit
+browser-only ignores; across all selected host targets the totals are 815 plus
+29 explicit ignores. Twenty-four Locator Chromium cases and the full official
+corpora remain open.
+
+## Locator miscellaneous actions (NODE-424, 2026-10-06)
+
+The complete unchanged Chromium Page `locator-misc-1.spec.ts` file records an
+honest candidate 11/13 against corrected independent Playwright 1.58.0 oracle
+13/13. The initial oracle attempt is retained only as invalid infrastructure
+evidence because its contaminated Chrome session rejected
+`Browser.setDownloadBehavior` before all 13 test bodies. No title, assertion or
+project is filtered in the clean run. The candidate reds are exactly the
+missing `Locator.dispatchEvent()` facade and the unselected file-input leaf.
+
+`locator-dom-actions` remains an independent Rust host feature. The Node addon
+adds only a compiled feature marker and a `NativeLocator.dispatchEvent` port.
+The facade validates public option and timeout shape, then forwards the event
+type and opaque initializer once. Bounded language conversion, object/null
+validation, strict Locator resolution and the static DOM event constructor
+program remain in Rust. The API therefore composes with existing Locator
+recipes without introducing a Node driver or a second action implementation.
+
+The upload case needs no new core logic. The pre-existing `file-input` leaf is
+added only to the explicit `official-conformance-page-bindings` feature union,
+and its existing facade and Rust preparation/transport owners are reused.
+Exact native-profile tests reject an artifact missing either marker, while
+default and narrower profiles continue to omit both capabilities.
+
+Final artifact SHA-256 is `356f84b...c39e`. Candidate and corrected oracle
+pass 13/13 with verified reports `566e6fd...6a85` and
+`28b9a9a...568b`; candidate/oracle provenance is `59fbc53...5ca0` /
+`26886bc...51ed`. The preserved 11/13 red report is `a780dca...7054`.
+Strict diffs promote exactly the same 13 rows without changing inventory.
+Candidate becomes 1,471 expected / one skipped / two unexpected / 47,003 not
+run (`1afb6c7...ecaa`); oracle becomes 1,169 expected / one unexpected /
+47,307 not run (`1a73f91...ccb9`). Both invocation audits hash to
+`32520af...8af0`.
+
+Package 355/355, strict TypeScript, native load, dependency boundaries,
+formatting, diff check and exact feature-union Clippy pass. The expanded
+official Node-profile host library target passes 790 non-ignored tests plus 22
+explicit browser-only ignores; across all selected host targets the totals are
+812 plus 29 explicit ignores. Forty Locator Chromium cases and the full
+official corpora remain open.
+
+## Locator FrameLocator composition (NODE-423, 2026-10-06)
+
+The complete unchanged Chromium Page `locator-frame.spec.ts` file first
+records candidate 3/22 against corrected independent Playwright 1.58.0 oracle
+22/22. The initial oracle attempt is retained only as invalid infrastructure
+evidence because its already-contaminated Chrome session rejected
+`Browser.setDownloadBehavior` before all 22 test bodies. No title, assertion or
+project is filtered in the corrected run.
+
+`Locator.contentFrame()` and `Locator.frameLocator()` hand the existing native
+Locator recipe to a `NativeFrameLocator`; nested selectors, semantic leaves,
+`first` / `last` / `nth` and `owner()` derive another bounded recipe. Node
+retains only the public wrapper and description metadata. It never resolves a
+Frame, polls DOM state, decides strictness or owns a navigation retry. The
+independent routed-frame fixture also required the missing `Route.fulfill()`
+port: its facade only normalizes public status, headers, body, JSON and content
+type, while Rust validates and performs the one Fetch settlement.
+
+Rust resolves the owner frame at each attempt. Reads and actions retry known
+execution-context replacement while preserving the caller's original deadline
+and call log. Missing frames return the Playwright state result appropriate to
+count, visibility, hidden and text collection reads; owner ambiguity remains a
+strict error. A matched non-frame owner is inspected once before its temporary
+Handle is released so the diagnostic can report `<div></div>, <iframe> was
+expected`. Terminal CSS `:has-text()` is parsed into the existing typed
+substring filter instead of being executed by ad-hoc Node code.
+
+Final artifact SHA-256 is `fbc48ff...1382b`. Candidate and corrected oracle
+pass 22/22 with verified reports `076f817...fb71a` and
+`0135d60...e6e55`; candidate/oracle provenance is `ded1730...0502` /
+`27230d7...54f4a`. The preserved 3/22 red report is `cdefa69...fc520`.
+Strict diffs promote exactly the same 22 rows without changing inventory.
+Candidate becomes 1,458 expected / one skipped / two unexpected / 47,016 not
+run (`176cc90...a3b`); oracle becomes 1,156 expected / one unexpected /
+47,320 not run (`6106eae...546`). Both invocation audits hash to
+`32520af...8af0`.
+
+Package 352/352, strict TypeScript, native load, dependency boundaries,
+formatting, diff check and exact feature-union Clippy pass. The exact official
+Node-profile host suite passes 788 non-ignored tests plus 14 explicit
+browser-only ignores. Adding the pre-existing upload verification leaf passes
+790 plus 22 explicit browser-only ignores. These are two named feature
+selections, not interchangeable totals. Fifty-three Locator Chromium cases
+and the full official corpora remain open.
+
+## Locator convenience composition (NODE-422, 2026-10-06)
+
+The complete unchanged Chromium Page `locator-convenience.spec.ts` file first
+records candidate 13/22 against independent Playwright 1.58.0 oracle 22/22.
+The nine reds are the absent `Locator.evaluateHandle`, incomplete timeout and
+Handle-preview presentation, and the public `describe` / `description` /
+`toString` surface. No title, assertion or project is filtered.
+
+Structural descriptions are immutable Node metadata over Rust-owned Locator
+recipes. CSS, semantic, role, filter, nth and combination derivations create a
+new description and deliberately discard an earlier custom label; `describe`
+returns a new Locator with a bounded custom label and never mutates selection.
+Deferred Locators restore the outer structural/custom metadata after native
+resolution, so a lazy FrameLocator cannot leak its internal owner query into
+diagnostics. Rust still owns timeouts and retries; Node adds only the public
+call-log line to a returned timeout.
+
+`evaluateHandle` admits one bounded conversion, resolves one strict exact
+Element under the original timeout, then invokes the existing retained-Handle
+program. The language callback can materialize only its bounded function and
+argument; it cannot receive the temporary DOM owner. Rust publishes only the
+result Handle. Drop-based cleanup releases the unpublished Element and any
+unpublished result on conversion failure, evaluation failure, publication
+failure or cancellation. If the result is a Node, a fixed Rust browser program
+captures the bounded Playwright preview before publication.
+
+The final artifact is `23f0bf4...390f05`; candidate and oracle pass 22/22 with
+verified reports `b659794...146ae` and `86d5d28...458ed`. Candidate provenance
+`fa6b260...5eafb` pins source `e283df2...f405f`, manifest
+`092087b...98de`, the artifact and upstream commit; oracle provenance is
+`13cebd2...73fff`. The strict candidate and oracle ledger diffs each promote
+exactly 22 not-run rows and change no inventory fields. Candidate is now 1,436
+expected / one skipped / two unexpected / 47,038 not run (`6db265c...b8df`);
+oracle is 1,134 expected / one unexpected / 47,342 not run
+(`61f077a...862d`). Package 349/349, host release 807 non-ignored plus 22
+explicit live-browser ignores, strict TypeScript, native load, dependency
+boundary, formatting, diff check and full feature-union Clippy pass.
+
+## Supported Locator file reverification (NODE-421, 2026-10-06)
+
+Five unchanged official Chromium Page files exercise only capabilities already
+present below the Node facade: `locator-evaluate.spec.ts` (6),
+`locator-list.spec.ts` (1), `locator-highlight.spec.ts` (1),
+`locator-click.spec.ts` (5) and `locator-is-visible.spec.ts` (8). Two fixed
+manifests collect all 21 tests without title filters. Their SHA-256 values are
+`626fb18...e5498de` and `447cd37...e11224`.
+
+Independent Playwright 1.58.0 oracle and Rust-backed Pwright candidate both
+pass 21/21 in dedicated Chrome. Candidate report SHA-256 values are
+`70c5dc8...731ade` and `af5bb38...a712d9`; oracle report values are
+`89ac549...3f6bb8` and `0c9ca82...1eb7ed`. All four provenance sidecars verify.
+The candidate artifact remains exactly `8e704cc...6f00a`; this checkpoint adds
+evidence, not an implementation change.
+
+The strict candidate diff replaces only generated evidence fields on the same
+21 expected rows and leaves counts unchanged at 1,414 expected / one skipped /
+two unexpected / 47,060 not run (`06e0444...63546`). The strict oracle diff
+changes exactly those 21 rows from not-run to expected, reaching 1,112 expected
+/ one unexpected / 47,364 not run (`a813017...58324`). Inventory metadata is
+identical in every one of the 48,477 rows.
+
+The complete Locator family is 123 Chromium Page tests across 11 files. Fixed
+manifests now cover all of them; the convenience manifest collects 22 and the
+frame/misc-1/misc-2/query suites collect 22/13/16/24. These are inventory and
+execution boundaries, not passing claims for the remaining 97 cases.
+
+## Locator ElementHandle composition (NODE-420, 2026-10-06)
+
+The complete unchanged Chromium Page `locator-element-handle.spec.ts` file
+first records candidate 0/5 versus independent Playwright 1.58.0 oracle 5/5.
+The candidate report SHA-256 is
+`cbf16291f4aa6b48659b70408b9dd668506da27bdef141320fdf3d652e489fae`;
+oracle report SHA-256 is
+`0f1655db8726aabcbf7e222b9b1afb0c4b76527c36402c598e7771d2d045ae0d`.
+No title or assertion is filtered. Three reds prove the absent public
+`Locator.elementHandle()` / `elementHandles()` facade. Two prove that the
+retained Rust query rejected a typed parent followed by complex relative or
+absolute XPath.
+
+The JavaScript repair is deliberately thin: `elementHandle()` forwards to the
+already strict native operation, while `elementHandles()` forwards to the
+existing Rust batch query. The Rust query plan now stores an immutable bounded
+sequence whose segments are either a typed `Selector` or a tagged browser
+source. Descendant composition flattens those segments under the caller-owned
+recipe budget; compilation nests each later segment under `__pw.within` and
+checks the fixed compiled-source bound after every step. Typed selectors are
+never reverse-serialized into language-owned strings. Only `Within` is
+installed; `And`, `Or`, `Has` and `HasNot` involving browser programs remain
+explicit errors.
+
+For `elementHandle()`, Rust compiles the browser program once, owns the total
+deadline and repeats a strict optional browser probe. Zero matches continue
+waiting, one match enters existing native Handle publication and multiple
+matches fail immediately with strict-mode diagnostics. Timeout zero preserves
+the existing unbounded convention. `elementHandles()` remains one non-waiting
+ordered snapshot with batch publication and cleanup below FFI.
+
+Final artifact SHA-256 is
+`8e704ccbf94524d85424914ea6aef548f29871e79437c84d034223ed80a6f00a`.
+Final candidate and oracle both pass 5/5; report SHA-256 values are
+`7dfc27e89e46c0e3c85e027ecfc6b00623359e9d743e6cc931ca74ba7ae71a49`
+and `0f1655db8726aabcbf7e222b9b1afb0c4b76527c36402c598e7771d2d045ae0d`.
+The final candidate provenance sidecar SHA-256 is
+`36a737def5c17fc7756ef5b2b8f18a1f8c95a3d50cc41cb6b3cdec3bbd0593a8`;
+it pins source `9a3131d...8c492`, manifest `39d5683...45db` and the fixed
+upstream commit. Oracle provenance is `23643ec...d6ae`.
+
+Strict merge changes only those same five rows from not-run to expected.
+Candidate reaches 1,414 expected / one skipped / two unexpected / 47,060 not
+run (`6fa68d3...9db39`); oracle reaches 1,091 expected / one unexpected /
+47,385 not run (`6da3adc...83d6e`). Host release passes 615 non-ignored units
+with 14 explicit live-browser ignores; package units pass 346/346. Strict
+TypeScript, native load, dependency boundary, formatting, diff check and the
+full selected-profile Clippy gate pass. This completes one official file, not
+the full Core or Python corpus.
+
+## ElementHandle DOM reads and official red baseline (NODE-418/419, 2026-10-06)
+
+NODE-418 records three complete, unchanged Chromium Page files at the pinned
+Playwright commit. Candidate and oracle both pass
+`elementhandle-query-selector.spec.ts` 7/7 and
+`elementhandle-eval-on-selector.spec.ts` 6/6. The complete
+`elementhandle-convenience.spec.ts` is an intentional red baseline: candidate
+passes 5/15 while the independent oracle passes 15/15. The ten candidate
+failures are two rich synchronous Handle previews plus missing public
+`getAttribute`, `inputValue`, `innerHTML`, Handle visibility/state methods and
+Page selector convenience/action facades. No assertion or file filter was
+removed.
+
+The NODE-418 candidate ledger records 1,399 expected / one skipped / 12
+unexpected / 47,065 not run, SHA-256
+`5c1cd26cc8a8bf22bf57436627de682344245b8eba68ca61dbf1e5d3506c5766`.
+The oracle ledger records 1,086 expected / one unexpected / 47,390 not run,
+SHA-256
+`8e87e050ba9b088b849d8296b19bed0856a92fce99c82ec2214a5aa28fc1add7`.
+The query, eval and convenience candidate report SHA-256 values are
+`c5967af28ca871969773ab7a47a296544c17acde2d985592fe91820024ae7c78`,
+`005d19e49cc3d9d242f9ae957e9a64d46d4c8dd9d4abccaa2cbaae0470ae3cb3`
+and `8f27f41a81b80ab49b69b9f4d33e8bd88f6a49149aec024c764d9b73eb9684a1`;
+the paired oracle values are
+`8c1b2cfcd09729b6df1836fb8dd8047b4fbd42d52be32f6146a42b1ee03f8aeb`,
+`ef3f3bc845dad361863f519556d0aff8db6b52341b843d546ba708e480b8c43c`
+and `1bd4bbc82e0a18502555a55a802084fea82f65a5bf3c57bff8b940442908df1d`.
+
+NODE-419 implements the non-preview discrepancies without moving browser
+semantics into Node. One optional Rust `element-handle-dom` read owner keeps
+the exact retained browser object and returns bounded text or boolean values.
+`inputValue` and enabled/editable/checked state reuse the versioned selector
+runtime's retarget and state primitives; visibility has explicit disconnected
+semantics. The addon exposes one generic read port. `ElementHandle`, `Page` and
+`Frame` are thin public facades, and Page/Frame actions reuse the independently
+composed Locator action owner.
+
+Nine Rust source/semantic tests and the first rebuilt
+`official-conformance-page-bindings` artifact (SHA-256
+`6290125fb3f659e07c506f51a8248102175854b87237ac5262386a764e978218`)
+then produced a complete unchanged candidate rerun at 12/15. Its result
+SHA-256 is
+`98fa228cd117457ca23c2fd7f52868483ebc81caf6b9d0e268dfa6626c2e87a9`.
+The three remaining failures were exactly the two rich Handle previews and a
+Playwright `nth=0` chain used for option/optgroup state.
+
+The follow-up keeps both repairs composable and Rust-owned. The typed and
+registered selector compilers now model `nth=<i32>` as a chain operation,
+including negative indexes, instead of sending it to CSS. ElementHandle
+creation starts one asynchronous Rust preview read over the exact retained
+Node. A fixed Rust-owned browser program implements Playwright's attribute
+ordering, boolean/void elements, text-vs-ellipsis rule, Unicode code-point
+truncation and newline/tab glyphs; Node only caches the bounded returned
+`JSHandle@...` string and suppresses preview-only refresh errors, matching the
+upstream lifecycle.
+
+The final release artifact SHA-256 is
+`02475436552ed68237548b0c4d5840993fde0a1db5abdea21e875cfe778db47f`.
+After the unrelated Page exited on its own, the complete unchanged candidate
+file passed 15/15 from an otherwise empty dedicated Chrome. The verified final
+report SHA-256 is
+`eee2d882cac73ba18522c244ee8706fadd2adb9aa4387818a6c0e15a6e214b68`;
+its provenance sidecar SHA-256 is
+`13072281e83257e77320f42d728eed0d547512b12784d2d0376b08092afa6954`.
+The sidecar pins candidate source
+`670fa82a0c30920c3dd6f3fc824f011b3c7ada7f42ccf17a9c4e526e6a4d3fe7`,
+manifest `eb64a772...6fa35` and upstream commit `961381e...affc75`.
+
+The strict 48,477-row merge changes exactly these 15 library invocations: five
+remain expected and ten move from unexpected to expected. The candidate ledger
+is now 1,409 expected / one skipped / two unexpected / 47,065 not run,
+SHA-256
+`b5532ffbcd2819662585b698b766bb3c4e9a434a8d4540f4b790a482eedc5940`.
+Host release units pass 609 with 14 live-browser ignores; package units pass
+346/346. Strict TypeScript, native load, dependency boundary, release check,
+full feature-union Clippy, formatting and diff checks pass. This closes the
+NODE-419 file, not the full Core or Python corpus.
+
+## Composable Page and Frame query selectors (NODE-417, 2026-10-06)
+
+Page and Frame `$` and `$$` now share a Rust-owned selector-plan boundary.
+Typed CSS and text remain portable `Selector` values. Full XPath is retained
+as a separately tagged, budgeted browser program, so it is never represented
+as CSS and the Node facade never parses it. The Rust compiler recognizes
+explicit `xpath=`, automatic `//` and `..`, parenthesized XPath and relative
+XPath inside `>>` chains. Ordinary chain parts still compile through the same
+typed selector compiler.
+
+The versioned backend runtime exposes one XPath primitive over
+`Document.evaluate`. It converts a leading absolute path to relative only when
+the root is not a Document, returns Elements in XPath order, and traverses no
+language-owned registry. Page/Frame `$` uses the existing optional native
+Handle publication. `$$` evaluates once to an indexed carrier, publishes the
+complete ordered ElementHandle batch through Rust and settles the carrier
+before returning. Neither path calls page-overridable `Array.from`.
+
+The unchanged official `queryselector.spec.ts` candidate first passed 10/17;
+the seven failures were exactly its XPath rows. The repaired candidate and
+Playwright 1.58.0 oracle pass 17/17 with verified provenance and a strict
+17-row ledger diff. Candidate reaches 1,396 expected / one skipped / two
+unexpected / 47,078 not run, SHA-256
+`675ed26f79d073b8fe1511b54b496065779313e99f0eba100fec632531a58a38`;
+oracle reaches 1,073 expected / one unexpected / 47,403 not run, SHA-256
+`fdd3dc71b4560a66c04336a2cf68a20bd00a8d63a69d940bfcac1c81a9f2d950`.
+The release artifact SHA-256 is
+`386d03a6a893c931b6aae993056b5bfef1727fbcd4e4638158217a3c64a75d3c`.
+Package 335/335, strict TypeScript, native load, boundary, release check,
+full-profile Clippy, formatting and diff checks pass. Other Locator operations
+over browser-program selectors remain explicit unsupported boundaries rather
+than silently changing semantics.
+
+## Atomic optional Page query (NODE-416, 2026-10-06)
+
+Page/Frame `$` now performs one Rust-owned browser program that returns either
+the first matching Node or exact JavaScript `null`. The CDP backend classifies
+that retained result before publication. Null releases route admission without
+creating a Handle; Nodes enter the existing bounded publication path; utility
+world Nodes are adopted; non-Node objects are released before the original
+protocol failure is returned. `Locator.elementHandle()` keeps its separate
+strict, waiting contract.
+
+The Node addon publishes the optional result as native ElementHandle or null,
+and JavaScript performs only public wrapper creation. It does not derive
+`.first()`: the first live official attempt proved that typed filter is invalid
+for a registered browser-program selector. Rust's query program itself owns
+non-strict first-match selection for both ordinary and registered selectors.
+
+The repaired candidate and Playwright oracle pass path, main/isolated-world,
+error, non-root and bad-return rows 5/5 in each lane with verified provenance.
+The candidate ledger advances by exactly five rows to 1,379 expected / one
+skipped / two unexpected / 47,095 not run, SHA-256
+`8be091c0356f65de9a05b89b5a826d07ca6090342884fabb8296128a34ee8ea6`.
+The artifact SHA-256 is
+`2018ea0912efd134c8e5b9984b168f722fcdd307900399e2b02a9250398d3d9e`.
+Package 331/331, strict TypeScript, native load, boundary, release check and
+full composed Clippy pass; focused native creation tests prove null admission
+reclamation, skipped adoption and non-Node cleanup.
+
+## Rust-owned registered ElementHandle and Browser.newPage bridge (NODE-415, 2026-10-06)
+
+Registered-selector `page.$` now obtains its positive ElementHandle from the
+same bounded Rust selector compiler as `$eval` and `$$eval`. Rust chooses the
+required main or utility world, validates that the engine returned a Node,
+adopts utility-world nodes into the canonical main world, and transfers the
+already admitted native owner into the ordinary durable Handle route. Failure
+before publication compensates the source, adopted result and route
+reservation; JavaScript only wraps the published native Handle.
+
+Page/Frame `$` now derives `first()` in the typed Locator recipe before the
+strict Handle primitive is invoked. This preserves Playwright's non-strict
+first-match behavior when more than one element matches without weakening
+`Locator.elementHandle()` itself. The preliminary count and Handle creation
+remain two browser reads, so DOM mutation between them is still an explicit
+atomic-query gap rather than a claimed fix.
+
+The Node addon also exposes the pre-existing Rust `Browser.newPage`
+composition already used by Python. Rust creates the implicit Context and Page
+atomically, owns their exclusive relationship and closes the Context through
+`Page.close()`. The Node facade currently accepts no options, `baseURL`, or
+explicit `acceptDownloads: false`. Download acceptance remains an independent
+unselected capability and `acceptDownloads: true` fails before native work;
+other Context options are likewise rejected rather than ignored.
+
+The official-profile artifact SHA-256 is
+`6196f520808b3ceb2059ff2a88cfa5fc85faa90ee34d728f25d4c9336d072dfe`.
+Invalid-name, predefined-engine, duplicate-registration and unknown-engine
+diagnostics are covered at the public Node boundary. Package units pass
+329/329, strict TypeScript, native-load, dependency boundary,
+official-feature Clippy, backend release 86/86 and composed release 61/61 pass;
+the freshly rebuilt artifact passes the browserless official
+selector-registration regression 3/3 in library and 6/6 in BiDi with verified
+provenance sidecars. Result SHA-256 values are
+`7906d3150e173216c4aa042403964ded687e13b1142e2c0894087458d5914fb4`
+and
+`797c48a2daf8bb0a13ee9a55ed4603b5df6c160cc1d9502549f7d076ca593631`.
+The Core ledger
+does not move because those nine rows were already expected. The official
+browser-backed selector-world row has
+not run: the safety preflight found an unrelated nonblank `仙侣奇缘 · Bevy`
+Page in the dedicated Chrome and refused to start. No external Page was reused
+or closed, so real-Chrome Handle/adoption and remaining selector rows stay open.
+
+## Browser-backed selector execution (NODE-414, 2026-10-06)
+
+The first registered-engine browser row now keeps selection in Rust from the
+public Page/Frame facade through the existing registered program compiler.
+The addon exposes the host's non-strict `evaluate_first_with` operation as
+`NativeLocator.evaluateFirst`; `$eval` uses that path so multiple matches
+select the first element, while `$$eval` uses the existing collection lane.
+Node only converts the callback and argument. A preliminary Rust `count()` on
+`page.$` supplies selector parsing, case-sensitive unknown-engine diagnostics
+and zero-match `null` without granting JavaScript a selector parser.
+
+Before this bridge, the official candidate failed on `tag=DIV` while the
+pinned Playwright 1.58.0 oracle passed. The repaired candidate and oracle pass
+the same Chromium library row 1/1; both provenance sidecars verify. Report
+SHA-256 values are
+`64ebff250009fcfc02f759b5fdca0c8fa34b07f33b6ed67de438bb2d8ee17af4`
+and `451b431e79c69c8f5c205c2aa4363ec2b5a1c87a6b92ff9afde7c078a3a7996e`.
+The composed native artifact SHA-256 is
+`264137762c0f112e6d91ff21a3da4eed9284d566992f0b125124c1ab0caa802b`.
+A strict one-row ledger diff reaches 1,374 expected / one skipped / two
+unexpected / 47,100 not run, SHA-256
+`f363803e73aeae00ca2226c76bd5f5b53f74d9e947fc7c65725bb19198f4a465`.
+All 319 package units, strict TypeScript, package boundary, release/native-load
+and full composed-profile Clippy gates pass. Registered-engine Handle
+publication for positive `page.$`, path/content-script cases and bad-return
+diagnostics remain separate capabilities and are not claimed by this row.
+
+## Node selector-registration capability (NODE-413, 2026-10-06)
+
+The Node package now exports Playwright-shaped `selectors.register()` and
+`selectors.setTestIdAttribute()` through CJS, ESM and TypeScript. The facade
+only normalizes a function, string, inline content or filesystem path and maps
+the official lowercase Node API error. It lazily creates one
+`NativeEnvironment`, so registrations made before a CDP attachment remain in
+the same Rust-owned registry later cloned into the session and locator graph.
+
+The capability is independently selected as `selector-registration`. Its
+native marker proves both environment methods, the default binary stays cold,
+and the selected profile adds no Pwright package dependency. Rust retains the
+existing 64-engine, 64-byte-name, 1 MiB-source and 8 MiB-aggregate bounds,
+predefined/duplicate validation, custom-program compilation and configured
+test-id attributes. Registered CSS construction, derived FrameLocator paths,
+semantic test-id leaves and strict action diagnostics all consult that shared
+owner when the feature is present.
+
+The initial official candidate failed all nine selected browserless
+library/BiDi instances at an absent `playwright.selectors`; the oracle passed
+9/9. The selected release artifact (SHA-256
+`9fb0f50bc05c54c4831d8ee51623c3d1145721467b7f62c07b4bab073a39461a`)
+repairs candidate to 9/9, and all four candidate/oracle sidecars verify. A
+strict ledger diff promotes exactly those nine rows, reaching 1,373 expected /
+one skipped / two unexpected / 47,101 not run with ledger SHA-256
+`60b1c6f95b95f7bddb2539aacf47c02496dd8e8b41238ab731f7bb63c829a3ab`.
+Node units are 317/317, strict TypeScript passes, Rust registry units are 8/8,
+and release check, clippy, dependency, boundary and native-load gates pass.
+Positive browser-backed custom-engine behavior remains unclaimed here.
+
+## BiDi launcher metadata completion (NODE-411, 2026-10-06)
+
+The NODE-408 `errors` and complete 143-entry `devices` exports are independent
+of the browser transport and project name. NODE-411 therefore runs those exact
+two assertions through the official BiDi configuration's six library
+projects: BiDi Chromium, Chrome canary/stable, and Mozilla Firefox
+regular/beta/nightly. The manifest marks the slice browser-independent; the
+runner neither starts nor connects a browser.
+
+Candidate and independent Playwright 1.58.0 oracle pass 12/12. Both provenance
+sidecars verify package/harness/source inputs. Candidate/oracle report SHA-256
+values are
+`0fe174854e824de943effc833a670790a9319c73dc3ccee76fec3d89d1e5f2d3`
+and `f47172abcb9f91afebf86d368bb4855649fc5803d141fb0e360cffaefcccb83b`.
+A strict ledger diff changes only those 12 rows to `expected`, producing 1,364
+expected / one skipped / two unexpected / 47,110 not run with SHA-256
+`87d6753547bad1f5f21e84952a2a8ea7af56cc75921e0382ec1ea7486cd1245d`.
+The package implementation, Rust ABI, native selection and resource ownership
+are unchanged.
+
+## Complete device registry checkpoint (NODE-408, 2026-10-06)
+
+`playwright.devices` is static compatibility data, not browser automation
+logic. The initial official browserless launcher-metadata candidate passed the
+three `errors` instances and failed all three `devices` instances; the pinned
+Playwright 1.58.0 oracle passed 6/6. This isolates one missing public export
+without involving Chrome, CDP or a native artifact.
+
+The Node package now vendors the exact upstream 143-entry
+`deviceDescriptorsSource.json` snapshot from commit
+`961381ec73a9fa2661d92504eab1a6bd6eaffc75`, SHA-256
+`ceb47c6d0366b273151121ade0217f1e96a4043594c8188fcc12c0c9b30f9353`.
+Its Apache-2.0 license and provenance record ship beside the JSON. CJS and ESM
+share the same object and the TypeScript surface includes all public fields,
+including optional screen dimensions. Importing the registry does not select
+or load a native profile, and no partial single-device shim is used.
+
+The final candidate and independent oracle both pass 6/6 with verified report
+SHA-256 values
+`2a4ca9220591a7166d0a9dd74d0581631eb0400c40fda59299eb86f92af3ed07`
+and `e5f6ceb209f5b00ad63ca513584861487e1755b62cf33ea4e4eae407b1650a75`.
+A strict diff promotes exactly six rows. The cumulative Core candidate ledger
+is 1,352 expected / one skipped / two unexpected / 47,122 not run, SHA-256
+`f382b081ad8346ace986db9cf8254370b34a67b8c514bca9379f573d3f40f906`.
+The package passes 312/312 tests and strict TypeScript. Rust ABI, capability
+selection, browser ownership and resource accounting remain unchanged.
+
+## Explicit-profile Page init-script revalidation (NODE-372, 2026-10-06)
+
+The complete unchanged Page init-script file passes 9/9 against the current
+explicit `official-conformance-page-bindings` artifact and 9/9 independent
+oracle. It covers source/path/content normalization, multiple registration,
+CSP, cross-origin replacement and iframe once-only installation while Rust
+continues to own bounded registration and exact session fanout. The candidate
+rows were already present as expected; the oracle ledger alone advances nine
+rows to 1,051 expected / one unexpected / 47,425 not-run.
+
+An initial command omitted the profile and correctly exposed only the default
+artifact, producing an unmerged 1/9 diagnostic. The runner now requires a
+candidate profile explicitly, sets it in the child environment and fails
+before execution if it is absent. This is execution-lane hardening, not a new
+JavaScript browser owner or a change to the init-script dependency graph.
+
+## Context CSP and extra-header official checkpoints (NODE-369/370, 2026-10-06)
+
+NODE-370 exposes `bypassCSP` through an independently buildable
+`bypass-csp` addon profile. JavaScript validates the public boolean, rejects
+uncomposed proxy/header combinations and selects one native creation method.
+Rust admits the Context policy, retains at most 16 selected Contexts, installs
+`Page.setBypassCSP` on every owned Page/OOPIF session before publication and
+revokes the policy on Context teardown. The facade contains no CDP method,
+session list or retry loop.
+
+Moving feature-gated FrameLocator and console methods into feature-gated N-API
+impl blocks fixes a separate composition defect found by the standalone build:
+default and `bypass-csp` addons now compile without accidentally requiring
+handles or console events. The standalone and official release artifacts both
+build and load. Focused Node policy/profile tests use AAA and the package passes
+306/306 plus strict TypeScript, native-load, boundary, formatting and whitespace
+gates. The unchanged CSP candidate progresses 0/4 to 4/4. The harness first
+blocked the oracle while another task owned a nonblank page; after that page
+exited naturally, the unchanged oracle passed 4/4 and exactly those four rows
+advanced in its complete ledger.
+
+NODE-369 changes no code or dependency edge. The complete unchanged Context
+extra-header file passes 2/2 candidate and 2/2 oracle through the existing
+Rust header creation/override path. At that paired checkpoint the ledgers were
+candidate 1,342 expected / one skipped / two unexpected / 47,132 not-run and
+oracle 1,038 expected / one unexpected / 47,438 not-run. The later CSP merge
+advances the oracle to 1,042 expected / one unexpected / 47,434 not-run.
+
+## Rust-owned Dialog and Page route checkpoint (NODE-367/368, 2026-10-06)
+
+The official Node artifact now selects the independent `page-dialogs` and
+`page-routes` leaves. A `NativeDialog` carries the exact Rust
+`DialogAction`; the JavaScript `Dialog` wrapper owns only Page identity and
+presentation fields. Page and BrowserContext receive the same wrapper object.
+With no public listener, the facade performs Playwright-compatible automatic
+dismissal, except that `beforeunload` is accepted. With a listener, only the
+user's one-shot native `accept` or `dismiss` settles the action; Rust enforces
+duplicate settlement, prompt bounds and teardown revocation.
+
+`Page.route` retains the public callback in Node but registers its bounded
+string matcher in Rust. A single native watcher publishes Rust-selected route
+calls; Request metadata is a bounded copy and `continue`, `fallback` and
+`abort` settle the native owner. A synchronous callback may return without
+settling so an official test can call the same Route later. Missing/expired
+registrations fall back in Rust. Regex/predicate matching, override objects,
+`fulfill` and `fetch` remain explicit unsupported operations instead of being
+silently emulated in the facade.
+
+The complete unchanged `page-click-react.spec.ts` passes 3/3 candidate and
+3/3 oracle. The complete unchanged `page-wait-for-load-state.spec.ts` passes
+18/18 in both lanes. The cumulative candidate ledger is 1,340 expected / one
+skipped / two unexpected / 47,134 not-run; the oracle ledger is 1,036 expected
+/ one unexpected / 47,440 not-run. The only two executed candidate failures
+are implementation-private `__testHook...` options and remain visible pending
+an applicability or composable Rust-hook decision. Node passes 301/301 plus
+strict TypeScript and native-load smoke. The exact selected host passes 745
+tests with 14 explicit environment-gated ignores, and strict selected
+host/addon Clippy passes. This is not a complete Core or Python corpus claim.
+
+## Post-commit client-redirect checkpoint (NODE-366, 2026-10-06)
+
+Frame navigation keeps the original command response identity separate from
+the later lifecycle target. When a client redirect begins after the original
+document commits, the Rust lifecycle owner adopts that same-Frame navigation,
+waits for the requested terminal state and still returns the original
+Playwright response. `navigation-error.cjs` adds only the language-facing
+timeout call-log text after Rust has selected timeout, URL and wait state; it
+does not own a timer or navigation state. The complete unchanged
+`frame-goto.spec.ts` selection passes 4/4 in both candidate and oracle lanes.
+
+## Console subscription transition checkpoint (NODE-365, 2026-10-06)
+
+Page and BrowserContext remain ordinary Node `EventEmitter` owners for public
+listener identity, ordering, `once`, prepend and removal semantics. A small
+facade now mirrors only the first and last `console` listener transitions into
+the selected native session: zero-to-one enables the existing bounded
+Rust-owned subscription and one-to-zero releases it. Multiple JavaScript
+listeners therefore do not multiply native subscriptions, and removing every
+listener permits a later clean subscription. Release after native owner close
+is nonfatal because that owner can no longer retain a live subscription.
+
+The addon exports synchronous, bounded-ID Page and BrowserContext listener
+setters only under `console-events`; it introduces no callback registry,
+browser observer or queue in JavaScript. Artifact verification requires these
+real exports in addition to the feature marker, rejecting stale binaries that
+would otherwise silently drop console delivery. This is additive and keeps
+the native ABI version unchanged.
+
+A diagnostic confirmed complete Enter key DOM delivery before this repair and
+confirmed ordered `manual-before`, `press`, `manual-after` console publication
+after it. The unchanged official `page-basic.spec.ts` candidate file passes
+18/18. The shared external-CDP oracle is 17/18 only because its Chrome process
+lacks the Playwright launch-time automation flag; owned candidate Context
+sessions set the equivalent CDP automation override explicitly. Node passes
+289/289, strict TypeScript and native-load smoke; the exact selected host
+passes 710 tests with 14 explicit environment-gated ignores, and strict
+host/addon Clippy passes. This is not a complete-corpus claim.
+
+## Rust-owned FrameLocator and matcher parity checkpoint (NODE-364, 2026-10-06)
+
+The selected `handles` addon now exposes the existing lazy
+`HostFrameLocator` through a thin `NativeFrameLocator`. Node retains only that
+opaque recipe and presentation metadata; it does not resolve, cache or poll a
+child Frame. Every derived native Locator keeps the iframe-owner recipe in
+Rust, so replacing an iframe retires the old execution context and the next
+matcher attempt resolves the new child Frame. Older native artifacts retain
+the bounded Handle/contentFrame fallback.
+
+The same boundary delegates `APIResponse._fetchLog()` to the existing public
+Rust-backed response log and keeps 1 ms matcher one-shot behavior inside Rust.
+The complete unchanged official boolean matcher file passes 86/86 candidate
+and 86/86 oracle, including iframe replacement, exact CSS syntax diagnostics,
+response failure printing and impossible-timeout cases. Node passes 286/286
+plus strict TypeScript; the selected host passes 709 tests with 14 explicit
+environment-gated ignores; release native-load and strict host/addon Clippy
+pass. This checkpoint changes no ABI version or native-profile dependency
+union and is not a full-corpus conformance claim.
+
+## BrowserContext request-proxy checkpoint (NODE-363, 2026-10-06)
+
+The Node surface now accepts the exact backed BrowserContext defaults plus a
+Playwright-shaped proxy object. Native `newContextWithProxy` carries normalized
+typed options into Chromium and `contextRequest` returns a Rust-owned request
+client that reuses the Context proxy and live cookie jar. `page.request` is the
+same public owner. Context close accepts `{ reason }` and only disposes its
+owned request client after native close succeeds. Proxy and HTTP credential
+values are redacted from Rust `Debug` output.
+
+The ABI version is unchanged; feature markers make `context-api-request`,
+`context-proxy` and the three request proxy leaves independently detectable.
+The `context-api-request-proxy` release artifact builds and loads with both
+native methods present, and the exact dependency proof rejects any package
+outside its explicit union. The unchanged official Chromium Library Context
+proxy and bypass rows pass 2/2 candidate and 2/2 independent oracle. Node
+passes 286/286 plus strict TypeScript; selected Rust host tests pass 526 with
+eight explicit environment-gated ignores. This checkpoint does not claim
+authenticated browser page traffic, arbitrary nondefault Context options,
+other browser engines or complete upstream conformance.
+
+## Proxy target-TLS composition checkpoint (NODE-362, 2026-10-06)
+
+Node retains no socket, TLS or certificate-selection state. It validates the
+public proxy and certificate objects, selects one of two exact-union native
+profiles and forwards values once. Rust establishes the HTTP CONNECT or SOCKS5
+tunnel, then the injected Rustls owner upgrades that existing connection with
+target SNI, request-scoped verification and exact-origin client identity. The
+proxy leaves do not depend on Rustls and cannot silently provide their own TLS.
+
+Both release profiles build and load. The unchanged official proxy+mTLS rows
+pass 3/3 per proxy in Library and 6/6 per proxy in Bidi, totaling 18/18
+candidate and 18/18 independent oracle without a browser/CDP. Eleven request
+crates pass 113/113 release tests; Node passes 282/282 plus strict TypeScript,
+Clippy and exact dependency-union proofs. Core advances to candidate 1,309
+expected / one skipped / 31 unexpected / 47,136 not-run and oracle 992
+expected / 47,485 not-run.
+
+## Bidi client-certificate checkpoint (NODE-361, 2026-10-06)
+
+No FFI, ABI or runtime code changes in this checkpoint. The existing thin
+Node facade and selected Rust certificate profile execute the unchanged input
+validation row 6/6 and seven direct-request rows 42/42 across all six Bidi
+projects in both candidate and independent oracle. The current release
+artifact is rebuilt and load-verified before candidate execution. The Core
+ledgers advance to candidate 1,291 expected / one skipped / 31 unexpected /
+47,154 not-run and oracle 974 expected / 47,503 not-run.
+
+## Bidi proxy-matrix checkpoint (NODE-360, 2026-10-06)
+
+No FFI or runtime code changes in this checkpoint. The existing thin Node
+facade and three selectable native profiles execute the unchanged authenticated
+HTTP CONNECT, HTTPS proxy-server ALPN and SOCKS5 rows across all six official
+Bidi projects. Candidate and independent oracle each pass 18/18 without CDP.
+The Core ledgers advance to candidate 1,243 expected / one skipped / 31
+unexpected / 47,202 not-run and oracle 926 expected / 47,551 not-run.
+
+## SOCKS5 proxy checkpoint (NODE-359, 2026-10-06)
+
+The new `api-request-socks5-proxy` native profile extends only the existing
+browser-independent request profile. Node validates the public proxy object
+and selects SOCKS independently from HTTP CONNECT. Rust parses and bounds the
+proxy, performs a no-auth SOCKS5 handshake, sends hostnames to the proxy for
+remote resolution, supports IPv4/IPv6 targets and parses the bounded reply.
+Credentials and HTTPS request origins are explicit later capabilities.
+
+The unchanged official `fetch-proxy.spec.ts:133` row passes 3/3 candidate and
+3/3 oracle across Chromium, WebKit and Firefox Library projects. Candidate and
+oracle report SHA-256 values are
+`19af5d94d8ccc7196d8200f229b7eafec4f0954c687dddf9c9309ef5d2428438`
+and `7926ab68bdb6f9614781b8365b047d59176203adb913d5fa168a98edcbfb87e7`.
+The eleven request crates pass 110 release tests, Node passes 279/279, strict
+TypeScript and Clippy pass, the selected native release artifact builds and
+loads, and a real Tailscale-bound native smoke verifies remote DNS. The current
+Core ledgers are candidate 1,225 expected / one skipped / 31 unexpected /
+47,220 not-run and oracle 908 expected / 47,569 not-run.
+
+## HTTPS proxy-server checkpoint (NODE-358, 2026-10-06)
+
+The existing optional `api-request-http-proxy` profile now accepts an HTTPS
+proxy server without adding another profile or dependency edge. Rust passes
+that proxy URL through the injected Rustls connector, carries the public
+certificate-ignore policy and offers HTTP/1.1 ALPN before issuing CONNECT. The
+request origin remains plain HTTP; HTTPS target tunneling is still unsupported.
+
+The unchanged official `fetch-proxy.spec.ts:143` row passes 3/3 candidate and
+3/3 oracle across Chromium, WebKit and Firefox Library projects. Candidate and
+oracle report SHA-256 values are
+`6dba12195eed6bf3f7ba71b3bc2713d97acf83449db4ed28e350aef5b821d74d`
+and `429f9fa3ffec495127cc0f7310815d6eca336a488b74d197f74f97f11a5621c8`.
+The ten request crates pass 104 release tests, Node passes 276/276, and the
+selected native release artifact builds and loads. The current Core ledgers
+are candidate 1,222 expected / one skipped / 31 unexpected / 47,223 not-run
+and oracle 905 expected / 47,572 not-run.
+
+## HTTP CONNECT proxy checkpoint (NODE-357, 2026-10-06)
+
+The new `api-request-http-proxy` native profile extends only the existing
+browser-independent request profile. Node validates `proxy.server`, optional
+username/password and rejects unsupported bypass before native construction.
+Rust parses and bounds the proxy, zeroizes/redacts Basic credential material,
+establishes one CONNECT tunnel per exchange and retains any prefetched tunnel
+bytes. The first leaf intentionally supports plain-HTTP request origins only.
+
+The unchanged official authenticated global-request proxy row passes 3/3
+candidate and 3/3 oracle across the Library project matrix. Candidate/oracle
+report SHA-256 values are
+`6d03f9eaeba8e6c18ad8ceb91c36a76a983e20760013bc451629706245ffeb68`
+and `d8349d4e448041af91cb34403cab026b3428f3e5989792a759d2dd2414263c2f`.
+The ten request crates pass 103 release tests, the Node package passes 276/276,
+the selected profile adds exactly one Pwright dependency leaf, and a real
+Tailscale-bound native proxy smoke passes 2/2. HTTPS-over-proxy, SOCKS and
+bypass remain separate capability work.
+
+## Node ElementHandle DOM source completion (2026-10-03)
+
+NODE-293 completes the remaining source-side extraction in the same optional
+`element-handle-dom` profile. Rust reads `Node.textContent` from the retained
+owner, publishes an ordered validated element batch for `$$`, and creates,
+evaluates against and disposes the temporary query array for `$$eval` before
+settling the N-API call. The addon has failure-safe batch publication; Node
+only creates public wrappers and compensates every native owner if wrapper
+publication fails. Page and Frame `textContent` remain thin calls through the
+existing Rust Locator owner.
+
+The XPath path now mirrors upstream scoping: a selector beginning with `/` is
+made relative when the scope is not a Document, evaluation stays rooted in the
+retained target, and non-Element XPath results are filtered rather than
+published. Numeric batch properties must form one exact zero-based contiguous
+sequence; malformed batches are cleaned before returning an error.
+
+Package 273/273, strict TypeScript, standalone strict Clippy, the selected
+native build/load, dependency boundaries, formatting and diff checks pass.
+These are source and packaging gates, not browser conformance evidence. The
+unchanged query-selector 7-row, eval-on-selector 6-row and convenience 4-row
+candidate/oracle runs are pending because the zero-tab guard found an unrelated
+Gemini page in the shared dedicated Chrome. No page was closed, no new report
+was merged and the NODE-292 ledger counts below remain authoritative.
+
+## Node ElementHandle DOM checkpoint (2026-10-03)
+
+NODE-292 exposes the already shared Rust `element-handle-dom` owner through an
+independently selectable Node addon/package profile. The profile implies
+`handles`, but selecting plain `handles` still does not install DOM methods.
+The addon exports an additive feature marker under ABI 1, so older/minimal
+artifacts remain detectable rather than being silently accepted.
+
+`ElementHandle.innerText()` and `$()` are one typed native call each. `$eval`
+first obtains the exact matching retained target from Rust, evaluates only that
+owner through the existing Handle evaluator and releases it. Rust compiles the
+descendant selector under the existing query budget, preserves root-relative
+identity, publishes only an element, acknowledges the no-match owner release
+and enforces `HTMLElement.innerText`. `Page.innerText` and `Frame.innerText`
+are thin calls to the existing Rust Locator read. Node retains overload/error
+presentation and wrapper identity; it does not query the DOM for these paths.
+
+The unchanged official Chromium selections pass query-selector 7/7,
+eval-on-selector 6/6 and inner-text 2/2 in both candidate and oracle lanes.
+This 15/15 comparison verifies the refactored boundary, not the entire corpus.
+`ElementHandle.textContent`, `$$` and `$$eval` still use generic/query-all JS
+composition and remain explicit Rust-extraction tasks.
+
+The package passes 272/272 tests and strict TypeScript. Standalone
+`element-handle-dom` and full `official-conformance-page-bindings` artifacts
+load successfully; release checks, formatting, selected-profile strict Clippy
+and dependency/native-class/no-process-launch proofs pass. The boundary proof
+also exposed and repaired exact APIRequest native-class feature registries, a
+runtime `sw_vers` subprocess, and non-awaited Page-binding acknowledgement.
+The merged Core candidate ledger remains red and incomplete at 1,216 expected,
+one skipped, 31 unexpected and 47,229 not run.
+
+NODE-226 extends the existing optional `init-scripts` native leaf from
+Page-only registration to typed Page or BrowserContext scope. The Node facade
+adds `browserContext.addInitScript` as source normalization plus one native
+call; the Rust store, current-session fanout, future Page/OOPIF replay and
+rollback remain shared with Page and Python. The package contract suite now
+passes 269/269 with strict TypeScript. The pinned Python async/sync files pass
+18/18 candidate and 18/18 oracle; this does not change the incomplete Core
+ledger status.
+
+Client-certificate FFI checkpoint (NODE-223, 2026-09-27): the optional
+`api-request-client-certificates` profile accepts Playwright-shaped PEM or PFX
+material in Node, then delegates origin matching, lazy decoding, TLS identity
+selection and caching to bounded Rust leaves. Malformed public shapes are
+rejected before artifact selection. The exact official validation row passes
+3/3 and seven direct-request behaviors pass 21/21 in both candidate and oracle
+lanes. Candidate request report SHA-256 is
+`10a549ed1ff3094493189a926b64e35ae5c770c046fa0e1acb83494803109514`;
+oracle SHA-256 is
+`0aac6b69dedc4e56c6f63131ac10f7a07b9a71f0cceccbd762c8cec73cb15844`.
+The nine request crates pass 96/96 release tests, Node passes 268/268, strict
+types and targeted Clippy pass, and a real Tailscale-bound PEM/PFX mutual-TLS
+smoke passes. The cumulative Core candidate ledger is 1,214 expected / one
+skipped / 31 unexpected / 47,231 not-run, SHA-256
+`b9d7b48117f08def6811425eca735414ba803c506d6fa39cdb28ebf2c2e60c92`.
+Proxy, browser-context and same-origin multi-identity behavior remain
+open; this is not full upstream conformance.
+
+API-request FFI checkpoint (NODE-221, 2026-09-27): the optional native profile
+projects a Rust-owned request context, responses, structured cookies and
+bounded resolver addresses. Node performs public shape conversion and awaited
+storage-state file I/O only; it contains no HTTP client, TLS implementation,
+cookie matching, retry loop or browser operation. Origin state is retained in
+the native context under an 8 MiB cap, cookie state stays in the bounded Rust
+store, and at most 64 resolver IPs cross per request without replacing URL
+Host/SNI. Complete unchanged official Library matrices pass candidate/oracle
+198/198 `global-fetch` and 60/60 cookie; Bidi matrices pass 396/396 and
+120/120. Rust request crates at this checkpoint passed 91/91 release tests, the
+Node package passed 266/266,
+strict types/targeted Clippy pass, and a real native seven-verb smoke passes.
+This did not cover proxy, BrowserContext sharing or the rest of the official
+corpora.
+
+Upstream-conformance boolean-diagnostic source checkpoint (NODE-211,
+2026-09-27): Rust now preserves the last valid state received during a boolean
+expectation and produces the bounded element preview used by official matcher
+call logs. The preview path first performs an immediate count, then at most one
+Rust-selected static evaluation while time remains inside the original public
+deadline; it retains no DOM handle, Promise, timer, queue or browser global.
+The addon returns `received`, `preview`, `missing` and `timedOut`; Node only
+maps those bounded values to the public `Expect`, `waiting for`, `locator
+resolved to` and `unexpected value` lines. Package 257/257, focused Rust
+expectation 12/12, strict TypeScript, selected native-load and selected-profile
+Clippy pass. No official browser report or ledger was changed because the
+empty-browser guard correctly refuses to disturb the restored unrelated page.
+The existing 62/24 candidate result therefore still predates the guard and
+this diagnostic source change; it is not a rerun or final isolation proof.
+
+Upstream-conformance boolean-expectation checkpoint (2026-09-27): the official
+oracle preload keeps upstream Playwright as the implementation and replaces
+only its launch fixture with upstream `connectOverCDP` to the same dedicated
+Chrome. The complete unchanged `page/expect-boolean.spec.ts` oracle file passes
+86/86, report SHA-256
+`c7ee31f961819363811fb80669a11f3d69f9cfcaa98ca75543fa998a8dfea0cf`.
+The candidate baseline was 37 expected / 49 unexpected; after adding
+Rust-owned checked/indeterminate, editable/readonly, enabled/disabled and
+focused expectations it is 62 expected / 24 unexpected, report SHA-256
+`e9bfbcd0a4cb8dfc95990a27ea52d9cd14f13b89016c076d666536ee72fe3b5d`.
+Checked, editable and enabled reuse the existing typed Rust Locator read
+capabilities. Indeterminate and focused use bounded Rust-selected browser
+programs in the resolved element's world. Node validates option shapes and
+delegates; it owns no DOM probe, polling timer or retry loop. At that
+checkpoint, the independent oracle ledger was 86 expected / 48,391 not-run, SHA-256
+`cd2115bfce1adc903a36fb1f5ffb53d147fc28787c014fec1a9644692e74fdc2`.
+The candidate ledger was 416 expected / one explicit skip / 31 unexpected /
+48,029 not-run, SHA-256
+`94b0870a0b785ecdc527e481172dc23d7a1ae3fb40f859a04ae2d26edded606a`.
+The run exposed unsafe coexistence with an unrelated nonblank page in the
+dedicated Chrome: fixture cleanup retired it, and its exact recorded URL was
+restored. The runner now refuses runtime execution when `/json/list` contains
+any nonblank page. The 62/24 report predates that guard and therefore remains
+progress evidence, not final isolation evidence. Remaining failures are rich
+expectation diagnostics, 1 ms first-probe behavior, one FrameLocator lifecycle
+case, CSS syntax wording and missing `page.request`/`APIResponse.toBeOK`.
+Full upstream conformance remains incomplete.
+
+Upstream-conformance actionability-progress checkpoint (2026-09-27): the
+runtime keeps the original single command deadline. When that deadline wins,
+it first drops the operation and completes the existing typed cancellation and
+browser cleanup. Only successful cleanup may invoke a synchronous/no-I/O,
+default-noop terminal-error projection. The exact Rust Locator service retains
+one fixed enum containing the last observed missing, detached, invisible,
+unstable, disabled or obscured state. It clears the slot at operation start,
+ready/runtime-replaced state and normal completion, then consumes it at most
+once after deadline cancellation. Node neither probes the DOM nor starts a
+timer or retry loop; it only maps fixed bounded keys to the public Playwright
+message. The complete unchanged `page-click-timeout-2.spec.ts` file passes 2/2,
+report SHA-256
+`24082ff695e75d44e9779e335143283b74c85fa8c596097cc6e25b8419e57370`.
+The final controlled unchanged 12-case Page batch records nine expected and
+three unexpected results, report SHA-256
+`87880edd0948895b22b6ce90e3448baf4cbbe495383e4cfe57f8649610558860`.
+Its remaining discrepancies are client-redirect/network-idle lifecycle,
+dialog events and the implementation-private `__testHookBeforePointerAction`.
+The cumulative Core ledger is 354 expected / one explicit skip / seven
+unexpected / 48,115 not-run, SHA-256
+`579ccfc8f676c7c2230f9e01e255a963a14113bac2c87ed4b8621ba6ff2e479e`.
+Package 256/256, runtime 114/114, Locator backend 115/115, Chromium composition
+397/16, selected host 617/14 plus integration 22/8, strict
+TypeScript/native-load and selected host/addon Clippy pass. This is measured
+progress, not a full-suite pass claim.
+
+Upstream-conformance Locator-geometry/highlight checkpoint (2026-09-27):
+`locator-bounding-box` and `locator-highlight` are independent default-off Rust
+leaves, with the higher-level highlight leaf explicitly composing bounding-box.
+Rust resolves the strict Locator in its existing Frame evaluation owner,
+rejects disconnected, invisible or empty geometry, and returns a bounded typed
+box. Highlight installs one bounded overlay plus animation-frame owner in the
+selected Frame utility world; another highlight replaces that state and world
+teardown clears it on navigation. The official under-test environment receives
+the inspectable open shadow root required by Playwright's assertion, while
+ordinary callers receive a closed root. Node supplies only the bounded public
+description, TypeScript result shape and final error presentation. This slice
+does not claim perfect cross-origin Frame offset support or continuous selector
+retargeting after the initial strict resolution. The complete unchanged
+`locator-highlight.spec.ts` file passes 1/1, report SHA-256
+`3e5b15bf7242fd3457978739932f0f243d74a007ba26ad48343207310457dec6`.
+The controlled unchanged 12-case Page batch progresses from seven expected /
+five unexpected to eight expected / four unexpected, report SHA-256
+`72d08fa3d73c9e17f5f6e7157e2313b6c7d53ffc6c3ac534321d68e64d168643`.
+The cumulative Core ledger is 351 expected / one explicit skip / 10 unexpected
+/ 48,115 not-run, SHA-256
+`d95617557ce968078630912a613502516b185af752d88866702b4b3e24e28d8f`.
+Package 256/256, strict TypeScript/native-load, selected host 616/14 plus
+integration 22/8, and strict selected host/addon Clippy pass. The four remaining
+batch discrepancies are client-redirect continuation, dialog events, one
+private pointer-action hook and one rich actionability retry log. Full upstream
+conformance remains incomplete.
+
+Upstream-conformance Locator-expectation checkpoint (2026-09-27): Rust now
+owns serial, deadline-bounded Locator expectations for attached/detached/empty
+state, deep property values and browser-compatible regular-expression text.
+Every attempt reuses the existing Locator resolution/evaluation owner and has
+a fixed 100 ms ceiling; navigation-context replacement is retried only while
+the selected Frame remains active. Missing-element semantics are explicit:
+state expectations follow Playwright polarity, while neither polarity of text
+or property matching can complete just because the element is absent. Node
+retains only the public Locator description, bounded expected-value conversion
+and final error formatting; it adds no browser decision, timer, queue, task or
+persistent table. The complete unchanged `matchers.misc.spec.ts` progresses
+through 1/2, 1/2 and 2/2; the passing report SHA-256 is
+`d36423fbd9755b7c4d9ff912c921994407525aad31ae47ea8c7fd48f2b2884ed`.
+The controlled unchanged 12-case Page batch progresses from five expected /
+seven unexpected to seven expected / five unexpected, report SHA-256
+`89a8344a244e83bb0721b9701d595fa690b23fdee5b3bae8cdc6407fa060bb1f`.
+The cumulative Core ledger is 350 expected / one explicit skip / 11 unexpected
+/ 48,115 not-run, SHA-256
+`1f21303158ae74bc7a9babff110ce4593f287a79552faac215ec203d26e6ba73`.
+Package 254/254, strict TypeScript/native-load, selected host 614/14 plus
+integration 22/8, and strict selected host/addon Clippy pass. The five remaining
+batch discrepancies are client-redirect continuation, Locator highlight,
+dialog events, one private pointer-action hook and one rich actionability retry
+log. Full upstream conformance remains incomplete.
+
+Upstream-conformance response-body checkpoint (2026-09-27): the independently
+selectable `response-body` feature retains the completed navigation document's
+bounded native request identity in Rust. The host resolves the exact Page and
+Frame, issues Chromium's `Network.getResponseBody`, decodes bounded base64 and
+owns the bytes through N-API settlement. Node supplies only Playwright language
+semantics and one cached copied Buffer shared by `Response.body()`, `text()` and
+`json()`; it chooses neither protocol nor browser route. The complete unchanged
+`frame-goto.spec.ts` file progresses from 2/4 to 3/4, report SHA-256
+`5c7b5ced18dfffdaf20b7e9b5b114b408d23169c5fe339e0dbec3d200876ee30`.
+The controlled unchanged 12-case Page batch progresses from 4 expected / eight
+unexpected to five expected / seven unexpected, report SHA-256
+`c8f221f387a54bb17aeeb7bec6770f0db4e1ca7c748ea0c4d902f81f2fad11d5`.
+The cumulative Core ledger is 348 expected / one explicit skip / 13 unexpected
+/ 48,115 not-run, SHA-256
+`f226ec1621da2579822e28ef9b470ff95a8a7c2eb0d2a5e1207654c55f85a21a`.
+Package 249/249, strict TypeScript/native-load, selected host 609/14 plus
+integration 22/8, and strict selected host/addon Clippy pass. The remaining
+batch discrepancies are client-redirect continuation, Locator highlight,
+Locator empty/attached matcher behavior, dialog events, one private pointer
+hook and one rich actionability retry log. Full upstream conformance remains
+incomplete.
+
+Upstream-conformance actionability and detached-Frame checkpoint (2026-09-27):
+the same controlled 12-case Page batch progressed from 3/9 to 4/8 without
+weakening upstream assertions. Rust click actionability now delegates enabled
+state to the already installed shared selector runtime. That runtime retargets
+a text-matched descendant to its interactive ancestor for enabled/disabled
+semantics while the action backend keeps the original element for stability,
+geometry and hit testing. The disabled target therefore remains unclicked and
+times out; the remaining mismatch is the missing bounded actionability retry
+log. Separately, Rust host error projection preserves `FrameDetached` as a
+specific `PWRIGHT_TARGET_CLOSED` message instead of collapsing it to generic
+Page closure. The complete `frame-goto.spec.ts` file progresses from 1/4 to
+2/4. Node owns neither decision. The cumulative Core ledger is 347 expected /
+one explicit skip / 14 unexpected / 48,115 not-run, SHA-256
+`79cc1dfaadc8e493256539c17103c83251c9a48f6632526a05ea487bd202df37`.
+Package 246/246, strict TypeScript/native-load, Rust Locator 114/114, selected
+host 607/14 plus integration 22/8, and strict selected-profile Clippy pass.
+Full upstream conformance remains incomplete.
+
+Upstream-conformance Page-action facade checkpoint (2026-09-27): Page and
+Frame selector actions now pass `page.*` or `frame.*` identity into the same
+thin Locator adapter; Locator calls retain `locator.*`. Standard Rust timeout
+errors receive Playwright's final punctuation in the language error boundary.
+There is still one Rust action owner and no Page-specific browser operation,
+timer, state table or retry loop. The complete unchanged
+`page-click-timeout-2.spec.ts` file remains 0/2 after progressing beyond both
+API-prefix assertions: Rust does not yet retain and publish the last bounded
+actionability retry reason, so the official visible/enabled/stable action log
+is absent. The complete one-case `page-click-during-navigation.spec.ts` is also
+an explicit unexpected result because it uses Playwright's private
+`__testHookAfterStable` server option. The cumulative Core ledger is 343
+expected / one explicit skip / six unexpected / 48,127 not-run, SHA-256
+`967f4dcb53128223f582793f677781106de17898991b96cb8e7c53f844b69d56`.
+Full upstream conformance remains incomplete.
+
+Upstream-conformance navigation checkpoint (2026-09-27): the complete
+unchanged `page-navigation.spec.ts` file progressed 0/3, 0/3, 0/3, 2/3 and
+3/3. Quoted Playwright text selectors and bounded `>>` chains now compile into
+typed Rust selector recipes instead of being handed to CSS. Selector runtime
+version 8 supplies Playwright-compatible descendant text and submit/button
+input-value semantics inside the Rust-owned browser runtime. For a newly
+attached paused popup, the selected topology profile polls caller Context
+settings, lifecycle setup, `Page.enable`, recursive auto-attach and
+`Runtime.runIfWaitingForDebugger` as one fixed five-owner batch. Commands are
+queued before resume, every result remains a readiness fence, and the Page is
+not published until the later Frame/runtime/world initialization also
+completes. This adds no task, queue, cross-session scheduler, Node browser
+owner, or package edge. The passing complete-file report SHA-256 is
+`de9f28ea77db394e6b6d18f272e0fa81eda03ce2a0e00c22b61adc98b48d61b2`.
+A later Page-facade regression run remains 3/3, SHA-256
+`6c7049be945943dff9a3c8a0571d59282eebde7d641fc0230b6ebef60beeb144`.
+The cumulative Core ledger is 343 expected / one explicit skip / three
+unexpected / 48,130 not-run, SHA-256
+`3d73808ac360304ed8cd67b364208bde344648752fa31d4c6ba66dcda645d0f3`.
+The package passes 246/246 plus strict TypeScript and native-load. The selected
+host passes 606 / 14 explicit ignores plus 22 / 8 integration, selector backend
+112/112, Chromium composition 397 / 16 explicit ignores, and strict
+selected-host/direct-crate Clippy.
+Full upstream conformance remains incomplete.
+
+Upstream-conformance request-GC checkpoint (2026-09-27): the complete
+unchanged `page-request-gc.spec.ts` file progressed from 0/1 to 1/1. The
+optional `request-gc` addon edge forwards into a zero-persistent-state Rust
+host leaf. Rust admits the operation against the exact Page, resolves its
+current Chromium session and sends `HeapProfiler.collectGarbage` with the
+official empty payload. Node contributes only `Page.requestGC()` and no
+protocol choice, queue, timer or state. The baseline and passing report
+SHA-256 values are
+`e16d57c318a3c12cb15770d0ff47ae20e9d642ecd2f97943aeacf8e094b5a35c` and
+`18bce9f2941cb1b6be55d7101b9fe8cb71656d535f8e782a30a1f10f48449f88`.
+The cumulative Core ledger is 340 expected / one explicit skip / three
+unexpected / 48,133 not-run, SHA-256
+`1311baaa537257b551c4380f5287463d817b27212c04e7c93fceeffff97f089a`.
+The package suite passes 246/246; strict TypeScript, selected-profile strict
+Clippy, release build and native-load pass. The full selected host release
+suite records 605/14 in the library target plus 22/8 across integration
+targets. Full upstream conformance remains incomplete.
+
+Upstream-conformance URL-wait checkpoint (2026-09-27): the complete unchanged
+`page-wait-for-url.spec.ts` file progressed from 0/11 to 11/11. The optional
+`wait-for-url` addon edge reuses the existing Rust host URL-wait leaf. Rust owns
+fixed eight-operation admission, published Page/Frame URL observation,
+lifecycle ordering, timeout and cancellation; the wait now accepts the exact
+child Frame identity instead of assuming the main Frame. A bounded N-API
+thread-safe callback is only the language-semantic port. Node compiles
+Rust-prepared string globs into JavaScript `RegExp`, preserves user RegExp
+state, and passes a real `URL` to predicates; it does not own a poll loop,
+browser Promise, timer or Frame registry. The baseline and passing report
+SHA-256 values are
+`82171341c8fe4a00f7064bd6c5504fcbd6d0025bc30bf1d630a75e13ac736136` and
+`43a5dafb0d6642cffb61061b17a9c01c3640118ac774753838b439ace300f523`.
+The cumulative Core ledger at that checkpoint was 339 expected / one explicit
+skip / three unexpected / 48,134 not-run, SHA-256
+`7492f7e7680c8a4427622a2759deb48d1329464d54afdc0eba0976e05d4b2c17`.
+The package suite passed 244/244, and the selected host release library suite
+recorded 604/14. Strict TypeScript, selected-profile strict Clippy, release
+build and native-load pass. Full upstream conformance remains incomplete.
+
+Upstream-conformance Locator/ElementHandle checkpoint (2026-09-27): the
+complete unchanged `locator-evaluate.spec.ts`,
+`elementhandle-eval-on-selector.spec.ts`, `locator-is-visible.spec.ts`,
+`locator-click.spec.ts`, `elementhandle-type.spec.ts`, and
+`elementhandle-press.spec.ts` Chromium Page files pass 6/6, 6/6, 8/8, 5/5,
+5/5, and 5/5. `Locator.evaluateAll` is a dedicated
+bounded Rust collection-evaluation lane: it resolves the immutable selector in
+the exact utility world and passes one exact match array to the user function.
+Node supplies only the bounded function/argument conversion. ElementHandle
+`$eval`/`$$eval` continue through retained Rust Handle ownership; the latter
+exposes a real Array without using mutable Array methods to assemble it.
+
+`Locator.waitFor`, visibility reads, and visibility expectation polling now
+delegate to typed Rust operations. Playwright treats replaceable execution-
+context loss inside `isVisibleInternal` as not visible while preserving
+non-retriable selector errors; the Rust host matches that distinction. The
+bounded selector recipe also retains an exact unknown-engine issue before CDP,
+so `hey=what` reports Playwright's required diagnostic instead of a browser CSS
+syntax error. Locator click, Page/Frame type, key press, and Page/Frame focus
+remain thin facades over typed Rust actions.
+
+The complete unchanged `page-focus.spec.ts` progression is 5 pass / one
+upstream skip / four fail, 8 / 1 / 1, then 9 / 1 / 0. The last mismatch was an
+ordering issue: DOM focus returned before its binding callback became visible
+in Node. Rust now retains an acknowledgment bit in the existing fixed 64-call
+binding table. After the action's topology fence, it snapshots a call watermark
+and waits, with cancellation and no new unbounded queue, until Node acknowledges
+that each callback has been invoked. A callback Promise may remain unresolved;
+the fence never waits for its result or for result delivery back into the page.
+The final report SHA-256 is
+`27c9e58d1269159714dba66985032ba84f9cbaec44a3a3f7bbccb115aa2e9a86`.
+The cumulative 48,477-record Core ledger is 312 expected / one explicit skip /
+three unexpected / 48,161 not-run, SHA-256
+`194ab114801c33ff92860ae8804818453acba18064be55f8c54695bf97860b64`.
+The package suite passes 239/239; strict TypeScript, selected-profile strict
+Clippy and native-load pass. The selected host release suite records 568 passed
+/ 14 explicit ignores in the library target plus 22 passed / 7 explicit ignores
+in integration targets. Full upstream conformance remains incomplete.
+
+The complete unchanged `page-emulate-media.spec.ts` file progressed from 0/11
+to 11/11 after exposing the existing independent Rust `emulate-media` leaf.
+Node owns only Playwright option validation and omitted-versus-null adaptation;
+Rust retains a fixed 64-Page override table, serializes operations, and sends
+the exact bounded CDP emulation command. Optional Page N-API methods now live in
+feature-level impl blocks, which makes a standalone `emulate-media` selection
+compile without exporting init-script, set-content, or binding methods. The
+existing independent `extra-headers` path was composed next, and the complete
+unchanged `page-set-extra-http-headers.spec.ts` file passes 5/5. The two report
+SHA-256 values are
+`cd3ee047a67816c8209e414232299a157a95596f0028d10afcdcced243fbe4da` and
+`430901f0b526c2a9e4ecafbcae1ac831d9a900b7f63b5dcbf4120dfc068f0751`.
+The cumulative Core ledger is 328 expected / one explicit skip / three
+unexpected / 48,145 not-run, SHA-256
+`7e6f42140c8de2f314cf1061e9da5f7cca93db0fc341cbb0180fe5b26ad99933`.
+The package suite passes 240/240, and the selected host release suite records
+603/14 in the library target plus 22/8 across integration targets. Strict
+TypeScript, strict selected-profile Clippy and native-load pass. Full upstream
+conformance remains incomplete.
+
+Upstream-conformance Page-evaluation checkpoint (2026-09-27): the complete
+unchanged `tests/page/page-evaluate.spec.ts` Chromium Page project now passes
+96/96, and `page-evaluate-handle.spec.ts` passes 11/11. The optional
+`large-evaluation-results` feature keeps ordinary envelopes in the initial CDP
+reply using a bounded serializer that does not call the page's mutable JSON or
+Array push/map hooks. Only a top-level string above 256 KiB remains in a
+caller-owned CDP object group and is copied through fixed 256K UTF-16-unit
+projections, with one active large transfer and a 128 MiB result ceiling.
+This restores evaluation-during-navigation semantics while passing the official
+100 MiB transfer case. The FFI ticket adds its 400 MiB conservative accounting
+allowance only after Rust sees a large string; ordinary/nested calls keep the
+existing 8 MiB allowance. A direct 100 MiB smoke measured about 259.7 MiB
+maximum process RSS and 219.5 MiB peak physical footprint with zero swap; that
+measurement is process-level and not a claim of unique per-session RAM.
+
+The official report SHA-256 is
+`ff3777120fe00703ab86bd5840256bf78dbad60a21bfd25e177b8b16adb91e34`.
+The cumulative 48,477-record Core ledger is 233 expected / one unexpected /
+48,243 not-run, SHA-256
+`0ff3cb44647397495e794b165b10759133e730fb39c8fa7d1c556e24de27c4d5`.
+The local gates pass at 223/223 package contracts, strict TypeScript,
+selected-profile strict Clippy, native load, 13/13 backend evaluation AAA and
+14/14 FFI-budget AAA. Full upstream conformance remains incomplete.
+
+Upstream-conformance Page-binding checkpoint (2026-09-26): the optional
+`page-bindings` feature now composes frame lifecycle with the existing Handle
+owner rather than implementing an independent Node transport. Rust installs
+and versions one CDP binding, filters foreign binding events before parsing,
+owns a fixed 64-registration/64-pending-call queue, and injects the bounded
+browser-side argument serializer. The serializer covers cycles, special values,
+typed arrays and Window/Document/Node aliases without depending on mutable
+Array `map` or `push`; malformed `Array.prototype.toJSON` remains visible at
+the Node boundary with Playwright's diagnostic.
+
+For value callbacks, Node only reconstructs the tagged arguments and calls the
+user function. The callback result is passed as the original Node value into
+the existing deferred Rust evaluation converter; cycles, Errors and embedded
+JSHandles therefore use the same bounded Rust codec and owner validation as
+ordinary evaluation. For `{ handle: true }`, Rust re-enters the exact Frame,
+takes the controller-retained value as a native owned Handle, and publishes the
+normal JSHandle/ElementHandle wrapper. Result delivery consumes a one-shot
+pending-call permit and is navigation-race tolerant. No raw CDP object ID or
+unbounded callback table is exposed to Node.
+
+The first complete unchanged upstream `page-expose-function.spec.ts` run was
+21/24. All binding-specific cases passed; the three failures identified absent
+`page.addInitScript`, `page.waitForNavigation`, and `page.click` entry points.
+The follow-up `official-conformance-page-bindings` profile composes the existing
+binding/Handle leaf with `frame-navigation` and a new independent
+`init-scripts` feature. Rust owns fixed init-script storage/session fanout and a
+receipt-free first-navigation waiter; Page/Frame click delegates to the
+existing Rust Locator action. The next-navigation registration is now made
+synchronously during N-API admission, before the returned Future can yield, so
+an immediately triggered navigation cannot cross an asynchronous preparation
+gap. Local evidence is 219/219 package tests, strict
+TypeScript, focused Rust lifecycle/init-script tests, strict Clippy, native
+artifact loading, and exported method checks. The next complete run was 23/24:
+click and callback dispatch worked, but the published ElementHandle lacked
+`innerText`. That method is now a thin facade over the retained Rust Handle
+evaluation port, and the third unchanged run passes 24/24. A separate teardown
+probe still reports two retained native leases, so lifecycle cleanup remains an
+open gate despite the functional pass. The unchanged
+`page-add-init-script.spec.ts` file progressed from 8/9 to 9/9 with Page/Frame
+script-tag as a derived combinator over Rust-owned Frame evaluation and retained
+Handle publication. The complete script-tag file progressed from 9/12 to 10/12
+after inline-module publication and CSP rejection were corrected, then reached
+12/12 after composing `page.waitForFunction`. The new independent
+`wait-for-function` native leaf owns eight resource-accounted operations,
+deadline/cancellation and exact truthy Handle publication. Rust performs
+one-shot Frame evaluations, probes each returned Handle and disposes falsy
+attempts, so timeout/cancellation leaves no continuing browser Promise. The
+pinned 26-test wait-for-function file additionally requires `page.$`,
+`waitForTimeout`, and `setDefaultTimeout`. The query is a facade over the
+existing Rust Frame/Handle owner. Timeout waiting is a new independently
+selected, fixed-16-operation Rust leaf. Default timeout inheritance reuses the
+existing fixed Context/Page Rust table and resolves an omitted wait timeout in
+native code. Four complete unchanged browser runs progressed 22/26, 24/26,
+25/26, then 26/26. The final fixes retry one-shot evaluation after navigation
+context replacement and implement `ElementHandle.contentFrame` by directly
+describing the exact retained element, mapping its bounded frame id through the
+existing topology owner, and creating no temporary Handle. Local evidence is
+6/6 wait-function Rust AAA, 1/1 timer Rust AAA, 2/2 timeout-settings Rust AAA,
+219/219 package tests, strict TypeScript/Clippy, release build and native-load.
+The final native artifact SHA-256 is
+`46768820b4ae1c16458592d371c20b3dc6a8407d54d70229534a573e6247b830`.
+
+The next complete-file slice moves console events from 9/13 to 13/13 and Page
+load from 0/2 through 1/2 to 2/2. The Page-event observer keeps a fixed
+16-entry, 128-byte-loader document table, seeds the initial document, deduplicates
+each DOM/load phase, and prunes retired Pages. `FrameLocator` retains only a
+lazy language recipe: native wait-for-function selects the iframe, exact
+`contentFrame` resolves the existing Frame, and the owner Handle is disposed.
+Text matching polls the immutable Locator recipe in Rust with one deadline;
+Node only decodes the official matcher options. `Locator.all` derives at most
+1024 native `nth` recipes, and `div >> p` becomes one admitted Rust `Within`
+tree. The resulting complete files are load 2/2 and locator-list 1/1. Handle
+evaluation 2/2, asElement 4/4 and jsonValue 3/3 pass unchanged; Handle preview
+and sparse-array console formatting remain recorded as 0/6 in
+`jshandle-to-string.spec.ts`.
+
+Quality-hardening checkpoint (2026-09-21): native artifacts now export a
+numeric addon ABI version, and the package requires exact ABI 1 plus the core
+`NativeEnvironment` constructor before validating the selected feature markers.
+An empty/default-looking or stale addon therefore fails closed. A real release
+artifact smoke runs in an isolated child process so native runtime teardown or
+a stalled macOS load cannot hold the package test process open.
+
+The session watch now handles both synchronous `wait()` throws and rejected
+wait Promises. It records the primary failure, closes the session, retains a
+cleanup failure in an `AggregateError`, and publishes one local disconnect
+even if a faulty artifact refuses terminal publication. Page, Frame and
+JSHandle expression ingress now matches Locator's runtime stringification for
+non-function values. At the transport boundary, a zero connection command
+timeout maps to no response timer, removing the old hidden 30-second cap from
+`connectOverCDP({ timeout: 0 })`.
+
+The CI definition now covers package unit/type behavior on Node 20/22/24,
+dependency and real default-addon loading on Node 20, explicit default addon
+unit tests, and terminal retained-payload standalone/combined selections. This
+is CI configuration evidence, not a claim that an unpushed workflow run passed.
 
 NODE-191 adds `prepareMutatedTarget` after `prepareImportedTarget` under the
 same `progress.race`. `handleMutateSerializedFileInputPayloads` proves the exact
@@ -1756,18 +3738,18 @@ Playwright 1.58.2 and must be reviewed before expanding the compatibility claim.
 
 | ID | Current boundary | Required next evidence / review condition |
 | --- | --- | --- |
-| NODE-001 | `timeout: 0` disables the overall attach deadline, but native CDP commands still have a 30-second budget. Timeouts must be unsigned integer milliseconds. | Injected-time cancellation and timeout-race fixtures before VS2; do not claim exact unlimited-timeout semantics. |
+| NODE-001 (resolved) | `timeout: 0` disables both the overall attach deadline and ordinary CDP response timers. Positive timeouts remain unsigned integer milliseconds and bound both layers. | Keep the zero-to-`None` transport regression and positive-timeout validation mandatory. Operation-specific cancellation and lifecycle shutdown remain independent contracts. |
 | NODE-002 | Headers, proxy/redirect behavior, slow motion, custom logger, credentials/URL fragments, close reasons and other options are unsupported. HTTP redirects are refused. | Add one option only with paired behavior/error tests; no silently ignored keys. |
 | NODE-003 | Errors currently cross as bounded `PWRIGHT_*: message` envelopes. Malformed URLs map to TypeError; full upstream messages/stacks and structured details are not matched. | Implement the structured error boundary and named normalizations; compare complete supported error fields. |
-| NODE-004 | The host still selects the aggregate Chromium composition, not a feature-minimal native dependency graph. Title uses its independent fixed DOM read. Public evaluation and Locator reads explicitly install their existing Rust backends. The normal dependency closure remains 221 packages. | Extract/use the required composition leaves and prove omitted capabilities absent before a narrow package claim or publication. |
+| NODE-004 | The host still selects the aggregate Chromium composition, not a feature-minimal native dependency graph. The first three slices moved `ChromiumSessionInitializer`, synchronous Frame event/URL/ownership projection, and bounded Frame lifecycle/navigation-wait observation into independent leaves. Session initialization and observation have exact five-package closures; `pwright-plugin-chromium-frame-lifecycle` has an exact ten-package closure. The aggregate compatibility-reexports them while host adapters import the leaves directly; aggregate-coupled host files fall from 55 to 39. The transitional boundary remains 236 packages for the default host and 251 for the default addon, and the aggregate has 69 direct normal dependencies with `default = []`; no size reduction or narrow distribution is claimed yet. | Continue the inventory by moving contracts and implementations behind capability-owned leaves, add a narrow Node assembly crate, and only then remove the aggregate. Each slice must preserve ownership/lifecycle tests and make the boundary gate prove both a smaller exact package set and absence of unselected server/event capabilities before any narrow package claim or publication. |
 | NODE-005 | All 19 suites / 57 unchanged cases use fresh owned oracle and candidate Contexts, without golden rewrites or JS automation fallback. Semantic Locator artifact `edd8ba96...b0c9b7` completes 41 matches / 14 unsupported / 2 oracle errors with no value/candidate/setup/cleanup errors. Public getByText/getByRole add five matches over the world-readiness artifact's 36/19/2. The prior `e5076407...65d48` report remains 31/19/2 plus 5 setup errors. | Expose remaining APIs through budgeted Rust bindings. Preserve artifact-specific evidence. Shared successes do not prove all semantics: NODE-020/021/022/023/024 require separate concurrency, navigation and cleanup comparisons. Every unsupported/error classification remains non-passing. |
-| NODE-006 | Node >=20 is the intended package range; only Node 26.7.0 / macOS arm64 has been run. There are no prebuilt releases. | Multi-Node/platform CI before distribution claims; artifact loading must fail explicitly on unsupported targets. |
+| NODE-006 | Node >=20 is the intended package range. CI now defines unit/type lanes for Node 20/22/24 and a Linux Node 20 native build/load lane; local native verification is Node 26.7.0 / macOS arm64. There are no prebuilt releases. | Require green workflow evidence and add the intended prebuilt platform matrix before distribution claims; unsupported artifacts must keep failing explicitly. |
 | NODE-007 | One bounded session signal now publishes native URL watermarks and disconnect notification on the JS loop. General listener-driven subscriptions and public Page/Context/navigation events are not exposed. | Extend the ordered Rust publication mechanism with explicit event payloads, listener admission and overflow/ordering fixtures in VS5; a metadata watermark is not a general event implementation. |
 | NODE-008 | Empty-default-Context initialization is covered with the fake CDP backend, not a zero-tab live Chrome run. Forced Worker exit proves process survival and reattachment, not post-exit access to that worker's ledger. | Isolated dedicated-browser and environment-cleanup instrumentation before closing every VS1 lifecycle gate. |
 | NODE-009 | Synchronous `Page.url()` and main `Frame.url()` now read the Rust-owned published view. The paired blocked-JS regression first reproduced early native visibility, then passed with fixed-watermark publication on Node callbacks. | Keep blocked-loop and command-return regressions mandatory. Ordering relative to future public navigation/close events remains NODE-007 work; this is not an all-orderings or child-Frame parity claim. |
 | NODE-010 (resolved) | `title()` now dispatches the fixed `FrameTitle` DOM-read 1.1 command through the exact utility world. Main-world prototype changes no longer affect its result. | The paired prototype-interference assertion passed on real Chrome and its TODO marker was removed. Keep it as a mandatory regression; this does not claim every title/navigation race has been verified. |
 | NODE-011 | The current async exports now have environment-owned admission, boxed-future and native result/error reservations through JS conversion or environment reclamation. Blocked-JS and forced-Worker tests cover this boundary. | Keep the pressure regressions mandatory; every added async export must use this boundary and declare payload/future limits. General events, Buffers, historic retained metadata, user-owned V8 values and process RSS need their own evidence; zero counters are not a whole-process memory proof. |
-| NODE-012 | No-options Context creation/close, `BrowserContext.newPage()` and ordinary `Page.close()` now use Rust services. Before-unload, close reasons, `Page.isClosed()`, public Page/Context close events and `Browser.newPage()` remain unsupported or absent. Ordinary Page close uses 20 native absence checks with injected 10 ms pauses, in addition to CDP command budgets. | Keep lifecycle and resource-admission regressions mandatory. Public event ordering and shutdown during partially completed creation need dedicated evidence; ready-owned-Context Worker teardown is not proof of every initialization race. Bounded Page close polling is not Playwright's unbounded close-wait contract. |
+| NODE-012 | Context creation/close, `BrowserContext.newPage()`, ordinary `Page.close()` and NODE-415's no-options / `baseURL` `Browser.newPage()` use Rust services. The hidden Browser.newPage Context has an exclusive bounded Rust owner and failure compensation. The Node lifecycle-events attachment selects exact native target-destruction confirmation; the configured 20-check polling policy is only the non-observed fallback. Remaining Browser.newPage Context options, before-unload, close reasons, `Page.isClosed()` and public Page/Context close events remain unsupported or absent. | Keep native-confirmation, lifecycle, implicit-Context compensation and resource-admission regressions mandatory. Run the official real-Chrome Browser.newPage selector rows after the dedicated browser is empty. Public event ordering and shutdown during partially completed creation need dedicated evidence; ready-owned-Context Worker teardown is not proof of every initialization race. |
 | NODE-013 | Earlier topology-setup timeouts and the bounded reproduction outside Node-API remain recorded. Paired-prerequisite and concurrency artifacts passed full lifecycle/evaluation lanes, but action-stage `eae32ce9...41af9e` again hit the lifecycle 180-second supervisor and had two oracle attach timeouts in evaluation (36/38). A filtered Worker diagnostic passed only after removing the exact fixture left by the killed lane; it does not establish the original failure's cause. | Intermittent root cause remains open. Preserve artifact-specific full-gate outcomes; shorter timings and filtered passes are not fixes. TCP_NODELAY did not demonstrate improvement and remains reverted. Keep original deadlines and readiness/resource/cancellation fences; no silent retries or shared Chrome reset. |
 | NODE-014 | The owned-Context profile maps default viewport, screen, scale, native window bounds, focus and media. A Locator-stage full regression captured initial outer dimensions 0x0 versus Playwright's 1282x800; a subsequent full run passed, without a window-initialization fix. Download defaults, headless fonts and the complete option matrix remain incomplete. Borrowed Context settings are not overwritten. | Preserve the failed first-document snapshot and diagnose window-readiness ordering on exact owned targets; do not call this intermittent discrepancy fixed because a later run passes. An independent Playwright observer can itself change settings and cannot be the sole evidence. Context options still reject before mutation. |
 | NODE-015 | Official Playwright 1.58.2 times out in both shared history cases on dedicated Chrome 152. The diagnostic records `BackForwardCacheRestore`, the expected restored title and `readyState=complete`, with no new restored-document `load`. The installed oracle ignores the frame-navigation type and clears lifecycle state on commit; its usual launcher disables BFCache, but this externally owned Chrome profile does not. | Keep these cases classified as oracle errors with the candidate's `goBack` unsupported evidence alongside them. Review the reference-browser profile and desired BFCache contract before implementing history parity. Do not restart/reconfigure shared Chrome, silently change `waitUntil`, extend timeouts or mark the oracle failure as a match. |

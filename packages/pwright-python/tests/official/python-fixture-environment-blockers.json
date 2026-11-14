@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "fixtureHost": "macbookpro-yuacx.tail8f3b66.ts.net",
+  "fixtureBind": "100.78.97.63",
+  "ledgerRows": 6526,
+  "ledgers": {
+    "candidate": {
+      "path": ".work/official-conformance/outcomes/playwright-python-candidate-abi107-schema5-owned-proxy-bad-server-browserless-v1.jsonl",
+      "sha256": "9abb589487cadbb01d379876e6fdb4bd08d093bcaf10c246e4ab0845946841e8"
+    },
+    "oracle": {
+      "path": ".work/official-conformance/outcomes/playwright-python-oracle-abi109-owned-proxy-bad-server-browserless-v1.jsonl",
+      "sha256": "e396771db5ad1b646ac88214af3f5b05291e543a3459200c95bf2d92769d9523"
+    }
+  },
+  "runs": {
+    "add-cookies": {
+      "manifest": "packages/pwright-python/tests/official/browsercontext-add-cookies-manifest.json",
+      "manifestSha256": "7c2cdf04985d4c7b869dc5ad79557a8383bcd499f2946388d4fa83f9a4109ca0",
+      "sourceFiles": {
+        "tests/async/test_browsercontext_add_cookies.py": "4d604e12a0da1264101db19d556e4e7bf7ce12ed03ec75970ef31f6b43295780"
+      },
+      "reportCases": 19,
+      "reports": {
+        "candidate": {
+          "path": ".work/official-conformance/playwright-python-candidate-browsercontext-add-cookies-v1.xml",
+          "sha256": "8c2d0cb78770560ef5b67c41b33a06ea1e2f4b7ddec6e6311e27f938309e86cc",
+          "provenance": ".work/official-conformance/playwright-python-candidate-browsercontext-add-cookies-v1.provenance.json",
+          "provenanceSha256": "cc56001104c23d193f8bdcc27507919a740225e261f667b8e4a705fc7c10cda9"
+        },
+        "oracle": {
+          "path": ".work/official-conformance/playwright-python-oracle-browsercontext-add-cookies-v1.xml",
+          "sha256": "5b859b0384ef1402b07d1abb943a8ff548b48f7857ae5115908a73f2da551fd4",
+          "provenance": ".work/official-conformance/playwright-python-oracle-browsercontext-add-cookies-v1.provenance.json",
+          "provenanceSha256": "896521026e5fec97c04f51b599446a80b5442b02a6a0b00d7c42a231a712883b"
+        }
+      }
+    },
+    "storage-state": {
+      "manifest": "packages/pwright-python/tests/official/browsercontext-storage-state-manifest.json",
+      "manifestSha256": "5c18d9019844547ae881d988a81bc3d1f515cc87bc6fccc1a773e9e8ea14cc12",
+      "sourceFiles": {
+        "tests/async/test_browsercontext_storage_state.py": "f4c4a8566009253e734b8a4bbe6960a577ff0d72e21d2b8420f8f916bb97d98b",
+        "tests/sync/test_browsercontext_storage_state.py": "1a838b1d393b27a9792ba640f86d89b28af9cba15a2e2b247d800a29924e51bf"
+      },
+      "reportCases": 9,
+      "reports": {
+        "candidate": {
+          "path": ".work/official-conformance/playwright-python-candidate-browsercontext-storage-state-v3-repeat.xml",
+          "sha256": "a43d954ff5a14ea64aa3a86de989d350f3aefe4059b7a5ca5eef82d366d2b5ad",
+          "provenance": ".work/official-conformance/playwright-python-candidate-browsercontext-storage-state-v3-repeat.provenance.json",
+          "provenanceSha256": "1565dbc19591b3b757b96b8c0c2bb947d5bab28ab0cb34786e8a094f157178e6"
+        },
+        "oracle": {
+          "path": ".work/official-conformance/playwright-python-oracle-browsercontext-storage-state-v3.xml",
+          "sha256": "ed29bcc8e528ef77aa621891aa60bb346fd90b7c9d5ab214f9bb1311ae5252b6",
+          "provenance": ".work/official-conformance/playwright-python-oracle-browsercontext-storage-state-v3.provenance.json",
+          "provenanceSha256": "efd85286116c94b981f7185c87e5df36d6fe0df0f375f14582f06d92e58f18ab"
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_set_cookie_with_reasonable_defaults[chromium]",
+      "run": "add-cookies",
+      "signature": "cookie-default-domain"
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_set_a_cookie_with_a_path[chromium]",
+      "run": "add-cookies",
+      "signature": "cookie-path-domain"
+    },
+    {
+      "id": "tests/async/test_browsercontext_storage_state.py::test_should_serialise_indexed_db[chromium]",
+      "run": "storage-state",
+      "signature": "indexeddb-origin"
+    },
+    {
+      "id": "tests/sync/test_browsercontext_storage_state.py::test_should_serialise_indexed_db[chromium]",
+      "run": "storage-state",
+      "signature": "indexeddb-origin"
+    }
+  ]
+}

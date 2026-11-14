@@ -9,6 +9,48 @@ pub use glob_base::{GlobUrlResolution, PreparedGlob, URL_WORK_BYTES};
 use crate::HostError;
 use crate::frame_tree::{FrameNode, FrameTree, FrameTreeRead};
 use pwright_core::ObjectId;
+#[cfg(feature = "url-glob")]
+use url::Url;
+
+#[cfg(feature = "url-glob")]
+impl crate::HostSession {
+    /// Prepare Playwright's URL glob in Rust while retaining its bounded native
+    /// allocation through conversion by the language-specific RegExp engine.
+    pub fn page_url_glob(&self, page_id: &str, glob: &str) -> Result<GlobPlan, HostError> {
+        let page = page_id
+            .parse::<u64>()
+            .ok()
+            .filter(|value| *value != 0)
+            .map(ObjectId::new)
+            .ok_or_else(|| HostError::InvalidArgument("invalid portable Page ID".into()))?;
+        self.require_visible_page_id(page)?;
+        let tree = self.frame_trees.get(page)?;
+        let resources = tree.lookup_resources();
+        let context = self.page_context_snapshot(page_id)?;
+        let prepared = PreparedGlob::new(resources, glob)?;
+        let Some(relative) = prepared.relative_path() else {
+            return prepared.compile(resources, None);
+        };
+        let _resolution = context.reserve_conversion(URL_WORK_BYTES)?;
+        let resolved = match context.base_url() {
+            Some(base) => Url::parse(base)
+                .ok()
+                .and_then(|base| base.join(relative).ok()),
+            None => Url::parse(relative).ok(),
+        };
+        let Some(resolved) = resolved else {
+            return prepared.compile(resources, None);
+        };
+        let origin = resolved.origin().ascii_serialization();
+        prepared.compile(
+            resources,
+            Some(GlobUrlResolution {
+                serialized: resolved.as_str(),
+                origin: &origin,
+            }),
+        )
+    }
+}
 
 /// Keeps a caller's exception separate from native metadata failures.
 #[derive(Debug)]

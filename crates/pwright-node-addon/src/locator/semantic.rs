@@ -66,6 +66,17 @@ impl NativeSession {
         let frame = boundary::bounded_string(frame, 20, "Frame ID")?;
         let source = text(source, SELECTOR_BYTES)?;
         let flags = flags.map(|value| text(value, 8)).transpose()?;
+        #[cfg(feature = "selector-registration")]
+        let query = draft
+            .semantic_with_test_id_attributes(
+                kind,
+                source,
+                flags,
+                exact,
+                self.selectors.test_id_attributes().map_err(binding_error)?,
+            )
+            .map_err(binding_error)?;
+        #[cfg(not(feature = "selector-registration"))]
         let query = draft
             .semantic(kind, source, flags, exact)
             .map_err(binding_error)?;
@@ -73,8 +84,12 @@ impl NativeSession {
             locator: self.host.locator(&frame, query).map_err(binding_error)?,
             publications: self.publications.clone(),
             ffi: self.ffi.clone(),
+            #[cfg(feature = "handles")]
+            wait_admissions: self.wait_admissions.clone(),
             queries: self.queries.clone(),
             conversions: self.locator_conversions.clone(),
+            #[cfg(feature = "selector-registration")]
+            selectors: self.selectors.clone(),
         })
     }
 
@@ -129,8 +144,12 @@ impl NativeSession {
             locator: self.host.locator(&frame, query).map_err(binding_error)?,
             publications: self.publications.clone(),
             ffi: self.ffi.clone(),
+            #[cfg(feature = "handles")]
+            wait_admissions: self.wait_admissions.clone(),
             queries: self.queries.clone(),
             conversions: self.locator_conversions.clone(),
+            #[cfg(feature = "selector-registration")]
+            selectors: self.selectors.clone(),
         })
     }
 }

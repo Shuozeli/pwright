@@ -139,6 +139,15 @@ impl ElementEvaluationProfile {
                 ),
         })
     }
+
+    pub fn with_user_gesture(mut self, enabled: bool) -> Self {
+        self.evaluation = self.evaluation.with_user_gesture(enabled);
+        self
+    }
+
+    pub const fn uses_user_gesture(&self) -> bool {
+        self.evaluation.uses_user_gesture()
+    }
     pub fn requirements(self) -> ResourceRequirements {
         self.owner_requirements
             .combine_concurrent(self.evaluation.requirements())

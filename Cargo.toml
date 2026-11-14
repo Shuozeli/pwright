@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
+exclude = [
+    "vendor/pwright-tungstenite",
+    "vendor/pwright-tokio-tungstenite",
+]
 members = [
+    "crates/pwright-cap-touchscreen",
+    "crates/pwright-backend-cdp-touchscreen",
+    "crates/pwright-composition-chromium-touchscreen",
     "crates/pwright-backend-cdp-drag",
     "crates/pwright-composition-chromium-mouse",
     "crates/pwright-backend-cdp-mouse",
@@ -18,8 +25,31 @@ members = [
     "crates/pwright-core",
     "crates/pwright-input-model",
     "crates/pwright-process-metrics",
+    "crates/pwright-owned-process-startup",
+    "crates/pwright-playwright-connect-headers",
+    "crates/pwright-playwright-server-initialize",
+    "crates/pwright-playwright-server-client-core",
+    "crates/pwright-playwright-server-session",
+    "crates/pwright-playwright-server-endpoint-discovery",
+    "crates/pwright-playwright-server-connect",
+    "crates/pwright-playwright-server-browser-ops",
+    "crates/pwright-playwright-server-page-events",
+    "crates/pwright-persistent-context-preflight",
     "crates/pwright-browser-model",
     "crates/pwright-network-model",
+    "crates/pwright-har-replay",
+    "crates/pwright-api-request",
+    "crates/pwright-api-request-http1",
+    "crates/pwright-api-request-transport",
+    "crates/pwright-api-request-connector-tokio",
+    "crates/pwright-api-request-connector-rustls",
+    "crates/pwright-api-request-connector-http-proxy",
+    "crates/pwright-api-request-connector-socks5",
+    "crates/pwright-api-request-connector-proxy-bypass",
+    "crates/pwright-api-request-client-certificates",
+    "crates/pwright-api-request-decompress",
+    "crates/pwright-api-request-cookie",
+    "crates/pwright-api-request-auth-basic",
     "crates/pwright-file-input-model",
     "crates/pwright-file-input-source",
     "crates/pwright-file-input-fs",
@@ -30,9 +60,14 @@ members = [
     "crates/pwright-tracing-service",
     "crates/pwright-plugin-tracing-navigation",
     "crates/pwright-plugin-ordered-handle-delivery",
+    "crates/pwright-plugin-chromium-session-initialization",
+    "crates/pwright-plugin-chromium-frame-observer",
+    "crates/pwright-plugin-chromium-frame-lifecycle",
     "crates/pwright-trace-sink-file",
     "crates/pwright-trace-sink-pull",
     "crates/pwright-trace-format",
+    "crates/pwright-trace-playwright-v8",
+    "crates/pwright-trace-playwright-v8-context",
     "crates/pwright-artifact-model",
     "crates/pwright-artifact-service",
     "crates/pwright-artifact-runtime",
@@ -42,6 +77,7 @@ members = [
     "crates/pwright-selector-model",
     "crates/pwright-browser-provider",
     "crates/pwright-browser-install",
+    "crates/pwright-browser-registry",
     "crates/pwright-browser-backend",
     "crates/pwright-provider-cdp",
     "crates/pwright-provider-chromium",
@@ -69,6 +105,7 @@ members = [
     "crates/pwright-transport-memory",
     "crates/pwright-transport-stream",
     "crates/pwright-transport-tokio",
+    "crates/pwright-transport-ws",
     "crates/pwright-endpoint-tokio",
     "crates/pwright-codec-json",
     "crates/pwright-codec-binary",
@@ -112,6 +149,7 @@ members = [
     "crates/pwright-cap-content",
     "crates/pwright-cap-locator-screenshot",
     "crates/pwright-cap-dom-content",
+    "crates/pwright-cap-history-navigation",
     "crates/pwright-cap-tracing",
     "crates/pwright-client",
     "crates/pwright-client-locator",
@@ -185,6 +223,7 @@ members = [
     "crates/pwright-js",
     "crates/pwright-node-host",
     "crates/pwright-node-addon",
+    "crates/pwright-python-addon",
     "crates/pwright-bridge",
     "crates/pwright-server",
     "crates/pwright-cli",
@@ -209,6 +248,7 @@ homepage = "https://github.com/Shuozeli/pwright"
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+openssl = "0.10.76"
 tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -229,14 +269,25 @@ base64 = "0.22"
 rand = "0.9"
 ring = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+mime_guess = "2"
+httparse = "1"
+webpki-roots = "1"
+brotli = { version = "9", features = ["disallow_large_window_size"] }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+httpdate = "1"
 tokio-util = "0.7"
 serde_yaml = "0.9"
 zeroize = "1"
+pyo3 = { version = "=0.29.2", features = ["abi3-py39"] }
+pyo3-async-runtimes = { version = "=0.29.0", features = ["tokio-runtime"] }
 
 # Internal crate dependencies
 pwright-backend-cdp-keyboard = { path = "crates/pwright-backend-cdp-keyboard" }
+pwright-backend-cdp-touchscreen = { path = "crates/pwright-backend-cdp-touchscreen" }
 pwright-composition-chromium-keyboard = { path = "crates/pwright-composition-chromium-keyboard" }
+pwright-composition-chromium-touchscreen = { path = "crates/pwright-composition-chromium-touchscreen" }
 pwright-cap-keyboard = { path = "crates/pwright-cap-keyboard" }
+pwright-cap-touchscreen = { path = "crates/pwright-cap-touchscreen" }
 pwright-cap-mouse = { path = "crates/pwright-cap-mouse" }
 pwright-backend-cdp-mouse = { path = "crates/pwright-backend-cdp-mouse" }
 pwright-backend-cdp-drag = { path = "crates/pwright-backend-cdp-drag" }
@@ -251,8 +302,22 @@ pwright = { path = "crates/pwright", default-features = false }
 pwright-core = { path = "crates/pwright-core" }
 pwright-input-model = { path = "crates/pwright-input-model" }
 pwright-process-metrics = { path = "crates/pwright-process-metrics" }
+pwright-persistent-context-preflight = { path = "crates/pwright-persistent-context-preflight" }
 pwright-browser-model = { path = "crates/pwright-browser-model" }
 pwright-network-model = { path = "crates/pwright-network-model" }
+pwright-har-replay = { path = "crates/pwright-har-replay" }
+pwright-api-request = { path = "crates/pwright-api-request" }
+pwright-api-request-http1 = { path = "crates/pwright-api-request-http1" }
+pwright-api-request-transport = { path = "crates/pwright-api-request-transport" }
+pwright-api-request-connector-tokio = { path = "crates/pwright-api-request-connector-tokio" }
+pwright-api-request-connector-rustls = { path = "crates/pwright-api-request-connector-rustls" }
+pwright-api-request-connector-http-proxy = { path = "crates/pwright-api-request-connector-http-proxy" }
+pwright-api-request-connector-socks5 = { path = "crates/pwright-api-request-connector-socks5" }
+pwright-api-request-connector-proxy-bypass = { path = "crates/pwright-api-request-connector-proxy-bypass" }
+pwright-api-request-client-certificates = { path = "crates/pwright-api-request-client-certificates" }
+pwright-api-request-decompress = { path = "crates/pwright-api-request-decompress" }
+pwright-api-request-cookie = { path = "crates/pwright-api-request-cookie" }
+pwright-api-request-auth-basic = { path = "crates/pwright-api-request-auth-basic" }
 pwright-file-input-model = { path = "crates/pwright-file-input-model" }
 pwright-file-input-source = { path = "crates/pwright-file-input-source" }
 pwright-file-input-fs = { path = "crates/pwright-file-input-fs" }
@@ -263,9 +328,14 @@ pwright-trace-model = { path = "crates/pwright-trace-model" }
 pwright-tracing-service = { path = "crates/pwright-tracing-service" }
 pwright-plugin-tracing-navigation = { path = "crates/pwright-plugin-tracing-navigation" }
 pwright-plugin-ordered-handle-delivery = { path = "crates/pwright-plugin-ordered-handle-delivery" }
+pwright-plugin-chromium-session-initialization = { path = "crates/pwright-plugin-chromium-session-initialization" }
+pwright-plugin-chromium-frame-observer = { path = "crates/pwright-plugin-chromium-frame-observer" }
+pwright-plugin-chromium-frame-lifecycle = { path = "crates/pwright-plugin-chromium-frame-lifecycle" }
 pwright-trace-sink-file = { path = "crates/pwright-trace-sink-file" }
 pwright-trace-sink-pull = { path = "crates/pwright-trace-sink-pull" }
 pwright-trace-format = { path = "crates/pwright-trace-format" }
+pwright-trace-playwright-v8 = { path = "crates/pwright-trace-playwright-v8" }
+pwright-trace-playwright-v8-context = { path = "crates/pwright-trace-playwright-v8-context" }
 pwright-artifact-model = { path = "crates/pwright-artifact-model" }
 pwright-artifact-service = { path = "crates/pwright-artifact-service" }
 pwright-artifact-runtime = { path = "crates/pwright-artifact-runtime" }
@@ -304,6 +374,7 @@ pwright-screenshot-model = { path = "crates/pwright-screenshot-model" }
 pwright-selector-model = { path = "crates/pwright-selector-model" }
 pwright-browser-provider = { path = "crates/pwright-browser-provider" }
 pwright-browser-install = { path = "crates/pwright-browser-install" }
+pwright-browser-registry = { path = "crates/pwright-browser-registry" }
 pwright-browser-backend = { path = "crates/pwright-browser-backend" }
 pwright-provider-cdp = { path = "crates/pwright-provider-cdp" }
 pwright-provider-chromium = { path = "crates/pwright-provider-chromium" }
@@ -331,6 +402,14 @@ pwright-transport = { path = "crates/pwright-transport" }
 pwright-transport-memory = { path = "crates/pwright-transport-memory" }
 pwright-transport-stream = { path = "crates/pwright-transport-stream" }
 pwright-transport-tokio = { path = "crates/pwright-transport-tokio" }
+pwright-transport-ws = { path = "crates/pwright-transport-ws" }
+pwright-playwright-connect-headers = { path = "crates/pwright-playwright-connect-headers" }
+pwright-playwright-server-initialize = { path = "crates/pwright-playwright-server-initialize" }
+pwright-playwright-server-client-core = { path = "crates/pwright-playwright-server-client-core" }
+pwright-playwright-server-session = { path = "crates/pwright-playwright-server-session" }
+pwright-playwright-server-endpoint-discovery = { path = "crates/pwright-playwright-server-endpoint-discovery" }
+pwright-playwright-server-connect = { path = "crates/pwright-playwright-server-connect" }
+pwright-playwright-server-browser-ops = { path = "crates/pwright-playwright-server-browser-ops" }
 pwright-endpoint-tokio = { path = "crates/pwright-endpoint-tokio" }
 pwright-codec-json = { path = "crates/pwright-codec-json" }
 pwright-codec-binary = { path = "crates/pwright-codec-binary" }
@@ -371,6 +450,7 @@ pwright-cap-evaluation = { path = "crates/pwright-cap-evaluation" }
 pwright-cap-content = { path = "crates/pwright-cap-content" }
 pwright-cap-locator-screenshot = { path = "crates/pwright-cap-locator-screenshot" }
 pwright-cap-dom-content = { path = "crates/pwright-cap-dom-content" }
+pwright-cap-history-navigation = { path = "crates/pwright-cap-history-navigation" }
 pwright-cap-tracing = { path = "crates/pwright-cap-tracing" }
 pwright-client = { path = "crates/pwright-client" }
 pwright-client-locator = { path = "crates/pwright-client-locator" }

@@ -64,6 +64,29 @@ impl FrameTreeFactory {
             std::mem::size_of::<FrameBinding>(),
         )?))
     }
+
+    #[cfg(feature = "frame-detach-events")]
+    pub(crate) fn reserve_detach_binding(&self) -> Result<ReservedFrameBinding, HostError> {
+        const ID_CONVERSION_BYTES: usize = 21;
+        let bytes = std::mem::size_of::<FrameBinding>() + ID_CONVERSION_BYTES;
+        Ok(ReservedFrameBinding(
+            self.reserve(ResourceClass::LiveObject, bytes)?,
+        ))
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    pub(crate) fn reserve_detach_revision(&self) -> Result<Storage, HostError> {
+        let nodes = self
+            .limits
+            .frames_per_page
+            .checked_add(self.limits.states)
+            .ok_or_else(|| invalid("Frame detach revision capacity overflow"))?;
+        let bytes = nodes
+            .checked_mul(std::mem::size_of::<FrameNode>())
+            .and_then(|bytes| bytes.checked_add(arc_bytes::<Revision>()))
+            .ok_or_else(|| invalid("Frame detach revision storage overflow"))?;
+        self.reserve(ResourceClass::EventItem, bytes)
+    }
     pub(crate) fn reserve_index(&self, bytes: usize) -> Result<Storage, HostError> {
         self.reserve(ResourceClass::LiveObject, bytes)
     }
@@ -155,6 +178,8 @@ impl FrameTreeFactory {
             budget: self.ledger.clone(),
             page_root_claimed: AtomicBool::new(false),
             detached: AtomicBool::new(false),
+            #[cfg(feature = "frame-detach-events")]
+            retired_binding: Mutex::new(None),
             _storage: storage,
         })))
     }
@@ -199,6 +224,20 @@ impl FrameTreeFactory {
             .and_then(|n| n.checked_add(arc_bytes::<Revision>()))
             .ok_or_else(|| invalid("Frame revision storage overflow"))?;
         let storage = self.reserve(ResourceClass::EventItem, bytes)?;
+        self.revision_with_storage(sequence, frames, retired, storage)
+    }
+
+    fn revision_with_storage<'a>(
+        &self,
+        sequence: u64,
+        frames: &[FrameNode],
+        retired: impl Iterator<Item = &'a FrameNode> + Clone,
+        storage: Storage,
+    ) -> Result<Arc<Revision>, HostError> {
+        let retired_count = retired.clone().count();
+        if retired_count > self.limits.states {
+            return Err(exhausted("Frame retirement count exceeds admission"));
+        }
         // Two passes over borrowed state admit the final allocation before copy.
         // No extra full-capacity scratch vector or scratch lease is necessary.
         let mut retired_nodes = Vec::with_capacity(retired_count);
@@ -230,6 +269,8 @@ struct NodeState {
     budget: ResourceLedger,
     page_root_claimed: AtomicBool,
     detached: AtomicBool,
+    #[cfg(feature = "frame-detach-events")]
+    retired_binding: Mutex<Option<ReservedFrameBinding>>,
     _storage: Storage,
 }
 #[derive(Clone)]
@@ -264,6 +305,48 @@ impl FrameNode {
     }
     pub fn same_identity(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    pub(crate) fn install_retired_binding(
+        &self,
+        binding: ReservedFrameBinding,
+    ) -> Result<(), HostError> {
+        let mut slot = self.0.retired_binding.lock().map_err(HostError::backend)?;
+        if slot.is_some() || self.parent_id().is_none() {
+            return Err(invalid("Only child Frames can reserve one retired binding"));
+        }
+        *slot = Some(binding);
+        Ok(())
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    fn take_retired_binding(&self) -> Result<FrameBinding, HostError> {
+        self.0
+            .retired_binding
+            .lock()
+            .map_err(HostError::backend)?
+            .take()
+            .map(|binding| binding.activate(self.clone()))
+            .ok_or(HostError::TargetClosed)
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    pub(crate) fn release_retired_binding(&self) {
+        self.0
+            .retired_binding
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    fn has_retired_binding(&self) -> bool {
+        self.0
+            .retired_binding
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_some()
     }
 }
 struct Revision {
@@ -413,6 +496,8 @@ impl ReservedPageTree {
             budget: self.factory.ledger.clone(),
             page_root_claimed: AtomicBool::new(true),
             detached: AtomicBool::new(false),
+            #[cfg(feature = "frame-detach-events")]
+            retired_binding: Mutex::new(None),
             _storage: self.node,
         }));
         let revision = Arc::new(Revision {
@@ -436,9 +521,31 @@ impl ReservedPageTree {
 }
 
 impl FrameTree {
+    #[cfg(feature = "frame-events")]
+    pub(crate) fn contains_native_frame(&self, frame: &FrameNode) -> Result<bool, HostError> {
+        let views = self.0.views.lock().map_err(HostError::backend)?;
+        Ok(views
+            .native
+            .frames
+            .iter()
+            .any(|node| node.same_identity(frame)))
+    }
+
     pub(crate) fn main_frame_snapshot(&self) -> Result<FrameNode, HostError> {
         let views = self.0.views.lock().map_err(HostError::backend)?;
         Ok(views.published.frames[0].clone())
+    }
+
+    #[cfg(feature = "url-wait")]
+    pub(crate) fn frame_snapshot(&self, id: ObjectId) -> Result<FrameNode, HostError> {
+        let views = self.0.views.lock().map_err(HostError::backend)?;
+        views
+            .published
+            .frames
+            .iter()
+            .find(|node| node.id() == id)
+            .cloned()
+            .ok_or(HostError::TargetClosed)
     }
 
     /// Metadata-only admission shared by synchronous lookup/conversion helpers.
@@ -483,6 +590,58 @@ impl FrameTree {
         Ok(self.0.factory.reserve_binding()?.activate(node.clone()))
     }
 
+    #[cfg(feature = "frame-detach-events")]
+    pub fn bind_retired(&self, id: u64) -> Result<FrameBinding, HostError> {
+        let views = self.0.views.lock().map_err(HostError::backend)?;
+        let node = views
+            .published
+            .retired
+            .iter()
+            .find(|node| node.id() == ObjectId::new(id) && node.is_detached())
+            .ok_or(HostError::TargetClosed)?;
+        node.take_retired_binding()
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    pub fn bind_detach_ancestor(&self, id: u64) -> Result<FrameBinding, HostError> {
+        let views = self.0.views.lock().map_err(HostError::backend)?;
+        let node = views
+            .published
+            .frames
+            .iter()
+            .chain(views.published.retired.iter())
+            .find(|node| node.id() == ObjectId::new(id) && node.parent_id().is_some())
+            .ok_or(HostError::TargetClosed)?;
+        node.take_retired_binding()
+    }
+
+    /// The language event-loop acknowledges a detached Frame after listeners
+    /// have observed its canonical wrapper. A previously materialized wrapper
+    /// did not need to consume the pre-admitted binding, so release it here.
+    #[cfg(feature = "frame-detach-events")]
+    pub fn finish_detached(&self, id: u64) -> Result<(), HostError> {
+        let views = self.0.views.lock().map_err(HostError::backend)?;
+        if let Some(node) = views
+            .published
+            .retired
+            .iter()
+            .find(|node| node.id() == ObjectId::new(id))
+        {
+            node.release_retired_binding();
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    pub(crate) fn has_native_retirement(&self, frame: &FrameNode) -> Result<bool, HostError> {
+        let views = self.0.views.lock().map_err(HostError::backend)?;
+        Ok(views
+            .native
+            .retired
+            .iter()
+            .any(|node| node.same_identity(frame)))
+    }
+
     pub(crate) fn matches_native(&self, frames: &[FrameNode]) -> Result<bool, HostError> {
         let views = self.0.views.lock().map_err(HostError::backend)?;
         Ok(views.native.frames.len() == frames.len()
@@ -517,6 +676,23 @@ impl FrameTree {
     /// Stage an authoritative topology snapshot. Identity must come from the
     /// runtime's non-reused portable IDs, not native renderer IDs or DOM indexes.
     pub fn stage(&self, frames: &[FrameNode]) -> Result<FrameTreePublication, HostError> {
+        self.stage_with_storage(frames, None)
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    pub(crate) fn stage_reserved(
+        &self,
+        frames: &[FrameNode],
+        storage: Storage,
+    ) -> Result<FrameTreePublication, HostError> {
+        self.stage_with_storage(frames, Some(storage))
+    }
+
+    fn stage_with_storage(
+        &self,
+        frames: &[FrameNode],
+        storage: Option<Storage>,
+    ) -> Result<FrameTreePublication, HostError> {
         let mut views = self.0.views.lock().map_err(HostError::backend)?;
         if views.closed {
             return Err(HostError::TargetClosed);
@@ -569,24 +745,35 @@ impl FrameTree {
                 }
             }
         }
-        let retired = views
-            .native
-            .retired
-            .iter()
-            .filter(|node| !node.is_detached())
-            .chain(
-                views
-                    .native
-                    .frames
-                    .iter()
-                    .filter(|node| !frames.iter().any(|next| next.same_identity(node))),
-            );
+        let pending_retired = views.native.retired.iter().filter(|node| {
+            #[cfg(feature = "frame-detach-events")]
+            {
+                !node.is_detached() || node.has_retired_binding()
+            }
+            #[cfg(not(feature = "frame-detach-events"))]
+            {
+                !node.is_detached()
+            }
+        });
+        let retired = pending_retired.chain(
+            views
+                .native
+                .frames
+                .iter()
+                .filter(|node| !frames.iter().any(|next| next.same_identity(node))),
+        );
         let sequence = views
             .native
             .sequence
             .checked_add(1)
             .ok_or_else(|| exhausted("Frame revision sequence exhausted"))?;
-        let revision = self.0.factory.revision(sequence, frames, retired)?;
+        let revision = if let Some(storage) = storage {
+            self.0
+                .factory
+                .revision_with_storage(sequence, frames, retired, storage)?
+        } else {
+            self.0.factory.revision(sequence, frames, retired)?
+        };
         views.native = revision.clone();
         Ok(FrameTreePublication {
             tree: self.clone(),

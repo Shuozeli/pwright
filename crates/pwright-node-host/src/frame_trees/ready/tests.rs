@@ -57,6 +57,75 @@ fn ready_cause_uses_admitted_storage_and_defers_membership_until_notice_commit()
 }
 
 #[test]
+fn internal_page_ready_keeps_native_owner_without_public_page_or_event() {
+    // Arrange
+    let fixture = Fixture::ready();
+    fixture
+        .owner
+        .state
+        .lock()
+        .unwrap()
+        .pages
+        .iter_mut()
+        .find(|entry| entry.id == FIRST)
+        .unwrap()
+        .internal = true;
+
+    // Act
+    fixture.owner.publish_ready_causes(&[ready(FIRST)]).unwrap();
+
+    // Assert
+    assert!(fixture.drain().is_empty());
+    let published = fixture.book.published_collections().unwrap().unwrap();
+    assert_eq!(published.pages().len(), 0);
+    assert!(
+        published
+            .revision()
+            .pages()
+            .iter()
+            .any(|page| page.id == FIRST)
+    );
+    assert!(fixture.owner.is_internal_page(FIRST).unwrap());
+    assert!(!fixture.owner.is_internal_page(SECOND).unwrap());
+}
+
+#[test]
+fn hidden_default_context_ready_and_popup_have_no_public_delivery() {
+    // Arrange: model the internal Context by publishing an empty projection
+    // while its Page remains in native frame ownership.
+    let fixture = Fixture::ready();
+    let reserved = fixture
+        .book
+        .reserve_collection(&fixture.owner.factory)
+        .unwrap();
+    let planned = fixture
+        .book
+        .begin_collection(reserved)
+        .unwrap()
+        .commit_view(|revision| Ok(CollectionView::hidden(revision.clone())))
+        .unwrap();
+    {
+        let mut state = fixture.owner.state.lock().unwrap();
+        let collection = state.collections.as_mut().unwrap();
+        collection.native = Some(planned.revision().clone());
+        collection.planned = Some(planned);
+    }
+    fixture.book.fence().unwrap().publish().unwrap();
+
+    // Act
+    fixture
+        .owner
+        .publish_ready_causes(&[ready(FIRST), link()])
+        .unwrap();
+
+    // Assert
+    assert!(fixture.drain().is_empty());
+    let published = fixture.book.published_collections().unwrap().unwrap();
+    assert!(published.contexts().is_empty());
+    assert!(published.pages().is_empty());
+}
+
+#[test]
 fn ready_and_link_keep_dependent_notification_order() {
     // Arrange
     let fixture = Fixture::ready();

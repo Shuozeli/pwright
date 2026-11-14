@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/async/test_tap.py": "5923bbf3f53f9810879aa80ef6d0fd013d57908b5380e5520760eb21d6c4ab10"
+  },
+  "cases": [
+    {"id":"tests/async/test_tap.py::test_locators_tap","capabilities":["locator.tap","touch-events","async-api"]},
+    {"id":"tests/async/test_tap.py::test_should_not_send_mouse_events_touchend_is_canceled","capabilities":["page.tap","touch-event-cancellation","async-api"]},
+    {"id":"tests/async/test_tap.py::test_should_not_send_mouse_events_touchstart_is_canceled","capabilities":["page.tap","touch-event-cancellation","async-api"]},
+    {"id":"tests/async/test_tap.py::test_should_send_all_of_the_correct_events","capabilities":["page.tap","touch-events","async-api"]},
+    {"id":"tests/async/test_tap.py::test_should_send_well_formed_touch_points","capabilities":["touchscreen.tap","touch-points","async-api"]},
+    {"id":"tests/async/test_tap.py::test_should_wait_until_an_element_is_visible_to_tap_it","capabilities":["element-handle.tap","actionability.visibility","async-api"]},
+    {"id":"tests/async/test_tap.py::test_should_work_with_modifiers","capabilities":["page.tap","touch-modifiers","async-api"]}
+  ]
+}

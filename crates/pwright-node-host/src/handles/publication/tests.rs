@@ -32,6 +32,7 @@ struct Fixture {
 }
 fn fixture() -> Fixture {
     let limits = RuntimeLimits::new(256, 16);
+    let runtime_objects = std::num::NonZeroUsize::new(limits.live_objects).unwrap();
     let evaluation = CdpEvaluationProductionProfile::new(
         ResourceScope::extension(159, 3),
         CdpEvaluationLimits::new(4096, 32768, 4096, crate::evaluation::value_limits()),
@@ -45,7 +46,7 @@ fn fixture() -> Fixture {
         .combine_concurrent(routes.requirements())
         .combine_concurrent(requirements())
         .combine_concurrent(super::super::pending::requirements())
-        .combine_concurrent(super::super::release::requirements().unwrap());
+        .combine_concurrent(super::super::release::requirements(runtime_objects).unwrap());
     let mut budget = ResourceLimits::deny_all(plan.scopes, plan.leases);
     for class in ResourceClass::ALL {
         let amount = plan.class(class);
@@ -101,6 +102,7 @@ fn fixture() -> Fixture {
     let releases = Releases::new(
         ChromiumHandleDisposeCommandService::new(runtime.lifecycle_handle(), routes.clone()),
         &runtime.lifecycle_handle(),
+        runtime_objects,
         &resources,
     )
     .unwrap();

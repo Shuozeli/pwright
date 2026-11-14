@@ -92,6 +92,186 @@ async fn snapshots_wait_for_both_worlds_and_keep_their_budget_after_readiness() 
 }
 
 #[tokio::test]
+async fn main_only_snapshot_resolves_the_child_owner_before_utility_is_ready() {
+    // Arrange: the parent has its main world, while its utility world has not
+    // been published. The paired accessor must retain its existing wait.
+    let (mut fixture, access) = access_fixture(2);
+    attach_world(
+        &mut fixture.topology,
+        11,
+        "main-only",
+        "frame-a",
+        CdpWorldKind::Main,
+    );
+    fixture.services.synchronize(&fixture.topology).unwrap();
+    let fake = fixture.factory.client("target-a");
+    fake.set_frame_owner("child", 91);
+    fake.set_adopted_node_response(
+        91,
+        11,
+        serde_json::json!({"object": {"type":"object", "subtype":"node", "objectId":"owner"}}),
+    );
+    let baseline = bytes(&fixture);
+    let mut paired = Box::pin(access.snapshot(ObjectId::new(4)));
+    assert!(poll(paired.as_mut()).is_pending());
+
+    // Act through the selected parent session. This is the exact CDP path
+    // consumed by the Frame owner leaf, not a DOM/CSS re-query.
+    let main = access.snapshot_main(ObjectId::new(4)).await.unwrap();
+    let backend = main.client().dom_get_frame_owner("child").await.unwrap();
+    let resolved = main
+        .client()
+        .dom_resolve_node_in_group_to_settlement(
+            backend,
+            main.main_execution_context_id(),
+            "main-only-owner-test",
+        )
+        .await
+        .unwrap();
+    main.client()
+        .runtime_release_object_group_to_settlement("main-only-owner-test")
+        .await
+        .unwrap();
+
+    // Assert
+    assert_eq!(main.page(), ObjectId::new(3));
+    assert_eq!(main.main_unique_id(), "main-only");
+    assert_eq!(backend, 91);
+    assert_eq!(resolved["object"]["objectId"], "owner");
+    assert_eq!(
+        fake.method_names(),
+        [
+            "DOM.getFrameOwner",
+            "DOM.resolveNode",
+            "Runtime.releaseObjectGroup"
+        ]
+    );
+    assert_eq!(fake.calls()[1].1[0]["executionContextId"], 11);
+    assert!(poll(paired.as_mut()).is_pending());
+    assert_eq!(bytes(&fixture), baseline + 2 * 8192);
+    drop(main);
+    drop(paired);
+    assert_eq!(bytes(&fixture), baseline);
+}
+
+#[tokio::test]
+async fn main_only_receipt_requires_exact_parent_world_destruction() {
+    // Arrange
+    let profile = ChromiumFrameWorldAccessProfile::new(
+        ResourceScope::extension(98, 3),
+        NonZeroUsize::new(1).unwrap(),
+    )
+    .unwrap()
+    .with_native_retirement()
+    .unwrap();
+    let mut fixture = fixture_with_world_access(true, Some(profile));
+    let access =
+        ChromiumFrameWorldAccess::new(&fixture.services, profile, fixture.prepared.resources())
+            .unwrap();
+    attach_world(
+        &mut fixture.topology,
+        11,
+        "parent-main",
+        "frame-a",
+        CdpWorldKind::Main,
+    );
+    fixture.services.synchronize(&fixture.topology).unwrap();
+    let baseline = bytes(&fixture);
+    let main = access.snapshot_main(ObjectId::new(4)).await.unwrap();
+    let receipt = main.native_lifetime().unwrap();
+    let registry = fixture
+        .services
+        .routes
+        .lock()
+        .unwrap()
+        .native_world_retirement
+        .clone()
+        .unwrap();
+
+    // Act: a foreign world in the same session is not proof; the exact main
+    // destruction is, even though no utility world ever existed.
+    registry
+        .mark(
+            ConnectionEpoch::new(1),
+            crate::native_world_retirement::Destruction::World {
+                session: "session-a",
+                unique: "foreign-main",
+            },
+        )
+        .unwrap();
+    let foreign_retired = receipt.native_objects_retired();
+    registry
+        .mark(
+            ConnectionEpoch::new(1),
+            crate::native_world_retirement::Destruction::World {
+                session: "session-a",
+                unique: "parent-main",
+            },
+        )
+        .unwrap();
+
+    // Assert
+    assert!(!foreign_retired);
+    assert!(receipt.native_objects_retired());
+    drop(main);
+    assert!(matches!(
+        access.snapshot_main(ObjectId::new(4)).await,
+        Err(FrameWorldAccessError::Capacity { limit: 1 })
+    ));
+    assert_eq!(bytes(&fixture), baseline + 8192);
+    drop(receipt);
+    assert_eq!(bytes(&fixture), baseline);
+}
+
+#[tokio::test]
+async fn main_only_oopif_uses_its_exact_parent_session_after_handoff() {
+    // Arrange: the child becomes an OOPIF. Its own main world must not be
+    // mistaken for the parent world needed to resolve its owner element.
+    let (mut fixture, access) = access_fixture(2);
+    attach_world(
+        &mut fixture.topology,
+        11,
+        "parent-main",
+        "frame-a",
+        CdpWorldKind::Main,
+    );
+    fixture.services.synchronize(&fixture.topology).unwrap();
+    fixture
+        .topology
+        .attach_frame(
+            ConnectionEpoch::new(1),
+            CdpFrameAttachment::remote("target-a", "child", "frame-a", "remote-session"),
+            ObjectId::new(5),
+        )
+        .unwrap();
+    fixture
+        .topology
+        .attach_world(
+            ConnectionEpoch::new(1),
+            CdpWorldAttachment::new(
+                "remote-session",
+                31,
+                "remote-main",
+                "child",
+                CdpWorldKind::Main,
+            ),
+        )
+        .unwrap();
+    fixture.services.synchronize(&fixture.topology).unwrap();
+
+    // Act
+    let parent = access.snapshot_main(ObjectId::new(4)).await.unwrap();
+    let child = access.snapshot_main(ObjectId::new(5)).await.unwrap();
+
+    // Assert
+    assert_eq!(parent.main_unique_id(), "parent-main");
+    assert_eq!(child.main_unique_id(), "remote-main");
+    assert!(!Arc::ptr_eq(&parent.client(), &child.client()));
+    assert!(parent.is_current().unwrap());
+    assert!(child.is_current().unwrap());
+}
+
+#[tokio::test]
 async fn installation_clones_share_capacity_for_unpolled_and_retained_snapshots() {
     // Arrange
     let (mut fixture, access) = access_fixture(1);

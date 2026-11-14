@@ -7,6 +7,15 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+response-security-details = ["pwright-backend-cdp-network-events/response-security-details"]
+request-timing = [
+    "pwright-backend-cdp-network-events/request-timing",
+    "pwright-cap-network-events/request-timing",
+    "pwright-codec-network-events/request-timing",
+]
+
 [dependencies]
 pwright-backend-cdp-network-events = { workspace = true }
 pwright-cap-network-events = { workspace = true }

@@ -156,13 +156,15 @@ impl LocatorCodecLimits {
 pub struct LocatorCodec {
     limits: LocatorCodecLimits,
     capability_version: ProtocolVersion,
+    selector_version: ProtocolVersion,
 }
 
 impl LocatorCodec {
     pub const fn new(limits: LocatorCodecLimits) -> Self {
         Self {
             limits,
-            capability_version: ProtocolVersion::new(1, 23),
+            capability_version: ProtocolVersion::new(1, 24),
+            selector_version: ProtocolVersion::new(1, 24),
         }
     }
 
@@ -172,6 +174,12 @@ impl LocatorCodec {
 
     pub const fn with_capability_version(mut self, capability_version: ProtocolVersion) -> Self {
         self.capability_version = capability_version;
+        self.selector_version = capability_version;
+        self
+    }
+
+    const fn with_selector_version(mut self, selector_version: ProtocolVersion) -> Self {
+        self.selector_version = selector_version;
         self
     }
 
@@ -372,6 +380,11 @@ impl LocatorCodec {
                 payload.u8(5)?;
                 self.encode_text_matcher(payload, matcher)?;
             }
+            Selector::LegacyText(matcher) => {
+                require_legacy_text(self.selector_version)?;
+                payload.u8(22)?;
+                self.encode_text_matcher(payload, matcher)?;
+            }
             Selector::Label(matcher) => {
                 payload.u8(6)?;
                 self.encode_text_matcher(payload, matcher)?;
@@ -484,6 +497,10 @@ impl LocatorCodec {
                 right: Box::new(self.decode_selector(reader, depth + 1, nodes)?),
             }),
             5 => Ok(Selector::Text(self.decode_text_matcher(reader)?)),
+            22 => {
+                require_legacy_text(self.selector_version)?;
+                Ok(Selector::LegacyText(self.decode_text_matcher(reader)?))
+            }
             6 => Ok(Selector::Label(self.decode_text_matcher(reader)?)),
             7 => Ok(Selector::Role(self.decode_role_selector(reader)?)),
             8 => Ok(Selector::Within {
@@ -2747,6 +2764,16 @@ fn require_scroll_into_view_if_needed(version: ProtocolVersion) -> Result<(), Lo
     }
 }
 
+fn require_legacy_text(version: ProtocolVersion) -> Result<(), LocatorCodecError> {
+    if version.satisfies(ProtocolVersion::new(1, 24))
+        || version.satisfies(ProtocolVersion::new(2, 7))
+    {
+        Ok(())
+    } else {
+        Err(LocatorCodecError::LegacyTextUnsupported { version })
+    }
+}
+
 fn select_option_value_to_wire(
     value: &SelectOptionValue,
 ) -> generated_schema::PwrightLocatorSelectOption {
@@ -2949,6 +2976,9 @@ fn decode_press_options(reader: &mut BinaryReader<'_>) -> Result<PressOptions, L
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LocatorCodecError {
+    LegacyTextUnsupported {
+        version: ProtocolVersion,
+    },
     PressSequentiallyUnsupported {
         version: ProtocolVersion,
     },
@@ -3054,6 +3084,10 @@ pub enum LocatorCodecError {
 impl Display for LocatorCodecError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::LegacyTextUnsupported { version } => write!(
+                f,
+                "locator legacy text selectors require capability version 1.24 or 2.7, but {version} was selected"
+            ),
             Self::PressSequentiallyUnsupported { version } => write!(
                 f,
                 "locator press_sequentially requires capability version 1.23 or 2.6, but {version} was selected"
@@ -4222,6 +4256,7 @@ mod tests {
         let attributes =
             TestIdAttributes::new("data-pw,data-testid").expect("valid test-id attributes");
         let selectors = vec![
+            Selector::legacy_text("Save"),
             Selector::attribute_text(UserFacingAttribute::Placeholder, "Search", false),
             Selector::attribute_regex(
                 UserFacingAttribute::Alt,

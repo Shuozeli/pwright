@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/async/test_page_add_locator_handler.py": "6957f9abc54713f3078554a148b9404b40f12358e22609407992c63c5c1193b9"
+  },
+  "cases": [
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_not_work_with_force_true","capabilities":["page.add-locator-handler","locator.click.force","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_removeLocatorHandler","capabilities":["page.add-locator-handler","page.remove-locator-handler","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_throw_when_handler_times_out","capabilities":["page.add-locator-handler","locator.click.timeout","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_throw_when_page_closes","capabilities":["page.add-locator-handler","page.close","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_wait_for_hidden_by_default","capabilities":["page.add-locator-handler","locator.visibility","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_wait_for_hidden_by_default_2","capabilities":["page.add-locator-handler","locator.visibility","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_work","capabilities":["page.add-locator-handler","locator.click","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_work_when_owner_frame_detaches","capabilities":["page.add-locator-handler","frame.detachment","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_work_with_a_custom_check","capabilities":["page.add-locator-handler","locator.is-visible","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_work_with_locator_hover","capabilities":["page.add-locator-handler","locator.hover","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_work_with_noWaitAfter","capabilities":["page.add-locator-handler","no-wait-after","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_work_with_times_option","capabilities":["page.add-locator-handler","times-option","async-api"]},
+    {"id":"tests/async/test_page_add_locator_handler.py::test_should_work_with_to_be_visible","capabilities":["page.add-locator-handler","expect.to-be-visible","async-api"]}
+  ]
+}

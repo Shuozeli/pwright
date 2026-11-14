@@ -166,6 +166,158 @@ async fn failed_down_and_dropped_action_do_not_implicitly_release_page_button() 
 }
 
 #[tokio::test]
+async fn owned_locator_press_is_released_after_its_transaction_is_dropped() {
+    // Arrange
+    let (client, input) = setup();
+    let owner = input.new_owned_mouse_press().unwrap();
+    let mut action = input.begin_transaction(client.clone(), None).await.unwrap();
+    action.set_owned_mouse_press(&owner).unwrap();
+    action.mouse_down(MouseButton::Right, 2).await.unwrap();
+    drop(action);
+
+    // Act
+    input
+        .release_owned_mouse_press(client.as_ref(), &owner)
+        .await
+        .unwrap();
+
+    // Assert
+    let calls = client.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].1[0]["type"], "mousePressed");
+    assert_eq!(calls[1].1[0]["type"], "mouseReleased");
+    assert_eq!(calls[1].1[0]["button"], "right");
+    assert_eq!(calls[1].1[0]["clickCount"], 2);
+    assert_eq!(calls[1].1[0]["buttons"], 0);
+}
+
+#[tokio::test]
+async fn owned_locator_press_cleanup_does_nothing_after_normal_up() {
+    // Arrange
+    let (client, input) = setup();
+    let owner = input.new_owned_mouse_press().unwrap();
+    let mut action = input.begin_transaction(client.clone(), None).await.unwrap();
+    action.set_owned_mouse_press(&owner).unwrap();
+    action.mouse_down(MouseButton::Left, 1).await.unwrap();
+    action.mouse_up().await.unwrap();
+    drop(action);
+
+    // Act
+    input
+        .release_owned_mouse_press(client.as_ref(), &owner)
+        .await
+        .unwrap();
+
+    // Assert
+    let calls = client.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1].1[0]["type"], "mouseReleased");
+}
+
+#[tokio::test]
+async fn old_owned_locator_press_cannot_release_a_newer_same_button_press() {
+    // Arrange
+    let (client, input) = setup();
+    let old_owner = input.new_owned_mouse_press().unwrap();
+    let mut old = input.begin_transaction(client.clone(), None).await.unwrap();
+    old.set_owned_mouse_press(&old_owner).unwrap();
+    old.mouse_down(MouseButton::Left, 1).await.unwrap();
+    drop(old);
+    let mut newer = input.begin_transaction(client.clone(), None).await.unwrap();
+    newer.mouse_down(MouseButton::Left, 3).await.unwrap();
+    drop(newer);
+
+    // Act
+    input
+        .release_owned_mouse_press(client.as_ref(), &old_owner)
+        .await
+        .unwrap();
+
+    // Assert
+    let calls = client.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1].1[0]["type"], "mousePressed");
+    assert_eq!(calls[1].1[0]["buttons"], 1);
+}
+
+#[tokio::test]
+async fn owned_locator_press_cleanup_preserves_another_button() {
+    // Arrange
+    let (client, input) = setup();
+    let owner = input.new_owned_mouse_press().unwrap();
+    let mut click = input.begin_transaction(client.clone(), None).await.unwrap();
+    click.set_owned_mouse_press(&owner).unwrap();
+    click.mouse_down(MouseButton::Left, 1).await.unwrap();
+    drop(click);
+    let mut other = input.begin_transaction(client.clone(), None).await.unwrap();
+    other.mouse_down(MouseButton::Right, 4).await.unwrap();
+    drop(other);
+
+    // Act
+    input
+        .release_owned_mouse_press(client.as_ref(), &owner)
+        .await
+        .unwrap();
+
+    // Assert
+    let calls = client.calls();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(calls[1].1[0]["buttons"], 3);
+    assert_eq!(calls[2].1[0]["type"], "mouseReleased");
+    assert_eq!(calls[2].1[0]["button"], "left");
+    assert_eq!(calls[2].1[0]["buttons"], 2);
+}
+
+#[tokio::test]
+async fn raw_mouse_down_invalidates_an_older_owned_locator_press() {
+    // Arrange
+    let (client, input) = setup();
+    let owner = input.new_owned_mouse_press().unwrap();
+    let mut click = input.begin_transaction(client.clone(), None).await.unwrap();
+    click.set_owned_mouse_press(&owner).unwrap();
+    click.mouse_down(MouseButton::Left, 1).await.unwrap();
+    drop(click);
+    let mut raw = input.begin_transaction(client.clone(), None).await.unwrap();
+    raw.raw_mouse_down(MouseButton::Left, 2).await.unwrap();
+    drop(raw);
+
+    // Act
+    input
+        .release_owned_mouse_press(client.as_ref(), &owner)
+        .await
+        .unwrap();
+
+    // Assert
+    let calls = client.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1].1[0]["type"], "mousePressed");
+    assert_eq!(calls[1].1[0]["clickCount"], 2);
+}
+
+#[tokio::test]
+async fn owned_mouse_press_rejects_a_different_page_before_dispatch() {
+    // Arrange
+    let (client, first) = setup();
+    let (_, second) = setup();
+    let owner = first.new_owned_mouse_press().unwrap();
+    let mut action = second
+        .begin_transaction(client.clone(), None)
+        .await
+        .unwrap();
+
+    // Act
+    let selection = action.set_owned_mouse_press(&owner);
+    let cleanup = second
+        .release_owned_mouse_press(client.as_ref(), &owner)
+        .await;
+
+    // Assert
+    assert!(selection.unwrap_err().to_string().contains("another Page"));
+    assert!(cleanup.unwrap_err().to_string().contains("another Page"));
+    assert!(client.calls().is_empty());
+}
+
+#[tokio::test]
 async fn wheel_is_native_and_uses_shared_pointer_and_keyboard_state() {
     // Arrange
     let (client, input) = setup();

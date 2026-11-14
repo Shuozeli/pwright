@@ -1,0 +1,13 @@
+[package]
+name = "pwright-owned-process-startup"
+description = "Bounded observation of an explicitly owned process startup"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+libc = "0.2"

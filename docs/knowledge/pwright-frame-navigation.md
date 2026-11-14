@@ -1,4 +1,24 @@
-<!-- agent-updated: 2026-09-10T19:45:13Z -->
+<!-- agent-updated: 2026-10-06T06:59:02Z -->
+
+## NODE-366: post-commit client redirect keeps the original response
+
+The navigation owner now separates the response selected by the original
+`Page.navigate` document from the lifecycle document that must satisfy the
+public `waitUntil` contract. If page script starts a same-Frame client redirect
+after the first document commits, Rust adopts the next navigation in the
+already admitted Page lifecycle registry, waits for its requested state and
+still returns the original response. The original request identity stays in
+the bounded navigation arena for the independently selected response-body
+capability; Node does not retain a second response or run a lifecycle loop.
+
+The thin Node error adapter adds only Playwright's timeout call-log rendering
+after Rust has selected the typed timeout. It does not change cancellation,
+deadline or lifecycle semantics. The unchanged four-case
+`tests/page/frame-goto.spec.ts` selection passes 4/4 candidate and 4/4 oracle.
+Candidate/oracle report SHA-256 values are
+`4ab237b0a8a1d47cf9f03b24a49d6dd0d10f2e96f794aba857683e74fa01be86`
+and `1dd1411a3aa357c80f43ddf3bf895f6085a796453f5700e732619e6f03058ee9`.
+The broader Core and Python corpora remain incomplete.
 
 NODE-140: The complete 29-case Frame corpus still passes only 27 cases; both candidate and upstream response-arrival Page.close observations exceed the unchanged diagnostic deadline. A separate oracle control remains pending even after body EOF and goto(load) completion. Committed-document controls pass; they do not replace the failing arrival gate.
 [Expanded verification and retained failures](testing-strategy.md#node-140-broadened-node-ffi-verification-remains-non-green).

@@ -280,8 +280,9 @@ impl ChromiumFrameWorldAccess {
                             context: page.browser_context_object_id,
                             page_target: page.target_id.as_str().into(),
                             session: world.session_id.as_str().into(),
-                            main: None,
-                            utility: world.unique_context_id.clone(),
+                            worlds: crate::native_world_retirement::IdentityWorlds::Utility(
+                                world.unique_context_id.clone(),
+                            ),
                         },
                         permit.clone(),
                     )

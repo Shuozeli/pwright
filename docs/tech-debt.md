@@ -1,10 +1,15 @@
+<!-- agent-updated: 2026-09-22T06:58:47Z -->
+
 # Tech Debt
 
-Remaining structural issues. Updated 2026-03-19.
+Remaining structural issues. Updated 2026-09-22.
 
 ## Open
 
-No structural issues remain.
+| Item | Required resolution |
+|------|---------------------|
+| Default Node host/addon resolves the aggregate Chromium graph (transitional 236/251 packages; 39 host files) | Session initialization and synchronous Frame event/metadata projection are independent five-package leaves; Frame lifecycle/navigation-wait observation is an independent ten-package leaf. All are consumed directly by host adapters. Extract the remaining capability-owned contracts/services, add a narrow Node assembly crate, then prove exact smaller dependency closures and absence of unselected capabilities. |
+| Node package is private and source-built | Define the supported platform/Node-API matrix and artifact provenance before adding prebuilt distribution or publication claims. |
 
 ## Resolved
 
@@ -27,6 +32,8 @@ No structural issues remain.
 | on_request/on_response duplication | Generic `subscribe_network_event<T>()` |
 | Root node ID extraction (4 locations) | `root_node_id()` helper returning `CdpResult` |
 | Duplicate poll_ready_state | CLI reload uses shared function |
+| Mock/Fake compatible response mechanics | Shared `CdpCallLog` records calls, `CdpResponseSlot` owns persistent optional overrides, and the stateful fake uses one atomic `CdpResponseScript`; defaults, gates, strict policy and DOM behavior remain client-owned |
+| Navigation waits bypassed the injected clock and fake sleeps returned immediately | DOM, network-idle and selector loops share `Clock`; deadlines saturate and `FakeClock::sleep` waits for explicit advancement |
 | Touch tap 3x duplication | `Page::tap()` delegates to `Touchscreen::tap()` |
 | Keyboard down/up branching | `dispatch_key()` helper |
 | Executor error emission duplicate | Single emit + conditional return |

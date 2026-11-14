@@ -89,5 +89,7 @@ pub(crate) fn requirements() -> Result<ResourceRequirements, HostError> {
     #[cfg(feature = "retained-serialized-payload-import")]
     let required =
         required.combine_concurrent(crate::handles::file_input::serialized_payload::requirements());
+    #[cfg(feature = "file-input-native-paths")]
+    let required = required.combine_concurrent(super::native_paths::requirements()?);
     Ok(required)
 }

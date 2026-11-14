@@ -479,6 +479,7 @@ mod tests {
             post_data: None,
             is_navigation_request: true,
             redirected_from: None,
+            timing: None,
         };
 
         // Act

@@ -7,6 +7,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tokio::sync::Notify;
+
+fn duration_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
 
 /// Abstraction over time operations for testability.
 #[async_trait]
@@ -24,7 +29,7 @@ pub trait Clock: Send + Sync {
 
     /// Compute a deadline from now.
     fn deadline_from_now(&self, timeout: Duration) -> u64 {
-        self.now_ms() + timeout.as_millis() as u64
+        self.now_ms().saturating_add(duration_millis(timeout))
     }
 }
 
@@ -61,24 +66,32 @@ impl Clock for TokioClock {
 /// Fake clock for deterministic tests. Time only advances when `advance()` is called.
 pub struct FakeClock {
     current_ms: AtomicU64,
+    changed: Notify,
 }
 
 impl FakeClock {
     pub fn new() -> Self {
         Self {
             current_ms: AtomicU64::new(0),
+            changed: Notify::new(),
         }
     }
 
     /// Advance time by the given duration.
     pub fn advance(&self, duration: Duration) {
-        self.current_ms
-            .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
+        let increment = duration_millis(duration);
+        let _previous =
+            self.current_ms
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                    Some(current.saturating_add(increment))
+                });
+        self.changed.notify_waiters();
     }
 
     /// Set the current time to a specific value in milliseconds.
     pub fn set_ms(&self, ms: u64) {
         self.current_ms.store(ms, Ordering::Relaxed);
+        self.changed.notify_waiters();
     }
 }
 
@@ -94,15 +107,27 @@ impl Clock for FakeClock {
         self.current_ms.load(Ordering::Relaxed)
     }
 
-    async fn sleep(&self, _duration: Duration) {
-        // No-op: fake clock doesn't actually sleep.
-        // Tests advance time explicitly via `advance()`.
-        tokio::task::yield_now().await;
+    async fn sleep(&self, duration: Duration) {
+        let deadline = self.deadline_from_now(duration);
+        loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            // Register the waiter before observing time. Without `enable`, an
+            // advance from another thread between the check and the first poll
+            // could be lost because `notify_waiters` does not retain a permit.
+            changed.as_mut().enable();
+            if self.is_past(deadline) {
+                return;
+            }
+            changed.await;
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     #[tokio::test]
@@ -135,12 +160,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fake_clock_sleep_yields() {
+    async fn fake_clock_sleep_waits_for_the_requested_manual_advance() {
+        // Arrange
+        let clock = Arc::new(FakeClock::new());
+        let sleeper_clock = clock.clone();
+
+        // Act
+        let sleeper = tokio::spawn(async move {
+            sleeper_clock.sleep(Duration::from_secs(1)).await;
+        });
+        tokio::task::yield_now().await;
+        clock.advance(Duration::from_millis(999));
+        tokio::task::yield_now().await;
+
+        // Assert
+        assert!(!sleeper.is_finished());
+        clock.advance(Duration::from_millis(1));
+        sleeper.await.expect("fake clock sleeper should finish");
+    }
+
+    #[test]
+    fn deadline_saturates_instead_of_wrapping() {
+        // Arrange
         let clock = FakeClock::new();
-        // Should not block
-        clock.sleep(Duration::from_secs(999)).await;
-        // Time didn't advance
-        assert_eq!(clock.now_ms(), 0);
+        clock.set_ms(u64::MAX - 5);
+
+        // Act
+        let deadline = clock.deadline_from_now(Duration::from_millis(10));
+
+        // Assert
+        assert_eq!(deadline, u64::MAX);
+    }
+
+    #[test]
+    fn duration_larger_than_u64_milliseconds_saturates() {
+        // Arrange
+        let clock = FakeClock::new();
+        let timeout = Duration::from_secs(u64::MAX);
+
+        // Act
+        let deadline = clock.deadline_from_now(timeout);
+
+        // Assert
+        assert_eq!(deadline, u64::MAX);
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-05T22:05:06Z -->
+<!-- agent-updated: 2026-10-04T08:36:15Z -->
 
 # Pwright network lifecycle
 
@@ -19,7 +19,13 @@
 > reclaim-after-all-read CDP fanout whose subscriber capacity is derived from
 > installed components. The globally ordered remote queue and its retained
 > causal lifecycle turn are now an independent 16-package composition leaf
-> consumed by the complete recipe. This
+> consumed by the complete recipe. Python ABI 18 additionally correlates the
+> bounded Chromium request-extra-info channel into terminal Request snapshots,
+> ignores attach-boundary tails without observed starts, and lets a separate
+> bounded Rust owner settle `Request.sizes()` without retaining completed
+> lifecycle history. Python ABI 62 can additionally select dedicated-Worker
+> attribution through a bounded related-session registry and exact scoped
+> native IDs while reusing the Page adapter and limits. This
 > does not approve response-body capture, routing,
 > WebSocket inspection, or HAR
 > recording.
@@ -147,6 +153,26 @@ hard object/byte limits, disconnect and abandoned-consumer cleanup, and
 backpressure before exceeding capacity. A bounded recent-history ring without
 acknowledgment does not prove that a queued or slow consumer still owns a live
 handle, so it is not sufficient by itself.
+
+### Dedicated-Worker attribution
+
+`worker-network-events` composes the existing Worker owner with request and
+response publication. The retained Worker session enables Network before
+debugger resume, while the one Page driver records a bounded route from that
+session (and nested Workers) to the exact owning Page. It does not create a
+second adapter, cursor, task, publication lane or per-Worker request budget.
+
+The backend key is `(native scope, native request ID)`: ordinary Page events
+use the empty scope and Worker events use their exact session ID. This permits
+different sessions to reuse the same CDP request ID without collision. Every
+scope still competes for the Page profile's 64 active requests and event-byte
+limits. Exact Worker detach recursively removes descendant routes and drains
+only those scoped requests; Page retirement clears all related routes.
+
+The language binding receives only portable Page/Request/Response identities.
+Python canonicalizes them through weak Page maps, so Page and Context events,
+waiters and `Response.request` share object identity without turning the
+network stream into a strong retained history.
 
 The dedicated Chrome 152 workload now proves this default on one persistent
 Page: three complete real Request/Response lifecycles produced steady

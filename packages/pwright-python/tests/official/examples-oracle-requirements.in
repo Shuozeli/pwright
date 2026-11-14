@@ -1,0 +1,5 @@
+# Reproducible form of upstream examples/todomvc/requirements.txt.
+# pytest-playwright 0.7.2 was the latest release when Playwright 1.58.0 shipped.
+playwright==1.58.0
+pytest==8.4.1
+pytest-playwright==0.7.2

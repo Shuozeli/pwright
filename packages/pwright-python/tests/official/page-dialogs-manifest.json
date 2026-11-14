@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_dialog.py": "cb17fb2391af846d41c6e86ba2e106d03a128ed5b3e3b8d0bea0d56716df4346",
+    "tests/async/test_page.py": "dc9f66af71064016947dd1682de787df7f585a2e8ec9fc14e5fb804b5dbd6ab8",
+    "tests/sync/test_sync.py": "f371ee96a8eacc0721e7e3514223992d37ecba8fec86e6396584de4049e03579"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_dialog.py::test_should_fire",
+      "capabilities": ["page.dialog", "dialog.accept"]
+    },
+    {
+      "id": "tests/async/test_dialog.py::test_should_allow_accepting_prompts",
+      "capabilities": ["page.dialog", "dialog.accept", "prompt-text"]
+    },
+    {
+      "id": "tests/async/test_dialog.py::test_should_dismiss_the_prompt",
+      "capabilities": ["page.dialog", "dialog.dismiss"]
+    },
+    {
+      "id": "tests/async/test_dialog.py::test_should_accept_the_confirm_prompt",
+      "capabilities": ["page.dialog", "dialog.accept"]
+    },
+    {
+      "id": "tests/async/test_dialog.py::test_should_dismiss_the_confirm_prompt",
+      "capabilities": ["page.dialog", "dialog.dismiss"]
+    },
+    {
+      "id": "tests/async/test_dialog.py::test_should_be_able_to_close_context_with_open_alert",
+      "capabilities": ["page.dialog", "context.close"]
+    },
+    {
+      "id": "tests/async/test_dialog.py::test_should_auto_dismiss_the_prompt_without_listeners",
+      "capabilities": ["page.dialog", "auto-dismiss"]
+    },
+    {
+      "id": "tests/async/test_dialog.py::test_should_auto_dismiss_the_alert_without_listeners",
+      "capabilities": ["page.dialog", "auto-dismiss"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_close_should_run_beforeunload_if_asked_for",
+      "capabilities": ["page.close", "beforeunload", "dialog.accept"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_should_be_able_to_navigate_away_from_page_with_before_unload",
+      "capabilities": ["page.goto", "beforeunload", "auto-accept"]
+    },
+    {
+      "id": "tests/sync/test_sync.py::test_dialog_repr",
+      "capabilities": ["sync-api", "page.dialog", "dialog.accept", "dialog.repr"]
+    }
+  ]
+}

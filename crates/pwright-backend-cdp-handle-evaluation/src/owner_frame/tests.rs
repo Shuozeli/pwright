@@ -137,6 +137,72 @@ async fn returns_current_owner_frame_via_exact_receiver_and_releases_only_tempor
 }
 
 #[tokio::test]
+async fn returns_content_frame_from_exact_retained_element_without_temporary_handle() {
+    // Arrange
+    let fake = Arc::new(FakeCdpClient::from_html(""));
+    let service = service(&fake, 256);
+    let source = element(&fake);
+    fake.set_object_node_description(
+        "source-element",
+        json!({"node":{"nodeName":"IFRAME", "frameId":"child-frame"}}),
+    );
+
+    // Act
+    let result = service.content_frame(&source).await.unwrap();
+
+    // Assert
+    assert_eq!(result.as_deref(), Some("child-frame"));
+    assert_eq!(fake.method_names(), ["DOM.describeNode"]);
+    assert_eq!(fake.calls()[0].1, [json!({"objectId":"source-element"})]);
+    assert!(releases(&fake).is_empty());
+}
+
+#[tokio::test]
+async fn non_frame_elements_never_expose_their_owner_frame_as_content_frame() {
+    for description in [
+        json!({"node":{"nodeName":"HTML", "frameId":"owner-frame"}}),
+        json!({"node":{"nodeName":"DIV", "frameId":"owner-frame"}}),
+    ] {
+        // Arrange
+        let fake = Arc::new(FakeCdpClient::from_html(""));
+        let service = service(&fake, 256);
+        let source = element(&fake);
+        fake.set_object_node_description("source-element", description);
+
+        // Act
+        let result = service.content_frame(&source).await.unwrap();
+
+        // Assert
+        assert_eq!(result, None);
+        assert_eq!(fake.method_names(), ["DOM.describeNode"]);
+        assert_eq!(fake.calls()[0].1, [json!({"objectId":"source-element"})]);
+        assert!(releases(&fake).is_empty());
+    }
+}
+
+#[tokio::test]
+async fn malformed_content_frame_node_name_is_a_bounded_protocol_violation() {
+    for error_bytes in [0, 1, 4, 8, 256] {
+        for description in [json!({"node":{}}), json!({"node":{"nodeName":17}})] {
+            // Arrange
+            let fake = Arc::new(FakeCdpClient::from_html(""));
+            let service = service(&fake, error_bytes);
+            let source = element(&fake);
+            fake.set_object_node_description("source-element", description);
+
+            // Act
+            let error = service.content_frame(&source).await.unwrap_err();
+
+            // Assert
+            assert_eq!(error.kind(), FailureKind::ProtocolViolation);
+            assert_bounded(&error, error_bytes);
+            assert_eq!(fake.method_names(), ["DOM.describeNode"]);
+            assert!(releases(&fake).is_empty());
+        }
+    }
+}
+
+#[tokio::test]
 async fn null_document_element_returns_none_without_describe_or_release() {
     // Arrange
     let fake = Arc::new(FakeCdpClient::from_html(""));

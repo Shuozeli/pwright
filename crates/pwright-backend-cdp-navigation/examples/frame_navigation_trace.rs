@@ -91,9 +91,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                         frame,
                         loader: string(step, "loader")?,
                         document: DocumentGeneration(1),
+                        url: None,
                     })
                 }
-                "hash" => Some(NativeLifecycleNotice::SameDocument { frame }),
+                "hash" => Some(NativeLifecycleNotice::SameDocument { frame, url: None }),
                 "response" => Some(NativeLifecycleNotice::Response {
                     frame,
                     request: id(step, "request")?,

@@ -38,7 +38,9 @@ use super::{
 use crate::{HostError, HostSession, ffi_budget::FfiRevoker, file_input};
 use pwright_browser_model::ELEMENT_HANDLE_OBJECT_KIND_ID;
 use pwright_composition_chromium::ChromiumFrameWorldSnapshot;
-use pwright_composition_chromium_file_input::{FilePayloadOperationService, UploadError};
+#[cfg(test)]
+use pwright_composition_chromium_file_input::FilePayloadOperationService;
+use pwright_composition_chromium_file_input::UploadError;
 use pwright_composition_chromium_handle_evaluation::ChromiumRetainedElementSource;
 use pwright_composition_chromium_locator_resolution::{
     CdpLocatorResolutionService, ContinuableResolutionService, ObjectGroupDestructionProof,
@@ -49,6 +51,7 @@ use pwright_core::{
     CommandSpec, FailureKind, MethodTag, ObjectId, ObjectKindId, OperationContext, OperationError,
     ProductionResourceLedger, ResourceRequirements, ResourceScope,
 };
+#[cfg(test)]
 use pwright_file_input_source::PreparedPayloads;
 use pwright_runtime::TargetedService;
 use pwright_runtime_tokio::TokioCleanupExecutor;
@@ -193,6 +196,49 @@ impl RetainedUploads {
         adoption
     }
 
+    async fn run_prepared<R: Send + 'static>(
+        &self,
+        files: &file_input::Installation,
+        request: RetainedElementRequest,
+        input: (file_input::PreparedFileInputKind, R),
+        retained: ResolutionRouteOwner,
+        revalidate: impl FnOnce() -> Result<(), OperationError<HostError>>,
+    ) -> Outcome {
+        let element = self
+            .attempts
+            .call_retained_retaining(request, Some(retained))
+            .await
+            .map_err(resolution_error)?;
+        // Cancellation above continues ONLY acquisition and group cleanup.
+        // It must never advance to a previously unsubmitted upload mutation.
+        if let Err(primary) = revalidate() {
+            return match element.release().await {
+                Ok(()) => Err(primary),
+                Err(cleanup) => Err(OperationError::new(
+                    FailureKind::Cleanup,
+                    "retained upload revalidation and group cleanup failed",
+                    Some(HostError::backend(format_args!("{primary}; {cleanup}"))),
+                )),
+            };
+        }
+        match input.0 {
+            file_input::PreparedFileInputKind::Payloads(payloads) => files
+                .upload
+                .prepare_retaining(element, payloads, input.1)
+                .map_err(upload_error)?
+                .await
+                .map(|_| ())
+                .map_err(upload_error),
+            #[cfg(feature = "file-input-native-paths")]
+            file_input::PreparedFileInputKind::Native(prepared) => files
+                .native_paths
+                .apply(element, prepared, input.1)
+                .await
+                .map_err(failure),
+        }
+    }
+
+    #[cfg(test)]
     async fn run<R: Send + 'static>(
         &self,
         upload: &FilePayloadOperationService<TokioCleanupExecutor>,
@@ -206,8 +252,6 @@ impl RetainedUploads {
             .call_retained_retaining(request, Some(retained))
             .await
             .map_err(resolution_error)?;
-        // Cancellation above continues ONLY acquisition and group cleanup.
-        // It must never advance to a previously unsubmitted upload mutation.
         if let Err(primary) = revalidate() {
             return match element.release().await {
                 Ok(()) => Err(primary),
@@ -318,7 +362,7 @@ impl CommandSpec for SetRetainedFiles {
 
 struct Params {
     handle: Arc<PendingHandle>,
-    input: (PreparedPayloads, file_input::SourceSlot),
+    input: (file_input::PreparedFileInputKind, file_input::SourceSlot),
     admission: TrackedCallAdmission,
     upload_call: file_input::CallLease,
 }
@@ -377,8 +421,8 @@ impl TargetedService<Params> for RetainedUploadService {
             };
             self.files
                 .retained
-                .run(
-                    &self.files.upload,
+                .run_prepared(
+                    self.files.as_ref(),
                     request,
                     call.input,
                     owner.clone(),
@@ -530,6 +574,8 @@ impl HostSession {
                 "setInputFiles requires an ElementHandle".into(),
             ));
         }
+        #[cfg(feature = "page-bindings")]
+        let frame = handle.initializer().parent_id.get().to_string();
         let deadline_at =
             tokio::time::Instant::now() + Duration::from_millis(u64::from(timeout_ms));
         // This public-waiter token MUST NOT enter the native continuation:
@@ -550,7 +596,7 @@ impl HostSession {
         let service = Arc::new(RetainedUploadService { handles, files });
         let params = Params {
             handle,
-            input: service.files.take_payloads(input)?,
+            input: service.files.take_input(input)?,
             admission,
             upload_call: service.files.admit()?,
         };
@@ -585,12 +631,17 @@ impl HostSession {
             }
             return outcome;
         }
-        crate::completion::publish_command_result(
+        let outcome = crate::completion::publish_command_result(
             outcome,
             self.is_connected(),
             self.flush_topology(),
         )
-        .await
+        .await;
+        #[cfg(feature = "page-bindings")]
+        if outcome.is_ok() {
+            self.flush_page_binding_publications(&frame).await?;
+        }
+        outcome
     }
 }
 

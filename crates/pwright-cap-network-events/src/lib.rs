@@ -14,7 +14,7 @@ use pwright_core::{
 };
 pub use pwright_network_model::{
     HttpHeader, NetworkLifecycleLimits, RequestFailed, RequestFinished, RequestInitializer,
-    ResponseInitializer,
+    RequestTiming, ResponseInitializer,
 };
 
 pub const NETWORK_EVENTS_CAPABILITY_ID: CapabilityId = CapabilityId::new("pwright.network-events");

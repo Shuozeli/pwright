@@ -1,6 +1,26 @@
-<!-- agent-updated: 2026-09-10T06:55:30Z -->
+<!-- agent-updated: 2026-10-06T17:36:57Z -->
 
 # Playwright-aligned Page creation design
+
+NODE-416's five paired selector-registration passes all create their Page via
+the NODE-415 Rust-owned `Browser.newPage()` implicit Context composition. This
+adds live evidence for creation/close ownership while the selector operation
+itself now publishes an optional ElementHandle atomically in Rust. The
+candidate and oracle each pass path, main/isolated-world, public-error,
+non-root and bad-return rows 5/5; no JavaScript-owned hidden Context or split
+query read participates.
+
+NODE-415 exposes the existing Rust-owned `Browser.newPage()` composition to
+the Node addon and facade. Rust creates the implicit Context and Page as one
+operation, compensates the Context on every creation failure, records the
+exclusive Page-to-Context ownership, and makes `Page.close()` close that
+Context. The current Node surface accepts no options, `baseURL`, or explicit
+`acceptDownloads: false`. `acceptDownloads: true` and other unselected
+Playwright Context options still reject before native admission. Package,
+native-load, boundary, strict TypeScript, Clippy and release ownership tests
+pass. Browser-backed upstream selector verification remains pending because
+the dedicated Chrome contains an unrelated nonblank user Page; the official
+runner refused to start rather than reuse or close it.
 
 NODE-111: Existing synchronized initialization marks pre-registered Pages ready and now
 exposes that native effect to selected observers. Deferred popup linkage can
@@ -33,7 +53,9 @@ publication; returned/main-Frame identities and retained arrays remain coherent.
 The seven-case lane passes twice on each NODE-103 profile. Concurrent creation
 completion can reorder insertion relative to invocation; stable per-connection
 enumeration is tested without imposing a stronger ordering contract.
-This does not implement Context page events, popup/opener semantics or Browser.newPage.
+At the NODE-104 checkpoint this did not implement Context page events,
+popup/opener semantics or `Browser.newPage()`; NODE-415 later added the
+bounded implicit-Context convenience path only.
 [Current evidence and remaining event work](pwright-frame-publication.md#node-104-creation-and-discovery-publication-characterization).
 
 NODE-088 enables the selected header Network domain at scoped attachment, not
@@ -50,9 +72,11 @@ failure cleanup, not merely its intermediate Page.reportAsNew event. Other
 initializer failures and exact transient Page events remain unverified.
 [Header lifecycle evidence](pwright-extra-http-headers.md#node-083-deferred-syntax-and-page-local-initialization-failure).
 
-> Status: implemented and verified for the first explicit
-> `BrowserContext.newPage()` slice, including Chrome 152. Popup discovery and
-> additional browser backends remain separate work.
+> Status: implemented and verified for explicit `BrowserContext.newPage()` and
+> locally verified for the Rust-owned Node `Browser.newPage()` no-options / `baseURL`
+> slice. The latter still needs an official real-Chrome row after the dedicated
+> browser is empty. Popup discovery, remaining Context options and additional
+> browser backends remain separate work.
 
 ## Node FFI integration checkpoint
 
@@ -62,7 +86,9 @@ creation with native event ingestion, initializes the new route/world snapshot,
 and replies with stable Page/main-Frame wrappers. It reserves the main Frame's
 metadata entry and initial URL bytes before creating the native target; a
 returned descriptor retains that exact snapshot even after external retirement.
-This does not add `Browser.newPage()` or Context creation to the Node API.
+NODE-415 later adds `Browser.newPage()` through a separate Rust composition
+that owns the hidden Context. It does not turn the original
+`BrowserContext.newPage()` capability into a JavaScript-owned composite.
 
 The default Context uses an internal empty key. The production CDP client now
 omits `browserContextId` for that key instead of sending the invalid empty ID;
@@ -116,8 +142,10 @@ MainFrame { id, parent = Page, kind = Frame }
 
 The client returns one typed Page whose `main_frame()` is already available.
 Neither target ID, session ID, browser-context ID, nor CDP Frame ID crosses the
-portable boundary. `Browser.newPage()` convenience remains out of this slice
-because its hidden context ownership requires a separate design.
+portable boundary. The original capability intentionally left
+`Browser.newPage()` out because its hidden Context ownership required a
+separate design. NODE-415 implements that separate bounded owner and exposes it
+to Node without changing this BrowserContext-only command.
 
 ## Chromium readiness boundary
 

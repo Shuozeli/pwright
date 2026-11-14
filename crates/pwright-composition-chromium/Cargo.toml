@@ -9,17 +9,37 @@ homepage.workspace = true
 
 [features]
 default = []
+cdp-handshake-headers = ["pwright-provider-cdp/cdp-handshake-headers"]
 close-route-retirement = []
 native-close-retirement = ["close-capacity", "close-route-retirement", "native-close-scheduler"]
 close-capacity = ["dep:pwright-backend-cdp-topology", "pwright-backend-cdp-topology/transition-reservations", "pwright-runtime/disposal-reservations"]
 native-close-authority = ["pwright-backend-cdp-page-lifecycle/native-confirmation", "dep:pwright-backend-cdp-common"]
 native-close-scheduler = ["native-close-authority"]
-frame-lifecycle = ["dep:pwright-backend-cdp-navigation", "pwright-backend-cdp-navigation/frame-lifecycle"]
+frame-lifecycle = ["dep:pwright-plugin-chromium-frame-lifecycle"]
+history-navigation = [
+    "dep:pwright-cap-history-navigation",
+    "pwright-backend-cdp/history-navigation",
+]
+request-frame = ["pwright-backend-cdp/request-frame"]
+response-security-details = [
+    "pwright-backend-cdp/response-security-details",
+    "pwright-composition-chromium-network-events/response-security-details",
+]
+request-timing = [
+    "pwright-backend-cdp/request-timing",
+    "pwright-cap-network-events/request-timing",
+    "pwright-codec-network-events/request-timing",
+    "pwright-composition-chromium-network-events/request-timing",
+    "pwright-network-model/request-timing",
+]
+touchscreen-input = ["dep:pwright-cap-touchscreen", "pwright-backend-cdp/touchscreen-input"]
+fill-navigation-commit = ["pwright-backend-cdp/fill-navigation-commit"]
+select-option-navigation-commit = ["pwright-backend-cdp/select-option-navigation-commit"]
+select-option-timeout-progress = ["pwright-backend-cdp/select-option-timeout-progress"]
 
 [dependencies]
 pwright-backend-cdp-topology = { workspace = true, optional = true }
 pwright-backend-cdp-common = { workspace = true, optional = true }
-pwright-backend-cdp-navigation = { workspace = true, optional = true }
 pwright-backend-cdp-input = { workspace = true }
 pwright-backend-cdp = { workspace = true }
 pwright-backend-cdp-page-lifecycle = { workspace = true }
@@ -37,9 +57,11 @@ pwright-cap-handle-lifecycle = { workspace = true }
 pwright-cap-locator = { workspace = true }
 pwright-cap-locator-screenshot = { workspace = true }
 pwright-cap-navigation = { workspace = true }
+pwright-cap-history-navigation = { workspace = true, optional = true }
 pwright-cap-network-events = { workspace = true }
 pwright-cap-page-events = { workspace = true }
 pwright-cap-page-creation = { workspace = true }
+pwright-cap-touchscreen = { workspace = true, optional = true }
 pwright-cap-page-lifecycle = { workspace = true }
 pwright-cdp = { workspace = true }
 pwright-codec-locator = { workspace = true }
@@ -66,6 +88,9 @@ pwright-core = { workspace = true }
 pwright-network-model = { workspace = true }
 pwright-provider-cdp = { workspace = true }
 pwright-plugin-ordered-handle-delivery = { workspace = true }
+pwright-plugin-chromium-frame-observer = { workspace = true }
+pwright-plugin-chromium-frame-lifecycle = { workspace = true, optional = true }
+pwright-plugin-chromium-session-initialization = { workspace = true }
 pwright-runtime = { workspace = true }
 pwright-runtime-control = { workspace = true }
 pwright-server-locator = { workspace = true }
@@ -91,6 +116,7 @@ tokio = { workspace = true, features = ["sync"] }
 [dev-dependencies]
 futures-util = { workspace = true }
 tokio-tungstenite = { workspace = true }
+pwright-backend-cdp-navigation = { workspace = true, features = ["frame-lifecycle"] }
 pwright-client = { workspace = true }
 pwright-client-context-lifecycle = { workspace = true }
 pwright-client-content = { workspace = true }

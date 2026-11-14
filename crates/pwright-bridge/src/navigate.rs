@@ -5,6 +5,8 @@ use std::time::Duration;
 use pwright_cdp::CdpClient;
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
 
+use crate::clock::{Clock, TokioClock};
+
 /// Poll interval for ready-state and selector wait loops.
 const POLL_INTERVAL_MS: u64 = 200;
 /// Poll interval for network idle detection.
@@ -118,22 +120,39 @@ async fn wait_for_ready_state(
     strategy: &WaitStrategy,
     timeout: Duration,
 ) -> CdpResult<()> {
+    let clock = TokioClock::new();
+    wait_for_ready_state_with_clock(session, strategy, timeout, &clock).await
+}
+
+async fn wait_for_ready_state_with_clock(
+    session: &dyn CdpClient,
+    strategy: &WaitStrategy,
+    timeout: Duration,
+    clock: &dyn Clock,
+) -> CdpResult<()> {
     match strategy {
         WaitStrategy::None => Ok(()),
-        WaitStrategy::Dom => poll_ready_state(session, timeout).await,
-        WaitStrategy::NetworkIdle => wait_network_idle(session, timeout).await,
-        WaitStrategy::Selector(sel) => wait_selector_visible(session, sel, timeout).await,
+        WaitStrategy::Dom => poll_ready_state_with_clock(session, timeout, clock).await,
+        WaitStrategy::NetworkIdle => wait_network_idle(session, timeout, clock).await,
+        WaitStrategy::Selector(sel) => wait_selector_visible(session, sel, timeout, clock).await,
     }
 }
 
 /// Poll document.readyState until "interactive" or "complete".
 pub async fn poll_ready_state(session: &dyn CdpClient, timeout: Duration) -> CdpResult<()> {
-    let deadline = tokio::time::Instant::now() + timeout;
-    let mut interval = tokio::time::interval(Duration::from_millis(POLL_INTERVAL_MS));
+    let clock = TokioClock::new();
+    poll_ready_state_with_clock(session, timeout, &clock).await
+}
+
+async fn poll_ready_state_with_clock(
+    session: &dyn CdpClient,
+    timeout: Duration,
+    clock: &dyn Clock,
+) -> CdpResult<()> {
+    let deadline = clock.deadline_from_now(timeout);
+    let poll_interval = Duration::from_millis(POLL_INTERVAL_MS);
 
     loop {
-        interval.tick().await;
-
         if let Ok(result) = session
             .runtime_evaluate(pwright_js::page::GET_READY_STATE)
             .await
@@ -144,9 +163,10 @@ pub async fn poll_ready_state(session: &dyn CdpClient, timeout: Duration) -> Cdp
             return Ok(());
         }
 
-        if tokio::time::Instant::now() > deadline {
+        if clock.is_past(deadline) {
             return Err(CdpError::Timeout);
         }
+        clock.sleep(poll_interval).await;
     }
 }
 
@@ -156,15 +176,17 @@ pub async fn poll_ready_state(session: &dyn CdpClient, timeout: Duration) -> Cdp
 /// checks readyState and URL stability. SPAs that fire additional fetches after
 /// `readyState == "complete"` will appear idle prematurely. For those cases,
 /// use `WaitStrategy::Selector` with a selector that appears after data loads.
-async fn wait_network_idle(session: &dyn CdpClient, timeout: Duration) -> CdpResult<()> {
-    let deadline = tokio::time::Instant::now() + timeout;
-    let mut interval = tokio::time::interval(Duration::from_millis(NETWORK_IDLE_POLL_MS));
+async fn wait_network_idle(
+    session: &dyn CdpClient,
+    timeout: Duration,
+    clock: &dyn Clock,
+) -> CdpResult<()> {
+    let deadline = clock.deadline_from_now(timeout);
+    let poll_interval = Duration::from_millis(NETWORK_IDLE_POLL_MS);
     let mut last_url = String::new();
     let mut idle_checks = 0;
 
     loop {
-        interval.tick().await;
-
         let ready = eval_string(session, pwright_js::page::GET_READY_STATE).await;
         let cur_url = eval_string(session, pwright_js::page::GET_LOCATION_HREF)
             .await
@@ -180,9 +202,10 @@ async fn wait_network_idle(session: &dyn CdpClient, timeout: Duration) -> CdpRes
         }
         last_url = cur_url;
 
-        if tokio::time::Instant::now() > deadline {
+        if clock.is_past(deadline) {
             return Err(CdpError::Timeout);
         }
+        clock.sleep(poll_interval).await;
     }
 }
 
@@ -191,23 +214,23 @@ async fn wait_selector_visible(
     session: &dyn CdpClient,
     selector: &str,
     timeout: Duration,
+    clock: &dyn Clock,
 ) -> CdpResult<()> {
-    let deadline = tokio::time::Instant::now() + timeout;
-    let mut interval = tokio::time::interval(Duration::from_millis(POLL_INTERVAL_MS));
+    let deadline = clock.deadline_from_now(timeout);
+    let poll_interval = Duration::from_millis(POLL_INTERVAL_MS);
     let js = pwright_js::dom::query_selector_exists(selector);
 
     loop {
-        interval.tick().await;
-
         if let Some(val) = eval_string(session, &js).await
             && val == "true"
         {
             return Ok(());
         }
 
-        if tokio::time::Instant::now() > deadline {
+        if clock.is_past(deadline) {
             return Err(CdpError::Timeout);
         }
+        clock.sleep(poll_interval).await;
     }
 }
 
@@ -233,6 +256,10 @@ const MEDIA_BLOCK_PATTERNS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use crate::clock::FakeClock;
+
     use super::*;
 
     #[test]
@@ -408,13 +435,91 @@ mod tests {
 
     #[tokio::test]
     async fn poll_ready_state_times_out_when_loading() {
-        let mock = MockCdpClient::new();
+        // Arrange
+        let mock = Arc::new(MockCdpClient::new());
         mock.set_evaluate_response(serde_json::json!({
             "result": {"value": "loading"}
         }));
+        let clock = Arc::new(FakeClock::new());
+        let task_mock = mock.clone();
+        let task_clock = clock.clone();
 
-        let result = poll_ready_state(&mock, Duration::from_millis(400)).await;
+        // Act
+        let task = tokio::spawn(async move {
+            poll_ready_state_with_clock(
+                task_mock.as_ref(),
+                Duration::from_millis(400),
+                task_clock.as_ref(),
+            )
+            .await
+        });
+        for _ in 0..3 {
+            tokio::task::yield_now().await;
+            clock.advance(Duration::from_millis(POLL_INTERVAL_MS));
+        }
+        let result = task.await.expect("ready-state task should finish");
+
+        // Assert
         assert!(matches!(result, Err(CdpError::Timeout)));
+    }
+
+    #[tokio::test]
+    async fn network_idle_uses_the_injected_clock_for_stable_checks() {
+        // Arrange
+        let mock = Arc::new(MockCdpClient::new());
+        mock.set_evaluate_response(serde_json::json!({
+            "result": {"value": "complete"}
+        }));
+        let clock = Arc::new(FakeClock::new());
+        let task_mock = mock.clone();
+        let task_clock = clock.clone();
+
+        // Act
+        let task = tokio::spawn(async move {
+            wait_for_ready_state_with_clock(
+                task_mock.as_ref(),
+                &WaitStrategy::NetworkIdle,
+                Duration::from_secs(1),
+                task_clock.as_ref(),
+            )
+            .await
+        });
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+            if task.is_finished() {
+                break;
+            }
+            clock.advance(Duration::from_millis(NETWORK_IDLE_POLL_MS));
+        }
+        let result = task.await.expect("network-idle task should finish");
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(mock.calls_for("Runtime.evaluate").len(), 6);
+    }
+
+    #[tokio::test]
+    async fn selector_wait_can_complete_without_advancing_the_injected_clock() {
+        // Arrange
+        let mock = MockCdpClient::new();
+        mock.set_evaluate_response(serde_json::json!({
+            "result": {"value": "true"}
+        }));
+        let clock = FakeClock::new();
+
+        // Act
+        let result = wait_for_ready_state_with_clock(
+            &mock,
+            &WaitStrategy::Selector("#ready".to_string()),
+            Duration::from_secs(1),
+            &clock,
+        )
+        .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(clock.now_ms(), 0);
+        assert_eq!(mock.calls_for("Runtime.evaluate").len(), 1);
     }
 
     #[tokio::test]

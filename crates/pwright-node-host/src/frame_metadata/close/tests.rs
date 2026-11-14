@@ -1,8 +1,8 @@
 use super::*;
 use crate::frame_metadata::FrameMetadataLimits;
 use crate::frame_trees::FrameTrees;
-use pwright_composition_chromium::{ChromiumFrameOwnership, ChromiumFrameUrlObserver};
 use pwright_core::ObjectId;
+use pwright_plugin_chromium_frame_observer::{ChromiumFrameOwnership, ChromiumFrameUrlObserver};
 
 fn fixture() -> (Arc<FrameMetadata>, FrameTrees, FrameTree) {
     let book = Arc::new(

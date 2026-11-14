@@ -7,8 +7,11 @@ use pwright_core::{
     ObjectId, ProductionResourceLedger, ResourceClass, ResourceLease, ResourceLedger,
     ResourceLimits, ResourceRequirements, ResourceScope,
 };
+use url::Url;
 
 const SCOPE: ResourceScope = ResourceScope::extension(121, 4);
+const NAVIGATION_URL_BYTES: usize = 16 * 1024;
+const URL_RESOLUTION_BYTES: usize = 32 * 1024;
 
 #[derive(Clone, Copy)]
 pub struct ContextMetadataLimits {
@@ -109,6 +112,29 @@ impl ContextSnapshot {
     pub fn base_url(&self) -> Option<&str> {
         self.settings.as_ref().map(|value| value.base_url.as_ref())
     }
+    /// Apply Playwright's URL-construction behavior inside the Rust host.
+    /// Invalid inputs remain unchanged so the browser owns the eventual
+    /// navigation error, matching `constructURLBasedOnBaseURL` upstream.
+    pub fn resolve_url(&self, input: &str) -> Result<String, HostError> {
+        if input.len() > NAVIGATION_URL_BYTES {
+            return Err(HostError::InvalidArgument(
+                "Navigation URL exceeds byte limit".into(),
+            ));
+        }
+        let _conversion = self.reserve_conversion(URL_RESOLUTION_BYTES)?;
+        let resolved = self
+            .base_url()
+            .and_then(|base| Url::parse(base).ok())
+            .and_then(|base| base.join(input).ok())
+            .map(|url| url.into())
+            .unwrap_or_else(|| input.to_owned());
+        if resolved.len() > NAVIGATION_URL_BYTES {
+            return Err(HostError::InvalidArgument(
+                "Resolved navigation URL exceeds byte limit".into(),
+            ));
+        }
+        Ok(resolved)
+    }
     pub fn reserve_conversion(&self, bytes: usize) -> Result<ContextConversion, HostError> {
         conversion(&self.resources, bytes)
     }
@@ -151,10 +177,12 @@ struct State {
     entries: Vec<Entry>,
     reserved: usize,
     closed: bool,
+    external: ContextSnapshot,
 }
 struct Inner {
     resources: ResourceLedger,
     limits: ContextMetadataLimits,
+    owned_contexts_only: bool,
     state: Mutex<State>,
     _index: ResourceLease,
 }
@@ -216,16 +244,67 @@ impl ContextMetadata {
         let index = resources
             .reserve(SCOPE, ResourceClass::BackendStateBytes, bytes as u64)
             .map_err(exhausted)?;
+        let external = ContextSnapshot {
+            settings: None,
+            resources: resources.clone(),
+        };
         Ok(Self(Arc::new(Inner {
             resources,
             limits,
+            owned_contexts_only: false,
             state: Mutex::new(State {
                 entries: Vec::with_capacity(limits.active_contexts),
                 reserved: 0,
                 closed: false,
+                external,
             }),
             _index: index,
         })))
+    }
+
+    /// Fresh owned Browser launches keep Chromium's native default Context
+    /// internal; only Contexts created by this connection are published.
+    #[cfg(any(test, feature = "owned-launch"))]
+    pub(crate) fn with_owned_contexts_only(mut self) -> Result<Self, HostError> {
+        let inner = Arc::get_mut(&mut self.0).ok_or_else(|| {
+            HostError::InvalidArgument(
+                "Context visibility must be selected before topology publication".into(),
+            )
+        })?;
+        inner.owned_contexts_only = true;
+        Ok(self)
+    }
+
+    pub(crate) fn owned_contexts_only(&self) -> bool {
+        self.0.owned_contexts_only
+    }
+
+    /// Selects one stable settings snapshot for default/external Contexts in
+    /// an owned persistent-browser session. This must happen before the book
+    /// is cloned into topology publication so identity cannot change later.
+    pub fn with_external_base_url(self, base_url: &str) -> Result<Self, HostError> {
+        if base_url.len() > self.0.limits.base_url_bytes {
+            return Err(exhausted("Context baseURL exceeds metadata byte limit"));
+        }
+        if Arc::strong_count(&self.0) != 1 {
+            return Err(HostError::InvalidArgument(
+                "external Context settings must be selected before publication".into(),
+            ));
+        }
+        let bytes = base_url
+            .len()
+            .checked_add(std::mem::size_of::<Settings>() + 2 * std::mem::size_of::<usize>())
+            .ok_or_else(|| exhausted("Context settings storage overflow"))?;
+        let storage = reserve(&self.0.resources, ResourceClass::LiveObject, bytes)?;
+        let external = ContextSnapshot {
+            settings: Some(Arc::new(Settings {
+                base_url: base_url.into(),
+                _storage: storage,
+            })),
+            resources: self.0.resources.clone(),
+        };
+        self.0.state.lock().map_err(HostError::backend)?.external = external;
+        Ok(self)
     }
 
     fn empty(&self) -> ContextSnapshot {
@@ -283,6 +362,9 @@ impl ContextMetadata {
     /// Owned Contexts are hidden until commit. External/default Contexts have
     /// no locally configured settings and need no registry entry.
     pub fn visible(&self, id: ObjectId, owned: bool) -> Result<Option<ContextSnapshot>, HostError> {
+        if !owned && self.0.owned_contexts_only {
+            return Ok(None);
+        }
         let state = self.0.state.lock().map_err(HostError::backend)?;
         if state.closed {
             return Ok(None);
@@ -292,7 +374,7 @@ impl ContextMetadata {
             .iter()
             .find(|entry| entry.id == id)
             .map(|entry| entry.snapshot.clone())
-            .or_else(|| (!owned).then(|| self.empty())))
+            .or_else(|| (!owned).then(|| state.external.clone())))
     }
 
     pub fn retain_live(&self, mut present: impl FnMut(ObjectId) -> bool) -> Result<(), HostError> {
@@ -308,6 +390,7 @@ impl ContextMetadata {
         self.retain_live(|entry| entry != id)
     }
     pub fn clear(&self) {
+        let external = self.empty();
         let mut state = self
             .0
             .state
@@ -315,6 +398,7 @@ impl ContextMetadata {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         state.closed = true;
         state.entries.clear();
+        state.external = external;
         // Outstanding reservations still decrement their own counts on Drop.
     }
     pub fn reserve_conversion(&self, bytes: usize) -> Result<ContextConversion, HostError> {

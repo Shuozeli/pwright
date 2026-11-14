@@ -1,4 +1,1167 @@
-<!-- agent-updated: 2026-09-19T21:23:32Z -->
+<!-- agent-updated: 2026-10-12T04:22:44Z -->
+
+## Node Browser-root CDP Page-creation boundary (2026-10-12)
+
+The opt-in Browser-root CDP session has independent lifetime but shares the
+bounded public CDP registry with Page sessions. A Rust target-created fence
+is selected for discovery filters that include Page targets under CDP's
+first-match rule, so either Page-creation API waits for its exact target
+event. Node flushes the retained event queue before returning the wrapper;
+if that flush fails after native creation, it closes the new Context or Page
+and preserves both errors if cleanup also fails. Source and test compilation
+pass in the selected release host profile, and focused CDP host tests pass
+32/32; separate topology-driver and official browser ordering tests remain
+open.
+
+The sections below retain their implementation-time history. The current
+ABI119 full Python wheel includes the earlier ABI109-112 source capabilities,
+but browser verification on that wheel is still pending.
+
+## Python retained-ElementHandle DOM reads (2026-10-11)
+
+The new opt-in `element-handle-dom-reads` Python addon profile depends only on
+`element-handle-dom` and exposes `get_attribute`, `inner_html`, `input_value`,
+and `is_checked` through one bounded PyO3 port. The port accepts only those
+four operation tags, retains the exact Frame-owned Handle, and delegates to
+`HostSession::element_handle_dom_read`; it does not synthesize a selector or
+evaluate user-authored browser code. The host determines null/string/bool
+semantics and validates attribute ownership and size. Async and sync facades
+share the same native path. Python source ABI advances from 110 to 111, so an
+older wheel fails closed at import. Explicit `input_value(timeout=...)` is
+currently validated but does not yet impose a per-read deadline. At the
+original ABI111 checkpoint this was source-only; it is packaged in ABI119, but
+official async/sync ElementHandle files still need a browser rerun.
+`input_value`'s current official case is also blocked earlier by
+missing `ElementHandle.fill`.
+
+## Python retained-ElementHandle geometry bridge (2026-10-11)
+
+The opt-in `element-handle-dom` host profile now includes the package-free
+`locator-bounding-box` leaf and exposes its existing
+`HostSession::element_handle_bounding_box` operation through PyO3. The Rust
+host evaluates against the exact retained DOM Handle and returns a bounded
+optional four-coordinate box. Python async/sync facades forward that owner
+and result without reconstructing a selector or browser script. The additive
+native method advances the Python source ABI to 110; older wheels fail closed
+at import. This was source-only at the original checkpoint and is packaged
+in ABI119; the pinned official ElementHandle files still need independent
+candidate/oracle browser runs on that wheel.
+
+## Python retained-Node preview publication (2026-10-11)
+
+The optional `element-handle-dom` profile now asks the Rust host for its
+bounded, exact-Node preview before the Python addon publishes Handles from
+`Locator.element_handle` and `JSHandle.evaluate_handle`. The existing
+`HostSession::element_handle_preview` evaluates a fixed Rust-owned browser
+program; Python still only caches and returns the string synchronously from
+`str(handle)`. The base `handles` profile performs no DOM preview work and
+keeps its previous initializer description. The frozen ABI109 wheel predates
+this wiring, while the current ABI119 wheel includes it; the official
+async/sync `test_a_nice_preview` cases require a browser rerun. Preview
+errors currently fail the publishing command rather than being hidden; a
+non-blocking refresh policy remains a separate design decision.
+
+## Python retained-Handle evaluation bridge (2026-10-11)
+
+The optional `handles` profile exposes frame-owned
+`JSHandle.evaluate_handle()` and inherited `ElementHandle.evaluate_handle()`
+through PyO3. The Python facades convert arguments and wrap the result;
+`HostSession::handle_prepare_owned` performs browser evaluation, bounded
+ownership admission, and result publication in Rust. Nested Handle arguments
+remain live owner references, and a returned DOM node is wrapped as an
+`ElementHandle` without copying its native object. Worker-owned Handles are
+outside this Frame-only path. Adding the PyO3 method advances the native ABI
+from 108 to 109 so an old extension cannot silently pair with the new facade.
+Source-only tests and a release compile check passed at implementation time;
+the current ABI119 wheel includes this change but has no corresponding
+official browser result yet.
+
+## Opt-in public CDPSession capability boundary (2026-10-12)
+
+The complete pinned Chromium Python CDPSession files expose an 11-case
+candidate gap; the earlier candidate had no `BrowserContext.new_cdp_session`,
+while the official oracle passed all 11. The new default-off `cdp-session`
+source capability owns a separate browser-root attachment and up to eight
+child Page sessions. The topology driver ignores an auxiliary attach only
+when its parent session ID exactly matches the registered auxiliary parent;
+ordinary discovery remains unchanged. The Rust host owns bounded 64-event,
+1-MiB-per-session queues, send/drain event fences, explicit detach, Page-close
+invalidation, and browser shutdown cleanup. A host delivery acknowledgement
+compensates an attached child if its queued result is never read. An ABI118
+PyO3 lease owns cleanup from the host result through Python wrapper registration,
+including cancellation of a queued FFI result; the facade claims it only after
+registry insertion, without another await.
+
+The Python async/sync facades now expose `new_cdp_session`, `send`, event
+subscription and `detach` through the Rust owner. Supplied Page or main Frame
+must belong to the exact Context; a non-main Frame is rejected. Python
+`Page.goto` drains prior CDP notices before returning. Nine focused release
+host tests, four addon lease/ABI tests, strict full-profile release Clippy,
+the dependency-boundary script, and Python type/lint checks pass. The frozen
+106-feature ABI118 wheel passes 547/547 installed-wheel browserless units on
+each of Python 3.9 and 3.12. This does not establish the 11 unchanged official
+browser cases: the CDP endpoint remains unresponsive, so no candidate pass is
+claimed. Subsequent source work retains parent/child attach responses through
+settlement and disconnects a still-pending attach when its host shuts down;
+the focused release host suite now passes 25/25. ABI119 source replaces the
+destructive Python event drain with one counted in-flight FIFO claim per
+session. Each event is acknowledged only after synchronous callbacks return;
+an unacknowledged suffix rolls back before newer events on cancellation,
+conversion failure or callback error. A generation-only native watch parks
+one Python Browser task until a new event or terminal change, without polling
+or consuming payload. Awaitable Python event callbacks are scheduled after
+delivery and bounded independently; their failures are reported through the
+event loop without replaying acknowledged events. An unclaimed lease now
+compensates the native child without requiring the portable Page to remain
+visible. The focused PyO3 addon suite passes 27/27 with selected-feature
+strict Clippy. The full 106-capability ABI119 wheel passes 571/571
+browserless installed-wheel tests on each of Python 3.9 and 3.12; real
+browser behavior and lifecycle under official tests remain unverified. The
+Node bridge uses the same host owner through an opt-in N-API feature and a
+lazy Browser watch. Its combined Page/CDP profile now builds and passes
+native-load smoke at the earlier Page-only checkpoint, but has no official
+browser result. A distinct default-off `browser-cdp-session` leaf now adds
+Browser-owned root attachments to the shared eight-session registry, with
+separate lifetime from Page/Context owners. The host fences new Page returns
+on each discovery-enabled Browser session's exact target-created event; Node
+flushes those bounded events before resolving `newPage`. Its post-edit release
+addon check passes, but the combined artifact predates this leaf and must be
+rebuilt and tested before any browser claim. The normal Node browserless suite
+includes the new adapter tests and passes 769/769 with strict TypeScript. The
+feature-off/on release checks and zero-added-package boundary script pass.
+
+The Rust locator query planner also now represents a CSS/text `*` capture as
+the captured prefix filtered by the remaining typed selector, preserving
+document-order deduplication without a JavaScript selector rewrite. This is
+a source and release-check checkpoint, not an official browser pass; the
+focused Rust tests and rebuilt native artifact remain pending.
+
+## Composable popup first-request settings and ElementHandle state (2026-10-11)
+
+Selected Chromium session initializers share a counted, per-session CDP
+queue-admission fence. Before a newly discovered popup is resumed, each
+installed request-affecting leaf admits its own command to the ordered CDP
+write queue: context extra headers, locale, user-agent and active context/Page
+route `Fetch.enable`. A leaf registers its enqueue obligation before polling
+downstream initialization and discharges that obligation only after queue
+admission; acknowledgments remain separately owned and must still settle or
+propagate errors. This keeps initialization composable even when commands
+temporarily encounter write-channel backpressure. Unselected leaves and
+no-route sessions add no fence obligation. The former header-only fence did
+not protect outer locale/UA commands or no-header routing, so source-only
+compilation was insufficient evidence of first-request correctness.
+
+Separately selected `element-handle-state-wait` and
+`element-handle-state-predicates` reuse the retained native ElementHandle and
+existing DOM-read owner. Python forwards the six wait states and exposes the
+five public no-timeout predicates without keeping a second Handle or polling
+registry in Python. On the installed 100-capability release wheel, the
+unchanged official Chromium async/sync state-wait files pass 11/11 each; the
+complete popup file passes 20/26 twice with identical per-ID outcomes. These
+bounded results are not full Playwright compatibility.
+
+## Protocol-neutral bounded WebSocket transport leaf (2026-10-10)
+
+`pwright-transport-ws` is a standalone, optional WebSocket connection boundary,
+not the Playwright remote dispatcher or the Chromium CDP parser. Its default
+selection declares canonical checked `ws`/`wss` endpoints, explicit
+per-connection message and handshake-time budgets, bounded caller headers,
+parser-accepted received Close-frame code/reason, and separate EOF. A caller
+injects a `WsConnector` and owns polling, cancellation, and lifetime. The
+`live-tokio` feature alone adds
+Tungstenite client I/O; it opens no listener, starts no background task, and
+does not follow redirects. The live connector enforces the connect timeout;
+other injected connectors must honor that request budget themselves.
+Handshake-controlled header names are reserved; values cannot contain CR/LF.
+No protocol-specific error message is synthesized
+from a close reason in this crate. The composition root must additionally bound
+its concurrent connection count and caller-owned message allocations; this
+leaf has no shared production resource-ledger claim yet.
+
+The URL is canonicalized once before live handshake construction; unescaped
+whitespace/control bytes are rejected and Unicode hosts use IDNA. Tungstenite
+may rewrite a protocol-invalid received Close code/reason to `1002`/
+`Protocol violation`, so this is not a raw-wire fidelity claim. A received
+Close receipt leaves the transport pending closure; callers must drive
+`close()` to flush the queued reply. Canceled or failed close attempts remain
+retryable and cannot silently mark the peer closed.
+
+Production selection is blocked on a credential-logging guard: Tungstenite
+0.26 TRACE-logs the full HTTP handshake request, including caller-supplied
+`Authorization` and `Cookie` headers, outside this leaf's redacted `Debug`
+implementations. No global logging workaround is installed in the leaf; the
+composition must solve dependency-level request logging before it accepts
+sensitive headers under arbitrary TRACE configuration.
+
+The isolated release suite passes 16/16 without the live feature and 19/19
+with it. Strict release Clippy passes both selections, and default dependency
+trees exclude Tungstenite and this leaf from both Node host and Python addon.
+
+No CDP provider, host, Node or Python façade selects the leaf. In particular,
+existing CDP handshakes still cannot pass custom request headers and still
+discard remote Close-frame reasons. Playwright `BrowserType.connect` requires a
+separate remote-protocol adapter and is not made available by this transport.
+The five pinned Python fake-WebSocket source tests remain `not-run` in strict
+ledgers. Their unchanged hard-coded loopback endpoint literals also conflict
+with the current Tailscale-only official fixture listener; an adapted-endpoint
+probe would be diagnostic-only until that harness boundary is resolved.
+
+## Browser-independent Playwright v8 Context trace lifecycle (2026-10-10)
+
+The independent `pwright-trace-playwright-v8-context` Rust leaf composes the
+bounded v8 JSONL writer with one Context-scoped `Idle`/`BetweenChunks`/
+`Recording`/`Poisoned` lifecycle. Its output port, clock, ID source, and
+connection-local resource ledger are injected; it starts no task and chooses
+no browser, filesystem, ZIP writer, or network producer. `start` opens the
+first chunk, `start_chunk` discards/replaces a previous chunk, and `stop_chunk`
+auto-closes open groups before export or discard. A `TraceBytes` lease bounds
+in-memory labels and writer scratch for the active Context. Unsupported
+snapshots, screenshots, and sources fail closed rather than silently claiming
+capture. Output failure triggers abort cleanup, and a failed cleanup leaves a
+retryable poisoned state. Context close, disconnect, and cancellation owners
+must call explicit `abort`; `Drop` alone cannot report output cleanup errors,
+so a production output port also needs RAII cleanup for temporary files.
+The leaf passes 19/19 release tests, strict Clippy, and its dependency proof.
+The focused CI gate includes those checks and default-host tree exclusion,
+but has not run on GitHub Actions. The leaf is not yet wired into the host,
+Node/Python facades, a `.network` or ZIP sink, or an official trace-test lane;
+it grants no strict conformance credit.
+
+## Opt-in Playwright trace-directory launch boundary (2026-10-10)
+
+The `playwright-trace` Node native profile selects the existing owned Chromium
+launch plus an independent `pwright-trace-playwright-v8` directory policy.
+When a caller supplies a nonempty `tracesDir`, the N-API boundary prepares it
+recursively in Rust before checking the executable, allocating a temporary
+browser profile, or spawning a process. The canonical caller-owned directory
+is retained by `HostSession` and is not removed on a failed launch; an empty
+string follows upstream's falsey no-explicit-directory behavior. A separate
+browserless native test verifies preparation before synthetic process startup,
+invalid path rejection before startup, executable-validation ordering, and
+failed-launch cleanup. The default and legacy `owned-launch` profiles do not
+gain this directory capability. No Context trace recorder or network/ZIP
+export is connected to this profile yet; directory preparation must not be
+interpreted as tracing support. The pinned Core line-64 dummy-process
+diagnostic now passes 1/1 on both oracle and this selected candidate profile
+under a process-exec allowlist and outbound-network denial. It has no
+browser-profile attestation
+and does not advance the strict conformance ledger.
+
+## Opt-in owned-process startup diagnostics (2026-10-10)
+
+`pwright-provider-chromium` now offers a separate capturing process spawner;
+its default spawner still discards child output. The capture drains both pipes
+continuously, retaining at most 3 KiB and 150 recent lines, with a 1 KiB cap
+per unterminated line and a 250 ms post-exit drain deadline. Premature exit
+produces a typed launch error containing bounded `Browser logs:`. The
+Chromium launch composition exposes an explicit selecting method, and only
+Node host's opt-in owned-launch path uses it; attach and ordinary provider
+construction retain their prior behavior. Synthetic shell-process tests cover
+early exit, both streams, oversized output and the unchanged default. At this
+earlier `owned-launch` checkpoint, startup logs did not supply tracing and the
+official candidate was rejected before spawn on `tracesDir`. The rebuilt opt-in owned-launch
+Node addon (SHA-256
+`b37efd40f111e305cf976812c4048a6782ce76ab36418d4f13e6ac320f87788a`)
+passes a browserless public Node-to-N-API-to-Rust synthetic-process smoke test
+(1/1) that checks bounded logs, profile removal and child reaping. The Node 20
+CI job now builds and tests this profile; the new GitHub Actions step has not
+run yet. Capturing output is also a Cargo `startup-logs` feature on the
+provider and launch composition; their default manifests do not request the
+extra Tokio I/O/runtime features, and capture code is not compiled. Release tests pass 19/19 and 15/15 with that feature
+off, and 24/24 and 16/16 with it on. Both selections pass strict Clippy;
+their CI feature-boundary step has not run on GitHub Actions.
+
+Playwright-compatible tracing is a separate, partially implemented opt-in
+capability. The new `pwright-trace-playwright-v8` Rust leaf writes bounded
+version-8 JSONL `context-options` and API before/log/after events to an
+injected writer, and prepares a caller-owned trace directory without deleting
+it. Its release tests pass 11/11 and strict Clippy passes. It is absent from
+the default Node host dependency tree. The existing Context tracing service
+and file sink still emit binary PWRTRACE v1 only after a completed chunk;
+they cannot substitute for upstream `.trace`, `.network` and ZIP artifacts.
+Streaming file ownership, Context lifecycle integration and Node/Python bindings, ZIP export,
+snapshots/HAR bodies, screencast, source capture and remote Artifact delivery
+remain open. Candidate Context-memory and disk quotas in
+`docs/design-tasks-v2.md` remain proposals, not accepted defaults.
+
+## Persistent-Context validation as an independent Rust leaf (2026-10-10)
+
+`pwright-persistent-context-preflight` is a zero-third-party-dependency,
+I/O-free decision crate. Its typed input represents browser engine, ordered
+certificate truthiness after materialization, normalized argument strings and
+the `ignoreDefaultArgs` shape. It returns exact, unprefixed Playwright-style
+rejection reasons in certificate-before-argument order. It owns no browser,
+process, network transport, filesystem read or runtime.
+
+The Node boundary selects it only through the explicit
+`persistent-context-preflight` profile. The JavaScript client still finishes
+all asynchronous certificate path reads, unwraps boxed protocol strings,
+maps JavaScript/Buffer truthiness and constructs the public `Error`; the N-API
+adapter converts those values into Rust input. The default profile retains its
+JS decision path, apart from the explicit protocol-string normalization repair
+described below. `launchPersistentContext()` with otherwise valid options remains
+unsupported. The selected addon has no owned-launch or browser-registry
+feature, and the exact dependency closure adds only the pure leaf. A deliberate
+boxed-empty certificate-string normalization fix applies to both JS and Rust
+profiles; it was verified against pinned Core before any native acquisition.
+The selected Rust decision now follows pinned Firefox engine dispatch:
+classic Firefox rejects every `-juggler*` argument after profile misuse,
+while `moz-*` BiDi Firefox does not apply the juggler check and still rejects
+page arguments. A truthy non-array `ignoreDefaultArgs` bypasses this default-
+argument validation; an array, including `[]`, does not. The default JS
+profile is deliberately unchanged and still reaches its unsupported-launch
+boundary for classic `-juggler*`.
+No new official corpus rows or positive browser capability are claimed by this
+architecture change.
+
+NODE-432 composes Page response waiting from three independently selectable
+native leaves. `response-events` activates the existing Rust network observer
+and publishes immutable snapshots through a fixed 256-item queue.
+`response-finished` adds one bounded opaque terminal owner without selecting
+body reads. `response-body` reads through the browser-native request identity
+only after that owner reaches a terminal success or failure.
+
+Node owns only synchronous EventEmitter arming, public RegExp/function
+predicates and Playwright-shaped diagnostics. It neither subscribes to CDP nor
+derives a Response from Request events. The final minimal event artifact has no
+completion method; the completion artifact has no body capability; and the
+full official composition preserves both identities separately. Candidate and
+oracle have identical normalized outcomes for all nine unchanged Chromium
+Page cases: eight expected plus one shared Chrome-154 cached-image unexpected.
+
+NODE-431 keeps request waiting as composition over the NODE-430 boundary.
+`waitForRequest()` and generic Page `waitForEvent()` share one JavaScript
+EventEmitter waiter because predicates, cross-realm RegExp identity, public
+call stacks and error presentation are language concerns. The listener is
+installed before the Promise is returned and every resolve, reject, timeout or
+Page-close path retires its listener and timer.
+
+The waiter reads the effective Page default from the Rust timeout registry.
+String matching still crosses the Rust URL-glob port; request observation and
+the bounded lifecycle queue remain in the existing native leaf. The client
+formats only Playwright's quoted-event timeout and a matcher preview capped at
+50 Unicode code points. It adds neither a CDP subscription nor a native waiter
+per call. The unchanged eight-case Chromium Page file passes 8/8 in candidate
+and oracle lanes, and exact ledger diffs promote only those eight rows.
+
+NODE-430 composes public Page request waiting from two independent native
+leaves. `request-events` activates the existing bounded Rust network observer
+for each selected Context, stores at most 256 request lifecycle notices inside
+the shared 16 MiB queue, and exposes one caller-polled `nextRequestNotice`
+port. It also selects the metadata-only Rust URL-glob compiler. The optional
+`request-post-data-json` leaf adds only Rust JSON/form decoding and N-API JSON
+conversion; it does not select routing, response bodies or request history.
+
+Node starts one weak Browser watcher and publishes each immutable snapshot
+through the shared `Request` facade. `page.waitForRequest()` attaches its
+EventEmitter listener synchronously before returning, preserving Playwright's
+`Promise.all([waitForRequest(), action])` arming order without adding a native
+per-wait task. Rust still owns subscription activation before Context/Page
+publication, queue admission, lifecycle reconciliation, parsing and foreign
+copy budgeting. Request wrappers are cached only until their terminal
+`requestfinished` or `requestfailed` notice. Minimal native builds for both
+leaves are compiled explicitly because the full official profile can hide
+N-API feature-shape errors.
+
+The complete pinned Chromium Page file passes 6/6 in candidate and oracle
+lanes. Both annotated failures reach the same real assertions and observe null
+post data; no missing API or unsupported parser masks them. Exact six-row
+ledger promotion and unchanged audit hashes preserve full-corpus accounting.
+
+NODE-429 keeps configured headers and observed navigation Requests as separate
+composable concerns. `extra-headers` continues to own Context/Page mutation.
+The independent `response-request` leaf composes frame navigation with the
+existing bounded request-history owner, looks up the browser's native request
+ID, and attaches the immutable `NetworkRequestRecord` owner to the navigation
+Response. Page goto, Frame goto, wait-for-navigation, reload and history
+navigation all use the same attachment path.
+
+The Rust owner reserves a conservative foreign-copy budget before N-API
+materializes strings, header pairs or post data. JavaScript receives only that
+typed snapshot and constructs the shared public `Request` facade; it does not
+merge configured headers, query CDP, or maintain another request registry.
+The leaf's exact feature closure is `frame-navigation + request-history`, and
+boundary tests prove that the standalone profile does not select Page routes
+or the header-mutation feature.
+
+NODE-428 separates raw touch transport from DOM action semantics. The
+`pwright-cap-touchscreen`, `pwright-backend-cdp-touchscreen` and
+`pwright-composition-chromium-touchscreen` leaf accepts only finite Page
+coordinates and borrows the Page input coordinator; it has no Locator, Handle
+or JavaScript dependency. The independently selected tap action resolves its
+target through the existing Rust Locator/Handle owners, enforces actionability
+and hit-target interception, then calls the raw leaf. `hasTouch` remains a
+separate Context device-emulation prerequisite.
+
+Chromium touch dispatch deliberately submits `touchStart` and `touchEnd`
+concurrently, matching Playwright's driver ordering while holding one
+Page-scoped dispatch lease. Cancellation leaves a bounded active-touch record
+that teardown can release. At the higher action layer, tap is the only Locator
+action that omits topology and Page-binding post-action publication fences,
+because upstream always executes it with `waitAfter: 'disabled'`; all other
+actions retain those fences. After foreign pages exited naturally, the complete
+unchanged candidate and independent oracle files both passed 9/9 with verified
+provenance; exactly the same nine inventory rows were promoted in each ledger.
+
+NODE-427 keeps touch support as two independently selected Rust compositions.
+`locator-dom-actions` owns strict resolution and a static browser program that
+turns plain touch dictionaries into native `Touch` objects. The addon
+`device-emulation` leaf exposes only a boolean Context-creation port over the
+existing bounded host registry and Chromium session-initialization fence. The
+Node facade validates public shapes and chooses the leaf; it stores no device
+state and executes no browser protocol.
+
+Python ABI 103 composes exact-element focus with the existing Page Keyboard in
+one Rust-owned command. The PyO3 boundary retains the native ElementHandle and
+Page ID, admits one input start, focuses the retained element, then dispatches
+only `press` or `type` through the existing keyboard host. Python cannot
+interleave another operation between focus and input and owns no second input
+state, protocol client or cancellation path.
+
+Frame selector methods are facade composition over existing owners. The exact
+Frame ID is forwarded to native locator and evaluation paths; collection
+evaluation creates and releases its temporary array in Rust. Page/Frame typing
+reuses Locator sequential input. ABI 103 therefore adds a boundary method, not
+a new capability leaf or browser implementation.
+
+Python ABI 102 adds no second Keyboard implementation. One optional PyO3
+method converts the public operation tag, bounded value and delay into calls
+on the existing Rust Page Keyboard host. That host continues to bind the exact
+Page session and own platform key mapping, input-state serialization,
+admission and cancellation. Async and sync Python `Keyboard` objects are thin
+views over their owning Page, with no protocol client, worker or retained
+native registry.
+
+Python ABI 101 composes `request-timing` over the existing network lifecycle.
+The backend-neutral Request and Response records share one immutable optional
+timing sidecar; the opt-in codec carries it without changing the base wire
+profile. Chromium converts its monotonic/wall origin and response phases at
+the adapter boundary, including cache fallback and redirect completion. The
+host and PyO3 layer only project the already normalized snapshot. Python
+merges a newer snapshot into the existing public Request wrapper, so event
+order cannot replace completed timing with an older pending copy.
+
+Navigation completion and language event publication are separate ordered
+boundaries. Each admitted request/response notice receives a checked u64
+sequence. A fence snapshots the last published sequence in both finite FIFOs;
+the single Browser watcher acknowledges it only after callback dispatch.
+Navigation-like Page calls wait on those acknowledgements before returning.
+This composes with the existing queues and watchers instead of adding a task,
+poller, second network registry or Python-side protocol cursor.
+
+NODE-384 changes no architecture. Its two newly executed official rows compose
+the existing BrowserContext request owner with retained APIResponse route
+fulfillment, or use the existing bounded JSON fulfill path. Python owns no
+response body copy or second route dispatcher.
+
+Python ABI 100 keeps composite JSHandle arguments inside the existing Handle
+composition. The language facade performs only bounded public-wrapper
+unwrapping while preserving container aliases and cycles. PyO3 records ordered
+preorder slots, and the Rust host validates the ordinary value projection,
+placeholder ordering, exact live owners and target-native argument resolution.
+When no Handle is present, evaluation follows the unchanged ordinary route.
+
+Property enumeration composes the existing atomic native Handle batch owner;
+Python receives independently disposable wrappers only after the complete
+batch is admitted and published. Timezone-aware Date construction and public
+preview strings are result-shape conversion, not alternate native registries.
+
+Python ABI 99 adds no generic “browser is local” switch. The opt-in
+`file-input-native-paths` composition recognizes only prepared directory
+plans, validates the exact retained input element, and performs the native DOM
+mutation inside Rust. Ordinary paths continue through bounded payload
+materialization and the official remote-CDP size guard. This keeps trust and
+transport choice composable per operation rather than per connection.
+
+The directory continuation owns its call/source leases and a cleanup
+reservation. Once polled, dropping a language waiter transfers the exact
+operation to the cleanup executor, retaining both the native target and
+prepared paths until settlement. Python owns neither a target registry nor a
+filesystem lifetime table.
+
+Python ABI 94 keeps popup initialization, lifecycle events and dialog actions
+inside existing composable owners. A discovered popup that opens a blocking
+dialog races recursive initialization against an exact-session dialog cursor.
+The dialog-first branch publishes bounded provisional Page/popup/Dialog
+identity and records one resume marker; dialog close consumes that marker and
+finishes the same initialization. No second topology registry, polling loop or
+Python-side browser state is introduced.
+
+Event Handle readiness is an observer-boundary contract, not a detach-boundary
+contract. Immediate-close popup console Handles are published before native
+detach compensation completes. Dialog actions retain their CDP client only
+while ready; exact dialog close and host shutdown atomically revoke them before
+transport teardown, preventing an unhandled Dialog wrapper from keeping the
+connection alive.
+
+Python ABI 87 extends the existing `request-events` installation rather than
+adding a second network pipeline. One Rust owner subscribes each selected
+Context to request, request-finished and request-failed kinds and shares native
+activation with request history and response events. All Page request notices
+flow through the existing fixed FIFO. The Python Browser owns one watcher and
+uses the Page's weak portable-ID map for all three public event names.
+
+Chromium's navigation loader/request ID is not the portable Rust identity.
+Request history retains the exact native value beside the portable record so
+navigation Response construction can select the already wrapped Request by an
+exact match. The native value remains internal FFI correlation metadata; it
+does not replace or leak into the public identity and no URL heuristic,
+parallel protocol task or second queue is introduced.
+
+Python ABI 86 does not add a second header implementation. Page and Context
+bindings delegate to the existing Rust `extra_headers` installation, which
+owns target identity, Context/Page precedence, native session fanout and
+replacement lifecycle. Python retains no header snapshot after transferring
+the bounded string entries.
+
+Navigation and routing share that authoritative Page snapshot. `goto()` reads
+its optional referer before dispatch. When a matching `Fetch.requestPaused`
+event omits the referer, the route driver reads the same Page-specific source
+and augments the bounded public request once. Native referers win. The event
+parser lowercases all CDP request-header names before publication, matching
+Playwright's public `Request.headers` shape without moving normalization into
+Python.
+
+Route fulfillment likewise keeps protocol semantics in Rust. The route owner
+maps the bounded numeric status to Playwright's pinned reason phrase and sends
+both in the same `Fetch.fulfillRequest`; Python owns neither the mapping nor a
+browser-version compatibility fallback.
+
+Python ABI 85 extends the existing route owner with a bounded continuation
+cursor, not a second dispatcher. On initial match, Rust records the position
+after the selected Page or Context registration plus the original bounded
+request fields. Each fallback rematches older handlers against the effective
+URL, accumulates optional continuation overrides and schedules the next opaque
+call. Page handlers always precede Context handlers; both scopes are LIFO.
+Fulfill, abort or continue consumes the pending call once. Chain exhaustion
+continues natively with the accumulated override value.
+
+Handler-specific unroute stays in the same ownership graph. Python maps public
+handler identity to opaque registration IDs, while Rust verifies exact Page or
+Context scope and owns removal, Fetch-pattern refresh and pending-call safety.
+Sync adapters preserve the original callable only as facade metadata. An
+internal favicon pause is aborted before matching, mirroring upstream's server
+policy without exposing a synthetic user callback.
+
+Python ABI 84 stores an optional finite use budget inside each existing Rust
+route registration. The authoritative matcher holds the route-state mutex
+while it chooses Page before Context and newest before oldest, decrements the
+selected count and atomically removes its last use. It always verifies the
+stored matcher, including the one-registration case, because Chromium may
+briefly deliver a pause from a Fetch pattern that just expired.
+
+Expiration does not release the in-flight request. The pending call carries a
+refresh flag and completes its normal terminal action first; the host then
+reconciles Fetch patterns across the bounded current sessions in that Page or
+Context scope. A stale pause with no Rust match becomes an internal native
+continue action and bypasses the Python callback queue. Across the FFI,
+Python sees only the opaque registration ID plus an `expires` bit, releases
+the callback identity before the final invocation and owns no count, matcher,
+request ID or refresh topology. Direct negated assertion names delegate to the
+same `.not_to` object and introduce no parallel assertion engine.
+
+Python ABI 83 route globs use one Playwright-shaped question-mark rule across
+both matching layers. The authoritative Rust matcher treats `?` literally.
+Before installing `Fetch.enable`, a bounded compiler makes the same character
+literal in CDP's wildcard grammar by inserting one backslash only when the
+preceding backslash run is even. A sole registration may therefore continue
+to rely on Chromium prefiltering; multiple Page/Context registrations use the
+same Rust matcher for final precedence without semantic drift.
+
+Compilation is fallible and does not mutate the stored public pattern. The
+host first computes the exact escaped byte count, reserves that amount, emits
+the pattern and verifies the expected length. Python receives no matcher,
+compiled pattern or second route state.
+
+Python ABI 83 represents request continuation as one composable Rust
+`RouteContinue` value. URL, method, headers and POST data remain independently
+optional so omission, explicit empty headers and empty bodies retain their
+public meaning. Validation happens before the paused call is consumed. The
+selected pending call carries only its bounded original request scheme; Rust
+uses it to reject cross-protocol URL replacement, then constructs one typed
+`Fetch.continueRequest` with base64 POST data and an ordered header array.
+
+The Python facade only performs public-language normalization: header keys and
+values become strings, `None` header values are removed, strings become UTF-8,
+bytes remain bytes and other POST-data values use JSON encoding. It never
+receives the CDP request id or duplicates native routing, matching, lifecycle,
+capacity or same-protocol policy. HAR redirects and fallback continuation now
+reuse the same Rust value instead of a parallel continue-with-URL action.
+
+Python ABI 82 composes scope-wide route retirement into the existing Rust
+route owner. `Page.unroute_all()` and `BrowserContext.unroute_all()` remove
+only registrations whose stored `RegistrationScope` exactly matches the
+selected Page or Context; the host then reconciles Fetch patterns on every
+affected current Page/OOPIF session. Future sessions see only the surviving
+authoritative registrations. Python does not rescan patterns or mirror native
+route state, and clears callback identities only after native removal returns.
+
+The `"wait"` behavior extends the route-call lifecycle by moving a dispatched
+call from the bounded pending table into a bounded settling table before
+invoking Python. A cancellation-safe guard retires the settling entry and
+wakes one shared `Notify` after the callback resolves, raises or is cancelled.
+The waiter tests the call's original registration scope, not current route
+membership, so removing registrations cannot make active callbacks invisible.
+Default behavior performs the same exact removal and Fetch reconciliation
+without waiting. `"ignoreErrors"` is rejected at the facade until its distinct
+error-suppression semantics are designed.
+
+Navigation correlation also records whether a post-cursor main-document
+navigation belongs to the expected loader or a competing loader. An older
+`chrome-error://chromewebdata/` commit with no newer competing loader cannot
+interrupt the expected navigation; a newer competing document request or
+start signal still does. This preserves Playwright-compatible route-wait
+ordering without weakening genuine navigation interruption errors.
+
+Python ABI 81 exposes ordinary Context route bindings through ABI 80's same
+Rust route owner. Registration carries `Context(ObjectId)` scope and one
+binding-handler tag; exact non-glob patterns resolve through the authoritative
+Context snapshot. Existing and future Page/OOPIF sessions receive the union of
+matching Fetch patterns without copying callback state into Rust or topology
+into Python.
+
+The Rust selector examines Page registrations before Context registrations,
+then newest first within one scope. Its selected opaque registration ID is the
+only key sent through the bounded FFI queue, so Python dispatch does not repeat
+matching or precedence. Context close retires Rust registrations and Python
+handler identities; no second driver, transport, browser or polling task is
+introduced.
+
+NODE-327 keeps ABI 80 and makes an absent `log.entries` member one explicit
+backend-neutral representation of an empty HAR. The archive lookup returns
+`NoEntry`; the route owner still decides fallback versus abort. The parser does
+not catch or downgrade invalid JSON, missing `log`, malformed entries, external
+content or resource-limit failures, so policy composition does not erase input
+diagnostics.
+
+Python ABI 80 generalizes HAR route registration to an explicit Rust scope
+without duplicating the archive policy or Fetch driver. A registration is
+either Page- or Context-scoped. Matching evaluates every Page registration
+before every Context registration, then evaluates newest first within that
+scope. Context registrations therefore apply to all current and future Pages
+and OOPIF sessions, while a Page-specific override remains authoritative.
+
+New target initialization records one exact session/Page/Context bridge before
+installing Fetch patterns. This lets the shared event driver settle a request
+that pauses before the target enters published topology. Reconciliation moves
+the session into the authoritative topology; initialization failure and target
+detach retire it directly. A Context registration is retained through a
+temporarily empty Context and retires only when that Context closes. No second
+topology, driver, transport, browser process or Python state mirror is added.
+
+Python ABI 79 composes HAR replay as a distinct policy leaf rather than adding
+archive behavior to Page routes. `pwright-har-replay` is backend-neutral: it
+turns one bounded plain archive plus a request descriptor into fulfill,
+redirect, abort/fallback or stall actions. The host owns bounded filesystem
+input, registers the resulting archive beside ordinary route bindings and
+settles internal HAR matches directly inside the existing Fetch event driver.
+Python retains only the public path/options and never owns an archive, matcher,
+response body, pending route, CDP session or browser worker.
+
+Computed-style assertions use the same separation. Python supplies bounded
+property and expected-value data; Rust selects the static browser program and
+owns regular-expression validation, retries, deadline and missing-element
+semantics. The browser returns one typed match/received value per admitted
+attempt.
+
+Python ABI 78 composes HTTP credentials and navigation response bodies as
+independent leaves. `context-http-credentials` owns bounded ordinary/default
+Context policy and exact-session Fetch-authentication settlement; it shares
+one event cursor and Fetch installation with `page-routes` without merging
+their public APIs or state. `response-body` reuses Rust-correlated navigation
+request identity and authoritative Page/Frame routing for one bounded
+`Network.getResponseBody`; Python receives only copied bytes.
+
+Python ABI 76 composes geolocation value, permission and persistent Chromium
+launch arguments as three independent leaves. `context-geolocation` owns a
+fixed 16-Context registry of finite longitude, latitude and accuracy values.
+Its session initializer matches exact owned/default/external Context identity
+and sends `Emulation.setGeolocationOverride` before Page/OOPIF publication.
+
+`context-geolocation-permission` owns a separate fixed 16-Context registry and
+sends `Browser.grantPermissions {"permissions": ["geolocation"]}` on the root
+browser session. The persistent default omits `browserContextId`; an owned
+Context uses the exact native ID obtained from authoritative topology. A caller
+can therefore select coordinates, permission, both or neither without pulling
+in a second driver, transport, topology or Python state mirror.
+
+`persistent-context-launch-arguments` validates one bounded switch collection
+and moves it into the existing `ChromiumLaunchRequest`. It cannot replace the
+profile directory, open a page directly or override Pwright's loopback
+remote-debugging connection. The official conformance runtime opts into one exact
+`--unsafely-treat-insecure-origin-as-secure` switch only because repository
+rules require the upstream HTTP fixture to use Tailscale MagicDNS while the
+unchanged upstream test relies on localhost's trusted-origin exception.
+
+Python ABI 75's optional `context-offline` leaf is a Context-scoped Chromium
+initialization policy. Rust owns a fixed registry of at most 16 selected
+portable Context identities; a separately admitted immutable bit selects the
+persistent default and attached external Contexts inherit neither path.
+
+Every selected Page or OOPIF session receives exact
+`Network.emulateNetworkConditions {"offline": true, "latency": 0,
+"downloadThroughput": -1, "uploadThroughput": -1}` initialization before
+publication. Ordinary Context creation and persistent launch forward the
+boolean through the existing composable Rust policy value. The leaf introduces
+no Python/CDP state mirror, driver, transport, polling loop or browser process.
+
+Python ABI 74's optional `context-timezone` leaf is a Context-scoped Chromium
+initialization policy. Rust owns a fixed registry of at most 16 selected
+portable Context identities and their validated timezone identifiers; the
+persistent default is an independent immutable selection and attached external
+Contexts inherit neither path. Each identifier is nonempty, control-free and
+bounded to 256 UTF-8 bytes.
+
+Every selected Page or OOPIF session receives exact
+`Emulation.setTimezoneOverride {"timezoneId": ...}` initialization before
+publication. Chromium's shared-renderer "already in effect" response is the
+only idempotent duplicate; invalid timezone identifiers become stable argument
+errors and unrelated protocol failures propagate. Ordinary Context creation
+passes one composable Rust `ContextPolicyOptions` value, so adding this leaf
+does not lengthen the host's positional policy API or introduce a Python/CDP
+state mirror, driver, transport, polling loop or browser process.
+
+Python ABI 73's optional `javascript-disabled` leaf is a Context-scoped
+Chromium initialization policy. A fixed Rust registry records only selected
+owned Context IDs; an immutable default bit independently selects the
+persistent default Context. Attached external Contexts never match either
+path. Every selected Page or OOPIF session receives exact
+`Emulation.setScriptExecutionDisabled {"value": true}` initialization before
+publication. Creation compensation and close remove the same policy
+idempotently, and Python retains no policy or session mirror.
+
+The official disabled-JavaScript click row also requires navigation waiting
+and correct inline hit targeting. Async and sync `Page.expect_navigation`
+therefore arm the existing bounded Rust frame-navigation wait before the user
+action; the returned public Response and Page URL are adapted in Python. URL
+predicates remain explicitly unsupported. Default Locator click positions use
+the center of the first visible clipped `getClientRects()` fragment instead of
+the center of a wrapped inline element's union box; explicit positions retain
+their existing border-box meaning.
+
+CDP attachment can receive replayed main-world console objects while the
+utility world is still being installed. The main-world handle route is already
+authoritative, so staging proceeds while the paired-world native-retirement
+receipt remains optional. Missing that optional receipt no longer aborts the
+entire topology. No second topology, driver, transport, polling loop or browser
+process is introduced by any part of this checkpoint.
+
+Python ABI 72's optional `bypass-csp` leaf is a Context-scoped Chromium
+initialization policy. A fixed Rust registry records only selected owned
+Context IDs; a separate immutable default bit selects exactly the persistent
+default Context. Attached external Contexts match neither path and inherit no
+policy. The persistent feature is a composition over the same owner rather
+than a second implementation.
+
+The session initializer resolves exact Context ownership and sends
+`Page.setBypassCSP {"enabled": true}` on every selected Page or OOPIF session
+before that session is published. A later cross-process target therefore
+receives the same policy through normal topology initialization. Registry
+admission precedes owned-Context creation, failure compensation removes the
+pending policy and close removes committed policy idempotently.
+
+Python validates and forwards only booleans. It retains no CSP state, session
+identity, protocol timing or cleanup owner. The feature adds no driver,
+polling loop, transport or new package closure. Chromium is the installed
+provider; Firefox, WebKit and the separately blocked
+`ElementHandle.content_frame` surface are not implied.
+
+Python ABI 71's optional `persistent-context-extra-headers` is a composition,
+not a second header implementation. Persistent launch admits one bounded
+`PersistentContextExtraHeaders` value before initial topology and moves the
+strings into the existing `HeaderPool`. The first selected session with exact
+`CdpContextOwnership::Default` atomically registers that Context in the
+existing `HeaderSettings`; owned and externally attached Contexts begin
+without the launch default.
+
+Session initialization then uses the existing merge and fan-out path to apply
+`Network.setExtraHTTPHeaders` before Page publication. Later explicit Context
+or Page updates, clears, compensation after partial native failure and session
+retirement all use the same pool, settings registry and job owner. A browser
+receipt precedes every committed change, and a later explicit clear wins over
+the launch seed.
+
+Python validates and forwards public strings but retains no protocol identity
+or header mirror. This leaf adds one feature edge from persistent launch to
+the existing header owner, one optional default state and no driver, polling
+loop, protocol transport or second source of truth. Chromium is the installed
+provider; the design does not imply Firefox, WebKit or generic Playwright-
+server support.
+
+Python ABI 70's optional `persistent-context-emulate-media` is a composition,
+not a second media implementation. Persistent launch admits an immutable
+optional `PersistentContextMediaOptions` before initial topology. Rust converts
+the three public enum values once and stores typed values; neither Python nor
+the browser protocol is the policy source of truth.
+
+The existing media initializer chooses the initial state by exact
+`CdpContextOwnership`: only `Default` receives the persistent default, while
+owned and externally attached Contexts start unchanged. Every Page and OOPIF
+session is initialized before publication through `Emulation.setEmulatedMedia`.
+Later `Page.emulate_media` calls use the same state table and capacity-one gate,
+so launch replay and public mutation cannot race or overwrite each other out of
+order. State commits only after the browser receipt.
+
+This leaf adds no Python mirror, polling loop, driver, process or protocol
+transport. It adds one feature edge from persistent launch to the existing
+media owner and one optional typed default in the host installation. Chromium
+is the implemented provider; this checkpoint does not imply Firefox, WebKit or
+generic Playwright-server transport support.
+
+Python ABI 69's persistent launch-argument preflight is a language-boundary
+validation layer, not a browser launch provider. It runs before environment or
+native session creation and mirrors Chromium Playwright's ordered ownership
+checks for `--user-data-dir`, `--remote-debugging-pipe` and non-switch page
+arguments. An empty sequence has no semantic effect. A non-empty switch-only
+sequence remains an explicit unsupported capability rather than being dropped
+or silently forwarded.
+
+No argument is retained after validation, no value crosses FFI, and no Rust
+launch tuple or ABI entry changes. General custom Chromium flag support remains
+future work that must be owned by a composable Rust launch provider with its
+own process construction, conflict handling and cleanup evidence.
+
+Python ABI 69's optional `context-cookies` leaf is a browser-root capability,
+not a Page capability. The host resolves the public BrowserContext owner to
+the exact Chromium default or owned context ID and opens a root `CdpSession`.
+Reads, writes and unfiltered clears map directly to `Storage.getCookies`,
+`Storage.setCookies` and `Storage.clearCookies`. No Page/session prerequisite,
+driver process, polling loop or mirrored cookie store is introduced.
+
+Rust performs Playwright-compatible input normalization and remains the only
+owner of cookie filtering and mutation semantics. URL inputs derive domain,
+directory path and secure defaults; domain/path inputs retain Chromium's
+native behavior. Filtered clear reads the authoritative Storage result and
+expires only matching cookies, retaining both the public top-level partition
+site and Chromium's internal cross-site-ancestor bit. Empty exact matchers
+match all, and an empty URL falls back to the domain/path pair as upstream's
+truthiness rule requires.
+
+Python retains no cookie state. Async and sync facades validate the public
+shape, enforce pre-copy byte limits and forward immutable tuples through ABI
+69. Output partition data exposes only Playwright's public top-level site;
+Rust keeps the ancestor bit private so a later filtered clear can round-trip
+the exact Chromium identity.
+
+Python ABI 68's BrowserContext event facade is a language-only adapter over
+the existing Rust-owned lifecycle publication. Rust continues to discover,
+order and retire Page and Context topology; the single existing Browser
+lifecycle watcher publishes each value into BrowserContext's bounded event
+surface. Async `on`, `once` and `remove_listener` retain only Python callback
+identity. The sync facade preserves the corresponding public wrapper identity
+for Page, ConsoleMessage and the closing BrowserContext, and reuses the bridge's
+existing callback-error handoff.
+
+Console listeners reuse the existing Rust Context-console subscription. The
+first Python listener acquires one token; the last removal releases that exact
+token. This does not duplicate console payloads or introduce another watcher,
+poller, protocol receiver, cleanup task or source of browser truth. No native
+export or ABI change is required.
+
+Python ABI 68's optional `persistent-context-device-emulation` leaf composes
+the owned persistent Chromium launch with the existing `device-emulation`
+installation. One `PersistentContextDefaults` value carries the independently
+selected locale, HTTPS and device policies through host construction without
+growing the launch function's parameter surface. The device policy is admitted
+before the initial topology snapshot, so the existing initializer applies its
+viewport, screen, scale, mobile, touch and user-agent commands before initial
+Page/OOPIF publication.
+
+Device lookup is ownership-aware. `Default` reads the immutable persistent
+selection, `Owned` reads the existing bounded per-Context registry, and
+`External` reads no device policy. The stateless user-agent composition layer
+therefore combines a default device UA with an independently selected default
+locale without adding another registry or command lane. Page viewport replay
+uses the same ownership classification, so a Page-level resize preserves the
+correct default or owned device semantics.
+
+Python validates and forwards the public options, retaining only a tuple copy
+for Playwright's synchronous `Page.viewport_size` property. Rust remains the
+authority for browser emulation, Page-level viewport mutation, topology,
+resource admission and cleanup. The async and sync facades share the same
+state transition and expose no CDP session or cleanup owner.
+
+Python ABI 67's optional `persistent-context-ignore-https-errors` leaf
+composes the owned persistent Chromium launch with the existing
+`ignore-https-errors` installation. The launch tuple carries one validated
+boolean into host construction. Before the initial topology snapshot, Rust
+records whether the persistent default Context selected the policy; the same
+session initializer that handles later owned Contexts can therefore send
+`Security.setIgnoreCertificateErrors { ignore: true }` before the initial
+Page/OOPIF is resumed or published.
+
+Policy lookup is explicitly ownership-aware. `Default` reads the immutable
+persistent selection, `Owned` reads the existing bounded per-Context registry,
+and `External` is always false. Thus enabling the composition leaf does not
+change attached external Contexts or later Contexts that did not request the
+policy. Python forwards only the public boolean and owns no CDP session,
+policy registry, launch process or cleanup task.
+
+Python ABI 66 distinguishes a Browser backed by `connect_over_cdp` from the
+unique Browser hidden behind `launch_persistent_context`. The latter carries a
+language-only persistent ownership bit. Its default `BrowserContext.close()`
+first executes the ordinary Context close path, including Page retirement and
+publication, then closes the Browser's existing `NativeSession`. That native
+close joins the Rust `HostSession` and removes its exact `Arc` from the Python
+environment's fixed session vector. Closing an ordinary owned Context does not
+close its shared connected Browser.
+
+After successful Browser close, Python also removes that Browser from
+`Playwright._browsers`; shutdown therefore retains neither a native environment
+slot nor a closed Browser/Context/Page graph. The sync facade delegates to this
+same async owner, so it cannot diverge. No retry, detached cleanup task, second
+transport or new Rust owner is introduced. Final same-process stress executes
+50 persistent Chromium launches through 30 official testcase invocations,
+demonstrating repeated teardown beyond the fixed capacity of 16.
+
+Python ABI 66's `wait_for_function` behavior uses one deadline owner around the
+existing poll operation. When the public deadline fires, the owner cancels the
+poll token and retains the operation only long enough for its current admitted
+predicate command and ordinary publication fence to acknowledge cancellation.
+Cancellation checks after Handle creation, after truthiness completion and in
+the poll delay prevent another predicate attempt. A Handle returned after the
+deadline is sent through normal disposal before the public `Timeout` completes.
+The deadline does not create a detached cleanup task or a second command path;
+stop and disconnect still terminate through authoritative `TargetClosed`.
+
+This is internal completion ordering, so the Python/native handshake remains
+ABI 66 and Python retains no deadline token or native Handle. The boundary adds
+no feature, queue, registry, transport, session copy or dependency. Final
+installed-wheel stress proves that timeout return is a side-effect fence for
+the current attempt without waiting for an additional polling interval.
+
+Python ABI 66's optional `persistent-context-locale` leaf composes the existing
+owned persistent Chromium launch with `context-locale`. The launch caller
+validates the optional locale, transfers it into the host construction and
+pre-admits the default-Context policy before the initial topology snapshot.
+The session initializer can therefore apply the policy to the initial Page and
+later OOPIFs before debugger resume and portable Page publication. Attached
+external default Contexts do not acquire this policy.
+
+Chromium couples `userAgent` and `acceptLanguage` in one protocol method, so
+the device and locale leaves do not emit competing overrides. A stateless
+outer initializer projects both independently retained policies and emits at
+most one `Emulation.setUserAgentOverride` per selected session. Device-only
+contexts send their selected UA, locale-only contexts use Chromium's empty-UA
+sentinel plus `acceptLanguage`, and combined contexts preserve the selected UA
+while adding `acceptLanguage`. The locale initializer separately sends
+`Emulation.setLocaleOverride`. The first command drives
+`navigator.language`; the second drives ICU/`Intl`. Only the exact shared-
+renderer duplicate-locale protocol error is idempotent. Python owns no CDP
+session, locale registry or launch process; it forwards one optional string in
+the ABI 66 persistent-launch tuple. An installed-wheel real-Chrome probe
+confirms the combined UA and language values and leak-free Context retirement.
+
+Python ABI 65's optional `context-locale` leaf stores one validated locale on
+the authoritative owned BrowserContext. It composes outside the existing
+session initializers and sends `Emulation.setLocaleOverride` after downstream
+initialization but before Page/OOPIF publication. Context close removes the
+policy through the same Rust lifecycle owner; Python forwards only the public
+`locale` option.
+
+Chromium shares locale across Pages in one renderer. The initializer therefore
+matches upstream Playwright by treating only the protocol error containing
+`Another locale override is already in effect` as successful idempotence and
+propagating every other CDP failure. It does not retain session IDs.
+Dedicated and nested Workers inherit their renderer's locale; no Worker locale
+command or initialization port exists, and the existing Worker attach sequence
+remains unchanged.
+
+Python ABI 64's optional `worker-console-argument-handles` leaf composes the
+existing Worker console observer and Worker Handle registry. A console event is
+first parsed into immutable text/location metadata, then every ordered CDP
+RemoteObject is validated under pre-admitted Handle ownership. Only a complete
+batch is placed in the bounded FIFO. Before transfer, one recovery owner covers
+all object IDs; after transfer, each Handle owns its normal cleanup reservation.
+This creates one ownership cutover and prevents both partial publication and
+double release.
+
+Worker Handle `json_value` shares the existing CDP value-evaluation backend.
+Retained primitives are reconstructed from their bounded CDP call argument
+without browser I/O. Object values run `target => target` through the existing
+serialization runtime using the Worker's exact session client and unique
+execution context. Python sees only opaque `NativeHandle` descriptors and
+adapts legacy 11-field notices or ABI 64's 12-field notice; it owns no CDP ID,
+recovery task or alternate evaluation world.
+
+Python ABI 63's optional `worker-handle-evaluation` leaf composes the retained
+Worker owner with the existing Handle registry and evaluation backend. Worker
+creation captures the exact Runtime execution-context unique id for its exact
+CDP session; `evaluate_handle` resolves that pair directly and never aliases a
+Frame or Page main world. Rust transfers only an opaque Handle id across PyO3,
+and all property acquisition, RemoteObject ownership, disposal and shutdown
+cleanup stay in the existing bounded native lifecycle.
+
+The public Handle core holds a weak reference to its Worker owner. A live
+Worker keeps its native session owner; an already disposed Handle cannot keep
+that Worker, the native connection or the transport shutdown barrier alive.
+Python adds no CDP reader, object-id cache or cleanup task: it adapts only
+`Worker.evaluate_handle` and `JSHandle.get_property`. Other operations on a
+Worker-created Handle must be independently implemented and verified before
+full Worker Handle compatibility is claimed.
+
+Python ABI 62's optional `worker-network-events` leaf composes the retained
+Worker owner with existing request/response publication. Network is enabled on
+the exact Worker session before debugger resume; the Page driver's one cursor
+tracks at most 64 related Worker/nested-Worker sessions and maps them to the
+owning Page without adding adapters. Native lifecycle keys include the exact
+session scope, all scopes share the Page's request/event budgets, and detach
+drains only the retired scopes. Python owns only weak public identity maps and
+the existing Browser network watcher.
+
+The same optional Node `element-handle-dom` composition now owns the complete
+implemented read/query slice: exact-target `innerText` and `textContent`, first
+and ordered-all descendant publication, plus creation/evaluation/disposal of
+the temporary `$$eval` array. Rooted XPath applies upstream's relative `/`
+rule and filters non-Element nodes. N-API batch conversion and Node wrapper
+publication both compensate all transferred owners on failure. This source
+completion has passed non-browser gates; official candidate/oracle runtime
+proof remains pending an empty dedicated Chrome and is not inferred from the
+architecture.
+
+Node's optional `element-handle-dom` composition reuses the same retained
+Handle, typed selector and evaluation owners as Python. The addon receives an
+opaque Handle id plus bounded selector/source values; Rust compiles the
+root-relative selector, resolves and publishes the exact first element, or
+releases the unmatched remote owner before returning null. Inner-text checks
+and reads `HTMLElement.innerText` in the exact retained target world. Node owns
+only public wrappers and error presentation. The remaining query-all and
+`textContent` paths described as open at NODE-292 are implemented by the
+source-completion paragraph above; their official browser verification is
+still explicit pending work.
+
+Python ABI 19 adds a separately selected locator-to-locator drag composition.
+The Python Page/Locator facades convert the public source/target positions,
+steps, timeout and trial flag into one fixed-size PyO3 request. Rust verifies
+that source and target share the supplied live Page and Frame, scrolls and
+resolves each locator through the existing selector owner, computes finite
+viewport points, and delegates down/move/up to the retained bounded Mouse and
+HTML5 drag runtime. No Python task owns CDP input state. `force=true` remains
+explicitly unsupported, and this selected slice does not yet claim the full
+Playwright stable/actionable/hit-target retry model.
+
+Python ABI 18 composes `Request.sizes()` into the existing optional
+network-events path rather than creating another browser observer. The CDP
+adapter decodes bounded POST entries, correlates raw request headers from the
+extra-info channel and places the updated immutable Request snapshot in the
+terminal batch. A Rust size owner survives independently of event queue
+delivery, settles on finished/failed/closed, and is exposed to PyO3 only as an
+opaque capability. Python maps the final five integer fields and retains no
+CDP request identity.
+
+Python ABI 17 adds a separate Rust Page request-routing owner. It installs
+bounded `Fetch` patterns on the Page's current and future main/OOPIF sessions,
+maps paused events through the authoritative topology, chooses the most recent
+matching registration, and retains each call until exactly one continue/abort
+action or session teardown. PyO3 projects an immutable descriptor; Python owns
+only public wrapper/handler identity and one Browser watcher. This first slice
+does not implement a parallel routing engine for regexes, predicates, Contexts
+or the sync facade.
+
+Python ABI 16 adds a separate Rust Page-error frame observer. It consumes
+native `Runtime.exceptionThrown`, maps the event through the authoritative
+topology, converts Chromium error semantics under fixed byte bounds, and stages
+one typed notice through the same lifecycle fence. It composes outside the
+Page-load observer and does not merge Page errors into console messages.
+Python receives only the committed name/message/stack descriptor.
+
+Python ABI 15 selects the existing Rust Page-lifecycle publisher rather than
+adding a Python browser observer. Rust discovers Page creation, load,
+DOMContentLoaded and close, owns the bounded publication fence, and composes
+close confirmation with network-adapter retirement. PyO3 projects immutable
+notice descriptors only after native commit and acknowledgement; the Python
+callback merely schedules facade delivery after the exclusive drain has been
+released. Python retains public wrapper identity, predicates and user
+callbacks, but no CDP session, lifecycle registry or polling loop.
+
+Python ABI 14 similarly selects the existing Rust Page-binding owner. Rust
+owns registration capacity, invocation publication, serialization and
+retirement. The async and sync facades only invoke Python callables and map the
+result back into the native receipt path.
+
+Python ABI 13 now selects the same optional Rust Handle lifecycle/evaluation
+and wait-for-function owners used by Node. PyO3 publishes an opaque owner,
+never a native object ID; Rust enforces exact-session provenance, 64 retained
+Handle capacity, falsy-attempt disposal, deadline/cancellation and final
+cleanup. Python script/style tags are derived operations over Frame Handle
+evaluation, not a second DOM or browser-state implementation.
+
+The upstream Page-binding conformance slice now has an explicit composition
+profile rather than expanding the default binary. `page-bindings` selects the
+existing Handle owner; `init-scripts` independently owns typed Page or
+BrowserContext CDP new-document registration and scoped-session replay;
+`frame-navigation` now exposes both
+command-driven goto and receipt-free first-navigation waits; Page/Frame click
+is only a facade over the existing Locator action. The Node package normalizes
+language values and constructs wrappers, while Rust retains browser routing,
+lifecycle selection, rollback and resource ownership.
+`waitForNavigation` registers its Rust lifecycle ticket synchronously at N-API
+admission; only the already-registered wait, completion fence and bounded
+result projection enter the returned Future.
+Page/Frame script-tag is a derived language combinator: Node performs bounded
+option/path normalization, while the existing Rust Frame evaluation leaf owns
+browser execution and the existing retained Handle leaf owns the returned
+ElementHandle. It introduces no second browser-state owner.
+`wait-for-function` is a separate native feature. Rust admits the bounded
+operation, drives one-shot Frame evaluation attempts, probes each returned
+Handle for truthiness, disposes every falsy attempt, owns deadline/cancellation
+and publishes the exact truthy result through the existing Handle owner. No
+polling Promise survives in the browser after native timeout or cancellation.
+Node only normalizes Playwright's function/argument/options overload and
+constructs the normal JSHandle/ElementHandle wrapper.
+`wait-for-timeout` is separately selectable: Rust owns its fixed admission,
+timer, cancellation and completion publication. The language facade creates no
+timer. `timeout-settings` keeps fixed Context/Page inheritance state in Rust;
+an omitted wait-for-function timeout is resolved there before polling starts.
+`page.$`/`frame.$` compose existing Rust Frame Handle evaluation and dispose a
+non-element result before mapping it to the public `null` value.
+`ElementHandle.contentFrame` performs one bounded `DOM.describeNode` against
+the exact retained element object and maps the returned frame id through the
+existing Rust topology owner. It neither creates a temporary Handle nor stores
+a second browser identity. Wait-for-function treats execution-context loss as
+a replaceable polling attempt while the Frame remains live; a terminal detached
+Frame receives the stable execution-context-destroyed diagnostic.
+Page lifecycle publication now distinguishes the initial document from later
+navigations and deduplicates each main-Frame loader/phase in Rust. FrameLocator
+is not a new browser owner: its lazy Node recipe composes Rust wait-for-function,
+the retained-element content-Frame relation and a Frame-scoped native Locator.
+Official text expectations poll that immutable Locator recipe under one Rust
+deadline. `Locator.all` composes count with bounded native `nth` recipes, while
+Playwright `>>` chains are represented directly as Rust `Within` selector trees.
+
+Post-NODE-191 quality hardening makes the Node/native boundary fail closed:
+the addon exports ABI 1, the package verifies it and `NativeEnvironment`
+before feature markers, and a bounded child-process smoke test proves the real
+artifact without retaining its runtime in the test runner. Session-watch
+failure is terminal and observed; timeout zero now reaches the CDP response
+timer as an unlimited selection; evaluation entry points share runtime source
+stringification. These are boundary repairs, not broader compatibility claims.
+
+The default Node assembly is still not feature-minimal. The first three NODE-004
+slices moved session initialization, synchronous Frame event/metadata
+projection, and bounded Frame lifecycle/navigation-wait observation into
+independent plugin contracts. The first two have exact five-package closures;
+the lifecycle leaf has an exact ten-package closure. The aggregate keeps
+compatibility re-exports while host adapters consume the leaves directly. This
+reduces aggregate-coupled host source files from 55 to 39, but the transitional
+host/addon closures are 236/251 packages and the aggregate still has 69 direct
+normal dependencies with no default features. The remaining capability-owned
+contracts/services must move before a narrow Node assembly can replace the
+aggregate. Optional Cargo flags around the monolith alone do not establish
+composability.
+
+Test composition follows the same selection rule: the canned bridge mock and
+the stateful DOM fake keep distinct semantics but now share one `CdpCallLog`.
+Their persistent optional overrides also share `CdpResponseSlot`; it owns no
+default, strict policy, queue, error, or async gate.
+The stateful fake additionally owns one `CdpResponseScript` used by all 11
+configurable Runtime entry points; it centralizes error/FIFO/fallback precedence
+under one atomic lock without owning method defaults, gates, strict policy, or
+the canned mock. The canned mock now has an explicit `strict()` contract:
+missing configurable response slots fail, while fixed built-in responses and
+no-op methods remain usable.
+`pwright-bridge/test-utils` is the only normal feature edge to `pwright-fake`;
+the unselected production bridge closure remains four Pwright packages.
 
 NODE-191 is the first selected retained-upload phase that performs browser
 mutation, but it is still an internal terminal coordinator rather than a public
@@ -1679,6 +2842,12 @@ pwright-browser-provider    (standard library only)
 pwright-browser-install     (standard library only; explicit install pipeline)
 pwright-provider-cdp       -> pwright-browser-provider + pwright-cdp + pwright-core + url
 pwright-provider-chromium  -> both providers + pwright-cdp + optional Tokio process/time/fs
+pwright-plugin-chromium-session-initialization
+                           -> command-free caller-owned Page/OOPIF setup hook
+pwright-plugin-chromium-frame-observer
+                           -> synchronous caller-owned Frame event/metadata projection hooks
+pwright-plugin-chromium-frame-lifecycle
+                           -> bounded caller-owned Frame lifecycle/navigation-wait observation
 pwright-composition-chromium -> explicit Chromium attach/profile assembly over selected v2 crates
 pwright-composition-chromium-tokio -> optional authenticated endpoint/Chromium adapter
 ```
@@ -4420,6 +5589,17 @@ active-request and native-ID limits, and drop releases the lease. Exhaustion,
 unknown transitions, duplicates, wrong redirect order, or oversized metadata
 fail explicitly without extending the active map.
 
+The CDP normalizer also suppresses `data:` URL Request publication before
+portable object allocation, matching the pinned official Chromium behavior.
+It discards any pending ExtraInfo for that native ID, ignores companion
+response/terminal events and keeps a separate, capped completed-ID tombstone
+only to reject late ExtraInfo. The tombstones are not public Request history:
+their count and copied ID bytes are included in the production state budget,
+and same-ID reuse, related-session drain or Page drain clears them. At full
+capacity, an old completed tombstone can be evicted; an arbitrarily late
+event after eviction is therefore not guaranteed suppressed. This boundary
+still owns no receiver, queue or task.
+
 A release-profile Chrome 152 proof used a fixture bound to this Mac's
 Tailscale interface and addressed by full MagicDNS. It observed the real
 `request -> response -> requestfinished` sequence, redirect closure before the
@@ -4957,6 +6137,16 @@ pwright-backend-cdp-evaluation
                              isolated attach-only value-evaluation adapter
 pwright-backend-cdp-dom-content
                              isolated attach-only read-only DOM adapter
+pwright-plugin-chromium-session-initialization
+                             optional caller-owned Page/OOPIF session setup contract;
+                             no connection, task, executor, process or topology driver
+pwright-plugin-chromium-frame-observer
+                             optional synchronous Frame event/metadata projection contracts;
+                             no connection, queue, task, executor, domain or topology driver
+pwright-plugin-chromium-frame-lifecycle
+                             optional ten-package bounded Page/Frame lifecycle
+                             and navigation-wait observer; no connection, task,
+                             executor, browser process, or Node runtime
 pwright-composition-chromium-evaluation
                              one-Frame generated evaluation server leaf
 pwright-composition-chromium-content

@@ -95,6 +95,7 @@ impl Fixture {
         let network = Arc::new(ChromiumNetworkEventDriverShared {
             state: Mutex::new(ChromiumNetworkEventDriverState {
                 adapters: BTreeMap::new(),
+                related_sessions: BTreeMap::new(),
                 pending_page_registration: None,
                 pending_page_replacement: None,
                 unpublished_batch: None,
@@ -104,6 +105,7 @@ impl Fixture {
             adapter_profile: selected.adapter(),
             resources: routes.resources.clone(),
             max_page_lanes: 2,
+            max_related_sessions: 0,
         });
         for (page, context, session) in [(3, 2, "sa"), (8, 7, "sb")] {
             // The shared route fixture installed registry-only lanes. Replace

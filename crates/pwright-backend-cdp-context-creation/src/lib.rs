@@ -47,6 +47,35 @@ pub struct CdpCreatedBrowserContext {
     browser_context_id: Arc<str>,
 }
 
+/// Chromium-only context creation inputs that intentionally stay outside the
+/// portable v1 no-options command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CdpBrowserContextCreationOptions {
+    proxy_server: Option<Box<str>>,
+    proxy_bypass_list: Option<Box<str>>,
+}
+
+impl CdpBrowserContextCreationOptions {
+    #[must_use]
+    pub fn with_proxy(
+        proxy_server: impl Into<Box<str>>,
+        proxy_bypass_list: Option<impl Into<Box<str>>>,
+    ) -> Self {
+        Self {
+            proxy_server: Some(proxy_server.into()),
+            proxy_bypass_list: proxy_bypass_list.map(Into::into),
+        }
+    }
+
+    pub fn proxy_server(&self) -> Option<&str> {
+        self.proxy_server.as_deref()
+    }
+
+    pub fn proxy_bypass_list(&self) -> Option<&str> {
+        self.proxy_bypass_list.as_deref()
+    }
+}
+
 impl CdpCreatedBrowserContext {
     pub fn browser_context_id(&self) -> &str {
         &self.browser_context_id
@@ -87,10 +116,24 @@ impl Service<()> for CdpBrowserContextCreationService {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
 
     fn call(&self, (): ()) -> Self::Future<'_> {
+        <Self as Service<CdpBrowserContextCreationOptions>>::call(
+            self,
+            CdpBrowserContextCreationOptions::default(),
+        )
+    }
+}
+
+impl Service<CdpBrowserContextCreationOptions> for CdpBrowserContextCreationService {
+    type Response = CdpCreatedBrowserContext;
+    type Error = OperationError<ContextCreationErrorDetails>;
+    type Future<'a> =
+        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'a>>;
+
+    fn call(&self, options: CdpBrowserContextCreationOptions) -> Self::Future<'_> {
         Box::pin(async move {
             let browser_context_id = self
                 .client
-                .target_create_browser_context(None, None)
+                .target_create_browser_context(options.proxy_server(), options.proxy_bypass_list())
                 .await
                 .map_err(map_create_error)?;
             if browser_context_id.is_empty() {
@@ -169,7 +212,8 @@ mod tests {
     use pwright_fake::FakeCdpClient;
 
     use super::{
-        CdpBrowserContextCreationService, CdpContextCreationLimits, CdpContextCreationSetupError,
+        CdpBrowserContextCreationOptions, CdpBrowserContextCreationService,
+        CdpContextCreationLimits, CdpContextCreationSetupError,
     };
 
     #[tokio::test]
@@ -195,6 +239,39 @@ mod tests {
                 "disposeOnDetach": true,
                 "proxyServer": null,
                 "proxyBypassList": null,
+            })]
+        );
+    }
+
+    #[tokio::test]
+    async fn creation_forwards_proxy_options_to_the_exact_cdp_context() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_create_browser_context_response("context-8");
+        let service = CdpBrowserContextCreationService::new(
+            client.clone(),
+            CdpContextCreationLimits::new(64),
+        )
+        .expect("nonzero limit should build");
+        let options = CdpBrowserContextCreationOptions::with_proxy(
+            "http://proxy.example.test:3128",
+            Some("one.example.test,*.two.example.test"),
+        );
+
+        // Act
+        let created = service
+            .call(options)
+            .await
+            .expect("creation should succeed");
+
+        // Assert
+        assert_eq!(created.browser_context_id(), "context-8");
+        assert_eq!(
+            client.calls()[0].1,
+            [serde_json::json!({
+                "disposeOnDetach": true,
+                "proxyServer": "http://proxy.example.test:3128",
+                "proxyBypassList": "one.example.test,*.two.example.test",
             })]
         );
     }

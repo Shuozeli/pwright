@@ -1,6 +1,35 @@
-<!-- agent-updated: 2026-09-09T09:25:41Z -->
+<!-- agent-updated: 2026-10-10T20:21:33Z -->
 
 # Page reload: typed Rust command and Node FFI
+
+## Python binding-publication checkpoint (2026-10-10)
+
+The frozen ABI108 reload/click v2 wheel now passes the unchanged pinned
+Playwright Python Context/Page init-script case **1/1** in both candidate and
+independent oracle lanes. Both schema-5 sidecars verify source-bound; exact
+report and wheel hashes are in [the Python conformance log](../python-official-conformance.md#frozen-abi108-reloadclick-refresh-2026-10-10).
+This proves the bounded Python callback ordering case, not all Page reload
+semantics or the older Node raw-close cases below.
+
+The separate Playwright Python `BrowserContext.expose_function` plus Context
+and Page init-script case fails in the installed ABI108 wheel: after
+`page.reload()`, its callback list is `['context']` instead of
+`['context', 'page']`. A non-official, uncontested CDP probe confirmed both
+script markers are present in the new document and a subsequent Page
+`evaluate()` observes the delayed `page` callback. The Page script is not
+missing; reload returned before current-document binding publication completed.
+
+`crates/pwright-node-host/src/reload.rs` now has an opt-in `page-bindings`
+fence after navigation and topology publication. It selects the current main
+Frame only when the Page or its Context has a registered binding, awaits that
+document's controller `drainPublications()` Promise, and stays within the
+original reload deadline and shutdown cancellation. It does **not** use the
+global Rust binding watermark, wait on another Page, or turn an absent
+controller into a reload failure. Three focused release tests cover
+acknowledgement, deadline and cancellation; one checks Page/Context
+registration selection. The rebuilt wheel passes the unchanged official case
+with verified provenance. It does not resolve the older Node 16/18 raw-close
+failures documented below.
 
 NODE-077's public Frame.goto investigation reuses the raw-close evidence below
 rather than adding a new stopLoading workaround. Fresh Frame tests reproduce

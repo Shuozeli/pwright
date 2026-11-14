@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_page.py": "dc9f66af71064016947dd1682de787df7f585a2e8ec9fc14e5fb804b5dbd6ab8"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_work_with_a_url",
+      "capabilities": ["page.add_script_tag", "element_handle.as_element"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_work_with_a_url_and_type_module",
+      "capabilities": ["page.add_script_tag", "script.type.module"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_work_with_a_path_and_type_module",
+      "capabilities": ["page.add_script_tag", "script.path", "script.type.module"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_work_with_a_content_and_type_module",
+      "capabilities": ["page.add_script_tag", "script.content", "script.type.module"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_throw_an_error_if_loading_from_url_fail",
+      "capabilities": ["page.add_script_tag", "script.url.error"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_work_with_a_path",
+      "capabilities": ["page.add_script_tag", "script.path", "element_handle.as_element"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_include_source_url_when_path_is_provided",
+      "capabilities": ["page.add_script_tag", "script.path.source_url"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_work_with_content",
+      "capabilities": ["page.add_script_tag", "script.content", "element_handle.as_element"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_throw_when_added_with_content_to_the_csp_page",
+      "capabilities": ["page.add_script_tag", "script.content.csp"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_throw_when_added_with_URL_to_the_csp_page",
+      "capabilities": ["page.add_script_tag", "script.url.csp"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_script_tag_should_throw_a_nice_error_when_the_request_fails",
+      "capabilities": ["page.add_script_tag", "script.url.error_message"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_style_tag_should_work_with_a_url",
+      "capabilities": ["page.add_style_tag", "element_handle.as_element"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_style_tag_should_throw_an_error_if_loading_from_url_fail",
+      "capabilities": ["page.add_style_tag", "style.url.error"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_style_tag_should_work_with_a_path",
+      "capabilities": ["page.add_style_tag", "style.path", "element_handle.as_element"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_style_tag_should_include_source_url_when_path_is_provided",
+      "capabilities": ["page.add_style_tag", "page.query_selector", "handle.argument"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_style_tag_should_work_with_content",
+      "capabilities": ["page.add_style_tag", "style.content", "element_handle.as_element"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_style_tag_should_throw_when_added_with_content_to_the_CSP_page",
+      "capabilities": ["page.add_style_tag", "style.content.csp"]
+    },
+    {
+      "id": "tests/async/test_page.py::test_add_style_tag_should_throw_when_added_with_URL_to_the_CSP_page",
+      "capabilities": ["page.add_style_tag", "style.url.csp"]
+    }
+  ]
+}

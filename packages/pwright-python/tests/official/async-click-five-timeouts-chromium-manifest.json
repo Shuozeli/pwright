@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {"requiresBrowser": true, "requiresFixtureServers": true},
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/async/utils.py": "ee618a20d789a28f953ba23a2c24249f3b21f7bd00b1a2d2435aa75ce9b0b478",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/async/test_click.py": "ea614c3891174eda1f74964c8c1d4ba84b214b74e03fa194ad878636938338e7"
+  },
+  "cases": [
+    {"id": "tests/async/test_click.py::test_click_a_button_in_scrolling_container_with_offset", "capabilities": ["page.click", "async-api"]},
+    {"id": "tests/async/test_click.py::test_click_a_very_large_button_with_offset", "capabilities": ["page.click", "async-api"]},
+    {"id": "tests/async/test_click.py::test_climb_dom_for_inner_label_with_pointer_events_none", "capabilities": ["page.click", "async-api"]},
+    {"id": "tests/async/test_click.py::test_climb_up_to_role_button", "capabilities": ["page.click", "async-api"]},
+    {"id": "tests/async/test_click.py::test_wait_with_force", "capabilities": ["page.click", "async-api"]}
+  ]
+}

@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+startup-logs = ["tokio/io-util", "tokio/rt"]
+
 [dependencies]
 pwright-browser-provider = { workspace = true }
 pwright-cdp = { workspace = true }

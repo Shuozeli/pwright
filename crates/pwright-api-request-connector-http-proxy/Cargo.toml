@@ -1,0 +1,23 @@
+[package]
+name = "pwright-api-request-connector-http-proxy"
+description = "Optional bounded HTTP CONNECT proxy connector for Pwright API requests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+async-trait.workspace = true
+base64.workspace = true
+httparse.workspace = true
+pwright-api-request-transport.workspace = true
+tokio-util.workspace = true
+url.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

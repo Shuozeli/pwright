@@ -35,6 +35,10 @@ pub struct ScreenshotOptions {
     pub full_page: Option<bool>,
     pub clip: Option<ScreenshotClip>,
     pub scale: Option<ScreenshotScale>,
+    /// Internal browser-adapter signal that `clip` already uses document
+    /// coordinates. Public Page clips remain viewport-relative.
+    #[doc(hidden)]
+    pub document_clip: bool,
 }
 
 #[derive(Debug)]

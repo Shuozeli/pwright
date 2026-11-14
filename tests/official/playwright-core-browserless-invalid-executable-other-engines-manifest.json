@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-browserless-invalid-executable-firefox",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:75"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "firefox-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "library-browserless-invalid-executable-webkit",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:75"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "webkit-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    }
+  ]
+}

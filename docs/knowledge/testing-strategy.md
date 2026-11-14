@@ -1,4 +1,773 @@
-<!-- agent-updated: 2026-09-19T21:23:32Z -->
+<!-- agent-updated: 2026-10-10T18:10:34Z -->
+
+The Python Context-binding/media lifecycle checkpoint separates local gates
+from official conformance. The composed Rust host unit binary passes 661 cases
+with 14 explicitly ignored cases; no browser execution is inferred from that
+run. Focused binding and selector regressions pass 27/27 and 42/42. Python's
+binding suite passes 22/22 and exercises nested calls, child-task ownership,
+self/cross-Browser close, cancellation-resistant callbacks, Page churn and
+Browser-shared registration saturation across Page/Context owners. The final
+ABI107 v4 wheel runs all 379 installed package units, including the formerly
+stale native-profile assertion, on both Python 3.9 and 3.12. Strict Pyright,
+Ruff and Python 3.9 runtime type checks also pass. Its normalized payload
+reproduces across two release builds.
+
+Feature-boundary checks include standalone Page bindings, Context bindings,
+Context forced colors and their exact combined addon selection, plus strict
+host/addon Clippy. Optional navigation compiles in four response-request/burst
+combinations, and Handle selector-registration helpers retain their owning
+feature guards. Exact Python dependency comparisons anchor media to the
+108-package base and bindings to the 109-package Handle/Page-event closure.
+Those green local gates missed a generic Page-binding session reinitialization
+in the v3 wheel. The new exact-session fake-event regression and the existing
+different-session detach regression pass 2/2 in release mode; the installed
+v4 candidate then passes the unchanged official Chromium navigation case 1/1
+with source-bound provenance. The pinned forced-colors oracle passes, while
+v3 candidate fails on Page creation; after an initial browser-occupancy
+refusal, v4 candidate and oracle each pass the unchanged case 1/1 with
+source-bound provenance. Exactly that applicable candidate row was promoted
+from failed to passed; no whole-corpus conclusion follows. A later 39-case
+Context run stopped after 13 isolated reports when basic exposed-function
+execution timed out and dedicated Chrome CDP became unreachable. Without a
+complete aggregate and sidecar, those partial reports earn zero ledger credit.
+After dedicated Chrome recovered externally, the pinned seven-case Chromium
+clear-cookie selection passed 7/7 in both installed-v4 candidate and official
+oracle with source-bound reports. Exactly seven previously unrun oracle rows
+advanced; the seven candidate rows were already passes and gained refreshed
+evidence only. Latest Python ledgers are candidate 1,295 pass / nine fail /
+11 skip / 5,211 not run and oracle 1,021 pass / four fail / 11 skip /
+5,490 not run. Both invocation audits pass; this paired selection does not
+establish full-corpus conformance.
+
+A browserless fake-NativeSession regression gates registration, dequeue,
+acknowledgment and delivery independently for awaited Context `add` → Page
+`mul` → Context `sub` bindings. Its Python unit file passes 25/25 but does not
+reproduce the official exposed-function timeout. The opt-in Node official
+Page-plus-burst-20 artifact builds and native-loads; Node package tests pass
+565/565 and focused contracts 122/122. Neither browserless result earns
+official JS/TS or Python browser credit.
+The Context init-script `runImmediately` repair illustrates the next gate:
+exact fake-CDP payload tests prove new-session versus dynamic-install
+parameters, and both standalone/combined release feature selections pass
+6/6 focused tests plus strict Clippy. They do not prove the previously
+failing official Python callback case passes, because the installed v4 wheel
+predates this source change and the shared Chrome is occupied. The unrelated
+90-second binding timeout still requires stage-level evidence before a fix.
+The new ABI107 v5 wheel preserves the v4 96-feature profile and reproduces
+its normalized native/Python payload across two isolated release builds.
+Python 3.9 and 3.12 installed package units pass 380/380 each; all 81 release
+dependency checks, addon strict Clippy, pinned Ruff and expanded CI Pyright
+pass. The expanded type gate includes four previously omitted official-tool
+test scripts and has zero errors; focused pytest is 101/101 and CI unittest
+discovery 208/208. This wheel has no official browser report yet, so the
+strict Python ledger remains sourced from v4; source and package gates cannot
+promote the callback case.
+
+The complete release composition-library run passes 411 executed tests,
+zero failures, and 16 explicitly ignored tests. Three old tests required
+test-only fixture/expectation updates for active network-request setup and
+the current v1/v2 Locator-version ceilings; production code was unchanged
+by those test repairs. Strict release Clippy, whole-workspace formatting,
+and diff-whitespace checks pass. This local suite is separate from the
+official Python and JS/TS outcome ledgers.
+
+These checks do not substitute for the broad boundary-script matrix or a
+single frozen-build, independent oracle/candidate browser run. All 6,526
+upstream Python cases collect source-bound in each isolated candidate/oracle
+environment, but collection earns zero strict-ledger credit. Two new Rust
+`binding_ffi_admission` tests pass by reproducing existing FFI count and
+byte-budget rejection; they do not prove settlement liveness.
+
+Binding liveness needs adversarial resource-cycle tests, not just callback
+success tests. Ordinary evaluations and callback settlements currently share
+FFI byte/count budgets and the controlled native scheduler. Tests for a future
+settlement composition must occupy those ordinary resources with work awaiting
+callbacks, then prove independent acknowledgement/result/error progress and
+bounded cleanup. Partial-install rollback must be tested in current documents
+as well as future scripts, including failure followed by a same-name retry.
+Those native fixes are not claimed by the successful local lifecycle gates.
+
+NODE-432 shows why an async Response predicate must be tested through the real
+body path. Event publication alone raised candidate v2 to 7/9, but
+`response.text()` could still run before CDP made the resource body available.
+Test synchronous arming, skipped and async predicates, one winning predicate
+call, timeout cleanup, cross-realm RegExp and `timeout: 0` at the language
+boundary; independently test terminal success/failure, owner capacity, body
+read order and foreign-copy budgets in Rust.
+
+Prove optional composition with native artifacts, not just Cargo metadata.
+The minimal `response-events` binary must lack the completion marker, method
+and body feature. The `response-finished` binary must add completion without
+body. Only the full official union composes event publication, completion and
+body. Final browser evidence must compare all nine normalized rows: candidate
+and oracle each have eight expected plus the same Chrome-154 cached-image
+unexpected, so the shared current-browser divergence is not a candidate pass
+and is not filtered away.
+
+NODE-431 separates runtime discrepancies from candidate-runner input defects.
+The preserved 4/8 candidate baseline contained three request-wait diagnostic
+gaps and one post-navigation `window.builtins` failure. The official client
+gets builtins from UtilityScript in every execution context; therefore the
+candidate preload must reproduce that fixture with a Context init script, but
+the library must not gain a global or browser-side builtins shim.
+
+Test public waiter semantics at the language boundary and browser ownership at
+the native boundary. AAA units cover synchronous arming, cross-VM RegExp,
+quoted `TimeoutError` messages, restored caller stacks, 50-code-point log
+truncation and disabled timeouts. Native and dependency gates independently
+prove that request observation, queues, URL-glob compilation and Page-default
+timeout state stay in Rust. Candidate v3 and oracle v2 then pass the complete
+unchanged file 8/8; strict diffs change exactly the same eight inventory keys
+and the normalized changed-row hash is identical.
+
+NODE-430 treats each declared artifact profile as a compile target, not merely
+a Cargo dependency graph. The full official feature union compiled while two
+minimal N-API object shapes were invalid: first the parser-only profile exposed
+a response field hidden by `response-request`, then the base request-events
+profile exposed field-level `cfg` expansion that still referenced
+`serde_json`. Build and native-load both standalone artifacts, and keep
+explicit CI `cargo check` gates for `request-events` and
+`request-post-data-json`; metadata/tree assertions alone cannot catch macro
+expansion errors.
+
+For request waiting, unit evidence must prove listener arming is synchronous.
+Calling `waitForRequest()` and immediately dispatching an action in
+`Promise.all` is the compatibility contract; an async FFI arm followed by a
+browser action can miss the request even if both APIs work in isolation. Test
+skipped matches, asynchronous predicates, predicate throws, timeout/close
+cleanup, Request identity across terminal events, bounded Rust notice storage
+and FFI-copy accounting separately before the unchanged upstream file.
+
+Do not infer optional capability selection from an optional value field. The
+first NODE-430 browser run passed five cases but returned an unsupported error
+for invalid JSON because N-API omitted the absent parsed value even though the
+parser had produced an error. A separate required boolean in the
+parser-enabled snapshot distinguishes capability absence, parsed null and
+parse error. The repaired candidate and oracle each record 6/6, including the
+same real assertion errors for both annotated Chromium cases. Strict diffs
+change exactly six ledger rows per lane and their normalized changed-row hash
+is identical.
+
+NODE-429 demonstrates why an upstream expected-failure marker is not proof of
+candidate compatibility. The old candidate's missing `Response.request()`
+threw before the Referer assertion, so Playwright classified the case as an
+expected failure for the wrong reason. Preserve and inspect per-attempt errors,
+then repair the missing API and rerun both lanes on the same browser. Here the
+repaired candidate and oracle both reach and pass the assertion, producing the
+same unexpected-pass status under Chrome 154.
+
+When replacing already executed ledger evidence, compare complete ordered
+ledgers rather than only aggregate counts. This checkpoint changes exactly
+seven target records in each 48,477-row ledger: candidate refreshes all seven
+and corrects one expected-with-error to unexpected-without-error; oracle
+refreshes two Context records and promotes five Page records. Every other row
+must remain byte-for-byte equal, and the separate invocation audit hash must
+remain stable.
+
+NODE-428 preserves each full-file Touchscreen checkpoint instead of replacing
+reds with a filtered success. Candidate v2 is 0/9 because the candidate fixture
+adapter omitted the official `hasTouch` setup. Candidates v3-v5 are 8/9 and
+agree that only navigation non-waiting remains. Rust unit tests separately
+prove that both input policies submit `touchEnd` before `touchStart` is
+acknowledged and that only tap opts out of post-action publication fences.
+
+After the foreign pages exited naturally, final-source v6 and the independent
+oracle each passed all nine unchanged Chromium Library invocations. Both
+provenance records verify, and a strict ledger diff proves that the same nine
+keys changed from not-run to expected with one attempt and no inventory drift.
+The earlier isolation refusals remain infrastructure evidence, not candidate
+failures or a reason to promote any row.
+
+For browser-backed Core cases, a safety refusal caused by unrelated dedicated
+Chrome pages is infrastructure evidence, not a candidate red report. NODE-427
+waited for the unrelated page to exit, then ran the complete unchanged touch
+file in paired oracle/candidate lanes. Both pass 1/1 with verified provenance;
+the strict cumulative diff changes the same single inventory row only. Direct
+pre-fix browser/facade diagnostics are retained as supplemental evidence and
+are labeled separately from official runner output.
+
+Reconstruct every official pytest collection profile before treating a
+repository-wide collection as canonical. Record each profile's selection,
+Python, pytest, Playwright/plugin versions and hashed dependency lock. Collect
+each profile in its own isolated environment, then join rows in one canonical
+order. NODE-396 establishes the Python baseline: 6,501 core rows and 25
+TodoMVC `[chromium]` rows from the separately frozen examples job. A profile
+correction may rebase only explicitly reviewed pristine `not-run` rows; it
+must never rename executed evidence implicitly.
+
+Resolve closure names to content-addressed fixture definitions in a separate
+ledger. Preserve every visible definition in pytest resolution order, the
+selected definition, source and line, scope and base ID, declared dependencies,
+autouse/parameter metadata and a reviewed semantic role. Fail if a selected
+definition dependency is absent from the closure. If collection still carries
+an unresolved fixture name, record a dedicated unresolved definition and
+runtime band; never infer that a fixture exists from its name. NODE-398 resolves
+all current names to 95 definitions with zero unresolved rows. The earlier
+NODE-395 root-only collection remains diagnostic evidence, not canonical
+topology.
+
+Runtime bands derived from fixture definitions describe fixture-induced work,
+not all work in the test body. A no-runtime-fixture row may call
+`sync_playwright()` or launch a browser itself, while a BrowserType-only row may
+invoke `launch()`. Cross-tab bands with applicability and current outcomes for
+queue planning, but retain source verification as an independent prerequisite
+for browserless execution. Require a second collect-only run to reproduce both
+definition and binding ledgers byte for byte.
+
+Collect a separate pytest fixture-dependency ledger from the pinned collection
+environment. For each canonical invocation retain direct fixture names,
+initial names including autouse/usefixtures entries, and pytest's complete
+closure. Require canonical one-to-one order, require the public and internal
+pytest closure views to agree, and require source-declared inputs to match the
+direct names exactly. Collection must use `--collect-only`; it must not execute
+fixture or test bodies. NODE-397 is the current baseline: all 6,526 rows are
+covered, while `event_loop_policy` and `start_server` correctly reach only the
+6,501 core rows. The 25 examples instead receive the complete
+`pytest-playwright` closure. NODE-398 adds definition origins, scopes and
+semantic roles.
+
+Record source-declared pytest inputs on every expanded invocation, but do not
+call that list a fixture closure. Parametrized values and direct fixtures share
+the same function-parameter syntax, while transitive and autouse fixtures are
+absent. Cross-tab direct inputs with applicability/outcomes for prioritization,
+then preserve them beside the separately collected pytest closure. NODE-393 is
+the direct-input baseline: 36 names across 6,526 rows, with 12 parameterless
+invocations; NODE-394 verifies every ordered direct list against pytest.
+
+Allow an official selection to bypass the browser preflight only when an exact
+manifest keeps fixture servers required, every case declares a browserless
+capability and static analysis rejects browser fixtures and browser-creating
+operations through its local helper closure. The pinned upstream root
+`conftest.py` has a session-wide autouse `start_server`, so the runner must
+reject `requiresFixtureServers: false` until a separately proven fixture
+suppression mechanism exists. The independent provenance verifier must derive
+the same policy and reconstruct the exact command with the Tailscale server
+runtime. If a topology-sensitive test then
+fails identically in candidate and oracle, preserve both complete reports and
+promote only exact shared green rows. NODE-392 is the reference: three stop-
+lifecycle rows pass in both lanes, while three asyncio-loop-dependent rows
+fail identically and remain unmerged.
+
+An internal import is not automatically the subject of a test. When a public
+behavior uses upstream internals only as a fixture, platform oracle, archive
+reader or assertion helper, classify it as
+`public-api-with-private-test-helper`: it remains applicable and must run with
+harness adaptation. Reserve `implementation-internal` for exact sources that
+exercise the imported implementation itself or invocations that directly use
+private client state. NODE-391 exposes 6,279 required rows that the old broad
+source rule hid, including 684 already expected outcomes.
+
+Do not let one private access make an entire multi-test source non-applicable.
+Recompute `toImpl` and private client-field use inside each bounded invocation,
+but model shared fixtures and helpers explicitly when their callers depend on
+private machinery. If the private reason disappears, return the invocation to
+its path/role-derived public or product queue and still retain any private
+test-hook reason. NODE-390 recovers 1,367 falsely internal rows while keeping
+both 45-row shared-private fixture groups internal.
+
+Treat an official repository role as applicability evidence. Example suites
+must remain inventoried because they are part of the pinned corpus, but tests
+whose assertions validate TodoMVC, SVGOMG or another sample application are
+not evidence that a Playwright-compatible library implements a public API.
+Preserve their outcomes, retain the role in the audit row and attach one
+machine-readable product-infrastructure reason. NODE-389 applies this rule to
+all 67 `official-example` invocations without turning any row into a skip.
+
+Classify the implementation actually exercised, not merely the package that
+contains a spec. A test under an official Playwright directory can still be a
+repository-local unit test when it imports a copied helper and never crosses
+the public API. Keep every expanded invocation in the ledger, attach the exact
+local implementation path as its reason, and leave its outcome untouched.
+NODE-388 is the reference: all 477 `tests/library/events/` invocations remain
+accounted for, while only the 441 false public candidates change class.
+
+When a browser-input failure loses the first event only under repeated fresh
+attachments, do not patch the core with sleeps or retries after one candidate
+failure. Preserve the red full report, run the exact unchanged row repeatedly
+in fresh candidate and oracle processes against the same dedicated Chrome, and
+compare the failure text and rate. NODE-387 is the reference: both lanes lose
+the initial keydown 2/30, so only the independently green rows enter the ledger
+and the shared flake stays `not-run`.
+
+For ElementHandle input, test focus plus keyboard dispatch as one native
+operation rather than two language calls. Assert the exact retained Handle and
+Page identity at the boundary, keep public API-name rewriting in the facade,
+and run the unchanged upstream iframe and modifier cases from an installed
+wheel. A source-green facade test does not replace installed-wheel evidence.
+
+When a public language facade is missing but the bounded Rust capability
+already exists, prove the gap with an unchanged upstream baseline before
+adding a new native protocol. Expose the smallest optional conversion boundary,
+test every public facade operation, then rerun the same fixed rows from a fresh
+installed wheel. NODE-386 is the reference: focus moves from candidate 3/5
+versus oracle 5/5 to installed candidate 5/5 while Keyboard Page binding,
+input state and cancellation remain in Rust.
+
+For event-driven timing tests, distinguish browser completion from language
+callback publication. Preserve the red installed-wheel baseline, then add a
+native sequence fence that snapshots already published work and is
+acknowledged only after dispatch; do not use `sleep(0)`, arbitrary delays or
+weakened length assertions. Re-run from a fresh wheel because source-level
+Python tests cannot prove the native tuple shape. NODE-385 is the reference:
+the resource-timing tranche moves from 2/4 to installed candidate/oracle 4/4,
+and the subresource assertion passes without timing-based test synchronization.
+
+When integer normalization represents an upstream floating timing value, test
+availability as well as magnitude. Positive submicrosecond phases must not
+round to an unavailable zero, exact-zero connection phases must obey the
+public `-1 or positive` invariant, and cached responses must ignore erroneous
+CDP timing. Cover ordinary, cached, redirect and terminal snapshots in Rust
+before accepting browser evidence.
+
+When a partially promoted upstream file has only a few unrun rows, pin exactly
+those base tests and run both lanes from the current release artifacts before
+assuming implementation work is needed. Merge only independently verified
+green results, state whether the file is closed for the selected browser, and
+do not present evidence-only promotion as a new capability. NODE-384 is the
+reference: two remaining request-fulfill rows pass 2/2 in both lanes and close
+that file at 3/3 for Chromium without changing ABI 100.
+
+For a multi-behavior compatibility repair, freeze the exact manifest before
+implementation and retain the complete red candidate plus green oracle. Run
+the final candidate only from a fresh installed release wheel, independently
+verify both provenance sidecars, merge that installed result into the prior
+release ledger, then rebuild a second wheel and compare normalized payloads.
+NODE-383 is the reference: the same 15 JSHandle rows move from candidate 6/15
+versus oracle 15/15 to installed candidate 15/15, while the full corpus remains
+explicitly incomplete.
+
+When an unchanged official test fails in both candidate and oracle because of
+the required execution topology, preserve the complete red reports and
+verified provenance, then select only independently green cases for cumulative
+promotion. Do not manufacture a skip or call the row candidate-incompatible.
+If the candidate passes a row that the oracle cannot execute in that topology,
+record the candidate success but do not call parity proven. NODE-382 is the
+reference: 17 candidate passes, 16 oracle passes, one shared 200 MiB
+remote-CDP guard and one oracle-only aggregate transport guard.
+
+For a browser-backed Python capability repair, preserve distinct baseline,
+source-repair and final installed-wheel reports. A source-green result may
+advance a provisional ledger, but the canonical release ledger must be rebuilt
+from the previous release baseline using an exact selected JUnit generated
+from the fresh wheel. NODE-379 is the reference: the source and final wheel
+both pass the same four chooser/input rows, but only the latter result file is
+recorded in the release ledger. Verify each provenance sidecar independently,
+build the wheel twice, compare normalized payloads, prove `site-packages`
+loading, run installed units and re-collect the full pinned inventory before
+promotion.
+
+Official Python applicability is classified per expanded pytest invocation,
+not by copying a module-level import label. Run
+`scripts/audit_playwright_python_official_invocations.py` against the clean
+pinned checkout and an optional complete outcome ledger. The audit resolves
+each node ID to its AST function, follows same-module helper and assignment
+dependencies, records private type annotations separately from private runtime
+behavior, and detects private attributes plus `internal:` selector engines.
+Every direct-private base test must then have an exact entry in
+`packages/pwright-python/tests/official/invocation-applicability.json`; missing,
+duplicate and stale rules fail closed. A private assertion oracle or fixture
+can still exercise applicable public behavior, so policy review is semantic
+rather than an automatic private-symbol exclusion.
+Never convert `public-api-with-private-test-helper` or
+`public-api-with-private-type-annotation` into exclusions: these are public
+behavior requiring harness adaptation. An `implementation-internal` label is
+also evidence for review, not permission to rewrite or drop its outcome.
+
+Future Python official JUnit reports must be produced by the guarded runner
+with a sibling provenance sidecar, then pass
+`scripts/verify_playwright_python_official_provenance.py` before ledger merge.
+The verifier binds the interpreter, clean upstream checkout, manifest,
+official/candidate package trees, ABI3 artifact, harnesses, exact pytest
+command and JUnit. For isolated execution it independently derives expanded
+case IDs from the pinned inventory and verifies the complete per-case report
+tree. Never synthesize a sidecar for a historical report; rerun that selection.
+Fresh full-collection candidate and oracle sidecars now independently verify
+all 6,526/6,526 IDs. Collection is identity evidence only; it must not be
+reported as execution of those rows. Historical reports without sidecars still
+require rerun and must never be backfilled.
+
+For a semantically applicable test that uses private oracle machinery,
+preserve four distinct artifacts: the unchanged red candidate, the unchanged
+green official oracle, the source-candidate repair check and the final
+installed-wheel candidate check. Keep the repair narrowly read-only when the
+private object is only an assertion adapter; do not transfer protocol identity,
+lifetime or browser behavior into the facade. Verify every sidecar
+independently and merge only the final installed-wheel result. The NODE-377
+JSHandle row is the reference example: `_impl_obj` and official `repr` are
+facade compatibility, while Handle state remains Rust-owned.
+
+The Python 3.9 floor now has an executable source gate: every `typing.cast()`
+first argument in the package and official runner must avoid a runtime PEP 604
+expression. `from __future__ import annotations` does not protect
+`cast(A | None, value)` because the first argument is an ordinary expression. Quote that
+type or eliminate the cast. The Python runner also validates loopback-only CDP,
+non-loopback Tailscale IPv4 binding, `.ts.net` MagicDNS hosts and MagicDNS
+HTTP(S) bootstrap prefixes before probing or launching pytest. These are
+pre-execution invariants, not optional CI conventions. Every non-collection
+Python run must also inventory `/json/list` on the loopback endpoint and reject
+all nonblank Page targets so another task's tabs cannot enter the corpus.
+
+Future Core JSON reports receive a sibling `.provenance.json` only from the
+guarded runner after the report exists. It pins source/tag/commit, the manifest
+and harness-input hashes, suite and adapter, project and filters,
+worker/headed settings, loopback endpoint, Tailscale fixture address,
+candidate path/profile/source hash/native-artifact hash, exact command, exit
+code and report SHA-256. Failed test reports receive the same evidence. Run
+`scripts/verify_playwright_official_provenance.py <sidecar>` before merging a
+report into a ledger; relocated evidence may supply explicit `--manifest`,
+`--result`, `--upstream` and `--candidate` paths, but every recorded digest and
+selection invariant still has to match. Never backfill a historical sidecar
+from conversation history: rerun the lane through the current runner when
+provenance is required. The first runtime-produced verified sidecars remain
+pending while memory pressure makes another browser lane unsafe.
+
+Every Core candidate execution must now name its native artifact profile via
+`--candidate-profile` or `PWRIGHT_NATIVE_PROFILE`; even the empty profile is
+spelled `default`. The runner copies the resolved value into the child process
+and reports it before execution. Missing selection fails before browser
+inspection or result creation. This prevents a valid default artifact from
+being mistaken for a broken composed artifact, as the rejected NODE-372 1/9
+diagnostic demonstrated.
+
+Core conformance applicability is now audited at expanded-invocation scope.
+The pinned inventory remains the source of test identity and the outcome
+ledger remains the source of execution status; the separate invocation audit
+joins them by `(suite, specId, projectId)` and never rewrites outcomes. A
+public-source test using an official `__testHook...` option is recorded as
+`public-api-with-implementation-private-hook`, including the exact hook name.
+This distinction is evidence for a later applicability decision, not an
+automatic exclusion. The current 48,477-row audit accounts for all 417 such
+expanded invocations and proves that the two current candidate failures belong
+to this class while remaining `unexpected`.
+
+The browser guard is also outcome evidence: the first NODE-370 oracle attempt
+was rejected while a nonblank unrelated page existed. The harness was rerun
+only after that renderer exited naturally and `tab-list` showed blank pages;
+the four CSP rows then passed and were the only oracle ledger transitions.
+
+Python complete-Locator checkpoint: execute all 86 async and 77 sync Chromium
+rows rather than selecting only known-green cases. Preserve the original
+candidate 60/163 and official oracle 163/163 reports. After each repair, run
+every row in its own pytest process, merge only explicit isolated reruns for
+infrastructure failures, and keep failed behavior in the ledger. The current
+stable candidate is 79/163 with 84 genuine discrepancies.
+
+Attached-browser network isolation is a separate gate: never eagerly activate
+request history/response publication for borrowed default/external Contexts,
+because an unrelated page can exhaust bounded correlation state or close the
+candidate session. Keep owned Context activation and exact Page waiters. A
+borrowed Context needs an explicit demand-driven activation test before its
+callback/history behavior can be claimed.
+
+Python ABI 35 typed-Locator checkpoint: pin the two chained-description and
+four first/last/nth Chromium rows from the unchanged async/sync sources. Keep
+the ABI 34 4/4 async plus 2/2 sync missing-member reports as diagnostics, then
+run exactly the same manifest against the final installed candidate and the
+independent official oracle. Merge only their four green reports. Both
+ledgers must change exactly those six rows from `not-run` to `passed`, yielding
+candidate 505/7/6014 and oracle 486/7/6033. Full 6,526-row collection proves
+inventory stability, not execution of the remaining 6,014 candidate rows.
+The language facade may retain description metadata, but chaining and nth
+must derive bounded immutable Rust recipes; Python selector concatenation is
+not equivalent evidence.
+
+Python ABI 34 Locator-description checkpoint: first verify the pinned sync
+source contains no corresponding upstream description cases instead of
+inventing binding symmetry. Pin the three real async Chromium rows, preserve
+the three missing-member candidate failures, and run the same rows through the
+official oracle. Merge only the final candidate/oracle 3/3 reports. The
+facade-only metadata change produces exactly three `not-run` to `passed`
+transitions: candidate 499/7/6020 and oracle 480/7/6039. Do not infer chained
+Locator support from the unchained description rows.
+
+Python ABI 34 Locator-execution checkpoint: pin ten exact async/sync Chromium
+invocations and keep setup diagnostics plus the 4/5 placeholder-assertion run
+outside the green ledger. Run the same source rows against the installed
+candidate wheel and a separately installed official oracle. Merge only the
+four 5/5 reports. Candidate and oracle each change exactly ten rows from
+`not-run` to `passed`, yielding 496/7/6023 and 477/7/6042. Full collection of
+6,526 IDs proves inventory stability, not execution of the remaining rows.
+The successful count assertion must call the Rust total-deadline retry owner;
+a Python or Node polling loop would not satisfy this checkpoint.
+
+Python ABI 33 basic-Locator checkpoint: pin exact async/sync locator sources
+and 34 explicit Chromium rows. Preserve the initial 34 missing-facade failures
+and the intermediate 16/17 run; the latter is a useful differential proving
+that forwarding alone was insufficient until Rust classified Playwright
+`:text()` instead of handing it to DOM CSS. Merge only the final 34/34
+candidate and independent-oracle reports. Both ledgers change exactly those 34
+rows from `not-run` to `passed`, yielding candidate 486/7/6033 and oracle
+467/7/6052. Do not infer support for unselected Locator methods or providers.
+
+Python ABI 33 layout-selector checkpoint: pin the unchanged async/sync source
+files and exact layout function in one manifest. Keep the initial candidate
+`selector script threw` reports as diagnostic evidence only. Run the same two
+Chromium rows through the final installed candidate wheel and a separately
+installed official oracle, then merge only the four green reports. Candidate
+and oracle each change exactly the async and sync layout rows from `not-run`
+to `passed`; totals are candidate 452/7/6067 and oracle 433/7/6086. Full
+6,526-row collection proves stable inventory, not execution of the other
+6,067 candidate rows. The green rows prove the pinned layout syntax only, not
+arbitrary nested selector grammar, retry polling, handle publication or other
+browser providers.
+
+Python ABI 33 registered-engine checkpoint: keep each diagnostic generation
+outside the green ledger. First prove ABI 32 rejects the unknown engine; then
+preserve the ABI 33 `$eval` strictness mismatch and the custom-chain final
+`queryAll` mismatch before fixing them. Run the exact unchanged async/sync
+base, path and main/isolated-world rows through an installed candidate wheel
+and a separately installed official oracle. Only the eight final green JUnit
+reports feed the ledgers. Candidate and oracle each change exactly six rows
+from `not-run` to `passed`; current totals are candidate 450/7/6069 and oracle
+431/7/6088. This proves those Chromium paths, not positive registered
+query-selector handles, typed Locator composition, retry polling, other
+browsers or full-suite parity.
+
+Python ABI 32 selector-validation checkpoint: preserve the first unchanged
+candidate failure before fixing it. A DOM `SyntaxError` for Playwright selector
+syntax proves the public call bypassed Rust parsing; it is not close enough to
+the oracle's unknown-engine error. After routing validation through the bounded
+Rust query recipe, run both async and sync public-source rows and merge only
+their four green candidate/oracle reports. Ledgers are candidate 444/7/6075
+and oracle 425/7/6094; registered-engine execution remains unproven.
+
+Python ABI 31 selector-registration checkpoint: an upstream file that imports
+private annotation/error symbols can still assert applicable public behavior;
+classify the exact assertion rather than excluding the entire file. Preserve
+candidate setup and collection failures outside the green ledger, then merge
+only the unchanged final-wheel candidate and independent-oracle reports. The
+duplicate-registration Chromium row passes 1/1 in each lane. The candidate
+ledger is 442/7/6077 and the oracle ledger 423/7/6096; this proves registration
+and error ownership, not custom selector-engine execution or full-suite parity.
+
+Python ABI 30 async-selector regression checkpoint: never infer async
+compatibility from a green sync facade. Pin the independent async source hash,
+run its exact Chromium expansion through the installed wheel and official
+oracle, and merge only the two passing reports. Both pass 1/1. The candidate
+ledger is now 441/7/6078 and the oracle ledger 422/7/6097; Firefox/WebKit stay
+`not-run`, and the full 6,526 collection remains inventory rather than
+execution evidence.
+
+Python ABI 30 selector checkpoint: first preserve the candidate setup failure
+caused by a bounded topology cursor falling behind `Runtime.enable`'s replayed
+console-history burst, then prove the item/byte-decoupled 8,192-item profile
+reaches the unchanged official test. Preserve the following missing-method
+failure, implement only the thin Python facade and Rust typed
+`internal:and`/collection-evaluation path, then rerun the same Chromium row
+against an installed wheel and independent oracle. Both pass 1/1; the async
+and sync listener regressions also pass 1/1. Candidate is now 440/7/6079 and
+oracle 421/7/6098. Collection of 6,526 IDs remains inventory evidence, not
+execution of the remaining rows. The all-feature host profile is also a
+required gate: it caught and now proves the repaired
+`network-events + concurrent-close` capacity composition.
+
+Python ABI 29 sync-listener completion checkpoint: pin the complete unchanged
+sync source file, run its Chromium invocation through the installed candidate
+wheel and the independent official package, and keep the two unsupported
+provider errors visible only in the diagnostic. Re-run the async row on the
+same final wheel to guard the shared listener path. The first sync attempts
+showed that keeping Page identity alone was insufficient: reconnect also had
+to preserve live network adapters until the authoritative snapshot completed.
+The fixed lane passes with a bounded 2,048-event replay window and no recovery
+retry. Candidate is now 439/7/6080 and oracle 420/7/6099; collection remains
+inventory evidence rather than execution of the other rows.
+
+Python ABI 29 response-listener checkpoint: first preserve the full-file
+diagnostic showing one applicable Chromium discrepancy plus explicit
+Firefox/WebKit provider errors. Then pin the unchanged source file, run the
+Chromium invocation through a clean installed candidate wheel and an
+independent official oracle, and merge only those two passing Chromium results
+into the ledgers. Preserve the failed candidate attempts that exposed sticky
+topology event loss and the Page-membership/command-route conflation, but do
+not merge them into the green ledger. The repaired lane proves one bounded
+same-connection reconstruction with a monotonic epoch and passes while an
+unrelated shared-Chrome tab remains untouched. Candidate is now 438/7/6081 and
+oracle 419/7/6100. The two
+non-Chromium rows remain `not-run` in the canonical ledger; neither collection
+nor the diagnostic provider errors count as execution success.
+
+Python ABI 28 device checkpoint: run the complete official source file rather
+than selecting only its Chromium-green expansion. Candidate and independent
+oracle each record the Chromium pass and the same two upstream `only_browser`
+skips, so those skips remain visible in both 6,526-row ledgers. Verify the
+embedded 143-entry Rust catalog is semantically equal to the pinned upstream
+JSON, install one of two reproducible-payload wheels into a fresh environment,
+run 26/26 local tests, then recollect all 6,526 IDs. Candidate is now
+437/7/6082 and oracle 418/7/6101; collection is still inventory evidence, not
+execution of the remaining rows.
+
+Python ABI 27 request-history checkpoint: preserve the original route-capacity
+failure, then run the exact pinned async/sync last-100 functions against the
+final installed wheel and independent official package. Both lanes pass 1/1
+per API, including 200 registered routes, 199 fetches, last-100 eviction and
+concurrent response/body reads for every retained Request. Candidate is now
+436/5/6085 and oracle 417/5/6104; the 6,526 collection remains inventory
+evidence, not execution of the remaining rows.
+
+Python ABI 26 console-history checkpoint: record the pre-fix candidate
+`AttributeError` and a matching independent-oracle pass, then pin the exact
+async/sync upstream source hashes and run each unchanged Chromium row in its
+own process. All four final lanes pass 1/1. The Rust tests prove newest-200
+eviction without over-admission plus exact Page-close lease release. Candidate
+is now 434/5/6087 and oracle 415/5/6106; collection of 6,526 IDs is supporting
+inventory evidence, not execution of the remaining rows.
+
+Python ABI 25 Page-error-history checkpoint: preserve the unchanged upstream
+301-error assertion and run async/sync candidate and independent oracle lanes
+separately. The first correct candidate async lane passed, while sync exposed
+the selected 256-entry lifecycle publication queue as too small; increasing
+the Page-error-selected queue to a still-bounded 512 fixed the discrepancy.
+All four final lanes pass 1/1. Candidate is now 432/5/6089 and oracle
+413/5/6108; the remaining rows still block a full-suite claim.
+
+Python ABI 24 request-GC checkpoint: first record the exact candidate failure
+(`Page` has no `request_gc`) and matching oracle pass, then select the already
+implemented Rust leaf without changing the assertion. Pin the async and sync
+source hashes and run each Chromium row in its own candidate and oracle
+process. All four final lanes pass 1/1. The resulting ledgers are candidate
+430/5/6091 and oracle 411/5/6110; this closes two rows, not the full corpus.
+
+Python full-Page checkpoint: execute every one of the 125 expanded async
+Chromium Page rows in an independent pytest process in both candidate and
+official-oracle lanes. The repaired ABI 23 wheel and oracle each record 124
+passes plus the same upstream FIXME skip, with zero per-test status differences.
+The ABI 23 6,526-row ledgers were candidate 428/5/6093 and oracle 409/5/6112.
+This proves the complete Page file only; the remaining candidate `not-run` rows and
+the incomplete Core JS/TS ledger still block a full-suite claim.
+
+Python isolated-corpus checkpoint: a pytest signal timeout recorded the former
+route-close hang but does not make later cases in that process trustworthy
+because interrupted async
+teardown can contaminate shared fixtures. Expand exact rows from the pinned
+inventory and run each in its own subprocess. Keep one validated JUnit file per
+row, synthesize explicit crash/outer-deadline outcomes, aggregate in inventory
+order, and resume only from exact valid reports. The regression deliberately
+runs that 15-second hang before a title test; the second case passes in
+its fresh process. This proves runner isolation, not the failed product behavior.
+
+Historical Python ABI 23 Page-pause checkpoint: the fixed two-function manifest
+passes 2/2 in the installed repaired-wheel candidate and 2/2 in the independent
+official oracle on the same task-owned headless Chrome. Exact replacement
+produced an initial merged 125-case Page report. NODE-240 supersedes that report
+with fresh full-file executions.
+
+Python ABI 19 drag checkpoint: pin the exact four upstream file digests and
+eight explicit functions. Run unchanged candidate and independent oracle
+lanes; both pass 6/6 async plus 2/2 sync. Select exact JUnit node IDs before
+merging so the four Page rows replace existing outcomes while the two async
+Locator and two sync rows are added once. The canonical Page report is
+119/5/1, candidate ledger 412/7/5/6102 and oracle 329/4/6193. Full collection,
+469 host tests, 15/15 installed-wheel tests and payload reproducibility are
+supporting gates, not a full-suite pass.
+
+Python ABI 18 Request-size checkpoint: pin the exact `test_page.py` digest and
+two explicit async Chromium functions. Run unchanged candidate and independent
+oracle lanes; both pass 2/2. Replace only those two existing cases in the
+125-case Page report, producing 115 passed / 9 failed / one upstream skip,
+then rebuild both 6,526-row ledgers. Candidate is 404/11/5/6106 and oracle is
+321/4/6201. The final wheel must still collect 6,526/6,526; focused Rust model,
+CDP adapter and owner tests plus 13/13 installed-wheel tests are supporting
+evidence, not a full-suite pass.
+
+Python ABI 17 Page-route checkpoint: pin the exact `test_page.py` digest and
+five explicit async Chromium functions. Run unchanged candidate and independent
+oracle lanes; both pass 5/5. Replace only those five existing cases in the
+125-case Page report, producing 113 passed / 11 failed / one upstream skip,
+then rebuild both 6,526-row ledgers. Candidate is 402/13/5/6106 and oracle is
+319/4/6203. Four Rust AAA tests, final-wheel 13/13, strict static gates and
+payload reproducibility are supporting evidence, not a full-suite pass.
+
+Python ABI 16 Page-error checkpoint: pin the exact `test_page.py` digest and
+five explicit Page-error functions. Run them unchanged through the candidate
+and independent official package; both pass 5/5. Replace only those five cases
+in the 125-case Page report, producing 108 passed / 16 failed / one upstream
+skip, then rebuild the 6,526-row ledgers. Candidate is 397/18/5/6106 and oracle
+is 314/4/6208. The fixed manifest and four Rust conversion tests are selected
+evidence, not a full-suite pass.
+
+Python ABI 15 Page-lifecycle checkpoint: pin the exact `test_page.py` digest
+and six explicit lifecycle functions. Run them unchanged through both the
+candidate and independent official package; both lanes pass 6/6. Replace only
+those six existing cases in the canonical 125-case Page report, producing 103
+passed / 21 failed / one upstream skip, then rebuild the two 6,526-row ledgers.
+The resulting candidate ledger is 392 passed / 23 failed / five skipped /
+6,106 not-run; the oracle is 309 passed / four skipped / 6,213 not-run. This is
+selected-case evidence, not a full-suite pass. Direct smokes additionally
+cover external `window.close()`, popup/opener identity and teardown, but do not
+enter the official ledger.
+
+Python ABI 14 Page-binding checkpoint: pin the exact source digest and 12
+explicit binding functions. Candidate and oracle each pass 12/12. Replace the
+same Page-report cases rather than adding them, then rebuild the complete
+ledgers. ABI 15 supersedes its historical 386/29/5/6106 candidate and
+303/4/6219 oracle checkpoint.
+
+Python ABI 13 Handle/tag checkpoint: pin the exact `test_page.py` and
+`test_jshandle.py` digests plus explicit function lists. Candidate and oracle
+each pass 18/18 tag and 7/7 core-Handle rows. Because the tag rows already
+existed in the complete Page report, use the checked JUnit replacement tool to
+supersede exactly those cases before rebuilding the ledger; never add both
+reports and double-count them. Exclude the later full-file diagnostic whose
+known beforeunload failure made all following setup errors cascade.
+
+Python ABI 12 init-script checkpoint: run the complete unchanged async and sync
+`test_add_init_script.py` files in separate candidate processes and repeat the
+same two files through the official package's own oracle adapter. All four
+reports pass 9/9. Merge those 18 candidate and 18 oracle rows into the full
+6,526-record ledgers; do not report the four green files as the full corpus.
+The resulting ledgers are candidate 349 passed / 59 failed / five skipped /
+6,113 not-run and oracle 266 passed / four skipped / 6,256 not-run. The
+installed repaired wheel passes 13/13 local tests, Ruff and strict Pyright;
+two builds have payload parity after normalizing only CycloneDX identity.
+
+Python ABI 11 APIRequest checkpoint: local Python unit tests pass 12/12, Ruff and
+strict Pyright pass, and the complete unchanged official async/sync global
+request files pass 231/231 candidate. Upstream-compatible oracle lanes pass
+138/138 async and 93/93 sync. Async and sync oracle files must remain separate
+pytest processes because the official greenlet sync loop conflicts with later
+pytest-asyncio execution when mixed. Candidate test infrastructure uses an
+equivalent thread-safe request waiter for the upstream server helper; public
+assertions remain unchanged. Stop-idempotency and pending-request cancellation
+also pass 6/6 candidate and oracle. Both modes now share the same test-only
+fixture-server runtime, which binds only to the verified Tailscale IP and uses
+the full MagicDNS hostname; the sync waiter replacement remains candidate-only.
+The fixed client-certificate manifest adds 12 invocations per lane: eight pass
+and four retain the upstream macOS WebKit skip in both candidate and oracle.
+This is selected-file evidence only.
+The rebuilt ABI 11 wheel also collects the full pinned corpus at 6,526/6,526,
+and the dependency script proves the feature-cold 108-package base, the exact
+eight-package `api-request` delta, and the exact certificate delta of one
+Pwright leaf plus five OpenSSL packages. Two repaired wheel builds have
+identical payloads after normalizing only CycloneDX build identity fields.
+The final complete async Page rerun is 67 passed / 57 failed / one skip, up
+from 64/60/1 after the two Rust fill error strings and Python non-string
+boundary error were aligned with the official oracle. The exact three-node
+oracle comparison also passes 3/3. The interrupted full-oracle debugger run is
+diagnostic only and is excluded from the ledger.
+An actual CPython 3.9.6 ABI3 build remains required in addition to
+Pyright's `pythonVersion = 3.9`: it caught a runtime-evaluated PEP 604 union in
+`typing.cast` that is valid on 3.10+ but fails on the declared minimum runtime.
+
+Code-quality checkpoint: configurable Runtime methods in `FakeCdpClient` now
+share `CdpResponseScript` for gate-after-record, FIFO protocol errors, FIFO
+one-shot responses and persistent fallback precedence. A single mutex owns the
+whole script, so response reconfiguration and consumption are atomic relative
+to each other. Method-specific default JSON remains local, so the stateful fake
+is not conflated with the canned bridge mock. `CdpResponseSlot` separately owns
+the compatible persistent optional storage used by all 15 canned response
+fields and the fake navigation override. Two AAA slot tests, four AAA script
+tests, all 30 fake unit tests, 5 grouped Runtime
+integration tests, and all 167 bridge unit tests pass in release mode; strict
+Clippy passes with warnings denied. Three bridge AAA regressions separately
+prove strict rejection for an absent response slot, strict acceptance after
+configuration, and availability of fixed built-in responses.
+
+The third NODE-004 leaf moves Frame lifecycle and navigation-wait observation
+out of the aggregate implementation while retaining its compatibility
+re-export. Its exact normal closure contains ten Pwright packages, Node host
+aggregate imports fall from 40 to 39 files, and 47 aggregate lifecycle-related
+release tests pass through the compatibility boundary. Strict release Clippy
+passes for the leaf, aggregate, and selected Node host.
 
 NODE-191 separates protocol, ownership, packaging and browser claims. Five fake
 CDP tests prove exact world/group/object identity, one large user-gesture call,
@@ -2033,6 +2802,7 @@ pages with real HTML, and `Locator`/`Page` methods interact with a real DOM tree
 ```
 crates/pwright-fake/src/
   lib.rs           Crate root, re-exports
+  call_log.rs      Shared thread-safe native-call recorder
   client.rs        FakeCdpClient struct + CdpClient impl
   dom.rs           In-memory DOM tree (nodes, attributes, text)
   selector.rs      CSS selector matching against the DOM
@@ -2097,6 +2867,10 @@ assert_eq!(page.text_content("h1").await?, Some("Welcome".into()));
 `MockCdpClient` remains for call-sequence verification tests (e.g. "clicking
 calls mousePressed then mouseReleased"). `FakeCdpClient` is for behavior
 verification (e.g. "clicking a checkbox changes checked state").
+They share `CdpCallLog`, so recording/filtering/order behavior has one owner;
+their canned-response and in-memory DOM semantics remain intentionally
+separate. `pwright-bridge/test-utils` selects this support edge explicitly,
+while the ordinary bridge dependency closure excludes `pwright-fake`.
 
 | Test type | Use |
 |-----------|-----|

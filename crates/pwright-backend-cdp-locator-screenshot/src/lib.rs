@@ -218,6 +218,7 @@ impl Service<LocatorScreenshotParams> for CdpLocatorScreenshotService {
                 full_page: None,
                 clip: Some(clip),
                 scale: params.options.scale,
+                document_clip: false,
             };
             self.screenshot
                 .capture_admitted(capture_options, admission)

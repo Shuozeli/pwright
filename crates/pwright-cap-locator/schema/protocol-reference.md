@@ -8,7 +8,7 @@
 | --- | --- |
 | Kind | Capability |
 | Schema format | `1` |
-| Protocol version | `1.23` |
+| Protocol version | `1.24` |
 | Root type | `pwright.locator` |
 | Imports | `pwright.common` |
 | Capability dependencies | — |
@@ -664,6 +664,7 @@
 | `19` | `attribute_regex` | `attribute`: `pwright.locator.user_facing_attribute` (required); `matcher`: `pwright.locator.regex_matcher` (required) |
 | `20` | `test_id_text` | `attributes`: `utf8` (required); `value`: `utf8` (required) |
 | `21` | `test_id_regex` | `attributes`: `utf8` (required); `matcher`: `pwright.locator.regex_matcher` (required) |
+| `22` | `legacy_text` | `matcher`: `pwright.locator.text_matcher` (required) |
 
 ### `pwright.locator.set_checked_options`
 

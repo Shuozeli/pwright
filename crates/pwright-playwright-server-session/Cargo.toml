@@ -1,0 +1,27 @@
+[package]
+name = "pwright-playwright-server-session"
+description = "Opt-in Playwright Server session bootstrap and connection-owned browser lease"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+live-tokio = ["pwright-transport-ws/live-tokio"]
+supervisor = []
+page-events = ["supervisor", "dep:pwright-playwright-server-page-events"]
+close-notices = ["supervisor", "dep:pwright-playwright-server-page-events"]
+frame-title = ["supervisor"]
+
+[dependencies]
+pwright-playwright-server-client-core = { path = "../pwright-playwright-server-client-core" }
+pwright-playwright-server-page-events = { path = "../pwright-playwright-server-page-events", optional = true }
+pwright-transport-ws = { path = "../pwright-transport-ws" }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+futures-util = { workspace = true }
+tokio-tungstenite = { workspace = true }

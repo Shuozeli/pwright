@@ -28,12 +28,233 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets
+      - name: Verify bridge test-support dependency boundary
+        run: bash scripts/check-bridge-test-utils-dependencies.sh
+      - name: Verify Chromium session-initialization plugin boundary
+        run: bash scripts/check-v2-chromium-session-initialization-dependencies.sh
+      - name: Verify Chromium frame-observer plugin boundary
+        run: bash scripts/check-v2-chromium-frame-observer-dependencies.sh
+      - name: Verify Chromium frame-lifecycle plugin boundary
+        run: bash scripts/check-v2-chromium-frame-lifecycle-dependencies.sh
       - name: Verify navigation-only dependency boundary
         run: bash scripts/check-v2-navigation-dependencies.sh
       - name: Verify optional Rust extra HTTP header policy
         run: |
           CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-network-model --features extra-headers
           CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-network-model --all-targets --features extra-headers -- -D warnings
+      - name: Verify opt-in Chromium startup log dependency and behavior boundary
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-provider-chromium --no-default-features --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-provider-chromium --features startup-logs --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium-launch --no-default-features --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-composition-chromium-launch --features startup-logs --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-provider-chromium -p pwright-composition-chromium-launch --all-targets --no-default-features -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-provider-chromium -p pwright-composition-chromium-launch --all-targets --features pwright-composition-chromium-launch/startup-logs -- -D warnings
+      - name: Verify independent bounded Playwright v8 trace writer and Context lifecycle
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-trace-playwright-v8 --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-trace-playwright-v8 --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-trace-playwright-v8-context --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-trace-playwright-v8-context --all-targets -- -D warnings
+          cargo tree --locked -p pwright-node-host --no-default-features -e normal > "$RUNNER_TEMP/pwright-node-default-tree.txt"
+          ! grep -q pwright-trace-playwright-v8 "$RUNNER_TEMP/pwright-node-default-tree.txt"
+          ! grep -q pwright-trace-playwright-v8-context "$RUNNER_TEMP/pwright-node-default-tree.txt"
+          cargo tree --locked -p pwright-node-host --no-default-features --features playwright-trace -e normal | grep -q pwright-trace-playwright-v8
+      - name: Verify standalone opt-in WebSocket transport boundary
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-transport-ws --no-default-features --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-transport-ws --features live-tokio
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-transport-ws --all-targets --no-default-features -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-transport-ws --all-targets --features live-tokio -- -D warnings
+          ! cargo tree --locked -p pwright-transport-ws --no-default-features -e normal | grep -q tungstenite
+          cargo tree --locked -p pwright-transport-ws --features live-tokio --prefix none -e normal > "$RUNNER_TEMP/pwright-ws-selected-tree.txt"
+          grep -q '^pwright-tokio-tungstenite v0.26.2-pwright.1' "$RUNNER_TEMP/pwright-ws-selected-tree.txt"
+          grep -q '^pwright-tungstenite v0.26.2-pwright.1' "$RUNNER_TEMP/pwright-ws-selected-tree.txt"
+          ! grep -Eq '^(tokio-tungstenite|tungstenite) v' "$RUNNER_TEMP/pwright-ws-selected-tree.txt"
+          ! cargo tree --locked -p pwright-node-host --no-default-features -e normal | grep -q pwright-transport-ws
+          ! cargo tree --locked -p pwright-python-addon --no-default-features -e normal | grep -q pwright-transport-ws
+      - name: Verify browser-neutral owned-process startup remains opt-in
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-owned-process-startup --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo check --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features owned-process-startup
+          cargo tree --locked -p pwright-python-addon --no-default-features \
+            -e normal > "$RUNNER_TEMP/pwright-python-owned-process-default-tree.txt"
+          cargo tree --locked -p pwright-python-addon --no-default-features \
+            --features owned-process-startup -e normal \
+            > "$RUNNER_TEMP/pwright-python-owned-process-selected-tree.txt"
+          ! grep -F pwright-owned-process-startup \
+            "$RUNNER_TEMP/pwright-python-owned-process-default-tree.txt"
+          grep -F pwright-owned-process-startup \
+            "$RUNNER_TEMP/pwright-python-owned-process-selected-tree.txt"
+      - name: Verify Playwright Server initialization remains opt-in
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-client-core --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-initialize --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-playwright-server-initialize --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-session --no-default-features --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-session --no-default-features \
+            --features live-tokio --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-session --no-default-features \
+            --features supervisor --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-session --all-features --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-playwright-server-session --all-targets \
+            --all-features -- -D warnings
+          ! cargo tree --locked -p pwright-playwright-server-session \
+            --no-default-features -e normal | grep -q tungstenite
+          ! cargo tree --locked -p pwright-node-addon --no-default-features \
+            -e normal | grep -q pwright-playwright-server-session
+          ! cargo tree --locked -p pwright-python-addon --no-default-features \
+            -e normal | grep -q pwright-playwright-server-session
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-endpoint-discovery --no-default-features
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-endpoint-discovery --all-features
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-playwright-server-endpoint-discovery --all-targets \
+            --all-features -- -D warnings
+          ! cargo tree --locked -p pwright-playwright-server-endpoint-discovery \
+            --no-default-features -e normal | grep -q reqwest
+          ! cargo tree --locked -p pwright-playwright-server-endpoint-discovery \
+            --no-default-features -e normal | grep -q tokio
+          ! cargo tree --locked -p pwright-node-addon --no-default-features \
+            -e normal | grep -q pwright-playwright-server-endpoint-discovery
+          ! cargo tree --locked -p pwright-python-addon --no-default-features \
+            -e normal | grep -q pwright-playwright-server-endpoint-discovery
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-connect --no-default-features --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-connect --all-features --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-playwright-server-connect --all-targets \
+            --all-features -- -D warnings
+          ! cargo tree --locked -p pwright-playwright-server-connect \
+            --no-default-features -e normal | grep -q reqwest
+          ! cargo tree --locked -p pwright-playwright-server-connect \
+            --no-default-features -e normal | grep -q tungstenite
+          ! cargo tree --locked -p pwright-node-addon --no-default-features \
+            -e normal | grep -q pwright-playwright-server-connect
+          ! cargo tree --locked -p pwright-python-addon --no-default-features \
+            -e normal | grep -q pwright-playwright-server-connect
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-server-browser-ops --no-default-features --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-playwright-server-browser-ops --all-targets \
+            --no-default-features -- -D warnings
+          ! cargo tree --locked -p pwright-playwright-server-browser-ops \
+            --no-default-features -e normal | grep -q tungstenite
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo check --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features playwright-server-initialize
+          cargo tree --locked -p pwright-python-addon --no-default-features \
+            -e normal > "$RUNNER_TEMP/pwright-python-server-default-tree.txt"
+          cargo tree --locked -p pwright-python-addon --no-default-features \
+            --features playwright-server-initialize -e normal \
+            > "$RUNNER_TEMP/pwright-python-server-selected-tree.txt"
+          ! grep -F pwright-playwright-server-initialize \
+            "$RUNNER_TEMP/pwright-python-server-default-tree.txt"
+          grep -F pwright-playwright-server-initialize \
+            "$RUNNER_TEMP/pwright-python-server-selected-tree.txt"
+      - name: Verify opt-in Python Playwright Server remote Browser boundary
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-python-addon --all-targets --no-default-features \
+            --features playwright-server-connect-session -- -D warnings
+          cargo tree --locked -p pwright-python-addon --no-default-features \
+            -e normal > "$RUNNER_TEMP/pwright-python-server-default-tree.txt"
+          cargo tree --locked -p pwright-python-addon --no-default-features \
+            --features playwright-server-connect-session -e normal \
+            > "$RUNNER_TEMP/pwright-python-server-session-selected-tree.txt"
+          ! grep -F pwright-playwright-server-connect \
+            "$RUNNER_TEMP/pwright-python-server-default-tree.txt"
+          ! grep -F pwright-playwright-server-browser-ops \
+            "$RUNNER_TEMP/pwright-python-server-default-tree.txt"
+          grep -F pwright-playwright-server-connect \
+            "$RUNNER_TEMP/pwright-python-server-session-selected-tree.txt"
+          grep -F pwright-playwright-server-session \
+            "$RUNNER_TEMP/pwright-python-server-session-selected-tree.txt"
+          grep -F pwright-playwright-server-browser-ops \
+            "$RUNNER_TEMP/pwright-python-server-session-selected-tree.txt"
+      - name: Verify opt-in Node Playwright Server DNS-error boundary
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo check --release --locked \
+            -p pwright-node-addon --no-default-features
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-node-addon --all-targets --no-default-features \
+            --features playwright-server-connect-ws-error -- -D warnings
+          cargo tree --locked -p pwright-node-addon --no-default-features \
+            -e normal > "$RUNNER_TEMP/pwright-node-server-default-tree.txt"
+          cargo tree --locked -p pwright-node-addon --no-default-features \
+            --features playwright-server-connect-ws-error -e normal \
+            > "$RUNNER_TEMP/pwright-node-server-selected-tree.txt"
+          ! grep -F pwright-transport-ws \
+            "$RUNNER_TEMP/pwright-node-server-default-tree.txt"
+          grep -F pwright-transport-ws \
+            "$RUNNER_TEMP/pwright-node-server-selected-tree.txt"
+          grep -F pwright-tokio-tungstenite \
+            "$RUNNER_TEMP/pwright-node-server-selected-tree.txt"
+          grep -F pwright-tungstenite \
+            "$RUNNER_TEMP/pwright-node-server-selected-tree.txt"
+      - name: Verify separate opt-in Node Playwright Server Close-error boundary
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-node-addon --all-targets --no-default-features \
+            --features playwright-server-connect-close-error -- -D warnings
+          cargo tree --locked -p pwright-node-addon --no-default-features \
+            --features playwright-server-connect-close-error -e normal \
+            > "$RUNNER_TEMP/pwright-node-server-close-selected-tree.txt"
+          ! grep -F pwright-playwright-server-initialize \
+            "$RUNNER_TEMP/pwright-node-server-default-tree.txt"
+          grep -F pwright-playwright-server-initialize \
+            "$RUNNER_TEMP/pwright-node-server-close-selected-tree.txt"
+          grep -F pwright-transport-ws \
+            "$RUNNER_TEMP/pwright-node-server-close-selected-tree.txt"
+      - name: Verify separate opt-in Node Playwright Server header boundary
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked \
+            -p pwright-playwright-connect-headers --features server-ws
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-node-addon --all-targets --no-default-features \
+            --features playwright-server-connect-headers -- -D warnings
+          cargo tree --locked -p pwright-node-addon --no-default-features \
+            --features playwright-server-connect-headers -e normal \
+            > "$RUNNER_TEMP/pwright-node-server-headers-selected-tree.txt"
+          ! grep -F pwright-playwright-connect-headers \
+            "$RUNNER_TEMP/pwright-node-server-default-tree.txt"
+          grep -F pwright-playwright-connect-headers \
+            "$RUNNER_TEMP/pwright-node-server-headers-selected-tree.txt"
+          grep -F pwright-transport-ws \
+            "$RUNNER_TEMP/pwright-node-server-headers-selected-tree.txt"
+          ! grep -F pwright-playwright-server-initialize \
+            "$RUNNER_TEMP/pwright-node-server-headers-selected-tree.txt"
+      - name: Verify opt-in Node Playwright Server remote Browser boundary
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked \
+            -p pwright-node-addon --all-targets --no-default-features \
+            --features playwright-server-connect-session -- -D warnings
+          cargo tree --locked -p pwright-node-addon --no-default-features \
+            --features playwright-server-connect-session -e normal \
+            > "$RUNNER_TEMP/pwright-node-server-session-selected-tree.txt"
+          ! grep -F pwright-playwright-server-connect \
+            "$RUNNER_TEMP/pwright-node-server-default-tree.txt"
+          ! grep -F pwright-playwright-server-browser-ops \
+            "$RUNNER_TEMP/pwright-node-server-default-tree.txt"
+          grep -F pwright-playwright-server-connect \
+            "$RUNNER_TEMP/pwright-node-server-session-selected-tree.txt"
+          grep -F pwright-playwright-server-session \
+            "$RUNNER_TEMP/pwright-node-server-session-selected-tree.txt"
+          grep -F pwright-playwright-server-browser-ops \
+            "$RUNNER_TEMP/pwright-node-server-session-selected-tree.txt"
       - name: Verify opt-in Frame navigation 1.2 generated bindings
         run: |
           CARGO_INCREMENTAL=0 cargo run --release --locked -p pwright-schema-gen -- \
@@ -53,6 +274,34 @@ jobs:
           CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-addon --all-targets --features frame-navigation -- -D warnings
           CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-addon --all-targets --features drag-runtime,frame-navigation -- -D warnings
           node packages/pwright/scripts/check-boundary.mjs
+      - name: Verify composable Node request event profiles compile independently
+        run: |
+          RUSTFLAGS="" CARGO_INCREMENTAL=0 cargo check --release --locked -p pwright-node-addon --no-default-features --features request-events
+          RUSTFLAGS="" CARGO_INCREMENTAL=0 cargo check --release --locked -p pwright-node-addon --no-default-features --features response-events
+          RUSTFLAGS="" CARGO_INCREMENTAL=0 cargo check --release --locked -p pwright-node-addon --no-default-features --features response-finished
+          RUSTFLAGS="" CARGO_INCREMENTAL=0 cargo check --release --locked -p pwright-node-addon --no-default-features --features request-post-data-json
+      - name: Verify opt-in browser history navigation
+        run: |
+          CARGO_INCREMENTAL=0 cargo run --release --locked -p pwright-schema-gen -- \
+            --input crates/pwright-cap-history-navigation/schema/history-navigation.yml \
+            --import crates/pwright-codec-common/schema/common.yml \
+            --output "$RUNNER_TEMP/pwright-history-navigation-schema.rs" \
+            --capability-output crates/pwright-cap-history-navigation/src/generated_capability.rs \
+            --reference-output crates/pwright-cap-history-navigation/schema/protocol-reference.md
+          git diff --exit-code -- \
+            crates/pwright-cap-history-navigation/src/generated_capability.rs \
+            crates/pwright-cap-history-navigation/schema/protocol-reference.md
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-cap-history-navigation --lib
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-backend-cdp-navigation --features history-navigation \
+            history::tests --lib
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features history-navigation --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features history-navigation --all-targets --no-deps -- -D warnings
       - name: Verify opt-in file-input preparation model
         run: |
           CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-file-input-model -p pwright-file-input-source -p pwright-file-input-fs -p pwright-file-input-tokio -p pwright-backend-cdp-file-input -p pwright-composition-chromium-file-input -p pwright-cdp
@@ -73,6 +322,15 @@ jobs:
           CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host -p pwright-composition-chromium-file-input --features pwright-node-host/file-input --lib
           CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-host --features file-input --all-targets -- -D warnings
           CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-addon --features file-input --all-targets -- -D warnings
+      - name: Verify composable Page file-chooser events and native path leaves
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host --features file-chooser-events --lib page_file_chooser::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-host -p pwright-python-addon --features pwright-python-addon/file-chooser-events --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host --features file-chooser-native-paths --lib file_input::tests::colocated_file_chooser_paths_target_the_utility_world_object -- --exact
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-host -p pwright-python-addon --features pwright-python-addon/file-chooser-native-paths --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host --no-default-features --features file-input-native-paths --lib file_input::native_paths::tests::directory_plan_selects_directory_prevalidation -- --exact
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-node-host --no-default-features --features file-input-native-paths --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked -p pwright-python-addon --no-default-features --features file-input-native-paths --all-targets --no-deps -- -D warnings
       - name: Verify optional native Handle publication and pending result ownership
         run: |
           CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --features handles --lib
@@ -219,6 +477,14 @@ jobs:
           CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-addon --lib --features retained-file-input,concurrent-close,extra-headers,drag-runtime,frame-navigation
           CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-addon --features retained-file-input --all-targets -- -D warnings
           CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-addon --features retained-file-input,concurrent-close,extra-headers,drag-runtime,frame-navigation --all-targets -- -D warnings
+      - name: Verify terminal retained-payload profiles
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --features retained-serialized-payload-mutation --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-host --features retained-serialized-payload-mutation,concurrent-close,extra-headers,drag-runtime,frame-navigation --lib
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-addon --lib --features retained-serialized-payload-mutation
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test --release --locked -p pwright-node-addon --lib --features retained-serialized-payload-mutation,concurrent-close,extra-headers,drag-runtime,frame-navigation
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-addon --all-targets --features retained-serialized-payload-mutation -- -D warnings
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo clippy --release --locked -p pwright-node-addon --all-targets --features retained-serialized-payload-mutation,concurrent-close,extra-headers,drag-runtime,frame-navigation -- -D warnings
       - name: Verify Locator element-evaluation dependency boundary
         run: bash scripts/check-v2-locator-evaluation-dependencies.sh
       - name: Verify page-events-only dependency boundary
@@ -261,7 +527,1493 @@ jobs:
         with:
           version: "27.x"
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace
+      - run: CARGO_INCREMENTAL=0 cargo test --release --locked --workspace
+      - name: Verify default Node addon unit tests
+        run: CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-addon --lib
+
+  node-package:
+    name: Node package (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          cache-dependency-path: packages/pwright/pnpm-lock.yaml
+      - uses: astral-sh/setup-uv@v6
+        if: matrix.node-version == '20'
+        with:
+          version: "0.12.5"
+      - uses: dtolnay/rust-toolchain@stable
+        if: matrix.node-version == '20'
+      - name: Install package dependencies
+        working-directory: packages/pwright
+        run: pnpm install --frozen-lockfile
+      - uses: actions/checkout@v4
+        if: matrix.node-version == '20'
+        with:
+          repository: microsoft/playwright
+          ref: 961381ec73a9fa2661d92504eab1a6bd6eaffc75
+          path: .work/core455-upstream
+          persist-credentials: false
+      - name: Verify pinned Core455 source-only bootstrap and guard syntax
+        if: matrix.node-version == '20'
+        run: |
+          upstream="$GITHUB_WORKSPACE/.work/core455-upstream"
+          test "$(git -C "$upstream" rev-parse HEAD)" = "961381ec73a9fa2661d92504eab1a6bd6eaffc75"
+          node --check scripts/bootstrap_playwright_core455_source_only.cjs
+          node --test scripts/test_bootstrap_playwright_core455_source_only.cjs
+          node --check tests/official/playwright-core-internal-source-only-guard.cjs
+          node -e 'const { suites } = require("./tests/official/playwright-core-internal-source-only-manifest.json"); if (!Array.isArray(suites) || suites.length !== 4) process.exit(1)'
+      - name: Verify full pinned Core source inventory without executing tests
+        if: matrix.node-version == '20'
+        run: |
+          uv run --no-project python -m unittest \
+            scripts.test_verify_playwright_core_full_source_inventory -v
+          uv run --no-project python \
+            scripts/verify_playwright_core_full_source_inventory.py \
+            "$GITHUB_WORKSPACE/.work/core455-upstream"
+      - name: Install pinned offline oracle dependencies
+        if: matrix.node-version == '20'
+        working-directory: tests
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+      - name: Verify package unit and type contracts
+        working-directory: packages/pwright
+        run: |
+          pnpm test
+          pnpm run test:server-connect-ws-error-adapter
+          pnpm run test:server-connect-close-error-adapter
+          pnpm run test:server-connect-headers-adapter
+          pnpm test:types
+      - name: Verify native dependency boundaries
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          pnpm test:boundary
+      - name: Verify opt-in persistent-context preflight profile
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-persistent-context-preflight
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-persistent-context-preflight --all-targets -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=persistent-context-preflight CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=persistent-context-preflight pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=persistent-context-preflight pnpm test:persistent-context-preflight
+          PWRIGHT_NATIVE_PROFILE=persistent-context-preflight pnpm test:persistent-context-preflight-native
+      - name: Verify optional selector-registration profile
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          bash ../../scripts/check-node-selector-registration-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features selector-registration --lib selector_registry::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features selector-registration --all-targets --no-deps \
+            -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=selector-registration CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=selector-registration pnpm test:native-load
+      - name: Verify optional BrowserContext cookie profile
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          bash ../../scripts/check-node-context-cookies-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features context-cookies --all-targets --no-deps \
+            -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=context-cookies CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=context-cookies pnpm test:native-load
+          node --test test/context-cookies-adapter.test.mjs
+      - name: Verify bounded large Route POST profile
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          bash ../../scripts/check-node-route-large-post-data-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features frame-navigation,large-evaluation-inputs,large-route-post-data \
+            --all-targets --no-deps -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=route-large-post-data CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=route-large-post-data pnpm test:native-load
+      - name: Verify optional HTTP-proxy profile
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          bash ../../scripts/check-node-api-request-http-proxy-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-api-request-connector-http-proxy --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features api-request-http-proxy --all-targets --no-deps \
+            -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=api-request-http-proxy CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=api-request-http-proxy pnpm test:native-load
+      - name: Verify optional SOCKS5-proxy profile
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          bash ../../scripts/check-node-api-request-socks5-proxy-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-api-request-connector-socks5 --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features api-request-socks5-proxy --all-targets --no-deps \
+            -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=api-request-socks5-proxy CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=api-request-socks5-proxy pnpm test:native-load
+      - name: Verify composable proxy-bypass profiles
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          bash ../../scripts/check-node-api-request-proxy-bypass-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-api-request-connector-proxy-bypass --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features api-request-http-proxy,api-request-socks5-proxy,api-request-proxy-bypass \
+            --all-targets --no-deps -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=api-request-http-proxy-bypass \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=api-request-http-proxy-bypass \
+            pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=api-request-socks5-proxy-bypass \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=api-request-socks5-proxy-bypass \
+            pnpm test:native-load
+      - name: Verify BrowserContext API-request proxy composition
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          bash ../../scripts/check-node-context-api-request-proxy-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features context-api-request,context-proxy --all-targets \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features context-api-request,context-proxy,api-request-http-proxy,api-request-socks5-proxy,api-request-proxy-bypass \
+            --all-targets --no-deps -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=context-api-request-proxy \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=context-api-request-proxy \
+            pnpm test:native-load
+      - name: Verify composable proxy TLS profiles
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          bash ../../scripts/check-node-api-request-proxy-tls-composition-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-api-request-transport \
+            -p pwright-api-request-connector-rustls \
+            -p pwright-api-request-connector-http-proxy \
+            -p pwright-api-request-connector-socks5 \
+            --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-addon --no-default-features \
+            --features api-request-client-certificates,api-request-http-proxy,api-request-socks5-proxy \
+            --all-targets --no-deps -- -D warnings
+          PWRIGHT_NATIVE_PROFILE=api-request-client-certificates-http-proxy \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=api-request-client-certificates-http-proxy \
+            pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=api-request-client-certificates-socks5-proxy \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=api-request-client-certificates-socks5-proxy \
+            pnpm test:native-load
+      - name: Build and load the default native artifact
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          CARGO_INCREMENTAL=0 pnpm build
+          pnpm test:native-load
+      - name: Build and load opt-in Playwright Server DNS-error artifact
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-ws-error \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-ws-error \
+            pnpm test:native-load
+      - name: Build and load opt-in Playwright Server Close-error artifact
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-close-error \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-close-error \
+            pnpm test:native-load
+      - name: Build and test opt-in Playwright Server header artifact
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-headers \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-headers \
+            pnpm test:native-load
+          pnpm run test:server-connect-headers-native
+      - name: Build and test opt-in Playwright Server remote Browser artifact
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-session \
+            CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-session \
+            pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=playwright-server-connect-session \
+            node -e "const addon = require('./native/playwright-server-connect-session/pwright.node'); if (typeof addon.NativeRemoteContext?.prototype?.close !== 'function' || typeof addon.NativeRemoteBrowser?.prototype?.supportsContextClose !== 'function') process.exit(1)"
+          pnpm run test:server-connect-session-adapter
+      - name: Verify opt-in CDP default User-Agent native composition
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          RUSTFLAGS="" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+            PWRIGHT_NATIVE_PROFILE=official-conformance-page-cdp-default-user-agent \
+            pnpm build
+          PWRIGHT_NATIVE_PROFILE=official-conformance-page-cdp-default-user-agent \
+            pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=official-conformance-page-cdp-default-user-agent \
+            node --test test/cdp-default-user-agent-native.test.mjs
+          PWRIGHT_NATIVE_PROFILE=official-conformance-page-cdp-default-user-agent \
+            pnpm test
+          base_features="$(node -p "require('./src/native-artifact.cjs').nativeFeatures('official-conformance-page-cdp-handshake-headers').join(',')")"
+          selected_features="$(node -p "require('./src/native-artifact.cjs').nativeFeatures('official-conformance-page-cdp-default-user-agent').join(',')")"
+          deps_dir="$(mktemp -d)"
+          cargo tree --offline --locked -e normal -p pwright-node-addon \
+            --no-default-features --features "$base_features" --prefix none \
+            | LC_ALL=C sort -u > "$deps_dir/base.txt"
+          cargo tree --offline --locked -e normal -p pwright-node-addon \
+            --no-default-features --features "$selected_features" --prefix none \
+            | LC_ALL=C sort -u > "$deps_dir/selected.txt"
+          test -s "$deps_dir/base.txt"
+          diff -u "$deps_dir/base.txt" "$deps_dir/selected.txt"
+      - name: Verify opt-in CDP discovery errors and WebSocket close diagnostics
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host \
+            --no-default-features --features cdp-discovery-errors,cdp-ws-close-reason \
+            --lib endpoint::tests
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host \
+            --no-default-features --features cdp-discovery-errors,cdp-ws-close-reason \
+            --lib ws_close_diagnostics
+          RUSTFLAGS="" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+            PWRIGHT_NATIVE_PROFILE=official-conformance-page-cdp-errors \
+            pnpm build
+          PWRIGHT_NATIVE_PROFILE=official-conformance-page-cdp-errors \
+            pnpm test:native-load
+          pnpm test:cdp-errors-native
+          PWRIGHT_NATIVE_PROFILE=official-conformance-page-cdp-errors \
+            pnpm test
+          base_features="$(node -p "require('./src/native-artifact.cjs').nativeFeatures('official-conformance-page-cdp-default-user-agent').join(',')")"
+          selected_features="$(node -p "require('./src/native-artifact.cjs').nativeFeatures('official-conformance-page-cdp-errors').join(',')")"
+          deps_dir="$(mktemp -d)"
+          cargo tree --offline --locked -e normal -p pwright-node-addon \
+            --no-default-features --features "$base_features" --prefix none --format '{p}' \
+            | cut -d ' ' -f1 | LC_ALL=C sort -u > "$deps_dir/base.txt"
+          cargo tree --offline --locked -e normal -p pwright-node-addon \
+            --no-default-features --features "$selected_features" --prefix none --format '{p}' \
+            | cut -d ' ' -f1 | LC_ALL=C sort -u > "$deps_dir/selected.txt"
+          test -s "$deps_dir/base.txt"
+          diff -u "$deps_dir/base.txt" "$deps_dir/selected.txt"
+      - name: Replay and verify all Core455 private source-only invocations without browsers
+        if: matrix.node-version == '20'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          set -euo pipefail
+          upstream="$GITHUB_WORKSPACE/.work/core455-upstream"
+          manifest="$GITHUB_WORKSPACE/tests/official/playwright-core-internal-source-only-manifest.json"
+          test -f packages/pwright/native/pwright.node
+          node scripts/bootstrap_playwright_core455_source_only.cjs "$upstream"
+          results="$(mktemp -d "$RUNNER_TEMP/pwright-core455.XXXXXX")"
+          verified=0
+          for suite in core455-internal-viewport-library core455-internal-viewport-bidi core455-internal-glob-library core455-internal-glob-bidi; do
+            case "$suite" in
+              *-bidi) expected=6 ;;
+              *-library) expected=3 ;;
+              *) exit 1 ;;
+            esac
+            node tests/official/playwright-core-internal-source-only-guard.cjs --check \
+              "$manifest" "$suite" "$upstream"
+            for mode in oracle candidate; do
+              result="$results/$mode-$suite.json"
+              command=(uv run --no-project python scripts/run_playwright_official_conformance.py \
+                "$mode" "$upstream" --manifest "$manifest" --suite "$suite" --result "$result")
+              if test "$mode" = candidate; then
+                command+=(--candidate packages/pwright --candidate-profile default)
+              fi
+              "${command[@]}"
+              sidecar="${result%.json}.provenance.json"
+              uv run --no-project python scripts/verify_playwright_official_provenance.py "$sidecar"
+              jq -e --arg mode "$mode" --arg suite "$suite" --argjson expected "$expected" \
+                '.schema == 3 and .mode == $mode and .suite == $suite and .exitCode == 0 and
+                 .sourceOnlyExecution.scope == "upstream-private-source-only" and
+                 .sourceOnlyExecution.reportedTests == $expected and
+                 .sourceOnlyExecution.candidateRuntimeAttested == false and
+                 .sourceOnlyExecution.publicApiParityEvidence == false' "$sidecar"
+              verified=$((verified + 1))
+            done
+          done
+          test "$verified" -eq 8
+          test "$(find "$results" -maxdepth 1 -type f -name '*.provenance.json' | wc -l)" -eq 8
+      - name: Verify opt-in owned-launch startup logs through Node and Rust without browsers
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          RUSTFLAGS="" CARGO_BUILD_JOBS=2 PWRIGHT_NATIVE_PROFILE=owned-launch CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=owned-launch pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=owned-launch node --test \
+            test/owned-launch-startup-logs-native.test.mjs
+      - name: Verify opt-in trace-directory launch through Node and Rust without browsers
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          RUSTFLAGS="" CARGO_BUILD_JOBS=2 PWRIGHT_NATIVE_PROFILE=playwright-trace CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=playwright-trace pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=playwright-trace node --test \
+            test/playwright-trace-directory-native.test.mjs
+          pnpm test:boundary
+      - name: Verify opt-in BiDi startup-failure boundary without browsers
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo test --release --locked \
+            -p pwright-owned-process-startup --lib
+          RUSTFLAGS="" CARGO_BUILD_JOBS=2 PWRIGHT_NATIVE_PROFILE=bidi-startup-failure CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=bidi-startup-failure pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=bidi-startup-failure pnpm test:owned-launch
+          PWRIGHT_NATIVE_PROFILE=bidi-startup-failure node --test \
+            test/bidi-startup-failure-native.test.mjs
+          pnpm test:boundary
+      - name: Verify terminal retained-payload Node profiles
+        if: matrix.node-version == '20'
+        working-directory: packages/pwright
+        run: |
+          pnpm test:handle-file-input-oracle
+          pnpm test:handle-file-input-dom-oracle
+          pnpm test:handle-target-marking-oracle
+          pnpm test:handle-file-input-call-argument
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation pnpm test:preparation-boundary
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation pnpm test:handle-file-input-preflight
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation pnpm test:handle-file-input-channel
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation pnpm test:handle-file-input-projection
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation pnpm test:handle-file-input-materialization
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation pnpm test:handle-file-input-arguments
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation pnpm test:handle-file-input-dispatch
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation-combined CARGO_INCREMENTAL=0 pnpm build
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation-combined pnpm test:native-load
+          PWRIGHT_NATIVE_PROFILE=retained-serialized-payload-mutation-combined pnpm test:preparation-boundary
+
+  python-package:
+    name: Python package (abi3-py39)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.5"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "27.x"
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify Python addon dependency and synchronous FFI boundaries
+        run: |
+          bash scripts/check-python-addon-dependencies.sh
+          CARGO_INCREMENTAL=0 cargo check --release --locked -p pwright-python-addon
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features context-bindings,context-forced-colors --lib page_bindings::tests
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features --test binding_ffi_admission
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features context-forced-colors --lib emulate_media::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features context-bindings,context-forced-colors --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features context-bindings,context-forced-colors --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features api-request-client-certificates --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features context-api-request --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features context-api-request,route-fetch --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features drag-and-drop --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features file-input --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features locator-highlight --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features locator-dom-actions --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features persistent-context --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features persistent-context-locale --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features page-pause --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features wait-for-timeout --lib wait_for_timeout::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features wait-for-timeout --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features wait-for-timeout --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features page-dialogs --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features file-chooser-events --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features page-errors --lib page_errors::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features page-errors --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features page-errors --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features console-history --lib console_events::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features console-history --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features console-history --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features request-history --lib network_events::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features request-history --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features request-history --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features context-network-events,request-frame,request-post-data-json \
+            --lib network_events::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features context-network-events,request-frame,request-post-data-json \
+            --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features context-network-events,request-frame,request-post-data-json \
+            --all-targets --no-deps -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features response-events --lib network_events::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features response-events --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features response-events --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features response-finished --lib network_events::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features response-finished --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features response-finished --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features device-emulation --lib device_emulation::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features device-emulation --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features device-emulation --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features ignore-https-errors --lib ignore_https_errors::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features ignore-https-errors --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features ignore-https-errors --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features page-pdf --lib page_pdf::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features page-pdf --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features page-pdf --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features page-viewport --lib page_viewport::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features page-viewport --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features page-viewport --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features locator-bounding-box --lib locator::expectation_tests::bounding_box
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features locator-bounding-box --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features locator-bounding-box --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features locator-screenshot --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features locator-screenshot --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features selector-registration --lib selector_registry::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features selector-registration --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features selector-registration --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features page-routes,network-events --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features route-fulfill-path --lib \
+            page_routes::tests::route_fulfill_path_reads_bounded_bytes_and_uses_extension_content_type \
+            -- --exact
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features route-fulfill-path --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features route-fulfill-path --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-api-request --lib \
+            tests::bounded_body_copy_rejects_before_clone_and_preserves_the_response \
+            -- --exact
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features route-fulfill-api-response --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features request-history --lib \
+            network_events::tests::native_request_response_waits_for_the_exact_network_identity \
+            -- --exact
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features page-routes --lib cors_preflight
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features route-redirects --lib redirect_
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features route-redirects --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features route-redirects --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-composition-chromium --lib \
+            topology_events::tests::selected_worker_observer_retains_and_initializes_page_child_session \
+            -- --exact
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-composition-chromium --lib root_auto_attach_
+          CARGO_INCREMENTAL=0 cargo test --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features worker-events --lib worker_events::tests
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-node-host --no-default-features \
+            --features worker-events --all-targets -- -D warnings
+          CARGO_INCREMENTAL=0 cargo clippy --release --locked \
+            -p pwright-python-addon --no-default-features \
+            --features worker-events --all-targets --no-deps \
+            -- -D warnings
+          CARGO_INCREMENTAL=0 cargo test --release --locked -p pwright-node-host --lib \
+            ffi_budget::tests::synchronous_reads_stay_charged_through_conversion -- --exact
+      - name: Verify Python formatting, lint and exact strict-type debt baseline
+        working-directory: packages/pwright-python
+        run: |
+          # The frozen v1 skip runner/verifier are byte-pinned by the debt gate.
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            python tests ../../scripts/check_playwright_python_official_source.py \
+            ../../scripts/inventory_playwright_python_official_tests.py \
+            ../../scripts/test_inventory_playwright_python_official_tests.py \
+            ../../scripts/test_verify_playwright_python_upstream_skip_markers_strict_v1.py \
+            ../../scripts/test_verify_playwright_python_upstream_skip_callable_fixtures_strict_v2.py \
+            ../../scripts/test_promote_playwright_python_upstream_skip_callable_fixtures_strict_v2.py \
+            ../../scripts/check_playwright_python_pyright_baseline_v1.py \
+            ../../scripts/test_check_playwright_python_pyright_baseline_v1.py \
+            ../../scripts/check_python39_runtime_types.py \
+            ../../scripts/playwright_python_official_provenance.py \
+            ../../scripts/run_playwright_python_official_conformance.py \
+            ../../scripts/select_playwright_python_junit.py \
+            ../../scripts/verify_playwright_python_official_provenance.py \
+            ../../scripts/audit_playwright_python_official_invocations.py \
+            ../../scripts/check_playwright_python_environment_blockers.py \
+            ../../scripts/test_check_python39_runtime_types.py \
+            ../../scripts/test_check_playwright_python_environment_blockers.py \
+            ../../scripts/test_playwright_python_official_provenance.py \
+            ../../scripts/test_run_playwright_python_official_conformance.py \
+            ../../scripts/test_verify_playwright_python_official_provenance.py \
+            ../../scripts/test_audit_playwright_python_official_invocations.py
+          # Two historical plugins have I001 debt; the v1 skip verifier has E501 debt.
+          # The exact-debt gate below rejects changes to all three frozen files.
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --exclude 'tests/official/connect_lifecycle_synthetic_v2/pwright_python_connect_lifecycle_synthetic_v2.py,tests/official/connect_remote_kill_synthetic_v1/pwright_python_connect_remote_kill_synthetic_v1.py' \
+            python tests ../../scripts/check_playwright_python_official_source.py \
+            ../../scripts/inventory_playwright_python_official_tests.py \
+            ../../scripts/test_inventory_playwright_python_official_tests.py \
+            ../../scripts/run_playwright_python_upstream_skip_markers_strict_v1.py \
+            ../../scripts/test_verify_playwright_python_upstream_skip_markers_strict_v1.py \
+            ../../scripts/test_verify_playwright_python_upstream_skip_callable_fixtures_strict_v2.py \
+            ../../scripts/test_promote_playwright_python_upstream_skip_callable_fixtures_strict_v2.py \
+            ../../scripts/check_playwright_python_pyright_baseline_v1.py \
+            ../../scripts/test_check_playwright_python_pyright_baseline_v1.py \
+            ../../scripts/check_python39_runtime_types.py \
+            ../../scripts/playwright_python_official_provenance.py \
+            ../../scripts/run_playwright_python_official_conformance.py \
+            ../../scripts/select_playwright_python_junit.py \
+            ../../scripts/verify_playwright_python_official_provenance.py \
+            ../../scripts/audit_playwright_python_official_invocations.py \
+            ../../scripts/check_playwright_python_environment_blockers.py \
+            ../../scripts/test_check_python39_runtime_types.py \
+            ../../scripts/test_check_playwright_python_environment_blockers.py \
+            ../../scripts/test_playwright_python_official_provenance.py \
+            ../../scripts/test_run_playwright_python_official_conformance.py \
+            ../../scripts/test_verify_playwright_python_official_provenance.py \
+            ../../scripts/test_audit_playwright_python_official_invocations.py
+          uv run --no-project --python 3.12 --with pyright==1.1.405 \
+            --with pytest==8.4.2 --with pytest-asyncio==1.2.0 \
+            --with playwright==1.58.0 python \
+            ../../scripts/check_playwright_python_pyright_baseline_v1.py
+          uv run --no-project --python 3.12 --with pyright==1.1.405 \
+            --with pytest==8.4.2 --with pytest-asyncio==1.2.0 \
+            --with playwright==1.58.0 python -m pyright \
+            ../../scripts/check_playwright_python_pyright_baseline_v1.py
+          uv venv "$RUNNER_TEMP/pwright-python-official-tooling" --python 3.12
+          tooling_python="$RUNNER_TEMP/pwright-python-official-tooling/bin/python"
+          uv pip install --python "$tooling_python" \
+            pytest==8.4.1 playwright==1.58.0
+          PYTHONPATH=../../scripts "$tooling_python" -m unittest discover \
+            -s ../../scripts -p 'test_*python*.py'
+          PYTHONPATH=../../scripts "$tooling_python" -m pytest -q \
+            ../../scripts/test_verify_playwright_python_upstream_skip_markers_strict_v1.py \
+            ../../scripts/test_verify_playwright_python_upstream_skip_callable_fixtures_strict_v2.py
+      - name: Install TypeScript for Core455 source-only guard tests
+        working-directory: packages/pwright
+        run: pnpm install --frozen-lockfile
+      - name: Verify synthetic Core connect lifecycle evidence controls without browsers
+        run: |
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            scripts/run_playwright_core_server_connect_lifecycle_synthetic_v1.py \
+            scripts/verify_playwright_core_server_connect_lifecycle_synthetic_v1.py \
+            scripts/test_verify_playwright_core_server_connect_lifecycle_synthetic_v1.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            scripts/run_playwright_core_server_connect_lifecycle_synthetic_v1.py \
+            scripts/verify_playwright_core_server_connect_lifecycle_synthetic_v1.py \
+            scripts/test_verify_playwright_core_server_connect_lifecycle_synthetic_v1.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_server_connect_lifecycle_synthetic_v1.py
+          node --check \
+            tests/official/playwright-core-server-connect-lifecycle-synthetic-v1-preload.cjs
+          node --check \
+            tests/official/playwright-core-server-connect-lifecycle-synthetic-v1-server.cjs
+      - name: Verify synthetic Core child-close evidence controls without browsers
+        run: |
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            scripts/run_playwright_core_server_connect_child_close_synthetic_v1.py \
+            scripts/verify_playwright_core_server_connect_child_close_synthetic_v1.py \
+            scripts/test_verify_playwright_core_server_connect_child_close_synthetic_v1.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            scripts/run_playwright_core_server_connect_child_close_synthetic_v1.py \
+            scripts/verify_playwright_core_server_connect_child_close_synthetic_v1.py \
+            scripts/test_verify_playwright_core_server_connect_child_close_synthetic_v1.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_server_connect_child_close_synthetic_v1.py
+          node --check \
+            tests/official/playwright-core-server-connect-child-close-synthetic-v1-preload.cjs
+          node --check \
+            tests/official/playwright-core-server-connect-child-close-synthetic-v1-server.cjs
+      - name: Verify synthetic Python connect lifecycle evidence controls without browsers
+        run: |
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_python_connect_lifecycle_synthetic_v1.py \
+            scripts/verify_playwright_python_connect_lifecycle_synthetic_v1.py \
+            scripts/test_verify_playwright_python_connect_lifecycle_synthetic_v1.py \
+            packages/pwright-python/tests/official/connect_lifecycle_synthetic_v1/pwright_python_connect_lifecycle_synthetic_v1.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_python_connect_lifecycle_synthetic_v1.py \
+            scripts/verify_playwright_python_connect_lifecycle_synthetic_v1.py \
+            scripts/test_verify_playwright_python_connect_lifecycle_synthetic_v1.py \
+            packages/pwright-python/tests/official/connect_lifecycle_synthetic_v1/pwright_python_connect_lifecycle_synthetic_v1.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_python_connect_lifecycle_synthetic_v1.py
+          node --check \
+            packages/pwright-python/tests/official/connect_lifecycle_synthetic_v1/server.cjs
+      - name: Verify synthetic Python child-close evidence controls without browsers
+        run: |
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_python_connect_close_events_synthetic_v1.py \
+            scripts/verify_playwright_python_connect_close_events_synthetic_v1.py \
+            scripts/test_verify_playwright_python_connect_close_events_synthetic_v1.py \
+            packages/pwright-python/tests/official/connect_close_events_synthetic_v1/pwright_python_connect_close_events_synthetic_v1.py \
+            packages/pwright-python/tests/official/connect_close_events_synthetic_v1/source_probe.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_python_connect_close_events_synthetic_v1.py \
+            scripts/verify_playwright_python_connect_close_events_synthetic_v1.py \
+            scripts/test_verify_playwright_python_connect_close_events_synthetic_v1.py \
+            packages/pwright-python/tests/official/connect_close_events_synthetic_v1/pwright_python_connect_close_events_synthetic_v1.py \
+            packages/pwright-python/tests/official/connect_close_events_synthetic_v1/source_probe.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_python_connect_close_events_synthetic_v1.py
+          node --check \
+            packages/pwright-python/tests/official/connect_close_events_synthetic_v1/server.cjs
+      - name: Verify Core455 source-only accounting tools without browsers
+        run: |
+          test -d packages/pwright/node_modules/typescript
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            scripts/test_verify_playwright_official_provenance.py \
+            scripts/run_playwright_core_dummy_node_launch.py \
+            scripts/test_run_playwright_core_dummy_node_launch.py \
+            scripts/run_playwright_core_cdp_default_user_agent_strict_v2.py \
+            scripts/verify_playwright_core_cdp_default_user_agent_strict_v2.py \
+            scripts/test_verify_playwright_core_cdp_default_user_agent_strict_v2.py \
+            scripts/test_promote_playwright_core_cdp_default_user_agent_strict_v2.py \
+            tests/official/dummy-core-guard/node
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            scripts/test_verify_playwright_official_provenance.py \
+            scripts/run_playwright_core_dummy_node_launch.py \
+            scripts/test_run_playwright_core_dummy_node_launch.py \
+            scripts/run_playwright_core_cdp_default_user_agent_strict_v2.py \
+            scripts/verify_playwright_core_cdp_default_user_agent_strict_v2.py \
+            scripts/promote_playwright_core_cdp_default_user_agent_strict_v2.py \
+            scripts/test_verify_playwright_core_cdp_default_user_agent_strict_v2.py \
+            scripts/test_promote_playwright_core_cdp_default_user_agent_strict_v2.py \
+            tests/official/dummy-core-guard/node
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_summarize_playwright_official_results.py \
+            scripts/test_run_playwright_official_conformance.py \
+            scripts/test_verify_playwright_official_provenance.py \
+            scripts/test_audit_playwright_official_invocations.py \
+            scripts/test_run_playwright_core_dummy_node_launch.py \
+            scripts/test_verify_playwright_core_cdp_default_user_agent_strict_v2.py \
+            scripts/test_promote_playwright_core_cdp_default_user_agent_strict_v2.py
+      - name: Verify Core version-mismatch ledger tooling without local evidence
+        run: |
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            scripts/audit_playwright_core_version_mismatch_v3_virtual.py \
+            scripts/promote_playwright_core_server_connect_version_mismatch_paired_v3.py \
+            scripts/verify_playwright_core_server_connect_version_mismatch_paired_v3.py \
+            scripts/test_verify_playwright_core_server_connect_version_mismatch_paired_v3.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            scripts/audit_playwright_core_version_mismatch_v3_virtual.py \
+            scripts/promote_playwright_core_server_connect_version_mismatch_paired_v3.py \
+            scripts/verify_playwright_core_server_connect_version_mismatch_paired_v3.py \
+            scripts/test_verify_playwright_core_server_connect_version_mismatch_paired_v3.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_server_connect_version_mismatch_paired_v3.py
+      - name: Verify sealed Core Bidi WS-error tooling without local evidence
+        run: |
+          # This exact historical v4 capture/promotion is receipt-pinned. The
+          # five hashes below limit strict-Ruff exceptions to those sealed bytes;
+          # any source cleanup requires new versioned evidence and a new receipt.
+          sha256sum -c - <<'SHA256'
+          0a0267ae46a8438d0843308bf99d000588121be30e300260a369449f3e481ec1  scripts/run_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py
+          81ae905d120bdfa277cae229d5ee378ad4f67541fc3acd6df56bbc526a2692f9  scripts/verify_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py
+          b46767cc8e1d485541e55c35f2b4aa09c4ae4c4bf43ca7efaea489ff22f200d6  scripts/test_verify_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py
+          75767b13fc5200943d1fdd362a2361afae0ba8b382a7dc78f5b3bfc43842fb51  scripts/promote_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py
+          3d2cdef34f866e0641f1690d39e9329b7f39f788a58d400e3e809108afd22c54  scripts/test_verify_playwright_core_server_connect_ws_error_bidi_chromium_paired_v4.py
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            scripts/run_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py \
+            scripts/verify_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py \
+            scripts/test_verify_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py \
+            scripts/promote_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py \
+            scripts/verify_playwright_core_server_connect_ws_error_bidi_chromium_paired_v4.py \
+            scripts/test_verify_playwright_core_server_connect_ws_error_bidi_chromium_paired_v4.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml --ignore E501 \
+            scripts/run_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py \
+            scripts/verify_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml --ignore I001 \
+            scripts/test_verify_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py \
+            scripts/test_verify_playwright_core_server_connect_ws_error_bidi_chromium_paired_v4.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml --ignore E501,I001 \
+            scripts/promote_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/verify_playwright_core_server_connect_ws_error_bidi_chromium_paired_v4.py
+          # Only synthetic selector, report, guard, and row-delta mutations run
+          # here. Source pins and the full pair need a verified local .work
+          # inventory, upstream checkout, addon snapshot, and raw run evidence.
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            -k 'not test_pinned_upstream_bidi_config_and_harness' \
+            scripts/test_verify_playwright_core_server_connect_ws_error_bidi_chromium_strict_v4.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            -k 'exact_six_row_transition_is_accepted or source_identity_mutations_rejected or successor_field_mutations_rejected or wrong_target_position_rejected or non_target_raw_byte_change_rejected' \
+            scripts/test_verify_playwright_core_server_connect_ws_error_bidi_chromium_paired_v4.py
+      - name: Verify Core Bidi CDP Close paired tooling without local evidence
+        run: |
+          # The sealed v4 capture sources are receipt-pinned. Only their known
+          # E501 diagnostics are exempted; all other strict Ruff rules apply.
+          sha256sum -c - <<'SHA256'
+          3d80e8c20cadd24b91301be9339d50379c2b1f1bb789c607b29e66b4a6f57804  scripts/run_playwright_core_cdp_close_bidi_chromium_strict_v4.py
+          7b8dea4ce695d2b392ff445df486b512e84d20b7f684f65fc49d8f15178ebf06  scripts/verify_playwright_core_cdp_close_bidi_chromium_strict_v4.py
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            scripts/run_playwright_core_cdp_close_bidi_chromium_strict_v4.py \
+            scripts/verify_playwright_core_cdp_close_bidi_chromium_strict_v4.py \
+            scripts/promote_playwright_core_cdp_close_bidi_chromium_strict_v5.py \
+            scripts/verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py \
+            scripts/test_verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml --ignore E501 \
+            scripts/run_playwright_core_cdp_close_bidi_chromium_strict_v4.py \
+            scripts/verify_playwright_core_cdp_close_bidi_chromium_strict_v4.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/promote_playwright_core_cdp_close_bidi_chromium_strict_v5.py \
+            scripts/verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py \
+            scripts/test_verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py
+          # The full 36 cases and promoter --verify-existing require the ignored
+          # .work evidence bundle; keep those local until a clean-CI bundle exists.
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py::test_exact_three_row_candidate_transition_accepted \
+            scripts/test_verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py::test_exact_three_row_oracle_transition_accepted \
+            scripts/test_verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py::test_target_source_mutations_rejected \
+            scripts/test_verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py::test_target_successor_mutations_rejected \
+            scripts/test_verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py::test_wrong_target_position_rejected \
+            scripts/test_verify_playwright_core_cdp_close_bidi_chromium_paired_v5.py::test_non_target_raw_byte_change_rejected
+      - name: Verify Core Bidi connect timeout/redirect tooling without local evidence
+        run: |
+          # These exact sources are pinned by the sealed v1 capture and v6
+          # receipt. CI checks tooling only; ignored .work evidence is absent.
+          sha256sum -c - <<'SHA256'
+          a92057dd1dc0d1acdc93610f5f11a2a862091462f0d565be8d6cff69d906913d  tests/official/playwright-core-server-connect-timeout-redirect-bidi-chromium-strict-v1-manifest.json
+          35ca7ddb0c9b6a2f0be8a35223f8d2756d47ec3370dc0914c39081ec27d34766  scripts/run_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py
+          4fa9b9d1cc356554df9046bb34af7c89e3b88cc0b560e1f9d30e4013a8205ad3  scripts/verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py
+          1a8ed0eade1bb023c1082744ceb6fae7cf324465c2ca22b1f24f471d779cdb11  scripts/test_verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py
+          f3c4b384ccdaf158b0b9cbed7f55d60dfda749ccf6011900350752dcca40406f  scripts/promote_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v6.py
+          a56e126cf4367bb0e1afeac2e4022cf4776bcb45699bb600e5e6ba48e65db5f6  scripts/verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_paired_v6.py
+          611f5463fd21b34fad17e598d17c69eae7382fb5b866fae7c3061c3bef85416f  scripts/test_verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_paired_v6.py
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py \
+            scripts/verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py \
+            scripts/test_verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py \
+            scripts/promote_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v6.py \
+            scripts/verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_paired_v6.py \
+            scripts/test_verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_paired_v6.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py \
+            scripts/verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py \
+            scripts/test_verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py \
+            scripts/promote_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v6.py \
+            scripts/verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_paired_v6.py \
+            scripts/test_verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_paired_v6.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_strict_v1.py \
+            scripts/test_verify_playwright_core_server_connect_timeout_redirect_bidi_chromium_paired_v6.py
+      - name: Verify Core Bidi HTTP-401 tooling without local evidence
+        run: |
+          # This gates sealed capture/promotion source bytes and pure mutation
+          # controls. The ignored .work evidence and official runs are not in CI.
+          sha256sum -c - <<'SHA256'
+          67ed3d2ba36ca02bfe7e3596e0fe0bbe048e3f26015460aca2edca068a1c7b60  tests/official/playwright-core-server-connect-http-401-bidi-chromium-strict-v6-manifest.json
+          00c7f3c0a987011762f7db11b3fc4395073b1d852ea91e3f8d19e7df0590a49b  scripts/run_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py
+          c877fa770934af42e5e7c0c64d30c62f3265120511ea796669bba58e595f8060  scripts/verify_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py
+          d40c2ff3e39bf6c16bad254a9309130a1603c363eb13a1b0024dc0779c078987  scripts/test_verify_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py
+          4e019644ac42908f0614574eacf9c82f348307798b68f92a63a54e643442085b  scripts/promote_playwright_core_server_connect_http_401_bidi_chromium_strict_v7.py
+          c9c7972fb96fab7d03e17ee614984357c101770531bcd30fdd34bc28a8128cc4  scripts/verify_playwright_core_server_connect_http_401_bidi_chromium_paired_v7.py
+          c829e6a111bd2d8620e3aa27cae6766dde859ab8d07e5beaac7e9285152d2c72  scripts/test_verify_playwright_core_server_connect_http_401_bidi_chromium_paired_v7.py
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py \
+            scripts/verify_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py \
+            scripts/test_verify_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py \
+            scripts/promote_playwright_core_server_connect_http_401_bidi_chromium_strict_v7.py \
+            scripts/verify_playwright_core_server_connect_http_401_bidi_chromium_paired_v7.py \
+            scripts/test_verify_playwright_core_server_connect_http_401_bidi_chromium_paired_v7.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py \
+            scripts/verify_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py \
+            scripts/test_verify_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py \
+            scripts/promote_playwright_core_server_connect_http_401_bidi_chromium_strict_v7.py \
+            scripts/verify_playwright_core_server_connect_http_401_bidi_chromium_paired_v7.py \
+            scripts/test_verify_playwright_core_server_connect_http_401_bidi_chromium_paired_v7.py
+          # This one pin/snapshot test needs the ignored Mac-local upstream
+          # checkout and addon; it runs with the full local evidence replay.
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            -k 'not test_pinned_upstream_source_manifest_and_frozen_snapshot' \
+            scripts/test_verify_playwright_core_server_connect_http_401_bidi_chromium_strict_v6.py \
+            scripts/test_verify_playwright_core_server_connect_http_401_bidi_chromium_paired_v7.py
+      - name: Verify Core Bidi Close tooling without local evidence
+        run: |
+          # The v6 capture and v8 paired scripts are sealed by local receipts.
+          # Clean CI can check hashes and pure controls, not ignored .work runs.
+          sha256sum -c - <<'SHA256'
+          f179e9296252988019bc806bfa03f1d151d356ff08da303150c57f3bde10d3ec  tests/official/playwright-core-server-connect-close-error-bidi-chromium-strict-v6-manifest.json
+          91517c88d02fc69fa25611b4669b60dc486fb35a86b572c3c72461c646c01d7d  scripts/run_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py
+          96fbf79b353d3f1d2f0a8bba49a837e0a86cb247f537e7fc24f2a615ea74191b  scripts/verify_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py
+          de06caf63b19ae11ab1d90b2fdbc8147966599849d56a63630368ee68901b438  scripts/test_verify_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py
+          6447cd6e15eb3d4886551277564c54f62604da487f0abff0fa03771ec475aaf2  scripts/promote_playwright_core_server_connect_close_error_bidi_chromium_strict_v8.py
+          d9396a008572d0e70412ce3afcd3b9001e46ea66fc714edc6f463d49e1a3a321  scripts/verify_playwright_core_server_connect_close_error_bidi_chromium_paired_v8.py
+          0d5a475f3aafc0866f1d063a8dd2873bb032a5667dc5a015eba6e6ff4475d045  scripts/test_verify_playwright_core_server_connect_close_error_bidi_chromium_paired_v8.py
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py \
+            scripts/verify_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py \
+            scripts/test_verify_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py \
+            scripts/promote_playwright_core_server_connect_close_error_bidi_chromium_strict_v8.py \
+            scripts/verify_playwright_core_server_connect_close_error_bidi_chromium_paired_v8.py \
+            scripts/test_verify_playwright_core_server_connect_close_error_bidi_chromium_paired_v8.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py \
+            scripts/verify_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py \
+            scripts/test_verify_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py \
+            scripts/promote_playwright_core_server_connect_close_error_bidi_chromium_strict_v8.py \
+            scripts/verify_playwright_core_server_connect_close_error_bidi_chromium_paired_v8.py \
+            scripts/test_verify_playwright_core_server_connect_close_error_bidi_chromium_paired_v8.py
+          # One source/snapshot proof needs ignored local upstream/addon inputs.
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            -k 'not test_pinned_source_manifest_and_frozen_snapshot_are_valid' \
+            scripts/test_verify_playwright_core_server_connect_close_error_bidi_chromium_strict_v6.py \
+            scripts/test_verify_playwright_core_server_connect_close_error_bidi_chromium_paired_v8.py
+      - name: Verify Core v8 portable ledger snapshot tooling without local evidence
+        run: |
+          # The ignored archive and its 11 sealed inputs are not in clean CI.
+          # This gates only the deterministic packer and pure mutation checks.
+          sha256sum -c - <<'SHA256'
+          9505b74515e02b4132e86a838900a66149fc00efc0e1d799ec7a9fa1d865616a  scripts/package_playwright_core_v8_ledger_snapshot.py
+          92bc0e7d719c472639aac7706e5fee4e8856f2bfac04706d7430992925ca7757  scripts/test_package_playwright_core_v8_ledger_snapshot.py
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/package_playwright_core_v8_ledger_snapshot.py \
+            scripts/test_package_playwright_core_v8_ledger_snapshot.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/package_playwright_core_v8_ledger_snapshot.py \
+            scripts/test_package_playwright_core_v8_ledger_snapshot.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            -k 'not test_pinned_local_source_replays_all_rows_in_both_lanes' \
+            scripts/test_package_playwright_core_v8_ledger_snapshot.py
+      - name: Verify Core Bidi public dummy-launch v2 tooling without local evidence
+        run: |
+          # This verifies source and pure safety controls. Official captures
+          # and the ignored paired ledger are not present in clean CI.
+          sha256sum -c - <<'SHA256'
+          5a30e115437e162d34e591e62d9a98002a427c6d4f3e6196378c7f7451a42ff9  scripts/run_playwright_core_dummy_node_bidi_strict_v2.py
+          2175c2599c7112cb8dc89d16557750f8b47c4bbd946fb1781112a651d8db62a7  scripts/verify_playwright_core_dummy_node_bidi_strict_v2.py
+          a5856d656ce02c3d4b4cfd17b1666714cfec12c7a0a0a5896eae46efdfa4d0d1  scripts/test_verify_playwright_core_dummy_node_bidi_strict_v2.py
+          670c6a4b2b015c3ffb4bf5ec26b1d37f7ee623a9eccafacb2bab4d82c420fcd2  tests/official/playwright-core-dummy-node-bidi-strict-v2-manifest.json
+          15136bb9094c9f7639d5e2dcd45edf7a9aa2c6bf7a90f58e36e7f3254f865e6c  tests/official/playwright-core-dummy-node-bidi-strict-v2-preload.cjs
+          3c2c444acc3cdca5f71eb5d7b9233fa77e96b7f7d8dbc9eb4aadf67fa11e2b1a  tests/official/dummy-core-bidi-firefox-guard/node
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_dummy_node_bidi_strict_v2.py \
+            scripts/verify_playwright_core_dummy_node_bidi_strict_v2.py \
+            scripts/test_verify_playwright_core_dummy_node_bidi_strict_v2.py \
+            tests/official/dummy-core-bidi-firefox-guard/node
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_dummy_node_bidi_strict_v2.py \
+            scripts/verify_playwright_core_dummy_node_bidi_strict_v2.py \
+            scripts/test_verify_playwright_core_dummy_node_bidi_strict_v2.py \
+            tests/official/dummy-core-bidi-firefox-guard/node
+          node --check tests/official/playwright-core-dummy-node-bidi-strict-v2-preload.cjs
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_dummy_node_bidi_strict_v2.py
+      - name: Verify Core v9 public dummy-launch ledger tooling without local evidence
+        run: |
+          # The strict captures and paired ledgers are ignored local inputs.
+          # This gates sealed source and pure mutation controls, not replay.
+          sha256sum -c - <<'SHA256'
+          73a9b516b6f7a21db52ba63fcb9b3bdff7f42b309cd7098e7ac15be2a918baf7  scripts/promote_playwright_core_dummy_node_bidi_strict_v9.py
+          fe377e1414984f1e261feb089444777f2191fe953d04d13081dae8f8f3b97b98  scripts/verify_playwright_core_dummy_node_bidi_paired_v9.py
+          0cd91511831c33d41ed04c9be20a0cf3c0ca19a63e506508845631a8b9e0e898  scripts/test_verify_playwright_core_dummy_node_bidi_paired_v9.py
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/promote_playwright_core_dummy_node_bidi_strict_v9.py \
+            scripts/verify_playwright_core_dummy_node_bidi_paired_v9.py \
+            scripts/test_verify_playwright_core_dummy_node_bidi_paired_v9.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/promote_playwright_core_dummy_node_bidi_strict_v9.py \
+            scripts/verify_playwright_core_dummy_node_bidi_paired_v9.py \
+            scripts/test_verify_playwright_core_dummy_node_bidi_paired_v9.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_dummy_node_bidi_paired_v9.py
+      - name: Verify Core Bidi public dummy-launch v3 tooling without local evidence
+        run: |
+          # The twelve official captures are ignored local evidence. This
+          # checks immutable source bytes and pure safety/mutation controls,
+          # not official test re-execution or ledger promotion. The three
+          # frozen Python sources are not project-config Ruff-format clean;
+          # do not reformat evidence-linked bytes in place.
+          sha256sum -c - <<'SHA256'
+          dfbbb9be2f9e928b43c22a56a686aa0abe6819636ba23eeaad70b2e83a80a9b0  scripts/run_playwright_core_dummy_node_bidi_strict_v3.py
+          1cc694c9a5b2e77faf67c60ff68f026931814d0f92c51e23835f456658ea3515  scripts/verify_playwright_core_dummy_node_bidi_strict_v3.py
+          b8eba6816ca027199162979147f66c267ea14982386debc0a995573295499c91  scripts/test_verify_playwright_core_dummy_node_bidi_strict_v3.py
+          045271d513fbe7844e4389beabc4e753a5b34cbf1ad1d79a9f1641e425e9d767  tests/official/playwright-core-dummy-node-bidi-strict-v3-manifest.json
+          3fdf58c0306b0b4179f4f93383a6387e1236da86f97f8a6c17af63e6642d54a7  tests/official/playwright-core-dummy-node-bidi-strict-v3-preload.cjs
+          3c2c444acc3cdca5f71eb5d7b9233fa77e96b7f7d8dbc9eb4aadf67fa11e2b1a  tests/official/dummy-core-bidi-firefox-guard/node
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            tests/official/dummy-core-bidi-firefox-guard/node
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_core_dummy_node_bidi_strict_v3.py \
+            scripts/verify_playwright_core_dummy_node_bidi_strict_v3.py \
+            scripts/test_verify_playwright_core_dummy_node_bidi_strict_v3.py \
+            tests/official/dummy-core-bidi-firefox-guard/node
+          node --check tests/official/playwright-core-dummy-node-bidi-strict-v3-preload.cjs
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_dummy_node_bidi_strict_v3.py
+      - name: Verify Core v10 public dummy-launch ledger tooling without local evidence
+        run: |
+          # The v3 official captures and v9/v10 paired ledgers are ignored
+          # local evidence. This step gates exact source bytes and pure
+          # mutation controls, not clean-CI evidence replay or test execution.
+          # These sealed Python bytes are not project-config Ruff-format clean.
+          sha256sum -c - <<'SHA256'
+          c2c2cbd1771a888544ecce760503281d50170cdd0a812ec47fbb18533f534f87  scripts/promote_playwright_core_dummy_node_bidi_strict_v10.py
+          a03b2525aeb925c01a5d87772e51926c04292b9a3cf7a80e60b4b3e39bbb791e  scripts/verify_playwright_core_dummy_node_bidi_paired_v10.py
+          8147f21b9710523d42a78b6302f3591b65374beaea558ddc73e92350e293bffb  scripts/test_verify_playwright_core_dummy_node_bidi_paired_v10.py
+          SHA256
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/promote_playwright_core_dummy_node_bidi_strict_v10.py \
+            scripts/verify_playwright_core_dummy_node_bidi_paired_v10.py \
+            scripts/test_verify_playwright_core_dummy_node_bidi_paired_v10.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_dummy_node_bidi_paired_v10.py
+      - name: Verify Core455 CDP error-slice evidence tools without browsers
+        run: |
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/attest_playwright_core_cdp_default_user_agent_strict_v2_snapshot.py \
+            scripts/attest_playwright_core_cdp_error_slice_strict_v2_snapshot.py \
+            scripts/attest_playwright_core_cdp_error_slice_strict_v3_snapshot.py \
+            scripts/official_candidate_package_snapshot_v1.py \
+            scripts/run_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/run_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/verify_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/verify_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/promote_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/promote_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/test_attest_playwright_core_cdp_error_slice_strict_v2_snapshot.py \
+            scripts/test_attest_playwright_core_cdp_error_slice_strict_v3_snapshot.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v1.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/test_promote_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/test_promote_playwright_core_cdp_error_slice_strict_v3.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/attest_playwright_core_cdp_default_user_agent_strict_v2_snapshot.py \
+            scripts/attest_playwright_core_cdp_error_slice_strict_v2_snapshot.py \
+            scripts/attest_playwright_core_cdp_error_slice_strict_v3_snapshot.py \
+            scripts/official_candidate_package_snapshot_v1.py \
+            scripts/run_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/run_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/verify_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/verify_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/promote_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/promote_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/test_attest_playwright_core_cdp_error_slice_strict_v2_snapshot.py \
+            scripts/test_attest_playwright_core_cdp_error_slice_strict_v3_snapshot.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v1.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/test_promote_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/test_promote_playwright_core_cdp_error_slice_strict_v3.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_attest_playwright_core_cdp_error_slice_strict_v2_snapshot.py \
+            scripts/test_attest_playwright_core_cdp_error_slice_strict_v3_snapshot.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v1.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/test_verify_playwright_core_cdp_error_slice_strict_v3.py \
+            scripts/test_promote_playwright_core_cdp_error_slice_strict_v2.py \
+            scripts/test_promote_playwright_core_cdp_error_slice_strict_v3.py
+      - name: Verify Core Server-connect strict diagnostic evidence tools without browsers
+        run: |
+          # Historical hash-pinned helpers keep long literal digest lines; do
+          # not rewrite captured source merely to satisfy E501 or formatter.
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml --ignore E501 \
+            scripts/run_playwright_core_server_connect_ws_error_strict_v1.py \
+            scripts/run_playwright_core_server_connect_ws_error_strict_v2.py \
+            scripts/verify_playwright_core_server_connect_ws_error_strict_v1.py \
+            scripts/verify_playwright_core_server_connect_ws_error_strict_v2.py \
+            scripts/promote_playwright_core_server_connect_ws_error_strict_red_v1.py \
+            scripts/promote_playwright_core_server_connect_ws_error_strict_green_v2.py \
+            scripts/test_verify_playwright_core_server_connect_ws_error_strict_v1.py \
+            scripts/test_verify_playwright_core_server_connect_ws_error_strict_v2.py \
+            scripts/test_promote_playwright_core_server_connect_ws_error_strict_red_v1.py \
+            scripts/test_promote_playwright_core_server_connect_ws_error_strict_green_v2.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_core_server_connect_ws_error_strict_v1.py \
+            scripts/test_verify_playwright_core_server_connect_ws_error_strict_v2.py \
+            scripts/test_promote_playwright_core_server_connect_ws_error_strict_red_v1.py \
+            scripts/test_promote_playwright_core_server_connect_ws_error_strict_green_v2.py
+      - name: Verify fixture-adapted Core Server-connect HTTP 401 diagnostic tools
+        run: |
+          node --check tests/official/playwright-core-server-connect-http-401-strict-v5-preload.cjs
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml --ignore E501 \
+            scripts/run_playwright_core_server_connect_http_401_strict_v5.py \
+            scripts/verify_playwright_core_server_connect_http_401_strict_v5.py \
+            scripts/test_verify_playwright_core_server_connect_http_401_strict_v5.py
+          # The two pin/snapshot integration checks require the locally
+          # preserved Playwright 1.58.0 checkout and frozen .work evidence.
+          # CI runs all synthetic selector/receipt negative controls here.
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            -k 'not pinned_source_assertions_and_fixture_are_unchanged and not v2_frozen_snapshot_remains_readable_after_live_rebuild' \
+            scripts/test_verify_playwright_core_server_connect_http_401_strict_v5.py
+      - name: Verify fixture-adapted Core Server-connect Close diagnostic tools
+        run: |
+          node --check tests/official/playwright-core-server-connect-close-error-strict-v5-preload.cjs
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml --ignore E501 \
+            scripts/run_playwright_core_server_connect_close_error_strict_v5.py \
+            scripts/verify_playwright_core_server_connect_close_error_strict_v5.py \
+            scripts/verify_playwright_core_server_connect_close_error_strict_v5_pair.py \
+            scripts/test_verify_playwright_core_server_connect_close_error_strict_v5.py \
+            scripts/test_verify_playwright_core_server_connect_close_error_strict_v5_pair.py
+          # Source-pin replay requires the locally preserved Playwright checkout;
+          # CI still executes all synthetic mapping, ordering and Close controls.
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            -k 'not pinned_source_and_manifest_select_custom_close' \
+            scripts/test_verify_playwright_core_server_connect_close_error_strict_v5.py \
+            scripts/test_verify_playwright_core_server_connect_close_error_strict_v5_pair.py
+      - name: Verify fixture-adapted Core Server-connect header diagnostic tools
+        run: |
+          node --check tests/official/playwright-core-server-connect-headers-strict-v1-preload.cjs
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml --ignore E501 \
+            scripts/run_playwright_core_server_connect_headers_strict_v1.py \
+            scripts/verify_playwright_core_server_connect_headers_strict_v1.py \
+            scripts/test_verify_playwright_core_server_connect_headers_strict_v1.py \
+            scripts/run_playwright_core_server_connect_headers_post_refactor_v2.py \
+            scripts/verify_playwright_core_server_connect_headers_post_refactor_v2.py \
+            scripts/test_verify_playwright_core_server_connect_headers_post_refactor_v2.py
+          # The source-pin case requires the local Playwright 1.58.0 clone;
+          # CI runs all clone-free selector/receipt negative controls.
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            -k 'not test_local_pinned_source_assertions_and_manifest_are_unchanged' \
+            scripts/test_verify_playwright_core_server_connect_headers_strict_v1.py \
+            scripts/test_verify_playwright_core_server_connect_headers_post_refactor_v2.py
+      - name: Verify Python dummy-engine strict-v2 evidence tools without browsers
+        run: |
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_python_dummy_engine_strict_v2.py \
+            scripts/verify_playwright_python_dummy_engine_strict_v2.py \
+            scripts/promote_playwright_python_dummy_engine_strict_v2.py \
+            scripts/test_verify_playwright_python_dummy_engine_strict_v2.py \
+            scripts/test_promote_playwright_python_dummy_engine_strict_v2.py \
+            packages/pwright-python/tests/official/dummy_engine_guard_strict_v2/node \
+            packages/pwright-python/tests/official/dummy_engine_guard_strict_v2/pwright_official_dummy_engine_guard_v2.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_python_dummy_engine_strict_v2.py \
+            scripts/verify_playwright_python_dummy_engine_strict_v2.py \
+            scripts/promote_playwright_python_dummy_engine_strict_v2.py \
+            scripts/test_verify_playwright_python_dummy_engine_strict_v2.py \
+            scripts/test_promote_playwright_python_dummy_engine_strict_v2.py \
+            packages/pwright-python/tests/official/dummy_engine_guard_strict_v2/node \
+            packages/pwright-python/tests/official/dummy_engine_guard_strict_v2/pwright_official_dummy_engine_guard_v2.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_python_dummy_engine_strict_v2.py \
+            scripts/test_promote_playwright_python_dummy_engine_strict_v2.py
+      - name: Verify Playwright Server close evidence tools without browsers
+        run: |
+          uv run --no-project --with ruff==0.13.2 ruff format --check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_python_connect_close_strict_v2.py \
+            scripts/verify_playwright_python_connect_close_strict_v2.py \
+            scripts/promote_playwright_python_connect_close_strict_v2.py \
+            scripts/test_verify_playwright_python_connect_close_strict_v2.py \
+            scripts/test_promote_playwright_python_connect_close_strict_v2.py \
+            packages/pwright-python/tests/official/ws_connect_guard_strict_v2/pwright_official_connect_guard_v2.py
+          uv run --no-project --with ruff==0.13.2 ruff check \
+            --config packages/pwright-python/pyproject.toml \
+            scripts/run_playwright_python_connect_close_strict_v2.py \
+            scripts/verify_playwright_python_connect_close_strict_v2.py \
+            scripts/promote_playwright_python_connect_close_strict_v2.py \
+            scripts/test_verify_playwright_python_connect_close_strict_v2.py \
+            scripts/test_promote_playwright_python_connect_close_strict_v2.py \
+            packages/pwright-python/tests/official/ws_connect_guard_strict_v2/pwright_official_connect_guard_v2.py
+          PYTHONPATH=scripts uv run --no-project --with pytest==8.4.2 \
+            python -m pytest -q \
+            scripts/test_verify_playwright_python_connect_close_strict_v2.py \
+            scripts/test_promote_playwright_python_connect_close_strict_v2.py
+      - name: Build and compare two release wheels
+        working-directory: packages/pwright-python
+        run: |
+          uv run --no-project --with maturin==1.15.0 maturin build \
+            --release --locked --auditwheel repair --out dist-a
+          uv run --no-project --with maturin==1.15.0 maturin build \
+            --release --locked --auditwheel repair --out dist-b
+          first=$(find dist-a -maxdepth 1 -type f -name 'shuozeli_pwright-*.whl' -print -quit)
+          second=$(find dist-b -maxdepth 1 -type f -name 'shuozeli_pwright-*.whl' -print -quit)
+          uv run --no-project python ../../scripts/check_python_wheel_reproducibility.py \
+            "$first" "$second"
+      - name: Install the wheel outside the source tree and run ABI/unit smoke
+        working-directory: packages/pwright-python
+        run: |
+          wheel=$(find dist-a -maxdepth 1 -type f -name 'shuozeli_pwright-*.whl' -print -quit)
+          uv venv "$RUNNER_TEMP/pwright-python-smoke" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/pwright-python-smoke/bin/python" "$wheel"
+          uv pip install --python "$RUNNER_TEMP/pwright-python-smoke/bin/python" \
+            pytest==8.4.2 pytest-asyncio==1.2.0
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/pwright-python-smoke/bin/python" \
+            "$GITHUB_WORKSPACE/packages/pwright-python/tests/smoke/import_child.py"
+          "$RUNNER_TEMP/pwright-python-smoke/bin/python" -m pytest -q \
+            "$GITHUB_WORKSPACE/packages/pwright-python/tests/unit"
+      - name: Build and smoke opt-in Python Playwright Server remote Browser wheel
+        working-directory: packages/pwright-python
+        run: |
+          uv run --no-project --with maturin==1.15.0 maturin build \
+            --release --locked --auditwheel repair \
+            --features pyo3/extension-module,browser-registry,playwright-server-initialize,playwright-server-connect-session \
+            --out "$RUNNER_TEMP/pwright-python-server-wheel"
+          wheel=$(find "$RUNNER_TEMP/pwright-python-server-wheel" -maxdepth 1 \
+            -type f -name 'shuozeli_pwright-*.whl' -print -quit)
+          test -n "$wheel"
+          uv venv "$RUNNER_TEMP/pwright-python-server-smoke" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/pwright-python-server-smoke/bin/python" \
+            "$wheel" pytest==8.4.2 pytest-asyncio==1.2.0
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/pwright-python-server-smoke/bin/python" -c \
+            'from pwright._abi import native_capabilities; from pwright import _native; c = native_capabilities(); assert c["abi"] == 125 and set(c["features"]) == {"browser-registry", "playwright-server-initialize", "playwright-server-connect-session"}; assert callable(getattr(_native.NativeRemoteContext, "close", None))'
+          "$RUNNER_TEMP/pwright-python-server-smoke/bin/python" -m pytest -q \
+            "$GITHUB_WORKSPACE/packages/pwright-python/tests/unit/test_playwright_server_connect_facade.py" \
+            "$GITHUB_WORKSPACE/packages/pwright-python/tests/unit/test_playwright_server_native_connect.py" \
+            "$GITHUB_WORKSPACE/packages/pwright-python/tests/unit/test_playwright_server_remote_close_events.py"
+      - name: Verify pinned official Playwright Python corpus and candidate collection
+        run: |
+          git clone --depth 1 --branch v1.58.0 \
+            https://github.com/microsoft/playwright-python.git \
+            "$RUNNER_TEMP/playwright-python-1.58.0"
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0"
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/drag-and-drop-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-dialogs-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/route-fulfill-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-route-binding-matchers-path-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/route-request-response-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-route-cors-preflight-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/route-fulfill-api-response-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-route-redirect-chain-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-route-service-worker-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-route-remaining-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/browsercontext-route-remaining-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/browsercontext-add-cookies-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/browsercontext-clear-cookies-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/browsercontext-cookies-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/download-terminal-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/persistent-context-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-pause-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-request-gc-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/page-errors-history-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/console-history-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/request-history-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/device-descriptors-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/async-listeners-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/fetch-browser-context-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/route-fetch-manifest.json
+          uv run --no-project python scripts/check_playwright_python_official_source.py \
+            "$RUNNER_TEMP/playwright-python-1.58.0" \
+            --manifest packages/pwright-python/tests/official/route-request-fallback-manifest.json
+          "$RUNNER_TEMP/pwright-python-smoke/bin/python" \
+            scripts/run_playwright_python_official_conformance.py candidate \
+            "$RUNNER_TEMP/playwright-python-1.58.0" --collect-only
+      - name: Collect and hash the complete pinned official Python corpus
+        run: |
+          PYTHONPATH=scripts uv run --no-project python -m unittest \
+            scripts.test_inventory_playwright_python_official_tests
+          upstream="$RUNNER_TEMP/playwright-python-1.58.0"
+          core_python="$RUNNER_TEMP/pwright-python-full-core/bin/python"
+          examples_python="$RUNNER_TEMP/pwright-python-full-examples/bin/python"
+          inventory="$RUNNER_TEMP/playwright-python-v1.58.0-profiled.jsonl"
+          uv venv "$RUNNER_TEMP/pwright-python-full-core" --python 3.12
+          uv pip install --python "$core_python" playwright==1.58.0 \
+            -r "$upstream/local-requirements.txt"
+          uv python install 3.10
+          uv venv "$RUNNER_TEMP/pwright-python-full-examples" --python 3.10
+          uv pip install --python "$examples_python" --require-hashes \
+            -r packages/pwright-python/tests/official/examples-oracle-requirements.txt
+          "$core_python" scripts/inventory_playwright_python_official_tests.py \
+            "$upstream" --examples-python "$examples_python" --output "$inventory"
+          test "$(sha256sum "$inventory" | cut -d ' ' -f1)" = \
+            "3dfb11b6ad7eb4736166ee2c4f7fa32cda78063324ad8314ce12f3e2d49b9d41"
 
   doc:
     name: Documentation

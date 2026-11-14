@@ -1,0 +1,12 @@
+[package]
+name = "pwright-cap-touchscreen"
+description = "Optional backend-neutral Page Touchscreen contracts for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-cap-locator = { workspace = true }
+pwright-core = { workspace = true }

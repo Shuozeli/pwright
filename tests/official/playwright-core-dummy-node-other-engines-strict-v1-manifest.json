@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "executionPolicy": "pinned-dummy-node-other-engines-strict-v1",
+  "selector": "tests/library/browsertype-launch.spec.ts:64",
+  "title": "should reject if launched browser fails immediately",
+  "asset": "tests/assets/dummy_bad_browser_executable.js",
+  "candidateProfile": "playwright-trace",
+  "candidateSourceSha256": "a2bb47a7c22f88b1c8cbaff72fb107de0a015eec85f6a4101d94e0cbddbfca5a",
+  "candidateArtifactSha256": "ab6be17625aadadbfce4bbc72866c72732191572c40b951821a68f947509cf3a",
+  "upstreamSources": {
+    "tests/library/browsertype-launch.spec.ts": "64fe24188ec96bb0d5d1ecca5af37986b16d82451b91e4db80593f707126bd05",
+    "tests/assets/dummy_bad_browser_executable.js": "9928a78e7de42f29dfc61783a2f31673b387d7d6ea27cda5bc4472e4338c1f7f",
+    "tests/library/playwright.config.ts": "338eb705bb4a17322dfba39d1c6770613bf8cf62cfec5c43bf7cece3e5db8146",
+    "tests/config/browserTest.ts": "0ef5440e164d262e7c3d01523448b5d3c4d50b99060604c20f168f04419a13d5",
+    "tests/config/testMode.ts": "7c12e6bd3fa7e2e3e4ff296277f4a60656d4d8a0c536cb55d9d6c1e83016f575",
+    "tests/config/serverFixtures.ts": "4c0039a149bd61e8707adddc626b345632561bd343749293ddbe9458f6ac617b",
+    "packages/playwright-core/src/client/browserType.ts": "f46ad9dc1a7d5c9e90b2adda605ae5949bb138ad42fc48253cd59ec65a604618",
+    "packages/playwright-core/src/server/browserType.ts": "47765ae8932d697c126e4a12b4a9998e3f83021b3ecfc159c4572137deb338ac",
+    "packages/playwright-core/src/server/firefox/firefox.ts": "c345812617daf2f22fbf73f86daeb990183895ccffd3bf02692c09bd4d870e45",
+    "packages/playwright-core/src/server/webkit/webkit.ts": "e1fb09b232ee54fef7999b461653924b61b1f635f550d7ec04700bc4841d853b",
+    "packages/playwright-core/src/server/utils/processLauncher.ts": "d9c3bc627b0e83cf4d307201cddb63aa7aaf7a4f2878dcc676d92c9e47c4465b"
+  },
+  "cases": [
+    {
+      "engine": "firefox",
+      "project": "firefox-library",
+      "suite": "library-browsertype-launch-dummy-node-failure-firefox",
+      "specId": "d1a604bdf6287c6776f3-d8df50eebf56e23fa8d3"
+    },
+    {
+      "engine": "webkit",
+      "project": "webkit-library",
+      "suite": "library-browsertype-launch-dummy-node-failure-webkit",
+      "specId": "d1a604bdf6287c6776f3-24ac4e8612e7cc735325"
+    }
+  ]
+}

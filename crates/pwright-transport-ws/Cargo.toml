@@ -1,0 +1,26 @@
+[package]
+name = "pwright-transport-ws"
+description = "Protocol-neutral bounded WebSocket transport with explicit close receipts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+live-tokio = ["dep:futures-util", "dep:tokio", "dep:tokio-tungstenite"]
+
+[dependencies]
+url = { workspace = true }
+futures-util = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tokio-tungstenite = { package = "pwright-tokio-tungstenite", version = "=0.26.2-pwright.1", path = "../../vendor/pwright-tokio-tungstenite", features = ["native-tls"], optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+log = "0.4"
+native-tls = "0.2"
+tokio-native-tls = "0.3"
+rcgen = "0.13"
+openssl = { workspace = true }

@@ -29,6 +29,69 @@ pub struct FailedNativeHandleBatchCreation {
 }
 
 impl ChromiumHandleEvaluationCommandService {
+    /// Stage a bounded batch of `RemoteObject`s already emitted by the current
+    /// main execution world. This performs no JavaScript evaluation or CDP I/O.
+    ///
+    /// The event producer owns the supplied native objects until this returns
+    /// `Ok`. On `Err`, it must release every object-bearing RemoteObject because
+    /// validation may have stopped partway through the batch.
+    pub fn stage_remote_objects(
+        &self,
+        frame: ObjectId,
+        remotes: &[serde_json::Value],
+    ) -> Result<PendingNativeHandleBatchCreation, OperationError<HandleEvaluationErrorDetails>>
+    {
+        validate_live(&self.runtime, frame, "Frame")?;
+        if remotes.len() > self.property_limits.max_properties() {
+            return Err(batch_capacity_error());
+        }
+        let resolved = self.frame_route(frame)?;
+        let route = HandleCreationRoute {
+            owner_frame: frame,
+            owner_page: resolved.page_id,
+            evaluation: resolved.service,
+            current_handles: Vec::new(),
+        };
+        if remotes.is_empty() {
+            return Ok(PendingNativeHandleBatchCreation {
+                service: self.clone(),
+                object_ids: Vec::new(),
+                route,
+                native: Vec::new(),
+                reservation: None,
+            });
+        }
+        let reservation = self
+            .handle_routes
+            .reserve_batch(remotes.len())
+            .map_err(map_route_error)?;
+        let mut object_ids = Vec::with_capacity(remotes.len());
+        for _ in remotes {
+            object_ids.push(next_id(&self.object_ids)?);
+        }
+        let limits = CdpHandleEvaluationLimits::new(
+            route.evaluation.limits(),
+            self.native_id_bytes,
+            self.preview_bytes,
+        );
+        let client = route.evaluation.client();
+        let native = remotes
+            .iter()
+            .enumerate()
+            .map(|(index, remote)| {
+                CdpEvaluatedHandle::from_remote_object(client.clone(), remote, limits)
+                    .map(|handle| (index.to_string(), handle))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(PendingNativeHandleBatchCreation {
+            service: self.clone(),
+            object_ids,
+            route,
+            native,
+            reservation: Some(reservation),
+        })
+    }
+
     /// Admit `maximum_results` portable slots before any browser I/O. The host
     /// separately admits sibling cleanup tickets plus one aggregate continuation.
     /// Native temporary peak is one carrier plus N+1 overflow-detection values;

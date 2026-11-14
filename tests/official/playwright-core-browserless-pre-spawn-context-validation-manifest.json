@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "selectionNotes": [
+    {
+      "selector": "tests/library/defaultbrowsercontext-2.spec.ts:153",
+      "invocationClassification": "public-api-candidate",
+      "preSpawnEvidence": "The invalid page argument is rejected by launchPersistentContext before browser launch; firefox-library skips before the call."
+    },
+    {
+      "selector": "tests/library/client-certificates.spec.ts:826",
+      "invocationClassification": "public-api-with-private-test-helper",
+      "preSpawnEvidence": "Both invalid client-certificate subcases fail validation before the certificate proxy listener or browser process starts.",
+      "classificationCaveat": "A file-level, incidental import from packages/playwright-core/lib/utils causes the formal private-test-helper classification; the selected test body and launchPersistent fixture do not use that helper."
+    }
+  ],
+  "suites": [
+    {
+      "id": "core452-library-chromium-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "chromium-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-f481eebf02bb0bdea81e",
+        "4cb989445373553e49b7-e9825479cbe1a2875902"
+      ]
+    },
+    {
+      "id": "core452-library-firefox-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "firefox-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-32eed4a60a7840d8a915",
+        "4cb989445373553e49b7-9de0f59bece17a8ef66f"
+      ]
+    },
+    {
+      "id": "core452-library-webkit-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "webkit-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-5f828963b1475071ba8d",
+        "4cb989445373553e49b7-bdfd5633189eab27fc56"
+      ]
+    },
+    {
+      "id": "core452-bidi-chromium-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chromium-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-e6980f64426a958fa1cc",
+        "4cb989445373553e49b7-14212c4ae2c88fa17fda"
+      ]
+    },
+    {
+      "id": "core452-bidi-chrome-canary-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chrome-canary-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-b7b847a6bea4b94af300",
+        "4cb989445373553e49b7-7808e0cbd8c9b4aee2f1"
+      ]
+    },
+    {
+      "id": "core452-bidi-chrome-stable-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chrome-stable-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-a35460b38084ea9fea01",
+        "4cb989445373553e49b7-126c7a73bede3103fb0b"
+      ]
+    },
+    {
+      "id": "core452-bidi-firefox-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "moz-firefox-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-94fb402c5ce8a3ffab0b",
+        "4cb989445373553e49b7-eab9966b92e992e46f8c"
+      ]
+    },
+    {
+      "id": "core452-bidi-firefox-beta-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "moz-firefox-beta-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-49da6c3ddae357ad88ce",
+        "4cb989445373553e49b7-d70fd96932365dfcbaf1"
+      ]
+    },
+    {
+      "id": "core452-bidi-firefox-nightly-pre-spawn-context-validation",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/defaultbrowsercontext-2.spec.ts:153",
+        "tests/library/client-certificates.spec.ts:826"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "moz-firefox-nightly-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 2,
+      "expectedSpecIds": [
+        "e7dec12880860920e47c-0b2998f7be2fc54abe26",
+        "4cb989445373553e49b7-095052d6f2cecad31bda"
+      ]
+    }
+  ]
+}

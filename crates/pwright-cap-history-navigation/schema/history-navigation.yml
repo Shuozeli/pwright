@@ -1,0 +1,152 @@
+format: 1
+capability: pwright.history_navigation
+display_name: Browser history navigation
+version: { major: 1, minor: 1 }
+root: pwright.history_navigation
+imports:
+  - pwright.common
+commands:
+  - id: history-navigation.go-back
+    name: go_back
+    method: 983041
+    targets: [pwright.browser.page]
+    command: go_back_command
+    result: go_back_result
+    params_type: pwright.history_navigation.go_back_params
+    result_type: pwright.history_navigation.history_result
+    error_details_type: pwright.history_navigation.error_details
+  - id: history-navigation.go-forward
+    name: go_forward
+    method: 983042
+    targets: [pwright.browser.page]
+    command: go_forward_command
+    result: go_forward_result
+    params_type: pwright.history_navigation.go_forward_params
+    result_type: pwright.history_navigation.history_result
+    error_details_type: pwright.history_navigation.error_details
+types:
+  - kind: tagged_union
+    id: pwright.history_navigation
+    variants:
+      - tag: 1
+        name: go_back_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.history_navigation.go_back_params }
+      - tag: 2
+        name: go_back_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.history_navigation.outcome }
+      - tag: 3
+        name: go_forward_command
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: object_id, type: u64 }
+          - { name: metadata, type: message, target: pwright.common.call_metadata }
+          - { name: params, type: message, target: pwright.history_navigation.go_forward_params }
+      - tag: 4
+        name: go_forward_result
+        fields:
+          - { name: call_id, type: u64 }
+          - { name: outcome, type: message, target: pwright.history_navigation.outcome }
+
+  - kind: record
+    id: pwright.history_navigation.error
+    fields:
+      - { name: failure_kind, type: enum, target: pwright.common.failure_kind }
+      - { name: message, type: utf8 }
+      - name: details
+        type: message
+        target: pwright.history_navigation.error_details
+        cardinality: optional
+
+  - kind: tagged_union
+    id: pwright.history_navigation.error_details
+    public_name: history_navigation_error_details
+    variants:
+      - tag: 0
+        name: invalid_backend_response
+        fields:
+          - { name: message, type: utf8 }
+      - tag: 1
+        name: backend
+        fields:
+          - { name: message, type: utf8 }
+
+  - kind: record
+    id: pwright.history_navigation.go_back_params
+    public_name: go_back_params
+    fields:
+      - { name: wait_until, type: enum, target: pwright.history_navigation.wait_until }
+
+  - kind: record
+    id: pwright.history_navigation.go_forward_params
+    public_name: go_forward_params
+    fields:
+      - { name: wait_until, type: enum, target: pwright.history_navigation.wait_until }
+
+  - kind: record
+    id: pwright.history_navigation.header
+    public_name: header
+    fields:
+      - { name: name, type: utf8 }
+      - { name: value, type: utf8 }
+
+  - kind: record
+    id: pwright.history_navigation.history_result
+    public_name: history_navigation_result
+    fields:
+      - name: navigation
+        type: message
+        target: pwright.history_navigation.navigation_entry
+        cardinality: optional
+
+  - kind: record
+    id: pwright.history_navigation.navigation_entry
+    public_name: history_navigation_entry
+    fields:
+      - { name: frame_id, type: utf8 }
+      - { name: loader_id, type: utf8, cardinality: optional }
+      - { name: url, type: utf8 }
+      - { name: same_document, type: bool }
+      - name: response
+        type: message
+        target: pwright.history_navigation.response
+        cardinality: optional
+
+  - kind: tagged_union
+    id: pwright.history_navigation.outcome
+    variants:
+      - tag: 0
+        name: success
+        fields:
+          - { name: result, type: message, target: pwright.history_navigation.history_result }
+      - tag: 1
+        name: error
+        fields:
+          - { name: error, type: message, target: pwright.history_navigation.error }
+
+  - kind: record
+    id: pwright.history_navigation.response
+    public_name: history_navigation_response
+    fields:
+      - { name: url, type: utf8 }
+      - { name: status, type: i64 }
+      - { name: status_text, type: utf8 }
+      - name: headers
+        type: message
+        target: pwright.history_navigation.header
+        cardinality: repeated
+
+  - kind: enum
+    id: pwright.history_navigation.wait_until
+    public_name: wait_until
+    default: load
+    variants:
+      - { tag: 0, name: commit }
+      - { tag: 1, name: dom_content_loaded }
+      - { tag: 2, name: load }
+      - { tag: 3, name: network_idle }

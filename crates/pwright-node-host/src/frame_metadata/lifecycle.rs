@@ -5,6 +5,8 @@ use super::{
     FrameMetadata, FramePublicationDrain, FramePublications, HostError, MetadataState,
     PublicationDrainError, ResourceClass, ResourceLease, SCOPE,
 };
+#[cfg(any(feature = "frame-detach-events", feature = "frame-events"))]
+use crate::frame_tree::FrameNode;
 use crate::frame_tree::{FrameClosePublication, FrameTreeFactory, Storage};
 use pwright_core::ObjectId;
 use std::sync::{Arc, Weak};
@@ -13,6 +15,397 @@ mod delivery;
 mod terminal;
 pub(crate) use delivery::CreationDelivery;
 pub(crate) use terminal::TerminalLifecycle;
+
+#[cfg(any(feature = "console-events", feature = "console-history"))]
+pub(crate) const MAX_CONSOLE_TYPE_BYTES: usize = 64;
+#[cfg(any(feature = "console-events", feature = "console-history"))]
+pub(crate) const MAX_CONSOLE_TEXT_BYTES: usize = 16 * 1024;
+#[cfg(any(feature = "console-events", feature = "console-history"))]
+pub(crate) const MAX_CONSOLE_ARGUMENT_BYTES: usize = 16 * 1024;
+#[cfg(any(feature = "console-events", feature = "console-history"))]
+pub(crate) const MAX_CONSOLE_LOCATION_URL_BYTES: usize = 16 * 1024;
+#[cfg(feature = "page-errors")]
+pub(crate) const MAX_PAGE_ERROR_NAME_BYTES: usize = 256;
+#[cfg(feature = "page-errors")]
+pub(crate) const MAX_PAGE_ERROR_MESSAGE_BYTES: usize = 16 * 1024;
+#[cfg(feature = "page-errors")]
+pub(crate) const MAX_PAGE_ERROR_STACK_BYTES: usize = 64 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PageError {
+    name: Box<str>,
+    message: Box<str>,
+    stack: Box<str>,
+}
+
+#[cfg(feature = "page-dialogs")]
+pub struct PageDialog {
+    id: u64,
+    page: ObjectId,
+    kind: crate::page_dialogs::DialogKind,
+    message: Box<str>,
+    default_value: Box<str>,
+    action: Arc<crate::page_dialogs::DialogAction>,
+}
+
+#[cfg(feature = "file-chooser-events")]
+pub struct PageFileChooser {
+    id: u64,
+    page: ObjectId,
+    multiple: bool,
+    action: Arc<crate::page_file_chooser::FileChooserAction>,
+}
+
+#[cfg(feature = "file-chooser-events")]
+impl std::fmt::Debug for PageFileChooser {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PageFileChooser")
+            .field("id", &self.id)
+            .field("page", &self.page)
+            .field("multiple", &self.multiple)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "file-chooser-events")]
+impl PartialEq for PageFileChooser {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.page == other.page && self.multiple == other.multiple
+    }
+}
+
+#[cfg(feature = "file-chooser-events")]
+impl Eq for PageFileChooser {}
+
+#[cfg(feature = "file-chooser-events")]
+impl PageFileChooser {
+    pub(crate) const fn new(
+        id: u64,
+        page: ObjectId,
+        multiple: bool,
+        action: Arc<crate::page_file_chooser::FileChooserAction>,
+    ) -> Result<Self, HostError> {
+        Ok(Self {
+            id,
+            page,
+            multiple,
+            action,
+        })
+    }
+
+    pub(crate) const fn storage_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+
+    pub const fn is_multiple(&self) -> bool {
+        self.multiple
+    }
+
+    pub fn action(&self) -> Arc<crate::page_file_chooser::FileChooserAction> {
+        Arc::clone(&self.action)
+    }
+}
+
+#[cfg(feature = "page-dialogs")]
+impl std::fmt::Debug for PageDialog {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PageDialog")
+            .field("id", &self.id)
+            .field("page", &self.page)
+            .field("kind", &self.kind)
+            .field("message", &self.message)
+            .field("default_value", &self.default_value)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "page-dialogs")]
+impl PartialEq for PageDialog {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.page == other.page
+            && self.kind == other.kind
+            && self.message == other.message
+            && self.default_value == other.default_value
+    }
+}
+
+#[cfg(feature = "page-dialogs")]
+impl Eq for PageDialog {}
+
+#[cfg(feature = "page-dialogs")]
+impl PageDialog {
+    pub(crate) fn new(
+        id: u64,
+        page: ObjectId,
+        kind: crate::page_dialogs::DialogKind,
+        message: String,
+        default_value: String,
+        action: Arc<crate::page_dialogs::DialogAction>,
+    ) -> Result<Self, HostError> {
+        if message.len() > crate::page_dialogs::MAX_DIALOG_MESSAGE_BYTES
+            || default_value.len() > crate::page_dialogs::MAX_DIALOG_DEFAULT_BYTES
+        {
+            return Err(HostError::ResourceExhausted(
+                "Page dialog payload exceeds configured bounds".into(),
+            ));
+        }
+        Ok(Self {
+            id,
+            page,
+            kind,
+            message: message.into_boxed_str(),
+            default_value: default_value.into_boxed_str(),
+            action,
+        })
+    }
+
+    pub(crate) fn storage_bytes(&self) -> Result<usize, HostError> {
+        std::mem::size_of::<Self>()
+            .checked_add(self.message.len())
+            .and_then(|bytes| bytes.checked_add(self.default_value.len()))
+            .ok_or_else(|| HostError::ResourceExhausted("Page dialog storage overflow".into()))
+    }
+
+    pub const fn kind(&self) -> crate::page_dialogs::DialogKind {
+        self.kind
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn default_value(&self) -> &str {
+        &self.default_value
+    }
+
+    pub fn action(&self) -> Arc<crate::page_dialogs::DialogAction> {
+        Arc::clone(&self.action)
+    }
+}
+
+impl PageError {
+    #[cfg(feature = "page-errors")]
+    pub const fn maximum_payload_bytes() -> usize {
+        MAX_PAGE_ERROR_NAME_BYTES + MAX_PAGE_ERROR_MESSAGE_BYTES + MAX_PAGE_ERROR_STACK_BYTES
+    }
+
+    #[cfg(feature = "page-errors")]
+    pub(crate) fn storage_bytes(
+        name_bytes: usize,
+        message_bytes: usize,
+        stack_bytes: usize,
+    ) -> Result<usize, HostError> {
+        std::mem::size_of::<Self>()
+            .checked_add(name_bytes)
+            .and_then(|bytes| bytes.checked_add(message_bytes))
+            .and_then(|bytes| bytes.checked_add(stack_bytes))
+            .ok_or_else(|| HostError::ResourceExhausted("Page error storage overflow".into()))
+    }
+
+    #[cfg(feature = "page-errors")]
+    pub(crate) fn new(name: String, message: String, stack: String) -> Result<Self, HostError> {
+        if name.len() > MAX_PAGE_ERROR_NAME_BYTES {
+            return Err(HostError::ResourceExhausted(
+                "Page error name exceeds byte limit".into(),
+            ));
+        }
+        if message.len() > MAX_PAGE_ERROR_MESSAGE_BYTES {
+            return Err(HostError::ResourceExhausted(
+                "Page error message exceeds byte limit".into(),
+            ));
+        }
+        if stack.len() > MAX_PAGE_ERROR_STACK_BYTES {
+            return Err(HostError::ResourceExhausted(
+                "Page error stack exceeds byte limit".into(),
+            ));
+        }
+        Ok(Self {
+            name: name.into_boxed_str(),
+            message: message.into_boxed_str(),
+            stack: stack.into_boxed_str(),
+        })
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn stack(&self) -> &str {
+        &self.stack
+    }
+}
+
+#[derive(Clone)]
+pub struct ConsoleMessage {
+    message_type: Box<str>,
+    text: Box<str>,
+    arguments_json: Box<str>,
+    location_url: Box<str>,
+    line_number: u32,
+    column_number: u32,
+    timestamp_micros: u64,
+    #[cfg(feature = "console-argument-handles")]
+    argument_handles: Box<[Arc<crate::handles::PendingHandle>]>,
+}
+
+impl std::fmt::Debug for ConsoleMessage {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut value = formatter.debug_struct("ConsoleMessage");
+        value
+            .field("message_type", &self.message_type)
+            .field("text", &self.text)
+            .field("arguments_json", &self.arguments_json)
+            .field("location_url", &self.location_url)
+            .field("line_number", &self.line_number)
+            .field("column_number", &self.column_number)
+            .field("timestamp_micros", &self.timestamp_micros);
+        #[cfg(feature = "console-argument-handles")]
+        value.field("argument_handles", &self.argument_handles.len());
+        value.finish()
+    }
+}
+
+impl PartialEq for ConsoleMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.message_type == other.message_type
+            && self.text == other.text
+            && self.arguments_json == other.arguments_json
+            && self.location_url == other.location_url
+            && self.line_number == other.line_number
+            && self.column_number == other.column_number
+            && self.timestamp_micros == other.timestamp_micros
+    }
+}
+
+impl Eq for ConsoleMessage {}
+
+impl ConsoleMessage {
+    #[cfg(any(feature = "console-events", feature = "console-history"))]
+    pub const fn maximum_payload_bytes() -> usize {
+        MAX_CONSOLE_TYPE_BYTES
+            + MAX_CONSOLE_TEXT_BYTES
+            + MAX_CONSOLE_ARGUMENT_BYTES
+            + MAX_CONSOLE_LOCATION_URL_BYTES
+    }
+
+    #[cfg(any(feature = "console-events", feature = "console-history"))]
+    pub(crate) const fn maximum_text_bytes() -> usize {
+        MAX_CONSOLE_TEXT_BYTES
+    }
+
+    #[cfg(any(feature = "console-events", feature = "console-history"))]
+    pub(crate) fn storage_bytes(
+        message_type_bytes: usize,
+        text_bytes: usize,
+        argument_bytes: usize,
+        location_url_bytes: usize,
+    ) -> Result<usize, HostError> {
+        std::mem::size_of::<Self>()
+            .checked_add(2 * std::mem::size_of::<usize>())
+            .and_then(|bytes| bytes.checked_add(message_type_bytes))
+            .and_then(|bytes| bytes.checked_add(text_bytes))
+            .and_then(|bytes| bytes.checked_add(argument_bytes))
+            .and_then(|bytes| bytes.checked_add(location_url_bytes))
+            .ok_or_else(|| HostError::ResourceExhausted("console message storage overflow".into()))
+    }
+
+    #[cfg(any(feature = "console-events", feature = "console-history"))]
+    pub(crate) fn new(
+        message_type: String,
+        text: String,
+        arguments_json: String,
+        location_url: String,
+        line_number: u32,
+        column_number: u32,
+        timestamp_micros: u64,
+    ) -> Result<Self, HostError> {
+        if message_type.len() > MAX_CONSOLE_TYPE_BYTES {
+            return Err(HostError::ResourceExhausted(
+                "console message type exceeds byte limit".into(),
+            ));
+        }
+        if text.len() > MAX_CONSOLE_TEXT_BYTES {
+            return Err(HostError::ResourceExhausted(
+                "console message text exceeds byte limit".into(),
+            ));
+        }
+        if arguments_json.len() > MAX_CONSOLE_ARGUMENT_BYTES {
+            return Err(HostError::ResourceExhausted(
+                "console message argument snapshot exceeds byte limit".into(),
+            ));
+        }
+        if location_url.len() > MAX_CONSOLE_LOCATION_URL_BYTES {
+            return Err(HostError::ResourceExhausted(
+                "console message location URL exceeds byte limit".into(),
+            ));
+        }
+        Ok(Self {
+            message_type: message_type.into_boxed_str(),
+            text: text.into_boxed_str(),
+            arguments_json: arguments_json.into_boxed_str(),
+            location_url: location_url.into_boxed_str(),
+            line_number,
+            column_number,
+            timestamp_micros,
+            #[cfg(feature = "console-argument-handles")]
+            argument_handles: Box::new([]),
+        })
+    }
+
+    #[cfg(feature = "console-argument-handles")]
+    pub(crate) fn with_argument_handles(
+        mut self,
+        handles: Box<[Arc<crate::handles::PendingHandle>]>,
+    ) -> Result<Self, HostError> {
+        if handles.len() > crate::handles::MAX_EVENT_ARGUMENT_HANDLES {
+            return Err(HostError::ResourceExhausted(
+                "console argument Handle count exceeds its limit".into(),
+            ));
+        }
+        self.argument_handles = handles;
+        Ok(self)
+    }
+
+    #[cfg(feature = "console-argument-handles")]
+    pub fn argument_handles(&self) -> &[Arc<crate::handles::PendingHandle>] {
+        &self.argument_handles
+    }
+
+    pub fn message_type(&self) -> &str {
+        &self.message_type
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn arguments_json(&self) -> &str {
+        &self.arguments_json
+    }
+
+    pub fn location_url(&self) -> &str {
+        &self.location_url
+    }
+
+    pub const fn line_number(&self) -> u32 {
+        self.line_number
+    }
+
+    pub const fn column_number(&self) -> u32 {
+        self.column_number
+    }
+
+    pub const fn timestamp_micros(&self) -> u64 {
+        self.timestamp_micros
+    }
+}
 
 /// Authoritative native input, not an inferred difference between snapshots.
 /// The producer must reserve before native work, supply chronological views,
@@ -34,14 +427,119 @@ pub enum LifecycleCause {
     ContextClosed {
         context: ObjectId,
     },
+    PageDomContentLoaded {
+        page: ObjectId,
+    },
+    PageLoad {
+        page: ObjectId,
+    },
+    PageMainFrameNavigated {
+        page: ObjectId,
+    },
+    #[cfg(feature = "frame-events")]
+    PageFrameAttached {
+        page: ObjectId,
+        frame: FrameNode,
+    },
+    #[cfg(feature = "frame-events")]
+    PageFrameNavigated {
+        page: ObjectId,
+        frame: FrameNode,
+    },
+    #[cfg(feature = "frame-detach-events")]
+    PageFrameDetached {
+        page: ObjectId,
+        frame: FrameNode,
+    },
+    PageConsole {
+        page: ObjectId,
+        message: Arc<ConsoleMessage>,
+    },
+    PageError {
+        page: ObjectId,
+        error: Arc<PageError>,
+    },
+    #[cfg(feature = "page-dialogs")]
+    PageDialog {
+        page: ObjectId,
+        dialog: Arc<PageDialog>,
+    },
+    #[cfg(feature = "file-chooser-events")]
+    PageFileChooser {
+        page: ObjectId,
+        chooser: Arc<PageFileChooser>,
+    },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LifecycleNotice {
-    ContextPage { context: ObjectId, page: ObjectId },
-    Popup { opener: ObjectId, popup: ObjectId },
-    PageClose { context: ObjectId, page: ObjectId },
-    ContextClose { context: ObjectId },
+    ContextPage {
+        context: ObjectId,
+        page: ObjectId,
+    },
+    Popup {
+        opener: ObjectId,
+        popup: ObjectId,
+    },
+    PageClose {
+        context: ObjectId,
+        page: ObjectId,
+    },
+    ContextClose {
+        context: ObjectId,
+    },
+    PageDomContentLoaded {
+        context: ObjectId,
+        page: ObjectId,
+    },
+    PageLoad {
+        context: ObjectId,
+        page: ObjectId,
+    },
+    PageMainFrameNavigated {
+        context: ObjectId,
+        page: ObjectId,
+    },
+    #[cfg(feature = "frame-events")]
+    PageFrameAttached {
+        context: ObjectId,
+        page: ObjectId,
+        frame: ObjectId,
+    },
+    #[cfg(feature = "frame-events")]
+    PageFrameNavigated {
+        context: ObjectId,
+        page: ObjectId,
+        frame: ObjectId,
+    },
+    #[cfg(feature = "frame-detach-events")]
+    PageFrameDetached {
+        context: ObjectId,
+        page: ObjectId,
+        frame: ObjectId,
+    },
+    PageConsole {
+        context: ObjectId,
+        page: ObjectId,
+        message: Arc<ConsoleMessage>,
+    },
+    PageError {
+        context: ObjectId,
+        page: ObjectId,
+        error: Arc<PageError>,
+    },
+    #[cfg(feature = "page-dialogs")]
+    PageDialog {
+        context: ObjectId,
+        page: ObjectId,
+        dialog: Arc<PageDialog>,
+    },
+    #[cfg(feature = "file-chooser-events")]
+    PageFileChooser {
+        context: ObjectId,
+        page: ObjectId,
+        chooser: Arc<PageFileChooser>,
+    },
 }
 
 /// Synchronous EventEmitter outcome. A returned Promise is Delivered; its
@@ -67,6 +565,17 @@ struct PreparedLifecycle {
     close: Option<FrameClosePublication>,
     awaiting: bool,
     creation: Option<CreationDelivery>,
+    #[cfg(feature = "frame-detach-events")]
+    detached_frame: Option<FrameNode>,
+}
+
+#[cfg(feature = "frame-detach-events")]
+impl Drop for PreparedLifecycle {
+    fn drop(&mut self) {
+        if let Some(frame) = self.detached_frame.take() {
+            frame.release_retired_binding();
+        }
+    }
 }
 
 pub(super) struct LifecycleGroup {
@@ -78,7 +587,7 @@ pub(super) struct LifecycleGroup {
 impl LifecycleGroup {
     pub(super) fn permits_popup(&self) -> Result<bool, HostError> {
         let prepared = self.prepared.as_ref().expect("staged group");
-        if matches!(prepared.next, LifecycleNotice::Popup { .. })
+        if matches!(&prepared.next, LifecycleNotice::Popup { .. })
             && let Some(creation) = &prepared.creation
         {
             return creation.permits_popup();
@@ -88,7 +597,7 @@ impl LifecycleGroup {
 
     pub(super) fn abandon_delivery(&self) {
         let prepared = self.prepared.as_ref().expect("staged group");
-        if matches!(prepared.next, LifecycleNotice::ContextPage { .. })
+        if matches!(&prepared.next, LifecycleNotice::ContextPage { .. })
             && let Some(creation) = &prepared.creation
         {
             creation.acknowledge(false);
@@ -148,6 +657,11 @@ fn validate_popup(
 
 impl PreparedLifecycle {
     fn new(before: CollectionView, cause: LifecycleCause) -> Result<Self, HostError> {
+        #[cfg(feature = "frame-detach-events")]
+        let detached_frame = match &cause {
+            LifecycleCause::PageFrameDetached { frame, .. } => Some(frame.clone()),
+            _ => None,
+        };
         let (after, next, dependent, close) = match cause {
             LifecycleCause::PageReady {
                 revision,
@@ -219,6 +733,189 @@ impl PreparedLifecycle {
                     .map_err(HostError::backend)?;
                 (after, LifecycleNotice::ContextClose { context }, None, None)
             }
+            LifecycleCause::PageDomContentLoaded { page } => {
+                let context = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Page lifecycle event source is not visible"))?
+                    .context;
+                (
+                    before.clone(),
+                    LifecycleNotice::PageDomContentLoaded { context, page },
+                    None,
+                    None,
+                )
+            }
+            LifecycleCause::PageLoad { page } => {
+                let context = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Page lifecycle event source is not visible"))?
+                    .context;
+                (
+                    before.clone(),
+                    LifecycleNotice::PageLoad { context, page },
+                    None,
+                    None,
+                )
+            }
+            LifecycleCause::PageMainFrameNavigated { page } => {
+                let context = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Page navigation event source is not visible"))?
+                    .context;
+                (
+                    before.clone(),
+                    LifecycleNotice::PageMainFrameNavigated { context, page },
+                    None,
+                    None,
+                )
+            }
+            #[cfg(feature = "frame-events")]
+            LifecycleCause::PageFrameAttached { page, frame } => {
+                let descriptor = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Frame attach Page is not visible"))?;
+                if frame.parent_id().is_none() || !descriptor.tree.contains_native_frame(&frame)? {
+                    return Err(invalid("Frame attach does not match a live child identity"));
+                }
+                (
+                    before.clone(),
+                    LifecycleNotice::PageFrameAttached {
+                        context: descriptor.context,
+                        page,
+                        frame: frame.id(),
+                    },
+                    None,
+                    None,
+                )
+            }
+            #[cfg(feature = "frame-events")]
+            LifecycleCause::PageFrameNavigated { page, frame } => {
+                let descriptor = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Frame navigation Page is not visible"))?;
+                if !descriptor.tree.contains_native_frame(&frame)? {
+                    return Err(invalid(
+                        "Frame navigation does not match a live Frame identity",
+                    ));
+                }
+                (
+                    before.clone(),
+                    LifecycleNotice::PageFrameNavigated {
+                        context: descriptor.context,
+                        page,
+                        frame: frame.id(),
+                    },
+                    None,
+                    None,
+                )
+            }
+            #[cfg(feature = "frame-detach-events")]
+            LifecycleCause::PageFrameDetached { page, frame } => {
+                let descriptor = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Frame detach Page is not visible"))?;
+                if frame.parent_id().is_none() || !descriptor.tree.has_native_retirement(&frame)? {
+                    return Err(invalid(
+                        "Frame detach does not match a retired child identity",
+                    ));
+                }
+                (
+                    before.clone(),
+                    LifecycleNotice::PageFrameDetached {
+                        context: descriptor.context,
+                        page,
+                        frame: frame.id(),
+                    },
+                    None,
+                    None,
+                )
+            }
+            LifecycleCause::PageConsole { page, message } => {
+                let context = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Page console event source is not visible"))?
+                    .context;
+                (
+                    before.clone(),
+                    LifecycleNotice::PageConsole {
+                        context,
+                        page,
+                        message,
+                    },
+                    None,
+                    None,
+                )
+            }
+            LifecycleCause::PageError { page, error } => {
+                let context = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Page error event source is not visible"))?
+                    .context;
+                (
+                    before.clone(),
+                    LifecycleNotice::PageError {
+                        context,
+                        page,
+                        error,
+                    },
+                    None,
+                    None,
+                )
+            }
+            #[cfg(feature = "page-dialogs")]
+            LifecycleCause::PageDialog { page, dialog } => {
+                let context = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Page dialog event source is not visible"))?
+                    .context;
+                (
+                    before.clone(),
+                    LifecycleNotice::PageDialog {
+                        context,
+                        page,
+                        dialog,
+                    },
+                    None,
+                    None,
+                )
+            }
+            #[cfg(feature = "file-chooser-events")]
+            LifecycleCause::PageFileChooser { page, chooser } => {
+                let context = before
+                    .pages()
+                    .iter()
+                    .find(|entry| entry.id == page)
+                    .ok_or_else(|| invalid("Page file chooser event source is not visible"))?
+                    .context;
+                (
+                    before.clone(),
+                    LifecycleNotice::PageFileChooser {
+                        context,
+                        page,
+                        chooser,
+                    },
+                    None,
+                    None,
+                )
+            }
         };
         Ok(Self {
             before,
@@ -228,6 +925,8 @@ impl PreparedLifecycle {
             close,
             awaiting: false,
             creation: None,
+            #[cfg(feature = "frame-detach-events")]
+            detached_frame,
         })
     }
 }
@@ -236,6 +935,14 @@ impl FramePublications {
     pub fn reserve_lifecycle(
         &self,
         factory: &FrameTreeFactory,
+    ) -> Result<LifecycleReservation, HostError> {
+        self.reserve_lifecycle_payload(factory, 0)
+    }
+
+    pub(crate) fn reserve_lifecycle_payload(
+        &self,
+        factory: &FrameTreeFactory,
+        payload_bytes: usize,
     ) -> Result<LifecycleReservation, HostError> {
         let state = self.0.state.lock().map_err(HostError::backend)?;
         if state.discarded || state.sequence == u64::MAX {
@@ -251,7 +958,11 @@ impl FramePublications {
             .resources
             .reserve(SCOPE, ResourceClass::EventItem, 1)
             .map_err(|error| HostError::ResourceExhausted(error.to_string()))?;
-        let storage = factory.reserve_collection_storage(STORAGE_BYTES)?;
+        let storage = factory.reserve_collection_storage(
+            STORAGE_BYTES
+                .checked_add(payload_bytes)
+                .ok_or_else(|| invalid("lifecycle payload storage overflow"))?,
+        )?;
         Ok(LifecycleReservation {
             book: Arc::downgrade(&self.0),
             event,
@@ -362,7 +1073,7 @@ impl FramePublicationDrain {
         if prepared.awaiting {
             return Err(PublicationDrainError::AwaitingAcknowledgement);
         }
-        let notice = prepared.next;
+        let notice = prepared.next.clone();
         let revision = prepared.after.revision().clone();
         // Conversion may synchronously discard the endpoint. Keep its admitted
         // temporary-body allowance until the closure returns or unwinds.
@@ -410,7 +1121,7 @@ impl FramePublicationDrain {
             return Err(PublicationDrainError::Backend(error));
         }
         prepared.awaiting = true;
-        let notice = prepared.next;
+        let notice = prepared.next.clone();
         state.collections = Some(prepared.after.clone());
         Ok(notice)
     }
@@ -429,7 +1140,7 @@ impl FramePublicationDrain {
         if !prepared.awaiting {
             return Err(PublicationDrainError::NotCommitted);
         }
-        if matches!(prepared.next, LifecycleNotice::ContextPage { .. })
+        if matches!(&prepared.next, LifecycleNotice::ContextPage { .. })
             && let Some(creation) = &prepared.creation
         {
             creation.acknowledge(delivery == LifecycleDelivery::Delivered);

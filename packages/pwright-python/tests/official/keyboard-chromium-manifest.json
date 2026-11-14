@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_keyboard.py": "13274b44af8d67f1efd9bf73fefff5ef75086f78376885c8981e3cc2ade62a26"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_keyboard.py::test_keyboard_move_with_the_arrow_keys",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_keyboard_send_a_character_with_elementhandle_press",
+      "capabilities": ["element-handle.press"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_keyboard_type_into_a_textarea",
+      "capabilities": ["keyboard.type", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_be_able_to_prevent_select_all",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_expose_keyIdentifier_in_webkit",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_handle_select_all",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_not_type_canceled_events",
+      "capabilities": ["keyboard.type", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_only_emit_input_event",
+      "capabilities": ["keyboard.insert-text", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_press_enter",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_press_plus",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_press_shift_plus",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_press_the_meta_key",
+      "capabilities": ["keyboard.down", "keyboard.up", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_report_multiple_modifiers",
+      "capabilities": ["keyboard.down", "keyboard.press", "keyboard.up"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_report_shiftkey",
+      "capabilities": ["keyboard.down", "keyboard.press", "keyboard.up"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_scroll_with_pagedown",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_send_a_character_with_send_character",
+      "capabilities": ["keyboard.insert-text", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_send_proper_codes_while_typing",
+      "capabilities": ["keyboard.type", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_send_proper_codes_while_typing_with_shift",
+      "capabilities": ["keyboard.type", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_shift_raw_codes",
+      "capabilities": ["keyboard.down", "keyboard.press", "keyboard.up"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_specify_location",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_specify_repeat_property",
+      "capabilities": ["keyboard.down", "keyboard.up", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_suport_multiple_plus_separated_modifiers",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_support_macos_shortcuts",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_support_plus_separated_modifiers",
+      "capabilities": ["keyboard.press", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_throw_unknown_keys",
+      "capabilities": ["keyboard.press"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_type_all_kinds_of_characters",
+      "capabilities": ["keyboard.type", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_type_emoji",
+      "capabilities": ["keyboard.type", "page.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_type_emoji_into_an_iframe",
+      "capabilities": ["keyboard.type", "frame.evaluate"]
+    },
+    {
+      "id": "tests/async/test_keyboard.py::test_should_work_after_a_cross_origin_navigation",
+      "capabilities": ["keyboard.type", "page.goto", "page.evaluate"]
+    }
+  ]
+}

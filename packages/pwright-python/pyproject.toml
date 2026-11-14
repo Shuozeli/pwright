@@ -1,0 +1,55 @@
+[build-system]
+requires = ["maturin==1.15.0"]
+build-backend = "maturin"
+
+[project]
+name = "shuozeli-pwright"
+version = "0.1.0"
+description = "Playwright-shaped Python API backed by composable Pwright Rust capabilities"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT AND Apache-2.0"
+authors = [{ name = "Shuozeli" }]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Typing :: Typed",
+]
+dependencies = ["greenlet>=3.1.1,<4"]
+
+[project.optional-dependencies]
+test = [
+  "playwright==1.58.0",
+  "pytest==8.4.2",
+  "pytest-asyncio==1.2.0",
+]
+dev = [
+  "pyright==1.1.405",
+  "ruff==0.13.2",
+]
+
+[tool.maturin]
+manifest-path = "../../crates/pwright-python-addon/Cargo.toml"
+python-source = "python"
+module-name = "pwright._native"
+features = ["pyo3/extension-module", "browser-registry", "fresh-launch", "persistent-context-locale", "persistent-context-timezone", "persistent-context-geolocation", "persistent-context-geolocation-permission", "persistent-context-http-credentials", "persistent-context-launch-arguments", "persistent-context-offline", "persistent-context-ignore-https-errors", "persistent-context-device-emulation", "persistent-context-emulate-media", "persistent-context-extra-headers", "persistent-context-bypass-csp", "persistent-context-javascript-disabled", "context-cookies", "context-storage-state", "cdp-session", "cdp-handshake-headers", "cdp-ws-close-reason", "cdp-ws-invalid-frame", "handles", "element-handle-dom", "element-handle-dom-reads", "element-handle-scroll-into-view", "element-handle-select-text", "element-handle-click", "element-handle-tap", "element-handle-state-predicates", "element-handle-state-wait", "element-handle-file-input", "page-bindings", "context-bindings", "page-events", "frame-events", "worker-events", "worker-handle-evaluation", "worker-console-events", "worker-console-argument-handles", "worker-error-events", "worker-network-events", "console-events", "console-argument-handles", "page-dialogs", "file-chooser-events", "file-chooser-native-paths", "page-errors", "console-history", "request-history", "page-routes", "route-redirects", "route-fulfill-path", "route-fulfill-api-response", "route-fetch", "har-replay", "wait-for-function", "wait-for-timeout", "file-input", "file-input-native-paths", "mouse", "keyboard", "locator-bounding-box", "locator-highlight", "locator-screenshot", "locator-dom-actions", "locator-click-modifiers", "page-select-option", "frame-navigation", "navigation-url-match", "history-navigation", "response-body", "wait-for-url", "set-content", "selector-registration", "layout-selectors", "emulate-media", "context-forced-colors", "device-emulation", "touchscreen-input", "context-locale", "context-timezone", "context-offline", "context-geolocation", "context-geolocation-permission", "context-http-credentials", "ignore-https-errors", "bypass-csp", "javascript-disabled", "page-viewport", "timeout-settings", "page-pause", "request-gc", "page-pdf", "network-events", "context-network-events", "request-frame", "request-timing", "request-post-data-json", "request-events", "response-events", "response-finished", "navigation-response-finished", "response-security-details", "download-events", "init-scripts", "service-worker-policy", "context-api-request", "api-request-client-certificates", "drag-and-drop"]
+strip = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pyright]
+pythonVersion = "3.9"
+typeCheckingMode = "strict"
+include = ["python", "tests"]
+extraPaths = ["python", "../../scripts"]
+reportMissingModuleSource = false

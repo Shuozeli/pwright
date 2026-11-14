@@ -2,6 +2,7 @@
 
 use super::{LocatorQuery, Plan, QueryDraft, QueryIssue};
 use crate::HostError;
+pub use pwright_cap_locator::TestIdAttributes;
 use pwright_cap_locator::{
     AriaRole, AriaTriState, RegexMatcher, RoleOptions, Selector, UserFacingAttribute,
 };
@@ -72,6 +73,23 @@ impl QueryDraft {
         flags: Option<String>,
         exact: bool,
     ) -> Result<LocatorQuery, HostError> {
+        self.semantic_with_test_id_attributes(
+            kind,
+            source,
+            flags,
+            exact,
+            TestIdAttributes::standard(),
+        )
+    }
+
+    pub fn semantic_with_test_id_attributes(
+        self,
+        kind: SemanticSelector,
+        source: String,
+        flags: Option<String>,
+        exact: bool,
+        test_id_attributes: TestIdAttributes,
+    ) -> Result<LocatorQuery, HostError> {
         let selector = match flags {
             Some(flags) => {
                 let matcher = regex(source, flags)?;
@@ -87,7 +105,9 @@ impl QueryDraft {
                     SemanticSelector::Title => {
                         Selector::attribute_regex(UserFacingAttribute::Title, matcher)
                     }
-                    SemanticSelector::TestId => Selector::test_id_regex(matcher),
+                    SemanticSelector::TestId => {
+                        Selector::test_id_regex_with_attributes(test_id_attributes, matcher)
+                    }
                 }
             }
             None => match kind {
@@ -102,7 +122,9 @@ impl QueryDraft {
                 SemanticSelector::Title => {
                     Selector::attribute_text(UserFacingAttribute::Title, source, exact)
                 }
-                SemanticSelector::TestId => Selector::test_id(source),
+                SemanticSelector::TestId => {
+                    Selector::test_id_with_attributes(test_id_attributes, source)
+                }
             },
         };
         self.finish(Plan::Selector(selector))
@@ -238,6 +260,33 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(HostError::ResourceExhausted(_))));
         assert_eq!(budget.metrics().unwrap(), QueryMetrics::default());
+    }
+
+    #[test]
+    fn test_id_semantic_leaf_uses_the_supplied_environment_snapshot() {
+        // Arrange
+        let budget = budget();
+        let attributes = TestIdAttributes::new("data-custom-id").unwrap();
+        let draft = budget
+            .prepare_leaf("save".len() + attributes.as_csv().len())
+            .unwrap();
+
+        // Act
+        let query = draft
+            .semantic_with_test_id_attributes(
+                SemanticSelector::TestId,
+                "save".into(),
+                None,
+                false,
+                attributes,
+            )
+            .unwrap();
+
+        // Assert
+        let (selector, _lease) = query.command_selector().unwrap();
+        assert!(
+            matches!(selector, Selector::TestIdText { attributes, value } if attributes.as_csv() == "data-custom-id" && value == "save")
+        );
     }
 
     #[test]

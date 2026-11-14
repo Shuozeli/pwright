@@ -58,9 +58,11 @@ pub enum NativeLifecycleNotice<'a> {
         frame: ObjectId,
         document: DocumentGeneration,
         loader: &'a str,
+        url: Option<&'a str>,
     },
     SameDocument {
         frame: ObjectId,
+        url: Option<&'a str>,
     },
     Lifecycle {
         frame: ObjectId,
@@ -262,7 +264,41 @@ impl CdpFrameLifecycle {
     ) -> Result<NativeLifecycleNotice<'a>> {
         let result = (|| {
             self.attach(now, frame, parent)?;
-            self.commit_native(now, frame, loader)
+            self.commit_native(now, frame, loader, None)
+        })();
+        if result.is_err() {
+            self.invalidate();
+        }
+        result
+    }
+    /// Start a new same-loader document generation for an embedding-owned
+    /// `document.open()` operation. CDP does not emit `frameNavigated` for this
+    /// transition, so the caller must establish this checkpoint before running
+    /// the script that replaces the document. Subsequent lifecycle events keep
+    /// using the current loader and are attributed to this new generation.
+    pub fn reset_document(&mut self, now: Duration, frame: ObjectId) -> Result<()> {
+        let result = (|| {
+            let index = self
+                .frame_index(frame)
+                .ok_or(NativeLifecycleError::UnknownFrame)?;
+            self.next_document = self
+                .next_document
+                .checked_add(1)
+                .ok_or(LifecycleError::SizeOverflow)?;
+            let document = DocumentGeneration(self.next_document);
+            self.lifecycle.apply(
+                now,
+                LifecycleInput::Commit {
+                    frame,
+                    document,
+                    request: None,
+                },
+            )?;
+            let row = self.frames[index]
+                .as_mut()
+                .ok_or(NativeLifecycleError::UnknownFrame)?;
+            row.document = Some(document);
+            self.prune(Some((frame, None)))
         })();
         if result.is_err() {
             self.invalidate();

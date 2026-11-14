@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-chromium-server-connect-waiters-synthetic-v1",
+      "role": "browser-independent-fixture-adapted-diagnostic",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-connect.spec.ts:396",
+        "tests/library/browsertype-connect.spec.ts:412",
+        "tests/library/browsertype-connect.spec.ts:423"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "candidateArtifactSource": ".work/official-conformance/artifacts/playwright-server-connect-http-header-order-v1-20261012/pwright.node",
+      "candidateArtifactSha256": "0f1c8b1c6140206bdb4692d88ff1d1b9fb235b883739f176f720c3b59361523e",
+      "candidateSourceSha256": "bddad5646a880efc80a94d7bf4b975e4eb06691562ac6602a8df29c3cf97afe2",
+      "baseProfileArtifactSha256": "cc27493d9006fc1a4a2cb1375fb08861ff93758d3f937522b8ae615c5a0f94f7",
+      "project": "chromium-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 3,
+      "expectedFiles": 1
+    }
+  ]
+}

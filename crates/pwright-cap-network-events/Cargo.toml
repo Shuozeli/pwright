@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+request-timing = ["pwright-network-model/request-timing"]
+
 [dependencies]
 pwright-browser-model = { workspace = true }
 pwright-core = { workspace = true }

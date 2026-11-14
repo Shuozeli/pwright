@@ -1,6 +1,52 @@
 use super::*;
 use pwright_core::ResourceClass;
 
+#[cfg(feature = "file-chooser-native-paths")]
+#[tokio::test]
+async fn colocated_file_chooser_paths_target_the_utility_world_object() {
+    // Arrange
+    let client = pwright_fake::FakeCdpClient::from_html("<input type=file>");
+    client.set_adopted_node_response(
+        47,
+        73,
+        serde_json::json!({
+            "object": {
+                "type": "object",
+                "subtype": "node",
+                "objectId": "utility-input",
+            },
+        }),
+    );
+    let files = vec!["/tmp/first.txt".to_owned(), "/tmp/second.txt".to_owned()];
+
+    // Act
+    dispatch_colocated_paths(&client, 47, 73, "chooser-group", &files)
+        .await
+        .expect("native path dispatch");
+
+    // Assert
+    assert_eq!(
+        client.calls(),
+        [
+            (
+                "DOM.resolveNode".into(),
+                vec![serde_json::json!({
+                    "backendNodeId": 47,
+                    "executionContextId": 73,
+                    "objectGroup": "chooser-group",
+                })],
+            ),
+            (
+                "DOM.setFileInputFiles".into(),
+                vec![serde_json::json!({
+                    "objectId": "utility-input",
+                    "files": ["/tmp/first.txt", "/tmp/second.txt"],
+                })],
+            ),
+        ]
+    );
+}
+
 #[cfg(feature = "retained-file-input")]
 #[test]
 fn independent_adoption_and_mutation_cleanup_failures_are_both_reported() {

@@ -1,8 +1,8 @@
 use super::{FrameNode, FrameTree, FrameTreeFactory, FrameTreeLimits, FrameTreeMetrics};
 use crate::HostError;
 use crate::frame_metadata::{FrameMetadata, FrameMetadataLimits};
-use pwright_composition_chromium::ChromiumFrameUrlObserver;
 use pwright_core::ObjectId;
+use pwright_plugin_chromium_frame_observer::ChromiumFrameUrlObserver;
 
 fn limits() -> FrameTreeLimits {
     FrameTreeLimits {
@@ -91,6 +91,71 @@ fn detach_publication_preserves_parent_identity_and_url() {
     assert_eq!(child.parent_id(), Some(root.id()));
     assert_eq!(child.url().unwrap(), "https://fixture.test/frame");
     assert!(!root.is_detached());
+}
+
+#[cfg(feature = "frame-detach-events")]
+#[test]
+fn pending_detach_binding_survives_a_later_tree_revision_until_event_consumption() {
+    // Arrange
+    let fixture = Fixture::new(limits());
+    let root = fixture.node(1, None);
+    let first = fixture.node(2, Some(1));
+    let second = fixture.node(3, Some(1));
+    first
+        .install_retired_binding(fixture.factory.reserve_detach_binding().unwrap())
+        .unwrap();
+    second
+        .install_retired_binding(fixture.factory.reserve_detach_binding().unwrap())
+        .unwrap();
+    let tree = fixture.factory.page(root.clone()).unwrap();
+    tree.stage(&[root.clone(), first.clone(), second.clone()])
+        .unwrap()
+        .publish()
+        .unwrap();
+
+    // Act
+    tree.stage(&[root.clone(), second.clone()])
+        .unwrap()
+        .publish()
+        .unwrap();
+    tree.stage(std::slice::from_ref(&root))
+        .unwrap()
+        .publish()
+        .unwrap();
+    let first_event = tree.bind_retired(2).unwrap();
+    let second_event = tree.bind_retired(3).unwrap();
+
+    // Assert
+    assert!(first_event.node().same_identity(&first));
+    assert!(second_event.node().same_identity(&second));
+    assert!(first.is_detached());
+    assert!(second.is_detached());
+}
+
+#[cfg(feature = "frame-detach-events")]
+#[test]
+fn observed_detached_frame_releases_unused_binding_after_event_delivery() {
+    // Arrange
+    let fixture = Fixture::new(limits());
+    let (tree, root, child) = fixture.page_with_child();
+    child
+        .install_retired_binding(fixture.factory.reserve_detach_binding().unwrap())
+        .unwrap();
+    tree.stage(std::slice::from_ref(&root))
+        .unwrap()
+        .publish()
+        .unwrap();
+
+    // Act
+    tree.finish_detached(2).unwrap();
+    tree.stage(std::slice::from_ref(&root))
+        .unwrap()
+        .publish()
+        .unwrap();
+
+    // Assert
+    assert!(matches!(tree.bind_retired(2), Err(HostError::TargetClosed)));
+    assert!(child.is_detached());
 }
 
 #[test]

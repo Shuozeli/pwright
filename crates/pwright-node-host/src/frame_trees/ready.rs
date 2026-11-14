@@ -128,12 +128,27 @@ impl FrameTrees {
             })?;
             let (page, cause) = match *effect {
                 CdpTopologyEffect::PageReady { page, context } => {
+                    // Storage-state scratch Pages are native ownership, not a
+                    // language-visible PageReady or ContextPage event.
+                    if state
+                        .pages
+                        .iter()
+                        .any(|entry| entry.id == page && entry.internal)
+                    {
+                        continue;
+                    }
                     if before.pages().iter().any(|entry| entry.id == page) {
                         continue;
                     }
                     let revision = collection.native.clone().ok_or_else(|| {
                         HostError::Backend("ready source has no native revision".into())
                     })?;
+                    // Fresh Browser sessions keep the native default Context
+                    // internal. Its PageReady effect has no public Context or
+                    // Page projection and therefore no public delivery.
+                    if !revision.contexts().iter().any(|entry| entry.id == context) {
+                        continue;
+                    }
                     if !revision
                         .pages()
                         .iter()
@@ -153,6 +168,19 @@ impl FrameTrees {
                     )
                 }
                 CdpTopologyEffect::PopupLinked { opener, popup } => {
+                    let revision = collection.native.as_ref().ok_or_else(|| {
+                        HostError::Backend("ready source has no native revision".into())
+                    })?;
+                    if !revision.pages().iter().any(|entry| entry.id == popup) {
+                        continue;
+                    }
+                    if state
+                        .pages
+                        .iter()
+                        .any(|entry| entry.id == popup && entry.internal)
+                    {
+                        continue;
+                    }
                     // Preserve native effect order, including intervening links.
                     // The Page's acknowledgement token carries the dependency
                     // across groups and across separate native transactions.

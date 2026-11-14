@@ -125,6 +125,28 @@ async fn ordered_driver_captures_load_before_later_document_erases_it() {
 }
 
 #[tokio::test]
+async fn wait_for_next_navigation_selects_the_first_post_registration_document() {
+    // Arrange
+    let mut f = Setup::new(1).await;
+    let mut ticket = f.register(WaitUntil::Load, None);
+    ticket.wait_for_next_navigation().unwrap();
+
+    // Act
+    f.commit("next").await;
+    f.load("next").await;
+
+    // Assert
+    let result = ticket.try_take().unwrap().unwrap();
+    assert_eq!(
+        result.outcome().unwrap().unwrap(),
+        NavigationPoll::Complete {
+            frame: ObjectId::new(4),
+            response_json: None,
+        }
+    );
+}
+
+#[tokio::test]
 async fn native_response_envelope_is_retained_before_receipt_and_before_finish() {
     // Arrange
     let mut f = Setup::new(1).await;

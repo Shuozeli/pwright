@@ -51,16 +51,21 @@ impl ChromiumTopologyEventDriver {
                     .map(|page| (page.browser_context_object_id(), page.object_id()))
                     .ok_or(ChromiumTopologyEventDriverError::SessionContextUnavailable)?
             };
-            self.initialize_context_session(route, context, page)
+            self.initialize_context_session(route, context, page, None)
                 .await?;
         }
         let world_name = self.utility_world_name_for_route(route)?;
         let tree = self
-            .initialize_session_worlds(client.as_ref(), world_name.as_deref(), !page_session)
+            .initialize_session_worlds(client.as_ref(), world_name.as_deref(), !page_session, false)
             .await?;
         if !self.profile.parallel_recursive_attachment() {
             client
-                .target_set_auto_attach(true, self.page_discovery.is_some(), true)
+                .target_set_auto_attach_types(
+                    true,
+                    self.page_discovery.is_some(),
+                    true,
+                    self.auto_attach_target_types(),
+                )
                 .await?;
         }
         if self.page_discovery.is_some() && !self.resumes_with_utility_worlds() {

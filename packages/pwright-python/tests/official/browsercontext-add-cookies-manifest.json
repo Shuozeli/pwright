@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_browsercontext_add_cookies.py": "4d604e12a0da1264101db19d556e4e7bf7ce12ed03ec75970ef31f6b43295780"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_work",
+      "capabilities": ["browser-context.add-cookies", "browser-context.cookies"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_roundtrip_cookie",
+      "capabilities": ["browser-context.add-cookies", "browser-context.clear-cookies"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_send_cookie_header",
+      "capabilities": ["browser-context.add-cookies", "request.cookie"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_isolate_cookies_in_browser_contexts",
+      "capabilities": ["browser-context.add-cookies", "browser-context.isolation"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_isolate_session_cookies",
+      "capabilities": ["browser-context.cookies", "browser-context.isolation"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_isolate_persistent_cookies",
+      "capabilities": ["browser-context.cookies", "browser-context.isolation"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_isolate_send_cookie_header",
+      "capabilities": ["browser-context.add-cookies", "browser-context.isolation"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_isolate_cookies_between_launches",
+      "capabilities": ["browser-context.add-cookies", "browser.lifecycle"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_set_multiple_cookies",
+      "capabilities": ["browser-context.add-cookies", "cookie.multiple"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_have_expires_set_to_neg_1_for_session_cookies",
+      "capabilities": ["browser-context.add-cookies", "cookie.expires"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_set_cookie_with_reasonable_defaults",
+      "capabilities": ["browser-context.add-cookies", "cookie.defaults"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_set_a_cookie_with_a_path",
+      "capabilities": ["browser-context.add-cookies", "cookie.path"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_not_set_a_cookie_with_blank_page_url",
+      "capabilities": ["browser-context.add-cookies", "error.invalid-cookie-url"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_not_set_a_cookie_on_a_data_url_page",
+      "capabilities": ["browser-context.add-cookies", "error.invalid-cookie-url"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_default_to_setting_secure_cookie_for_https_websites",
+      "capabilities": ["browser-context.add-cookies", "cookie.secure-default"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_be_able_to_set_unsecure_cookie_for_http_website",
+      "capabilities": ["browser-context.add-cookies", "cookie.secure-default"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_set_a_cookie_on_a_different_domain",
+      "capabilities": ["browser-context.add-cookies", "cookie.domain"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_set_cookies_for_a_frame",
+      "capabilities": ["browser-context.add-cookies", "frame.cookies"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_add_cookies.py::test_should_not_block_third_party_cookies",
+      "capabilities": ["browser-context.cookies", "cookie.third-party"]
+    }
+  ]
+}

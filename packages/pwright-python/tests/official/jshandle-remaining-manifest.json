@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_jshandle.py": "b7f7257a1c2ad2010ae1b56e04181f194e8c2e0a49b7305506fb017291799300"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_accept_nested_handle",
+      "capabilities": ["page.evaluate", "handle.nested-argument"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_accept_nested_window_handle",
+      "capabilities": ["page.evaluate", "handle.nested-argument", "handle.identity"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_accept_multiple_nested_handles",
+      "capabilities": ["page.evaluate", "handle.nested-argument", "serialization.nested"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_should_work_for_circular_objects",
+      "capabilities": ["page.evaluate", "serialization.cycles"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_accept_same_nested_object_multiple_times",
+      "capabilities": ["page.evaluate", "serialization.repeated-references"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_pass_configurable_args",
+      "capabilities": ["page.evaluate", "serialization.configurable-properties"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_properties_get_property",
+      "capabilities": ["handle.get-property", "handle.json-value"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_properties_work_with_undefined_null_and_empty",
+      "capabilities": ["handle.get-property", "serialization.undefined-null"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_properties_work_with_unserializable_values",
+      "capabilities": ["handle.get-property", "serialization.unserializable"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_properties_get_properties",
+      "capabilities": ["handle.get-properties", "handle.json-value"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_properties_return_empty_map_for_non_objects",
+      "capabilities": ["handle.get-properties", "serialization.primitive"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_json_value_work_with_dates",
+      "capabilities": ["handle.json-value", "serialization.date"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_to_string_work_for_primitives",
+      "capabilities": ["handle.preview", "serialization.primitive"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_to_string_work_for_complicated_objects",
+      "capabilities": ["handle.preview", "serialization.object"]
+    },
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_to_string_work_for_promises",
+      "capabilities": ["handle.get-property", "handle.preview", "serialization.promise"]
+    }
+  ]
+}

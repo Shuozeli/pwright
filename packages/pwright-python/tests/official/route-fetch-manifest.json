@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_page_request_intercept.py": "6baa3b1de95009c928ad74e0c9af933e02425049543e87bfd90f57b6b8dd5abf",
+    "tests/sync/test_page_request_intercept.py": "9c883293c1ba5360c22bcf2a400afbccae096a698591ea744f9d8cfcd7d1f12b",
+    "tests/sync/test_request_intercept.py": "7225bf4ef0691d8d9fc9d13e8fe809acae0e2645a76a1f33c595e9396dc5af7c",
+    "tests/async/test_request_fulfill.py": "d51fb673736a0515c189f309d551cbaee8ec3583891e0fabb458fa72ac692a32",
+    "tests/sync/test_request_fulfill.py": "34a72b9b929e3d685def78e43bbd69b4e9ea08fe701363d519d1b14b432a4dd8"
+  },
+  "cases": [
+    {"id": "tests/async/test_page_request_intercept.py::test_should_support_timeout_option_in_route_fetch", "capabilities": ["route.fetch", "api-request.timeout"]},
+    {"id": "tests/async/test_page_request_intercept.py::test_should_not_follow_redirects_when_max_redirects_is_set_to_0_in_route_fetch", "capabilities": ["route.fetch", "api-request.max-redirects"]},
+    {"id": "tests/async/test_page_request_intercept.py::test_should_intercept_with_url_override", "capabilities": ["route.fetch", "route.fetch.url-override"]},
+    {"id": "tests/async/test_page_request_intercept.py::test_should_intercept_with_post_data_override", "capabilities": ["route.fetch", "route.fetch.post-data-override"]},
+    {"id": "tests/async/test_page_request_intercept.py::test_should_fulfill_popup_main_request_using_alias", "capabilities": ["route.fetch", "route.fulfill.response", "page.popup"]},
+    {"id": "tests/sync/test_page_request_intercept.py::test_should_support_timeout_option_in_route_fetch", "capabilities": ["route.fetch", "api-request.timeout"]},
+    {"id": "tests/sync/test_page_request_intercept.py::test_should_intercept_with_url_override", "capabilities": ["route.fetch", "route.fetch.url-override"]},
+    {"id": "tests/sync/test_request_intercept.py::test_should_not_follow_redirects_when_max_redirects_is_set_to_0_in_route_fetch", "capabilities": ["route.fetch", "api-request.max-redirects"]},
+    {"id": "tests/async/test_request_fulfill.py::test_should_fulfill_json_overriding_existing_response", "capabilities": ["route.fetch", "route.fulfill.response", "route.fulfill.json"]},
+    {"id": "tests/sync/test_request_fulfill.py::test_should_fulfill_json_overriding_existing_response", "capabilities": ["route.fetch", "route.fulfill.response", "route.fulfill.json"]}
+  ]
+}

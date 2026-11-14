@@ -219,6 +219,21 @@ impl CdpSession {
         Ok(())
     }
 
+    pub async fn dom_set_file_input_files_by_object_id(
+        &self,
+        object_id: &str,
+        files: &[String],
+    ) -> Result<()> {
+        let params = cdp_gen::SetFileInputFilesParams {
+            files: files.to_vec(),
+            object_id: Some(object_id.to_owned()),
+            ..Default::default()
+        };
+        self.send("DOM.setFileInputFiles", serde_json::to_value(&params)?)
+            .await?;
+        Ok(())
+    }
+
     pub async fn dom_request_node(&self, object_id: &str) -> Result<i64> {
         let params = cdp_gen::RequestNodeParams {
             object_id: object_id.to_string(),

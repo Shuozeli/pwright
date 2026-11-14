@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-browserless-launch-arguments-proxy-chromium",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:40",
+        "tests/library/browsertype-launch.spec.ts:56",
+        "tests/library/proxy.spec.ts:23"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "chromium-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 3,
+      "expectedFiles": 2
+    }
+  ]
+}

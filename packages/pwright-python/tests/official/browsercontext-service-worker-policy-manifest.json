@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_browsercontext_service_worker_policy.py": "2c6cb8652304ae6a06862ca1be2bf3debbb6e1b59546e621b6653ae832f989ff",
+    "tests/sync/test_browsercontext_service_worker_policy.py": "ab3936debb427cc54a281eadea3ae7907409688222ac5aa676b5135ff5a54eae"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_browsercontext_service_worker_policy.py::test_should_allow_service_workers_by_default",
+      "capabilities": ["browser-context.service-workers-allow"]
+    },
+    {
+      "id": "tests/async/test_browsercontext_service_worker_policy.py::test_block_blocks_service_worker_registration",
+      "capabilities": [
+        "browser-context.service-workers-block",
+        "browser-context.init-script",
+        "page.console-event"
+      ]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_service_worker_policy.py::test_should_allow_service_workers_by_default",
+      "capabilities": ["browser-context.service-workers-allow"]
+    },
+    {
+      "id": "tests/sync/test_browsercontext_service_worker_policy.py::test_block_blocks_service_worker_registration",
+      "capabilities": [
+        "browser-context.service-workers-block",
+        "browser-context.init-script",
+        "page.console-event"
+      ]
+    }
+  ]
+}

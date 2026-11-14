@@ -418,7 +418,7 @@ mod tests {
                 .expect("route metrics should be readable")
                 .class(ResourceClass::BackendStateBytes)
                 .current,
-            640
+            656 // Ten 64-byte native IDs plus two retained i64 context IDs.
         );
         let command = Command::<FrameContent>::new(
             CallId::new(11),

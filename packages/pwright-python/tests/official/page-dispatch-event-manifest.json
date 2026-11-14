@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_dispatch_event.py": "a4905396220267094de57d7fc721c8d733d4f0e453f37295882338c9ebe31c19"
+  },
+  "cases": [
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_click_event", "capabilities": ["page.dispatch_event"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_click_event_properties", "capabilities": ["page.dispatch_event"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_click_svg", "capabilities": ["page.dispatch_event"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_click_on_a_span_with_an_inline_element_inside", "capabilities": ["page.dispatch_event"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_click_after_navigation", "capabilities": ["page.dispatch_event"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_click_after_a_cross_origin_navigation", "capabilities": ["page.dispatch_event", "frame.navigation"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_not_fail_when_element_is_blocked_on_hover", "capabilities": ["page.dispatch_event"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_click_when_node_is_added_in_shadow_dom", "capabilities": ["page.dispatch_event", "selector.shadow-dom"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_be_atomic", "capabilities": ["page.dispatch_event", "selector.registration"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_drag_drop_events", "capabilities": ["page.dispatch_event", "handle.event_init"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_drag_and_drop_events_element_handle", "capabilities": ["element_handle.dispatch_event", "handle.event_init"]},
+    {"id": "tests/async/test_dispatch_event.py::test_should_dispatch_click_event_element_handle", "capabilities": ["element_handle.dispatch_event"]}
+  ]
+}

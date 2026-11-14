@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/async/test_cdp_session.py": "87aa94371355619a74839ed59099677a8ca670c5313f45f469285a28d99c168e"
+  },
+  "cases": [
+    {"id":"tests/async/test_cdp_session.py::test_should_be_able_to_detach_session","capabilities":["context.new-cdp-session","cdp-session.send","cdp-session.detach","async-api"]},
+    {"id":"tests/async/test_cdp_session.py::test_should_detach_when_page_closes","capabilities":["context.new-cdp-session","cdp-session.detach","page.close","async-api"]},
+    {"id":"tests/async/test_cdp_session.py::test_should_not_break_page_close","capabilities":["context.new-cdp-session","cdp-session.detach","page.close","async-api"]},
+    {"id":"tests/async/test_cdp_session.py::test_should_receive_events","capabilities":["context.new-cdp-session","cdp-session.events","page.goto","async-api"]},
+    {"id":"tests/async/test_cdp_session.py::test_should_work","capabilities":["context.new-cdp-session","cdp-session.send","cdp-session.events","async-api"]},
+    {"id":"tests/async/test_cdp_session.py::test_should_work_with_main_frame","capabilities":["context.new-cdp-session","frame.main-frame","cdp-session.send","async-api"]}
+  ]
+}

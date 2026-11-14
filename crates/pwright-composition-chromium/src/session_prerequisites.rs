@@ -60,9 +60,9 @@ mod tests {
     use super::{initialize, initialize_with_attachment, initialize_with_registration};
 
     #[test]
-    fn attachment_profile_requires_four_pending_slots_and_is_opt_in() {
+    fn attachment_profile_requires_seven_pending_slots_and_is_opt_in() {
         // Arrange
-        let serial = profile(3);
+        let serial = profile(6);
         // Act
         let result = serial.with_parallel_recursive_attachment();
         // Assert
@@ -71,23 +71,23 @@ mod tests {
             result,
             Err(
                 crate::ChromiumTopologyEventDriverProfileError::InsufficientAttachmentCommands {
-                    capacity: 3
+                    capacity: 6
                 }
             )
         ));
     }
 
     #[test]
-    fn attachment_profile_reserves_four_responses_with_idempotent_composition() {
+    fn attachment_profile_reserves_two_seven_owner_phases_with_idempotent_composition() {
         // Arrange
-        let serial = profile(4);
+        let serial = profile(7);
         // Act
         let joined = serial.with_parallel_recursive_attachment().unwrap();
         // Assert
         assert!(joined.parallel_recursive_attachment());
         assert_eq!(
             joined.maximum_retained_bytes(),
-            serial.maximum_retained_bytes() + 12 * 4096
+            serial.maximum_retained_bytes() + 16 * 4096
         );
         assert_eq!(
             joined.requirements(),

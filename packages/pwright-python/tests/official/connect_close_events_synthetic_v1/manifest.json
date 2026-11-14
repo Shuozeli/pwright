@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "kind": "playwright-python-connect-close-events-synthetic-v1",
+  "classification": "official-derived-fixture-adapted-internal-diagnostic",
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "coreProtocolCommit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "requiresBrowser": false,
+  "fixtureAdapted": true,
+  "testSourceAdapted": false,
+  "promotableToOfficialLedger": false,
+  "candidateAbi": 125,
+  "candidateSelectedFeatures": [
+    "browser-registry",
+    "playwright-server-initialize",
+    "playwright-server-connect-session"
+  ],
+  "candidateWheelSha256": "c065171eb151fca881927500670ece4d05f749697deaed69e5cc0c64bf8ffdcb",
+  "testBodies": [
+    "tests/sync/test_browsertype_connect.py::test_browser_type_connect_should_forward_close_events_to_pages"
+  ],
+  "engines": ["chromium"],
+  "expandedCaseIds": [
+    "tests/sync/test_browsertype_connect.py::test_browser_type_connect_should_forward_close_events_to_pages[chromium]"
+  ],
+  "upstreamSourceSha256": {
+    "tests/sync/test_browsertype_connect.py": "c71497683c6ed7b932dc12a02ac304d51370e32fdfe049aca22d745754d0a58b",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "pyproject.toml": "96e2d4dcd75b40a101c77d12b4e29ea4d91efc6fd58992a67ed8cc837e2e1e08"
+  },
+  "toolingVersions": {
+    "python": "3.12",
+    "playwright": "1.58.0",
+    "pytest": "8.4.2",
+    "pytest-asyncio": "1.2.0",
+    "pytest-timeout": "2.4.0",
+    "pytest-rerunfailures": "15.1",
+    "pytest-repeat": "0.9.4",
+    "pillow": "11.3.0",
+    "pixelmatch": "0.3.0",
+    "twisted": "25.5.0",
+    "pyopenssl": "25.1.0",
+    "service-identity": "24.2.0",
+    "autobahn": "23.1.2",
+    "requests": "2.32.5"
+  }
+}

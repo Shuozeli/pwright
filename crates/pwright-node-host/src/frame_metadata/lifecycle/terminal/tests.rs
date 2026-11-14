@@ -5,7 +5,7 @@ use crate::{
     frame_tree::FrameTreeLimits,
     frame_trees::FrameTrees,
 };
-use pwright_composition_chromium::ChromiumFrameUrlObserver;
+use pwright_plugin_chromium_frame_observer::ChromiumFrameUrlObserver;
 
 struct Fixture {
     book: Arc<FrameMetadata>,
@@ -139,6 +139,30 @@ impl Fixture {
                         }
                         LifecycleNotice::ContextPage { .. } | LifecycleNotice::Popup { .. } => {
                             panic!("terminal input cannot create a Page")
+                        }
+                        LifecycleNotice::PageDomContentLoaded { .. }
+                        | LifecycleNotice::PageLoad { .. }
+                        | LifecycleNotice::PageMainFrameNavigated { .. }
+                        | LifecycleNotice::PageConsole { .. }
+                        | LifecycleNotice::PageError { .. } => {
+                            panic!("terminal input cannot publish Page events")
+                        }
+                        #[cfg(feature = "frame-events")]
+                        LifecycleNotice::PageFrameAttached { .. }
+                        | LifecycleNotice::PageFrameNavigated { .. } => {
+                            panic!("terminal input cannot publish Page events")
+                        }
+                        #[cfg(feature = "frame-detach-events")]
+                        LifecycleNotice::PageFrameDetached { .. } => {
+                            panic!("terminal input cannot publish Page events")
+                        }
+                        #[cfg(feature = "page-dialogs")]
+                        LifecycleNotice::PageDialog { .. } => {
+                            panic!("terminal input cannot publish Page events")
+                        }
+                        #[cfg(feature = "file-chooser-events")]
+                        LifecycleNotice::PageFileChooser { .. } => {
+                            panic!("terminal input cannot publish Page events")
                         }
                     }
                     let delivery = if first_throws && notices.is_empty() {

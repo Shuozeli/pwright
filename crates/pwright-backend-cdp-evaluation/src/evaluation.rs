@@ -5,7 +5,7 @@ use std::future::Future;
 use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -23,10 +23,68 @@ use pwright_core::{
 use serde_json::{Map, Value};
 
 #[doc(hidden)]
-pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
+pub const EVALUATION_RUNTIME: &str = r#"function(c) {
   'use strict';
   const handles = Array.prototype.slice.call(arguments, 1);
-  const hasOwn = Object.prototype.hasOwnProperty;
+  const isOwn = c.constructor.prototype.propertyIsEnumerable;
+  // `c` is materialized by CDP itself, so its prototype keeps the realm's
+  // intrinsic Object.prototype even after page code overwrites global
+  // URL/Date/RegExp bindings. Avoid consulting those mutable globals while
+  // classifying result values.
+  const objectTag = value => c.constructor.prototype.toString.call(value);
+  // Chunk-enabled calls retain only genuinely large top-level strings as CDP
+  // objects. Every ordinary envelope returns as a primitive string in the
+  // original Runtime.callFunctionOn reply, so a navigation cannot destroy its
+  // context between evaluation and a second projection command. Do not use the
+  // page's mutable JSON/toJSON hooks while constructing that inline envelope.
+  const quoteInline = value => {
+    let result = '"';
+    const hex = '0123456789abcdef';
+    for (let i = 0; i < value.length; i++) {
+      const code = value.charCodeAt(i);
+      if (code === 0x22) result += '\\"';
+      else if (code === 0x5c) result += '\\\\';
+      else if (code === 0x08) result += '\\b';
+      else if (code === 0x0c) result += '\\f';
+      else if (code === 0x0a) result += '\\n';
+      else if (code === 0x0d) result += '\\r';
+      else if (code === 0x09) result += '\\t';
+      else if (code < 0x20) {
+        result += '\\u00' + hex[(code >>> 4) & 15] + hex[code & 15];
+      } else {
+        result += value[i];
+      }
+    }
+    return result + '"';
+  };
+  const serializeInline = value => {
+    if (value === null) return 'null';
+    if (typeof value === 'string') return quoteInline(value);
+    if (typeof value === 'number' || typeof value === 'boolean') return '' + value;
+    if (objectTag(value) === '[object Array]') {
+      let result = '[';
+      for (let i = 0; i < value.length; i++) {
+        if (i !== 0) result += ',';
+        result += serializeInline(value[i]);
+      }
+      return result + ']';
+    }
+    let result = '{';
+    let first = true;
+    for (const propertyName in value) {
+      if (!isOwn.call(value, propertyName)) continue;
+      if (!first) result += ',';
+      first = false;
+      result += quoteInline(propertyName) + ':' + serializeInline(value[propertyName]);
+    }
+    return result + '}';
+  };
+  const finish = envelope => {
+    if (c.chunkUtf16Units === 0) return envelope;
+    const value = envelope && envelope.ok === true && envelope.value;
+    if (value && value.t === 'chunked-str') return envelope;
+    return '__pwright_evaluation_json__' + serializeInline(envelope);
+  };
   const utf8Length = value => {
     let bytes = 0;
     for (let i = 0; i < value.length; i++) {
@@ -139,7 +197,7 @@ pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
   };
   const claimString = value => {
     state.strings += utf8Length(value);
-    if (state.strings > c.maxStringBytes) throwLimit('evaluation string-byte limit exceeded');
+    if (state.strings > c.maxInlineStringBytes) throwLimit('evaluation string-byte limit exceeded');
   };
   const claimNode = depth => {
     if (depth > c.maxDepth) throwLimit('evaluation depth limit exceeded');
@@ -176,6 +234,12 @@ pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
       return { t: 'num', v: value };
     }
     if (typeof value === 'string') {
+      const bytes = utf8Length(value);
+      if (depth === 0 && bytes > c.maxInlineStringBytes) {
+        if (bytes > c.maxStringBytes || c.chunkUtf16Units === 0)
+          throwLimit('evaluation string-byte limit exceeded');
+        return { t: 'chunked-str', v: value, b: bytes };
+      }
       claimString(value);
       return { t: 'str', v: value };
     }
@@ -185,20 +249,45 @@ pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
       return { t: 'bigint', v: text };
     }
     if (typeof value === 'symbol' || typeof value === 'function') return { t: 'u' };
-    if (value instanceof Date) {
+    if (value && typeof value === 'object') {
+      let browserReference = null;
+      if (typeof globalThis.Window === 'function' && value instanceof globalThis.Window)
+        browserReference = 'ref: <Window>';
+      else if (typeof globalThis.Document === 'function' && value instanceof globalThis.Document)
+        browserReference = 'ref: <Document>';
+      else if (typeof globalThis.Node === 'function' && value instanceof globalThis.Node)
+        browserReference = 'ref: <Node>';
+      if (browserReference !== null) {
+        claimString(browserReference);
+        return { t: 'str', v: browserReference };
+      }
+    }
+    const tag = objectTag(value);
+    if (tag === '[object Date]') {
       const text = value.toISOString();
       claimString(text);
       return { t: 'date', v: text };
     }
-    if (typeof URL !== 'undefined' && value instanceof URL) {
+    if (tag === '[object URL]') {
       const text = value.href;
       claimString(text);
       return { t: 'url', v: text };
     }
-    if (value instanceof RegExp) {
+    if (tag === '[object RegExp]') {
       claimString(value.source);
       claimString(value.flags);
       return { t: 'regexp', p: value.source, f: value.flags };
+    }
+    // Chromium 154 added `navigationId` to PerformanceMeasure's JSON shape.
+    // Playwright's public value contract at our pinned v1.58.0 revision only
+    // publishes the stable PerformanceEntry fields below.
+    if (tag === '[object PerformanceMeasure]') {
+      return encode({
+        name: value.name,
+        entryType: value.entryType,
+        startTime: value.startTime,
+        duration: value.duration
+      }, depth);
     }
     if (value instanceof Error) {
       const record = errorRecord(value);
@@ -212,7 +301,7 @@ pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
     }
     if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
       const kind = value.constructor && value.constructor.name;
-      if (!hasOwn.call(typedConstructors, kind)) throw new TypeError('unsupported typed array kind');
+      if (!isOwn.call(typedConstructors, kind)) throw new TypeError('unsupported typed array kind');
       const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
       state.binary += bytes.byteLength;
       if (state.binary > c.maxBinaryBytes) throwLimit('evaluation binary-byte limit exceeded');
@@ -232,10 +321,27 @@ pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
     }
     const properties = [];
     for (const key in value) {
-      if (!hasOwn.call(value, key)) continue;
+      if (!isOwn.call(value, key)) continue;
+      let item;
+      try {
+        item = value[key];
+      } catch (_) {
+        continue;
+      }
       claimEntry();
       claimString(key);
-      properties.push({ k: key, v: encode(value[key], depth + 1) });
+      if (key === 'toJSON' && typeof item === 'function') {
+        claimNode(depth + 1);
+        properties.push({ k: key, v: { t: 'object', id: null, v: [] } });
+      } else {
+        properties.push({ k: key, v: encode(item, depth + 1) });
+      }
+    }
+    if (properties.length === 0) {
+      try {
+        if (typeof value.toJSON === 'function') return encode(value.toJSON(), depth);
+      } catch (_) {
+      }
     }
     return { t: 'object', id, v: properties };
   };
@@ -244,30 +350,51 @@ pub const EVALUATION_RUNTIME: &str = r#"async function(c) {
     try {
       argument = decode(c.argument);
     } catch (error) {
-      return { ok: false, kind: 'invalid-value', message: clipped(error && error.message !== undefined ? error.message : error) };
+      return finish({ ok: false, kind: 'invalid-value', message: clipped(error && error.message !== undefined ? error.message : error) });
     }
   }
-  let result;
-  try {
-    // Indirect evaluation runs in the selected main world, not this wrapper's scope.
-    if (c.mode === 'expression') result = await globalThis.eval(c.source);
-    else {
+  // Keep the public API name in browser-created Error stacks. Chromium records
+  // this method frame when user code constructs an Error during evaluate().
+  const evaluator = {
+    evaluate() {
+      // Indirect evaluation runs in the selected main world, not this wrapper's scope.
+      if (c.mode === 'expression') return globalThis.eval(c.source);
       const fn = globalThis.eval('(' + c.source + ')');
       if (typeof fn !== 'function') throw new TypeError('evaluation source is not a function');
-      if (c.receiverSlot === null) result = await fn(argument);
-      else {
-        if (!Number.isInteger(c.receiverSlot) || c.receiverSlot < 0 || c.receiverSlot >= handles.length)
-          throw new TypeError('unknown Handle receiver slot');
-        result = await fn(handles[c.receiverSlot], argument);
-      }
+      if (c.receiverSlot === null) return fn(argument);
+      if (!Number.isInteger(c.receiverSlot) || c.receiverSlot < 0 || c.receiverSlot >= handles.length)
+        throw new TypeError('unknown Handle receiver slot');
+      return fn(handles[c.receiverSlot], argument);
     }
-  } catch (error) {
-    return { ok: false, kind: 'javascript', error: errorRecord(error) };
-  }
+  };
+  const javascriptFailure = error =>
+    finish({ ok: false, kind: 'javascript', error: errorRecord(error) });
+  const encodeResult = result => {
+    try {
+      return finish({ ok: true, value: encode(result, 0) });
+    } catch (error) {
+      return finish({ ok: false, kind: error && error.__pwrightLimit ? 'resource-exhausted' : 'invalid-value', message: clipped(error && error.message !== undefined ? error.message : error) });
+    }
+  };
   try {
-    return { ok: true, value: encode(result, 0) };
+    const result = evaluator.evaluate();
+    // Keep ordinary values synchronous, as in Playwright's utility-script
+    // path. Only actual thenables need an asynchronous settlement turn.
+    if (result !== null && typeof result === 'object' && typeof result.then === 'function') {
+      return (async () => {
+        try {
+          // Match Playwright's object-only Promise awareness: `await` reads
+          // the user-owned then property again during assimilation.
+          const settled = await result;
+          return encodeResult(settled);
+        } catch (error) {
+          return javascriptFailure(error);
+        }
+      })();
+    }
+    return encodeResult(result);
   } catch (error) {
-    return { ok: false, kind: error && error.__pwrightLimit ? 'resource-exhausted' : 'invalid-value', message: clipped(error && error.message !== undefined ? error.message : error) };
+    return javascriptFailure(error);
   }
 }"#;
 
@@ -277,6 +404,9 @@ pub struct CdpEvaluationLimits {
     pub generated_script_bytes: usize,
     pub error_bytes: usize,
     pub value: EvaluationValueLimits,
+    input_string_bytes: usize,
+    inline_string_bytes: usize,
+    chunk_utf16_units: usize,
 }
 
 impl CdpEvaluationLimits {
@@ -291,7 +421,59 @@ impl CdpEvaluationLimits {
             generated_script_bytes,
             error_bytes,
             value,
+            input_string_bytes: value.max_string_bytes(),
+            inline_string_bytes: value.max_string_bytes(),
+            chunk_utf16_units: 0,
         }
+    }
+
+    /// Bound only argument strings independently of results. All other input
+    /// dimensions inherit the result limits, keeping this profile narrow.
+    pub const fn with_input_string_bytes(mut self, input_string_bytes: usize) -> Self {
+        self.input_string_bytes = input_string_bytes;
+        self
+    }
+
+    pub fn input_value_limits(self) -> EvaluationValueLimits {
+        EvaluationValueLimits::new(
+            self.value.max_depth(),
+            self.value.max_nodes(),
+            self.value.max_entries(),
+            self.input_string_bytes,
+            self.value.max_binary_bytes(),
+        )
+        .expect("selected input string limit preserves validated value dimensions")
+    }
+
+    /// Select a bounded top-level string result reader. Ordinary graphs keep
+    /// the smaller inline string bound; only one direct string may use the
+    /// larger value limit through fixed-size CDP projections.
+    pub fn with_chunked_string_results(
+        mut self,
+        inline_string_bytes: usize,
+        chunk_utf16_units: usize,
+    ) -> Result<Self, &'static str> {
+        if inline_string_bytes == 0
+            || inline_string_bytes > self.value.max_string_bytes()
+            || chunk_utf16_units == 0
+        {
+            return Err("invalid chunked evaluation string limits");
+        }
+        self.inline_string_bytes = inline_string_bytes;
+        self.chunk_utf16_units = chunk_utf16_units;
+        Ok(self)
+    }
+
+    pub const fn inline_string_bytes(self) -> usize {
+        self.inline_string_bytes
+    }
+
+    pub const fn chunk_utf16_units(self) -> usize {
+        self.chunk_utf16_units
+    }
+
+    pub const fn chunked_string_results(self) -> bool {
+        self.chunk_utf16_units != 0
     }
 
     /// Conservative host-side peak for input, generated script, CDP JSON,
@@ -300,7 +482,8 @@ impl CdpEvaluationLimits {
         let source = u64::try_from(self.source_bytes).unwrap_or(u64::MAX);
         let script = u64::try_from(self.generated_script_bytes).unwrap_or(u64::MAX);
         let error = u64::try_from(self.error_bytes).unwrap_or(u64::MAX);
-        let strings = u64::try_from(self.value.max_string_bytes()).unwrap_or(u64::MAX);
+        let strings = u64::try_from(self.inline_string_bytes).unwrap_or(u64::MAX);
+        let input_strings = u64::try_from(self.input_string_bytes).unwrap_or(u64::MAX);
         let binary = u64::try_from(self.value.max_binary_bytes()).unwrap_or(u64::MAX);
         let entries = u64::try_from(self.value.max_entries()).unwrap_or(u64::MAX);
         source
@@ -308,8 +491,21 @@ impl CdpEvaluationLimits {
             .saturating_add(script.saturating_mul(2))
             .saturating_add(error.saturating_mul(4))
             .saturating_add(strings.saturating_mul(8))
+            .saturating_add(input_strings.saturating_sub(strings).saturating_mul(8))
             .saturating_add(binary.saturating_mul(6))
             .saturating_add(entries.saturating_mul(96))
+            .saturating_add(64 * 1024)
+    }
+
+    pub fn maximum_chunked_string_retained_bytes(self) -> u64 {
+        if !self.chunked_string_results() {
+            return 0;
+        }
+        let strings = u64::try_from(self.value.max_string_bytes()).unwrap_or(u64::MAX);
+        let chunks = u64::try_from(self.chunk_utf16_units).unwrap_or(u64::MAX);
+        strings
+            .saturating_mul(2)
+            .saturating_add(chunks.saturating_mul(24))
             .saturating_add(64 * 1024)
     }
 }
@@ -335,6 +531,7 @@ pub struct CdpEvaluationProductionProfile {
     max_context_routes: usize,
     max_native_id_bytes: usize,
     maximum_retained_bytes_per_operation: u64,
+    maximum_chunked_string_retained_bytes: u64,
     maximum_route_retained_bytes: u64,
     requirements: ResourceRequirements,
 }
@@ -346,14 +543,21 @@ impl CdpEvaluationProductionProfile {
         max_concurrent_operations: usize,
     ) -> Self {
         let maximum_retained_bytes_per_operation = limits.maximum_retained_bytes_per_operation();
+        let maximum_chunked_string_retained_bytes = limits.maximum_chunked_string_retained_bytes();
         let operations = u64::try_from(max_concurrent_operations).unwrap_or(u64::MAX);
-        let bytes = maximum_retained_bytes_per_operation.saturating_mul(operations);
+        let bytes = maximum_retained_bytes_per_operation
+            .saturating_mul(operations)
+            .saturating_add(maximum_chunked_string_retained_bytes);
         let requirements = if max_concurrent_operations == 0 {
             ResourceRequirements::none()
         } else {
             ResourceRequirements::none()
                 .with_class(ResourceClass::BackendStateBytes, bytes, bytes)
-                .with_metadata(1, max_concurrent_operations)
+                .with_metadata(
+                    1,
+                    max_concurrent_operations
+                        .saturating_add(usize::from(maximum_chunked_string_retained_bytes > 0)),
+                )
         };
         Self {
             scope,
@@ -363,6 +567,7 @@ impl CdpEvaluationProductionProfile {
             max_context_routes: 0,
             max_native_id_bytes: 0,
             maximum_retained_bytes_per_operation,
+            maximum_chunked_string_retained_bytes,
             maximum_route_retained_bytes: 0,
             requirements,
         }
@@ -373,6 +578,10 @@ impl CdpEvaluationProductionProfile {
     pub fn with_user_gesture(mut self, enabled: bool) -> Self {
         self.user_gesture = enabled;
         self
+    }
+
+    pub const fn uses_user_gesture(&self) -> bool {
+        self.user_gesture
     }
 
     /// Adds the persistent route budget required to target Frame execution
@@ -393,6 +602,7 @@ impl CdpEvaluationProductionProfile {
         let bytes = self
             .maximum_retained_bytes_per_operation
             .saturating_mul(operations)
+            .saturating_add(self.maximum_chunked_string_retained_bytes)
             .saturating_add(self.maximum_route_retained_bytes);
         self.requirements = if bytes == 0 {
             ResourceRequirements::none()
@@ -402,7 +612,10 @@ impl CdpEvaluationProductionProfile {
                 .with_metadata(
                     1,
                     self.max_concurrent_operations
-                        .saturating_add(usize::from(self.maximum_route_retained_bytes > 0)),
+                        .saturating_add(usize::from(self.maximum_route_retained_bytes > 0))
+                        .saturating_add(usize::from(
+                            self.maximum_chunked_string_retained_bytes > 0,
+                        )),
                 )
         };
         self
@@ -426,6 +639,9 @@ impl CdpEvaluationProductionProfile {
     pub const fn maximum_retained_bytes_per_operation(self) -> u64 {
         self.maximum_retained_bytes_per_operation
     }
+    pub const fn maximum_chunked_string_retained_bytes(self) -> u64 {
+        self.maximum_chunked_string_retained_bytes
+    }
     pub const fn maximum_route_retained_bytes(self) -> u64 {
         self.maximum_route_retained_bytes
     }
@@ -439,12 +655,26 @@ struct EvaluationResourceBudget {
     ledger: ResourceLedger,
     profile: CdpEvaluationProductionProfile,
     active: Arc<AtomicUsize>,
+    large_active: Arc<AtomicUsize>,
+    next_group: Arc<AtomicU64>,
 }
 
 #[doc(hidden)]
 pub struct EvaluationLease {
     _resource: Option<ResourceLease>,
     active: Arc<AtomicUsize>,
+}
+
+struct ChunkedStringLease {
+    _resource: Option<ResourceLease>,
+    active: Arc<AtomicUsize>,
+}
+
+impl Drop for ChunkedStringLease {
+    fn drop(&mut self) {
+        let previous = self.active.fetch_sub(1, Ordering::AcqRel);
+        debug_assert!(previous > 0);
+    }
 }
 
 impl Drop for EvaluationLease {
@@ -481,6 +711,8 @@ impl CdpEvaluationServiceFactory {
                 ledger,
                 profile,
                 active: Arc::new(AtomicUsize::new(0)),
+                large_active: Arc::new(AtomicUsize::new(0)),
+                next_group: Arc::new(AtomicU64::new(1)),
             },
         })
     }
@@ -665,12 +897,14 @@ impl CdpEvaluationService {
             ));
         }
         if let Some(argument) = params.argument() {
-            argument.validate(self.limits.value).map_err(|error| {
-                input_limit_error(
-                    format!("invalid evaluation argument: {error}"),
-                    self.resources.is_some(),
-                )
-            })?;
+            argument
+                .validate(self.limits.input_value_limits())
+                .map_err(|error| {
+                    input_limit_error(
+                        format!("invalid evaluation argument: {error}"),
+                        self.resources.is_some(),
+                    )
+                })?;
         }
         let Some(resources) = &self.resources else {
             return Ok(None);
@@ -722,6 +956,243 @@ impl CdpEvaluationService {
     pub fn client(&self) -> Arc<dyn CdpClient> {
         Arc::clone(&self.client)
     }
+
+    fn reserve_chunked_string(
+        &self,
+    ) -> Result<Option<ChunkedStringLease>, OperationError<EvaluationErrorDetails>> {
+        let Some(resources) = &self.resources else {
+            return Ok(None);
+        };
+        if resources
+            .large_active
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(resource_error(
+                "chunked evaluation string capacity was reached",
+            ));
+        }
+        let bytes = resources.profile.maximum_chunked_string_retained_bytes();
+        let resource = match resources.ledger.reserve(
+            resources.profile.resource_scope(),
+            ResourceClass::BackendStateBytes,
+            bytes,
+        ) {
+            Ok(resource) => resource,
+            Err(error) => {
+                resources.large_active.store(0, Ordering::Release);
+                return Err(map_resource_error(error));
+            }
+        };
+        Ok(Some(ChunkedStringLease {
+            _resource: Some(resource),
+            active: resources.large_active.clone(),
+        }))
+    }
+
+    fn next_chunked_string_group(&self) -> Result<String, OperationError<EvaluationErrorDetails>> {
+        let Some(resources) = &self.resources else {
+            return Err(resource_error(
+                "chunked evaluation strings require production resources",
+            ));
+        };
+        let id = resources
+            .next_group
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |id| id.checked_add(1))
+            .map_err(|_| resource_error("chunked evaluation object-group IDs exhausted"))?;
+        Ok(format!("pwright-evaluation-{id:016x}"))
+    }
+
+    async fn call_with_chunked_string_results(
+        &self,
+        script: String,
+    ) -> Result<EvaluateResult, OperationError<EvaluationErrorDetails>> {
+        const PLAN: &str = "function(){const value=this&&this.ok===true&&this.value;if(value&&value.t==='chunked-str')return{__pwrightChunkedString:true,utf16:value.v.length,bytes:value.b};return null;}";
+        const READ: &str = "function(offset,size){const value=this.value.v;let end=Math.min(value.length,offset+size);if(end<value.length){const high=value.charCodeAt(end-1);const low=value.charCodeAt(end);if(high>=55296&&high<=56319&&low>=56320&&low<=57343)end+=1;}return{text:value.slice(offset,end),next:end};}";
+
+        let unique_context_id = self.unique_context_id.as_deref().ok_or_else(|| {
+            invalid_response("chunked evaluation requires an exact execution context")
+        })?;
+        let group = self.next_chunked_string_group()?;
+        let declaration = format!("function(){{return {script};}}");
+        if declaration.len() > self.limits.generated_script_bytes {
+            return Err(input_limit_error(
+                "chunked evaluation function exceeds generated-script limit".into(),
+                self.resources.is_some(),
+            ));
+        }
+        let initial = self
+            .client
+            .runtime_call_function_as_object_awaited_in_group_to_settlement(
+                unique_context_id,
+                &declaration,
+                Vec::new(),
+                &group,
+                self.resources
+                    .as_ref()
+                    .is_some_and(|resources| resources.profile.user_gesture),
+            )
+            .await;
+        // CDP only creates a retained group owner when its reply publishes a
+        // RemoteObject ID. A plain inline primitive without exceptionDetails
+        // has nothing to release. Returning before another CDP command lets
+        // a timer-opened dialog publish after evaluation's initial reply.
+        let inline_without_retained_object = initial
+            .as_ref()
+            .is_ok_and(inline_primitive_without_remote_object_id);
+        let result = match initial {
+            Err(error) => Err(map_cdp_error(error, self.limits.error_bytes)),
+            Ok(initial) => self.read_chunked_string_result(initial, PLAN, READ).await,
+        };
+        if inline_without_retained_object {
+            return result;
+        }
+        let cleanup = self
+            .client
+            .runtime_release_object_group_to_settlement(&group)
+            .await
+            .map_err(|error| map_cdp_error(error, self.limits.error_bytes));
+        match (result, cleanup) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Ok(_), Err(cleanup)) => Err(cleanup),
+            (Err(primary), _) => Err(primary),
+        }
+    }
+
+    async fn read_chunked_string_result(
+        &self,
+        initial: Value,
+        plan_function: &str,
+        read_function: &str,
+    ) -> Result<EvaluateResult, OperationError<EvaluationErrorDetails>> {
+        if initial
+            .get("result")
+            .and_then(|value| value.get("value"))
+            .and_then(Value::as_str)
+            .is_some()
+        {
+            return parse_response(initial, self.limits);
+        }
+        let object_id = initial
+            .get("result")
+            .and_then(|value| value.get("objectId"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| invalid_response("chunked evaluation result has no objectId"))?;
+        let plan = self
+            .client
+            .runtime_call_function_on(object_id, plan_function, Vec::new())
+            .await
+            .map_err(|error| map_cdp_error(error, self.limits.error_bytes))?;
+        let value = plan
+            .get("result")
+            .and_then(|value| value.get("value"))
+            .ok_or_else(|| invalid_response("chunked evaluation plan has no value"))?;
+        let Some(marker) = value.as_object().filter(|value| {
+            value.get("__pwrightChunkedString").and_then(Value::as_bool) == Some(true)
+        }) else {
+            return Err(invalid_response(
+                "chunked evaluation retained result is not a large-string marker",
+            ));
+        };
+        let utf16 = marker
+            .get("utf16")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| invalid_response("chunked evaluation UTF-16 length is invalid"))?;
+        let bytes = marker
+            .get("bytes")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| invalid_response("chunked evaluation byte length is invalid"))?;
+        if bytes <= self.limits.inline_string_bytes()
+            || bytes > self.limits.value.max_string_bytes()
+        {
+            return Err(invalid_response(
+                "chunked evaluation byte length exceeds its selected bounds",
+            ));
+        }
+        let _lease = self.reserve_chunked_string()?;
+        let mut output = String::new();
+        output
+            .try_reserve_exact(bytes)
+            .map_err(|_| resource_error("chunked evaluation string allocation failed"))?;
+        let mut offset = 0usize;
+        while offset < utf16 {
+            let response = self
+                .client
+                .runtime_call_function_on(
+                    object_id,
+                    read_function,
+                    vec![
+                        serde_json::json!({"value": offset}),
+                        serde_json::json!({"value": self.limits.chunk_utf16_units()}),
+                    ],
+                )
+                .await
+                .map_err(|error| map_cdp_error(error, self.limits.error_bytes))?;
+            let chunk = response
+                .get("result")
+                .and_then(|value| value.get("value"))
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid_response("chunked evaluation read has no object value"))?;
+            let next = chunk
+                .get("next")
+                .and_then(Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| invalid_response("chunked evaluation next offset is invalid"))?;
+            let text = chunk
+                .get("text")
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid_response("chunked evaluation read has no text"))?;
+            if next <= offset || next > utf16 || output.len().saturating_add(text.len()) > bytes {
+                return Err(invalid_response(
+                    "chunked evaluation reader made invalid progress",
+                ));
+            }
+            output.push_str(text);
+            offset = next;
+        }
+        if output.len() != bytes {
+            return Err(invalid_response(
+                "chunked evaluation result byte length changed during transfer",
+            ));
+        }
+        let value = EvaluationValue::String(output);
+        value
+            .validate(self.limits.value)
+            .map_err(|error| invalid_response(&format!("invalid evaluation value: {error}")))?;
+        Ok(EvaluateResult::new(value))
+    }
+}
+
+fn inline_primitive_without_remote_object_id(response: &Value) -> bool {
+    if response.get("exceptionDetails").is_some() {
+        return false;
+    }
+    let Some(result) = response.get("result").and_then(Value::as_object) else {
+        return false;
+    };
+    if result.get("type").and_then(Value::as_str) != Some("string")
+        || result.get("value").and_then(Value::as_str).is_none()
+    {
+        return false;
+    }
+    // Scan the whole bounded reply shape so a future retained subresponse
+    // cannot accidentally bypass awaited cleanup.
+    let mut pending = vec![response];
+    while let Some(value) = pending.pop() {
+        match value {
+            Value::Object(fields) => {
+                if fields.contains_key("objectId") {
+                    return false;
+                }
+                pending.extend(fields.values());
+            }
+            Value::Array(items) => pending.extend(items),
+            _ => {}
+        }
+    }
+    true
 }
 
 impl NativeBackendAccess<super::ChromiumCdpEvaluationBackend> for CdpEvaluationService {
@@ -750,6 +1221,9 @@ impl Service<EvaluateParams> for CdpEvaluationService {
         Box::pin(async move {
             let _lease = lease;
             let script = script?;
+            if self.limits.chunked_string_results() {
+                return self.call_with_chunked_string_results(script).await;
+            }
             let response = if self
                 .resources
                 .as_ref()
@@ -815,6 +1289,10 @@ fn build_script(
     script.push_str(&limits.value.max_entries().to_string());
     script.push_str(",maxStringBytes:");
     script.push_str(&limits.value.max_string_bytes().to_string());
+    script.push_str(",maxInlineStringBytes:");
+    script.push_str(&limits.inline_string_bytes().to_string());
+    script.push_str(",chunkUtf16Units:");
+    script.push_str(&limits.chunk_utf16_units().to_string());
     script.push_str(",maxBinaryBytes:");
     script.push_str(&limits.value.max_binary_bytes().to_string());
     script.push_str("})");
@@ -941,6 +1419,8 @@ pub fn parse_response(
     response: Value,
     limits: CdpEvaluationLimits,
 ) -> Result<EvaluateResult, OperationError<EvaluationErrorDetails>> {
+    const INLINE_PREFIX: &str = "__pwright_evaluation_json__";
+
     let remote = response
         .get("result")
         .and_then(Value::as_object)
@@ -950,9 +1430,21 @@ pub fn parse_response(
             "value evaluation returned a live CDP objectId",
         ));
     }
-    let envelope = remote
+    let raw_envelope = remote
         .get("value")
         .ok_or_else(|| invalid_response("Runtime.evaluate is missing result.value"))?;
+    let decoded_envelope;
+    let envelope = if let Some(inline) = raw_envelope.as_str() {
+        let inline = inline
+            .strip_prefix(INLINE_PREFIX)
+            .ok_or_else(|| invalid_response("evaluation inline result has an invalid prefix"))?;
+        decoded_envelope = serde_json::from_str(inline).map_err(|error| {
+            invalid_response(&format!("evaluation inline result is invalid: {error}"))
+        })?;
+        &decoded_envelope
+    } else {
+        raw_envelope
+    };
     let object = envelope
         .as_object()
         .ok_or_else(|| invalid_response("evaluation envelope is not an object"))?;
@@ -1424,8 +1916,10 @@ fn map_resource_error(error: ResourceError) -> OperationError<EvaluationErrorDet
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
     use std::num::NonZeroU32;
     use std::sync::Arc;
+    use std::task::{Context, Poll, Waker};
 
     use pwright_cap_evaluation::{
         EvaluateParams, EvaluationErrorDetails, EvaluationProperty, EvaluationValue,
@@ -1456,17 +1950,87 @@ mod tests {
         )
     }
 
+    #[test]
+    fn selected_large_input_adds_bounded_per_operation_retention() {
+        // Arrange
+        let output =
+            pwright_cap_evaluation::EvaluationValueLimits::new(8, 64, 64, 256 * 1024, 1024)
+                .unwrap();
+        let input =
+            pwright_cap_evaluation::EvaluationValueLimits::new(8, 64, 64, 3 * 1024 * 1024, 1024)
+                .unwrap();
+        let ordinary = CdpEvaluationLimits::new(32 * 1024, 2 * 1024 * 1024, 4096, output);
+
+        // Act
+        let selected = ordinary.with_input_string_bytes(input.max_string_bytes());
+
+        // Assert
+        assert_eq!(ordinary.input_value_limits(), output);
+        assert_eq!(selected.value, output);
+        assert_eq!(selected.input_value_limits(), input);
+        assert_eq!(
+            selected.maximum_retained_bytes_per_operation()
+                - ordinary.maximum_retained_bytes_per_operation(),
+            8 * (3 * 1024 * 1024 - 256 * 1024)
+        );
+    }
+
+    #[tokio::test]
+    async fn selected_large_input_reaches_cdp_without_raising_result_limit() {
+        // Arrange
+        let output =
+            pwright_cap_evaluation::EvaluationValueLimits::new(8, 64, 64, 256 * 1024, 1024)
+                .unwrap();
+        let input =
+            pwright_cap_evaluation::EvaluationValueLimits::new(8, 64, 64, 3 * 1024 * 1024, 1024)
+                .unwrap();
+        let limits = CdpEvaluationLimits::new(32 * 1024, 4 * 1024 * 1024, 4096, output)
+            .with_input_string_bytes(input.max_string_bytes());
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(
+            json!({"result":{"value":{"ok":true,"value":{"t":"num","v":2097152}}}}),
+        );
+        let service = CdpEvaluationService::with_limits(client.clone(), limits);
+        let body = "0".repeat(2 * 1024 * 1024);
+
+        // Act
+        let result = service
+            .call(EvaluateParams::function(
+                "body => body.length",
+                EvaluationValue::String(body.clone()),
+            ))
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        let calls = client.calls();
+        assert_eq!(client.method_names(), ["Runtime.evaluate"]);
+        let script = calls[0].1[0].as_str().unwrap();
+        assert!(script.contains(&body));
+        assert!(script.len() <= limits.generated_script_bytes);
+        assert_eq!(limits.value.max_string_bytes(), 256 * 1024);
+    }
+
     fn production_resources(profile: CdpEvaluationProductionProfile) -> ProductionResourceLedger {
         let bytes = profile
             .requirements()
             .class(ResourceClass::BackendStateBytes);
-        let limits = ResourceLimits::deny_all(1, profile.max_concurrent_operations()).with_class(
+        let requirements = profile.requirements();
+        let limits = ResourceLimits::deny_all(requirements.scopes, requirements.leases).with_class(
             ResourceClass::BackendStateBytes,
             bytes.global,
             bytes.per_scope,
         );
         ProductionResourceLedger::new(limits, profile.requirements())
             .expect("evaluation production requirements should fit")
+    }
+
+    fn chunked_production_profile() -> CdpEvaluationProductionProfile {
+        let limits = production_profile(1)
+            .limits()
+            .with_chunked_string_results(2, 4)
+            .unwrap();
+        CdpEvaluationProductionProfile::new(ResourceScope::extension(91, 2), limits, 1)
     }
 
     #[tokio::test]
@@ -1539,6 +2103,296 @@ mod tests {
         assert_eq!(client.method_names(), ["Runtime.evaluate"]);
         assert_eq!(client.calls()[0].1[0]["userGesture"], true);
         assert_eq!(client.calls()[0].1[0]["uniqueContextId"], "exact-world");
+    }
+
+    #[tokio::test]
+    async fn chunked_profile_returns_ordinary_values_in_the_initial_cdp_reply() {
+        // Arrange
+        let profile = chunked_production_profile();
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(json!({
+            "result": {
+                "type": "string",
+                "value": "__pwright_evaluation_json__{\"ok\":true,\"value\":{\"t\":\"object\",\"id\":1,\"v\":[{\"k\":\"a\",\"v\":{\"t\":\"num\",\"v\":42}}]}}"
+            }
+        }));
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+
+        // Act
+        let result = service
+            .call(EvaluateParams::expression("({ a: 42 })"))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(
+            result.value,
+            EvaluationValue::Object {
+                id: NonZeroU32::new(1),
+                properties: vec![EvaluationProperty::new(
+                    "a",
+                    EvaluationValue::Number(
+                        pwright_cap_evaluation::EvaluationNumber::new(42.0).unwrap()
+                    )
+                )],
+            }
+        );
+        assert_eq!(client.method_names(), ["Runtime.callFunctionOn"]);
+        assert!(
+            client.calls()[0].1[0]["functionDeclaration"]
+                .as_str()
+                .unwrap()
+                .contains("serializeInline")
+        );
+    }
+
+    #[tokio::test]
+    async fn inline_primitive_finishes_when_late_dialog_blocks_group_release() {
+        // Arrange: the release gate models a dialog that blocks later CDP commands.
+        let profile = chunked_production_profile();
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(json!({
+            "result": {
+                "type": "string",
+                "value": "__pwright_evaluation_json__{\"ok\":true,\"value\":{\"t\":\"u\"}}"
+            }
+        }));
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_release_object_group_gate(Some(gate));
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+        let mut operation = Box::pin(service.call(EvaluateParams::expression("undefined")));
+        let mut context = Context::from_waker(Waker::noop());
+
+        // Act
+        let outcome = operation.as_mut().poll(&mut context);
+
+        // Assert: no group-owned RemoteObject exists, so no later CDP release is needed.
+        let Poll::Ready(result) = outcome else {
+            panic!("inline primitive should not await a blocked group release");
+        };
+        assert_eq!(result.unwrap().value, EvaluationValue::Undefined);
+        assert_eq!(client.method_names(), ["Runtime.callFunctionOn"]);
+    }
+
+    #[tokio::test]
+    async fn inline_structured_javascript_error_is_preserved_without_group_release() {
+        // Arrange
+        let profile = chunked_production_profile();
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(json!({
+            "result": {
+                "type": "string",
+                "value": "__pwright_evaluation_json__{\"ok\":false,\"kind\":\"javascript\",\"error\":{\"name\":\"TypeError\",\"message\":\"boom\",\"stack\":null}}"
+            }
+        }));
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_release_object_group_gate(Some(gate));
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+        let mut operation =
+            Box::pin(service.call(EvaluateParams::expression("throw new TypeError()")));
+        let mut context = Context::from_waker(Waker::noop());
+
+        // Act
+        let outcome = operation.as_mut().poll(&mut context);
+
+        // Assert
+        let Poll::Ready(result) = outcome else {
+            panic!("inline structured error should not await a blocked group release");
+        };
+        let error = result.unwrap_err();
+        assert!(matches!(
+            error.details(),
+            Some(EvaluationErrorDetails::Javascript { name, message, .. })
+                if name == "TypeError" && message == "boom"
+        ));
+        assert_eq!(client.method_names(), ["Runtime.callFunctionOn"]);
+    }
+
+    #[tokio::test]
+    async fn retained_result_waits_for_group_release_acknowledgement() {
+        // Arrange
+        let profile = chunked_production_profile();
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_responses([
+            json!({"result":{"type":"object","objectId":"large-1"}}),
+            json!({"result":{"value":{"__pwrightChunkedString":true,"utf16":3,"bytes":3}}}),
+            json!({"result":{"value":{"text":"abc","next":3}}}),
+        ]);
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_release_object_group_gate(Some(gate.clone()));
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+        let mut operation = Box::pin(service.call(EvaluateParams::expression("'abc'")));
+        let mut context = Context::from_waker(Waker::noop());
+
+        // Act
+        let before_ack = operation.as_mut().poll(&mut context);
+        gate.notify_one();
+        let result = operation.await.unwrap();
+
+        // Assert
+        assert!(before_ack.is_pending());
+        assert_eq!(result.value, EvaluationValue::String("abc".to_owned()));
+        assert_eq!(
+            client.method_names().last().map(String::as_str),
+            Some("Runtime.releaseObjectGroup")
+        );
+    }
+
+    #[tokio::test]
+    async fn exception_remote_object_id_prevents_inline_cleanup_elision() {
+        // Arrange
+        let profile = chunked_production_profile();
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(json!({
+            "result": {
+                "type": "string",
+                "value": "__pwright_evaluation_json__{\"ok\":true,\"value\":{\"t\":\"null\"}}"
+            },
+            "exceptionDetails": { "exception": { "type": "object", "objectId": "error-1" } }
+        }));
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_release_object_group_gate(Some(gate.clone()));
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+        let mut operation = Box::pin(service.call(EvaluateParams::expression("null")));
+        let mut context = Context::from_waker(Waker::noop());
+
+        // Act
+        let before_ack = operation.as_mut().poll(&mut context);
+        gate.notify_one();
+        let result = operation.await.unwrap();
+
+        // Assert
+        assert!(before_ack.is_pending());
+        assert_eq!(result.value, EvaluationValue::Null);
+        assert_eq!(
+            client.method_names(),
+            ["Runtime.callFunctionOn", "Runtime.releaseObjectGroup"]
+        );
+    }
+
+    #[tokio::test]
+    async fn id_free_cdp_exception_details_still_waits_for_group_release() {
+        // Arrange: an ID-free CDP exception is not the inline JS-error envelope.
+        let profile = chunked_production_profile();
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(json!({
+            "result": {
+                "type": "string",
+                "value": "__pwright_evaluation_json__{\"ok\":true,\"value\":{\"t\":\"null\"}}"
+            },
+            "exceptionDetails": { "text": "uncaught", "lineNumber": 1, "columnNumber": 1 }
+        }));
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_release_object_group_gate(Some(gate.clone()));
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+        let mut operation = Box::pin(service.call(EvaluateParams::expression("null")));
+        let mut context = Context::from_waker(Waker::noop());
+
+        // Act
+        let before_ack = operation.as_mut().poll(&mut context);
+        gate.notify_one();
+        let result = operation.await.unwrap();
+
+        // Assert
+        assert!(before_ack.is_pending());
+        assert_eq!(result.value, EvaluationValue::Null);
+        assert_eq!(
+            client.method_names(),
+            ["Runtime.callFunctionOn", "Runtime.releaseObjectGroup"]
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelling_retained_result_keeps_existing_no_detached_cleanup_gate() {
+        // Arrange
+        let profile = chunked_production_profile();
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_responses([
+            json!({"result":{"type":"object","objectId":"large-1"}}),
+            json!({"result":{"value":{"__pwrightChunkedString":true,"utf16":3,"bytes":3}}}),
+            json!({"result":{"value":{"text":"abc","next":3}}}),
+        ]);
+        let gate = Arc::new(tokio::sync::Notify::new());
+        client.set_release_object_group_gate(Some(gate.clone()));
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+        let baseline_leases = resources.metrics().unwrap().active_leases;
+        let mut operation = Box::pin(service.call(EvaluateParams::expression("'abc'")));
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(operation.as_mut().poll(&mut context).is_pending());
+        let calls_before_cancel = client.method_names();
+
+        // Act
+        drop(operation);
+        gate.notify_one();
+        tokio::task::yield_now().await;
+
+        // Assert: this is a regression gate against introducing fire-and-forget,
+        // not a fix for the broader remote-handle cancellation leak question.
+        assert_eq!(resources.metrics().unwrap().active_leases, baseline_leases);
+        assert_eq!(client.method_names(), calls_before_cancel);
+    }
+
+    #[tokio::test]
+    async fn chunked_profile_reads_only_a_selected_large_top_level_string() {
+        // Arrange
+        let profile = chunked_production_profile();
+        let resources = production_resources(profile);
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_responses([
+            json!({"result":{"type":"object","objectId":"large-1"}}),
+            json!({"result":{"value":{"__pwrightChunkedString":true,"utf16":3,"bytes":3}}}),
+            json!({"result":{"value":{"text":"abc","next":3}}}),
+        ]);
+        let factory =
+            CdpEvaluationServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap();
+        let service = factory.bind_unique_context(client.clone(), "exact-world".to_owned());
+
+        // Act
+        let result = service
+            .call(EvaluateParams::expression("'abc'"))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(result.value, EvaluationValue::String("abc".to_owned()));
+        assert_eq!(
+            client.method_names(),
+            [
+                "Runtime.callFunctionOn",
+                "Runtime.callFunctionOn",
+                "Runtime.callFunctionOn",
+                "Runtime.releaseObjectGroup",
+            ]
+        );
     }
 
     #[tokio::test]
@@ -1619,8 +2473,53 @@ mod tests {
             no_argument_client.calls()[0].1[0]
                 .as_str()
                 .unwrap()
-                .contains("result = await fn(argument)")
+                .contains("return fn(argument)")
         );
+        assert!(
+            no_argument_client.calls()[0].1[0]
+                .as_str()
+                .unwrap()
+                .contains("const result = evaluator.evaluate()")
+        );
+    }
+
+    #[tokio::test]
+    async fn generated_runtime_classifies_browser_references_before_property_traversal() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        client.set_evaluate_response(
+            json!({"result":{"value":{"ok":true,"value":{"t":"str","v":"ref: <Window>"}}}}),
+        );
+        let service = CdpEvaluationService::new(client.clone());
+
+        // Act
+        let result = service
+            .call(EvaluateParams::function_without_argument(
+                "() => window.open('about:blank')",
+            ))
+            .await
+            .expect("browser reference should use the value serializer");
+
+        // Assert
+        assert_eq!(
+            result.value,
+            EvaluationValue::String("ref: <Window>".to_owned())
+        );
+        let calls = client.calls();
+        let script = calls[0].1[0]
+            .as_str()
+            .expect("Runtime.evaluate should receive a script");
+        let browser_reference = script
+            .find("value instanceof globalThis.Window")
+            .expect("Window references should be classified");
+        let property_traversal = script
+            .find("for (const key in value)")
+            .expect("ordinary objects should still be traversed");
+        assert!(browser_reference < property_traversal);
+        assert!(script.contains("ref: <Document>"));
+        assert!(script.contains("ref: <Node>"));
+        assert!(script.contains("item = value[key]"));
+        assert!(script.contains("catch (_)"));
     }
 
     #[tokio::test]

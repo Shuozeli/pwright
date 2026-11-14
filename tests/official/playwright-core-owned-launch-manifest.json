@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suite": {
+    "id": "library-browsertype-launch-close-twice-chromium-owned",
+    "role": "browser-backed-owned-launch-subset",
+    "runner": "packages/playwright/cli.js",
+    "config": "tests/library/playwright.config.ts",
+    "project": "chromium-library",
+    "selector": "tests/library/browsertype-launch.spec.ts:130",
+    "specId": "d1a604bdf6287c6776f3-7af9e16dff447fc147e4",
+    "title": "should be callable twice",
+    "candidateAdapter": "test-mode-playwright-core-owned-public-launch",
+    "oracleAdapter": "test-mode-playwright-core-owned-public-launch",
+    "upstreamSources": {
+      "tests/library/browsertype-launch.spec.ts": "64fe24188ec96bb0d5d1ecca5af37986b16d82451b91e4db80593f707126bd05",
+      "tests/library/playwright.config.ts": "338eb705bb4a17322dfba39d1c6770613bf8cf62cfec5c43bf7cece3e5db8146",
+      "tests/config/browserTest.ts": "0ef5440e164d262e7c3d01523448b5d3c4d50b99060604c20f168f04419a13d5",
+      "tests/config/testMode.ts": "7c12e6bd3fa7e2e3e4ff296277f4a60656d4d8a0c536cb55d9d6c1e83016f575",
+      "packages/playwright/src/index.ts": "1d7a56955dd8163b263bcce3a1155c0bed82a53ac3ef7ae7b8d69659f5227e82",
+      "packages/playwright-core/src/client/browserType.ts": "f46ad9dc1a7d5c9e90b2adda605ae5949bb138ad42fc48253cd59ec65a604618"
+    }
+  }
+}

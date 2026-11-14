@@ -224,12 +224,61 @@ fn locator_v1_and_v2_keep_separate_versions_and_click_record_kinds() {
         .kind();
 
     // Assert
-    assert_eq!(LOCATOR_SCHEMA.version(), ProtocolVersion::new(1, 23));
-    assert_eq!(LOCATOR_V2_SCHEMA.version(), ProtocolVersion::new(2, 6));
+    assert_eq!(LOCATOR_SCHEMA.version(), ProtocolVersion::new(1, 24));
+    assert_eq!(LOCATOR_V2_SCHEMA.version(), ProtocolVersion::new(2, 7));
     assert_eq!(v1_kind, BinaryTypeKind::Record);
     assert_eq!(v2_kind, BinaryTypeKind::ExtensibleRecord);
     assert_eq!(LOCATOR_SCHEMA_CATALOG.validate(), Ok(()));
     assert_eq!(LOCATOR_V2_SCHEMA_CATALOG.validate(), Ok(()));
+}
+
+#[test]
+fn legacy_text_selectors_require_the_new_minor_across_both_majors() {
+    // Arrange
+    let limits = LocatorCodecLimits::new(1_024);
+    let params = CountParams::new(Selector::legacy_text("save"));
+    let v1 = Command::<Count>::new(
+        CallId::new(1),
+        ObjectId::new(2),
+        CallMetadata::default(),
+        params.clone(),
+    );
+    let v2 = Command::<locator_v2::Count>::new(
+        CallId::new(1),
+        ObjectId::new(2),
+        CallMetadata::default(),
+        params,
+    );
+    let current_v1 = LocatorCodec::new(limits);
+    let current_v2 = LocatorV2Codec::new(limits);
+    let old_v1 = current_v1.with_capability_version(ProtocolVersion::new(1, 23));
+    let old_v2 = current_v2.with_capability_version(ProtocolVersion::new(2, 6));
+
+    // Act
+    let current_v1_result = current_v1.encode_parts(&v1);
+    let current_v2_result = current_v2.encode_parts(&v2);
+    let old_v1_error = old_v1
+        .encode_parts(&v1)
+        .expect_err("locator 1.23 must reject legacy text");
+    let old_v2_error = old_v2
+        .encode_parts(&v2)
+        .expect_err("locator 2.6 must reject legacy text");
+
+    // Assert
+    assert!(current_v1_result.is_ok());
+    assert!(current_v2_result.is_ok());
+    assert_eq!(
+        old_v1_error,
+        LocatorCodecError::LegacyTextUnsupported {
+            version: ProtocolVersion::new(1, 23),
+        }
+    );
+    assert_eq!(
+        old_v2_error,
+        LocatorCodecError::LegacyTextUnsupported {
+            version: ProtocolVersion::new(2, 6),
+        }
+    );
 }
 
 #[test]

@@ -1,0 +1,11 @@
+[package]
+name = "pwright-persistent-context-preflight"
+description = "Pure Playwright-compatible persistent-context preflight decisions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []

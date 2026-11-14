@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "core455-internal-viewport-library",
+      "role": "implementation-internal-source-only",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": ["tests/library/browsercontext-viewport.spec.ts:50"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "viewport-device-descriptors",
+      "upstreamTestSourceSha256": "cc7420a53ff2ee5128b8150349fccc55c0873f01ce48c6fa70b809dee162270a",
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "expectedSpecIds": [
+        "b886096c3211d9edf020-8f7140a1630987feff81",
+        "b886096c3211d9edf020-1de65cce79238aace4b6",
+        "b886096c3211d9edf020-051e62622a5daca2893d"
+      ],
+      "expectedProjectIds": [
+        "chromium-library", "firefox-library", "webkit-library"
+      ]
+    },
+    {
+      "id": "core455-internal-viewport-bidi",
+      "role": "implementation-internal-source-only",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": ["tests/library/browsercontext-viewport.spec.ts:50"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "viewport-device-descriptors",
+      "upstreamTestSourceSha256": "cc7420a53ff2ee5128b8150349fccc55c0873f01ce48c6fa70b809dee162270a",
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "expectedSpecIds": [
+        "b886096c3211d9edf020-bdd8a611ad629d140c23",
+        "b886096c3211d9edf020-7db515f53fd99418bec0",
+        "b886096c3211d9edf020-3ceb2b41235beca74c88",
+        "b886096c3211d9edf020-7df4d898e309cbf1cb1d",
+        "b886096c3211d9edf020-ddd48af0223998c23532",
+        "b886096c3211d9edf020-ac3fd2828645f9caf94f"
+      ],
+      "expectedProjectIds": [
+        "bidi-chrome-canary-library", "bidi-chrome-stable-library", "bidi-chromium-library",
+        "moz-firefox-beta-library", "moz-firefox-library", "moz-firefox-nightly-library"
+      ]
+    },
+    {
+      "id": "core455-internal-glob-library",
+      "role": "implementation-internal-source-only",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": ["tests/page/interception.spec.ts:73"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "glob-url-match",
+      "upstreamTestSourceSha256": "1f0d3089d80ef3b9529f7bfd056e21435d78698a2ed4021bf8cf380d417b9676",
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "expectedSpecIds": [
+        "c569f641042bf346bcbd-343acaf4a4d7b9e88485",
+        "c569f641042bf346bcbd-8c02e809d6a00ee93a12",
+        "c569f641042bf346bcbd-d52effb44e836155a9b6"
+      ],
+      "expectedProjectIds": [
+        "chromium-page", "firefox-page", "webkit-page"
+      ]
+    },
+    {
+      "id": "core455-internal-glob-bidi",
+      "role": "implementation-internal-source-only",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": ["tests/page/interception.spec.ts:73"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "glob-url-match",
+      "upstreamTestSourceSha256": "1f0d3089d80ef3b9529f7bfd056e21435d78698a2ed4021bf8cf380d417b9676",
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "expectedSpecIds": [
+        "c569f641042bf346bcbd-bae57c5d43d38123813c",
+        "c569f641042bf346bcbd-b56a6bf9e2754c31113e",
+        "c569f641042bf346bcbd-1850a196afc85812026a",
+        "c569f641042bf346bcbd-55b847ee75cd943f4653",
+        "c569f641042bf346bcbd-08261f3f6cbf192506fd",
+        "c569f641042bf346bcbd-ad9f8d09df920a2bd746"
+      ],
+      "expectedProjectIds": [
+        "bidi-chrome-canary-page", "bidi-chrome-stable-page", "bidi-chromium-page",
+        "moz-firefox-beta-page", "moz-firefox-nightly-page", "moz-firefox-page"
+      ]
+    }
+  ]
+}

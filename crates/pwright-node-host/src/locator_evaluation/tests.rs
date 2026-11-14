@@ -233,12 +233,145 @@ fn declared_call_storage_covers_bounded_conversion_and_value_trees() {
         + evaluation::BINARY_BYTES;
     // Act
     let peak =
-        2 * value_bytes + evaluation::SOURCE_BYTES + CONVERSION_STATE_BYTES + COMMAND_FUTURE_BYTES;
+        2 * value_bytes + COLLECTION_SOURCE_BYTES + CONVERSION_STATE_BYTES + COMMAND_FUTURE_BYTES;
     // Assert
     assert!(peak < CALL_BYTES as usize, "{peak} exceeds {CALL_BYTES}");
     assert!(
         std::mem::size_of::<Installation>() + std::mem::size_of::<Slots>() < STATE_BYTES as usize
     );
+}
+
+#[test]
+fn collection_evaluation_wraps_one_compiled_selector_and_preserves_argument() {
+    // Arrange
+    let selector = CollectionSelector::Standard(Selector::css("div.item".to_owned()).unwrap());
+    let argument = EvaluationValue::String("!".into());
+    let params = EvaluateParams::function(
+        "(elements, suffix) => elements.map(element => element.textContent + suffix)",
+        argument.clone(),
+    );
+
+    // Act
+    let wrapped = collection_params(&selector, CollectionMode::All, params).unwrap();
+
+    // Assert
+    assert_eq!(wrapped.mode(), EvaluationMode::Function);
+    assert_eq!(wrapped.argument(), Some(&argument));
+    assert!(wrapped.source().contains(SELECTOR_RUNTIME_SYMBOL));
+    assert!(wrapped.source().contains("div.item"));
+    assert!(
+        wrapped
+            .source()
+            .contains("__pwFunction(__pwMatches, __pwArgument)")
+    );
+    assert!(wrapped.source().len() <= COLLECTION_SOURCE_BYTES);
+}
+
+#[cfg(feature = "react-selectors")]
+#[test]
+fn react_count_checks_deprecation_only_after_final_composed_matches() {
+    // Arrange
+    let budget = crate::locator_query::QueryBudget::new(crate::locator_query::QueryLimits {
+        recipes: 4,
+        bytes: 64 * 1024,
+    })
+    .unwrap();
+    let source = "_react=BookItem >> text=Gatsby";
+    let query = budget
+        .prepare_leaf(source.len())
+        .unwrap()
+        .css(source.to_owned())
+        .unwrap();
+    let (crate::locator_query::CommandPlan::Browser(program), _lease) =
+        query.command_plan().unwrap()
+    else {
+        panic!("React selector must use the browser plan");
+    };
+    let params = EvaluateParams::function_without_argument("elements => elements.length");
+
+    // Act
+    let wrapped = collection_params(
+        &CollectionSelector::Browser(program),
+        CollectionMode::All,
+        params,
+    )
+    .unwrap();
+    let script = wrapped.source();
+
+    // Assert
+    let query_at = script.find("__pw.within").unwrap();
+    let check_at = script.find("if (__pwMatches.length)").unwrap();
+    assert!(query_at < check_at);
+    assert!(script.contains("\"_react\" selector is not supported"));
+    assert!(script.contains("return await __pwFunction(__pwMatches"));
+}
+
+#[test]
+fn standard_single_evaluation_uses_the_first_match_without_locator_strictness() {
+    // Arrange
+    let selector = CollectionSelector::Standard(Selector::text("ready".to_owned(), true));
+    let params = EvaluateParams::function_without_argument("element => element.nodeName");
+
+    // Act
+    let wrapped = collection_params(&selector, CollectionMode::One, params).unwrap();
+
+    // Assert
+    assert!(wrapped.source().contains("__pwMatches[0]"));
+    assert!(!wrapped.source().contains("strict mode violation"));
+}
+
+#[test]
+fn collection_evaluation_rejects_expression_mode_before_browser_dispatch() {
+    // Arrange
+    let selector = CollectionSelector::Standard(Selector::css("div".to_owned()).unwrap());
+    let params = EvaluateParams::expression("document.body");
+
+    // Act
+    let result = collection_params(&selector, CollectionMode::All, params);
+
+    // Assert
+    assert!(matches!(result, Err(HostError::InvalidArgument(message))
+        if message == "locator.evaluateAll requires a function"));
+}
+
+#[cfg(feature = "selector-registration")]
+#[test]
+fn registered_single_evaluation_uses_the_first_match_without_locator_strictness() {
+    // Arrange
+    let registry = crate::selector_registry::SelectorRegistry::default();
+    registry
+        .register("tag", "({ queryAll() { return [1, 2]; } })", false)
+        .unwrap();
+    let selector = CollectionSelector::Registered(
+        registry
+            .parse_program("tag=DIV")
+            .unwrap()
+            .expect("registered selector should produce a program"),
+    );
+    let params = EvaluateParams::function_without_argument("element => element.nodeName");
+
+    // Act
+    let wrapped = collection_params(&selector, CollectionMode::One, params).unwrap();
+
+    // Assert
+    assert!(wrapped.source().contains("__pwMatches[0]"));
+    assert!(!wrapped.source().contains("strict mode violation"));
+}
+
+#[test]
+fn collection_evaluation_has_an_independent_bounded_backend_lane() {
+    // Arrange
+    let profile = Profile::new().unwrap();
+
+    // Act
+    let collection = profile.collection;
+
+    // Assert
+    assert_eq!(collection.max_concurrent_operations(), EXECUTING);
+    assert_eq!(collection.limits(), collection_limits());
+    assert_eq!(collection.requirements().leases, EXECUTING);
+    assert!(collection.uses_user_gesture());
+    assert!(profile.adoption.uses_user_gesture());
 }
 
 #[test]

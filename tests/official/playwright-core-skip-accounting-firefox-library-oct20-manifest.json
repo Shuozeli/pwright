@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-firefox-page-argument-upstream-skip",
+      "role": "browser-independent-official-skip-accounting",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:56"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "firefox-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "expectedSpecIds": [
+        "d1a604bdf6287c6776f3-01bf6278d06dfbdeef45"
+      ],
+      "upstreamSources": {
+        "tests/library/browsertype-launch.spec.ts": "64fe24188ec96bb0d5d1ecca5af37986b16d82451b91e4db80593f707126bd05",
+        "tests/library/playwright.config.ts": "338eb705bb4a17322dfba39d1c6770613bf8cf62cfec5c43bf7cece3e5db8146",
+        "tests/config/browserTest.ts": "0ef5440e164d262e7c3d01523448b5d3c4d50b99060604c20f168f04419a13d5",
+        "tests/config/testMode.ts": "7c12e6bd3fa7e2e3e4ff296277f4a60656d4d8a0c536cb55d9d6c1e83016f575",
+        "tests/config/serverFixtures.ts": "4c0039a149bd61e8707adddc626b345632561bd343749293ddbe9458f6ac617b"
+      }
+    }
+  ]
+}

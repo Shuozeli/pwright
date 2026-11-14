@@ -1,0 +1,17 @@
+[package]
+name = "pwright-plugin-chromium-frame-lifecycle"
+description = "Optional bounded Chromium Frame lifecycle and navigation-wait observation plugin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-navigation = { workspace = true, features = ["frame-lifecycle"] }
+pwright-backend-cdp-topology = { workspace = true }
+pwright-cap-navigation = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }
+pwright-plugin-chromium-frame-observer = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }

@@ -3,7 +3,11 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::str::Utf8Error;
+#[cfg(feature = "request-timing")]
+use std::sync::Arc;
 
+#[cfg(feature = "request-timing")]
+use pwright_cap_network_events::RequestTiming;
 use pwright_cap_network_events::{
     HttpHeader, NetworkEventPayload, NetworkEventStream, NetworkLifecycleLimits, RequestFailed,
     RequestFinished, RequestInitializer, ResponseInitializer, is_network_event_tag,
@@ -16,6 +20,10 @@ const REQUEST_KIND: u8 = 1;
 const RESPONSE_KIND: u8 = 2;
 const FINISHED_KIND: u8 = 3;
 const FAILED_KIND: u8 = 4;
+#[cfg(feature = "request-timing")]
+const OPTIONAL_TIMING_BYTES: usize = 1 + (9 * std::mem::size_of::<i64>());
+#[cfg(not(feature = "request-timing"))]
+const OPTIONAL_TIMING_BYTES: usize = 0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NetworkEventsCodecLimits {
@@ -47,14 +55,18 @@ impl NetworkEventsCodecLimits {
     /// Terminal failure is the largest variant because it owns complete
     /// Request and optional Response snapshots plus bounded failure text.
     pub const fn maximum_retained_event_bytes(self) -> usize {
-        self.url_bytes
+        let bytes = self
+            .url_bytes
             .saturating_mul(2)
             .saturating_add(self.method_bytes)
             .saturating_add(self.resource_type_bytes)
             .saturating_add(self.header_bytes.saturating_mul(2))
             .saturating_add(self.post_data_bytes)
             .saturating_add(self.status_text_bytes)
-            .saturating_add(self.failure_text_bytes)
+            .saturating_add(self.failure_text_bytes);
+        #[cfg(feature = "request-timing")]
+        let bytes = bytes.saturating_add(2 * std::mem::size_of::<RequestTiming>());
+        bytes
     }
 
     /// Conservative maximum binary payload emitted by any event variant.
@@ -70,11 +82,13 @@ impl NetworkEventsCodecLimits {
             .saturating_add(self.method_bytes)
             .saturating_add(self.resource_type_bytes)
             .saturating_add(header)
-            .saturating_add(self.post_data_bytes);
+            .saturating_add(self.post_data_bytes)
+            .saturating_add(OPTIONAL_TIMING_BYTES);
         let response = 37usize
             .saturating_add(self.url_bytes)
             .saturating_add(self.status_text_bytes)
-            .saturating_add(header);
+            .saturating_add(header)
+            .saturating_add(OPTIONAL_TIMING_BYTES);
         let request_event = 17usize.saturating_add(request);
         let response_event = 17usize.saturating_add(response);
         let finished_event = 27usize.saturating_add(request).saturating_add(response);
@@ -321,23 +335,41 @@ impl NetworkEventsCodec {
             "post data",
             value.post_data.as_deref(),
             self.limits.post_data_bytes,
-        )
+        )?;
+        #[cfg(feature = "request-timing")]
+        encode_optional_timing(writer, value.timing.as_deref())?;
+        Ok(())
     }
 
     fn decode_request(
         &self,
         reader: &mut BinaryReader<'_>,
     ) -> Result<RequestInitializer, NetworkEventsCodecError> {
+        let request = ObjectId::new(reader.u64()?);
+        let parent = ObjectId::new(reader.u64()?);
+        let is_navigation_request = decode_bool(reader.u8()?)?;
+        let redirected_from = decode_optional_object(reader)?;
+        let url = decode_string(reader, "URL", self.limits.url_bytes)?;
+        let method = decode_string(reader, "method", self.limits.method_bytes)?;
+        let resource_type =
+            decode_string(reader, "resource type", self.limits.resource_type_bytes)?;
+        let headers = decode_headers(reader, self.limits)?;
+        let post_data = decode_optional_bytes(reader, "post data", self.limits.post_data_bytes)?;
+        #[cfg(feature = "request-timing")]
+        let timing = decode_optional_timing(reader)?;
+        #[cfg(not(feature = "request-timing"))]
+        let timing = None;
         Ok(RequestInitializer {
-            request: ObjectId::new(reader.u64()?),
-            parent: ObjectId::new(reader.u64()?),
-            is_navigation_request: decode_bool(reader.u8()?)?,
-            redirected_from: decode_optional_object(reader)?,
-            url: decode_string(reader, "URL", self.limits.url_bytes)?,
-            method: decode_string(reader, "method", self.limits.method_bytes)?,
-            resource_type: decode_string(reader, "resource type", self.limits.resource_type_bytes)?,
-            headers: decode_headers(reader, self.limits)?,
-            post_data: decode_optional_bytes(reader, "post data", self.limits.post_data_bytes)?,
+            request,
+            parent,
+            is_navigation_request,
+            redirected_from,
+            url,
+            method,
+            resource_type,
+            headers,
+            post_data,
+            timing,
         })
     }
 
@@ -357,21 +389,36 @@ impl NetworkEventsCodec {
             &value.status_text,
             self.limits.status_text_bytes,
         )?;
-        encode_headers(writer, &value.headers, self.limits)
+        encode_headers(writer, &value.headers, self.limits)?;
+        #[cfg(feature = "request-timing")]
+        encode_optional_timing(writer, value.timing.as_deref())?;
+        Ok(())
     }
 
     fn decode_response(
         &self,
         reader: &mut BinaryReader<'_>,
     ) -> Result<ResponseInitializer, NetworkEventsCodecError> {
+        let response = ObjectId::new(reader.u64()?);
+        let request = ObjectId::new(reader.u64()?);
+        let status = reader.i64()?;
+        let from_service_worker = decode_bool(reader.u8()?)?;
+        let url = decode_string(reader, "URL", self.limits.url_bytes)?;
+        let status_text = decode_string(reader, "status text", self.limits.status_text_bytes)?;
+        let headers = decode_headers(reader, self.limits)?;
+        #[cfg(feature = "request-timing")]
+        let timing = decode_optional_timing(reader)?;
+        #[cfg(not(feature = "request-timing"))]
+        let timing = None;
         Ok(ResponseInitializer {
-            response: ObjectId::new(reader.u64()?),
-            request: ObjectId::new(reader.u64()?),
-            status: reader.i64()?,
-            from_service_worker: decode_bool(reader.u8()?)?,
-            url: decode_string(reader, "URL", self.limits.url_bytes)?,
-            status_text: decode_string(reader, "status text", self.limits.status_text_bytes)?,
-            headers: decode_headers(reader, self.limits)?,
+            response,
+            request,
+            status,
+            from_service_worker,
+            url,
+            status_text,
+            headers,
+            timing,
         })
     }
 
@@ -687,6 +734,49 @@ fn decode_optional_u64(
     }
 }
 
+#[cfg(feature = "request-timing")]
+fn encode_optional_timing(
+    writer: &mut BinaryWriter,
+    value: Option<&RequestTiming>,
+) -> Result<(), NetworkEventsCodecError> {
+    let Some(value) = value else {
+        writer.u8(0)?;
+        return Ok(());
+    };
+    writer.u8(1)?;
+    writer.i64(value.start_time_micros)?;
+    writer.i64(value.domain_lookup_start_micros)?;
+    writer.i64(value.domain_lookup_end_micros)?;
+    writer.i64(value.connect_start_micros)?;
+    writer.i64(value.secure_connection_start_micros)?;
+    writer.i64(value.connect_end_micros)?;
+    writer.i64(value.request_start_micros)?;
+    writer.i64(value.response_start_micros)?;
+    writer.i64(value.response_end_micros)?;
+    Ok(())
+}
+
+#[cfg(feature = "request-timing")]
+fn decode_optional_timing(
+    reader: &mut BinaryReader<'_>,
+) -> Result<Option<Arc<RequestTiming>>, NetworkEventsCodecError> {
+    match reader.u8()? {
+        0 => Ok(None),
+        1 => Ok(Some(Arc::new(RequestTiming {
+            start_time_micros: reader.i64()?,
+            domain_lookup_start_micros: reader.i64()?,
+            domain_lookup_end_micros: reader.i64()?,
+            connect_start_micros: reader.i64()?,
+            secure_connection_start_micros: reader.i64()?,
+            connect_end_micros: reader.i64()?,
+            request_start_micros: reader.i64()?,
+            response_start_micros: reader.i64()?,
+            response_end_micros: reader.i64()?,
+        }))),
+        value => Err(NetworkEventsCodecError::InvalidOptionFlag(value)),
+    }
+}
+
 fn decode_bool(value: u8) -> Result<bool, NetworkEventsCodecError> {
     match value {
         0 => Ok(false),
@@ -697,6 +787,11 @@ fn decode_bool(value: u8) -> Result<bool, NetworkEventsCodecError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "request-timing")]
+    use std::sync::Arc;
+
+    #[cfg(feature = "request-timing")]
+    use pwright_cap_network_events::RequestTiming;
     use pwright_cap_network_events::{
         HttpHeader, NETWORK_REQUEST_EVENT_TAG, NETWORK_RESPONSE_EVENT_TAG, NetworkEventPayload,
         NetworkEventStream, NetworkLifecycleLimits, RequestFailed, RequestFinished,
@@ -735,6 +830,7 @@ mod tests {
             post_data: Some(b"hello".to_vec()),
             is_navigation_request: false,
             redirected_from: None,
+            timing: None,
         };
         let response = ResponseInitializer {
             response: ObjectId::new(11),
@@ -744,6 +840,7 @@ mod tests {
             status_text: "Server Error".to_owned(),
             headers: vec![HttpHeader::new("content-type", "application/json")],
             from_service_worker: false,
+            timing: None,
         };
         let values = [
             NetworkEventPayload::Request(request.clone()),
@@ -801,12 +898,61 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "request-timing")]
+    #[test]
+    fn request_timing_round_trips_only_in_the_opt_in_codec_profile() {
+        // Arrange
+        let timing = Arc::new(RequestTiming {
+            start_time_micros: 1_700_000_000_000_500,
+            domain_lookup_start_micros: 100,
+            domain_lookup_end_micros: 200,
+            connect_start_micros: 200,
+            secure_connection_start_micros: 300,
+            connect_end_micros: 500,
+            request_start_micros: 600,
+            response_start_micros: 2_500,
+            response_end_micros: 5_000,
+        });
+        let payload = NetworkEventPayload::Request(RequestInitializer {
+            request: ObjectId::new(10),
+            parent: ObjectId::new(3),
+            url: "https://example.test/timed".to_owned(),
+            method: "GET".to_owned(),
+            resource_type: "Document".to_owned(),
+            headers: Vec::new(),
+            post_data: None,
+            is_navigation_request: true,
+            redirected_from: None,
+            timing: Some(timing),
+        });
+        let event = SequencedEvent::new(
+            EventSequence::FIRST,
+            Event::<NetworkEventStream>::new(ObjectId::new(3), payload.clone()),
+        );
+        let protocol = protocol();
+
+        // Act
+        let encoded = protocol
+            .encode(&event)
+            .expect("timed request should encode");
+        let decoded = protocol
+            .decode::<SequencedEvent<NetworkEventStream>>(encoded)
+            .expect("timed request should decode");
+
+        // Assert
+        assert_eq!(decoded.payload(), &payload);
+    }
+
     #[test]
     fn terminal_failure_reaches_the_declared_maximum_payload_bound() {
         // Arrange
         let limits = NetworkLifecycleLimits::new(1, 8, 5, 3, 4, 1, 8, 6, 4, 10);
         let codec_limits = NetworkEventsCodecLimits::from_lifecycle(limits);
         let codec = NetworkEventsCodec::new(codec_limits);
+        #[cfg(feature = "request-timing")]
+        let timing = Some(Arc::new(RequestTiming::pending()));
+        #[cfg(not(feature = "request-timing"))]
+        let timing = None;
         let request = RequestInitializer {
             request: ObjectId::new(10),
             parent: ObjectId::new(3),
@@ -817,6 +963,7 @@ mod tests {
             post_data: Some(vec![0; 6]),
             is_navigation_request: true,
             redirected_from: Some(ObjectId::new(9)),
+            timing: timing.clone(),
         };
         let response = ResponseInitializer {
             response: ObjectId::new(11),
@@ -826,6 +973,7 @@ mod tests {
             status_text: "1234".to_owned(),
             headers: vec![HttpHeader::new("a", "1234567")],
             from_service_worker: true,
+            timing,
         };
         let event = SequencedEvent::new(
             EventSequence::FIRST,
@@ -855,7 +1003,14 @@ mod tests {
         // Assert
         assert!(frame.attachments().is_empty());
         assert_eq!(frame.payload().len(), codec_limits.maximum_payload_bytes());
-        assert_eq!(codec_limits.maximum_retained_event_bytes(), 53);
+        #[cfg(feature = "request-timing")]
+        let expected_retained = 53 + (2 * std::mem::size_of::<RequestTiming>());
+        #[cfg(not(feature = "request-timing"))]
+        let expected_retained = 53;
+        assert_eq!(
+            codec_limits.maximum_retained_event_bytes(),
+            expected_retained
+        );
     }
 
     #[test]
@@ -875,6 +1030,7 @@ mod tests {
                     post_data: None,
                     is_navigation_request: true,
                     redirected_from: None,
+                    timing: None,
                 }),
             ),
         );

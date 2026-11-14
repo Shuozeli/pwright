@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::time::Duration;
 
 use crate::{CancellationReason, CommandSpec, OperationContext, OperationError};
 
@@ -31,6 +32,19 @@ where
         Self: 'a;
 
     fn cancel(&self, context: OperationContext, reason: CancellationReason) -> Self::Future<'_>;
+
+    /// Optionally enriches the terminal operation error after browser cleanup
+    /// has completed successfully. Implementations must return only bounded,
+    /// already-observed state from the cancelled operation; this hook must not
+    /// perform I/O, restart work, or manufacture a second deadline.
+    fn terminal_error_after_cancel(
+        &self,
+        _context: OperationContext,
+        _reason: CancellationReason,
+        _timeout: Option<Duration>,
+    ) -> Option<OperationError<C::ErrorDetails>> {
+        None
+    }
 }
 
 /// Wraps an inner service with additional behavior.

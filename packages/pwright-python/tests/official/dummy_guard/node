@@ -1,0 +1,59 @@
+#!/usr/bin/python3
+"""PATH-interposed Node receipt for the one inert upstream executable."""
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ASSET_SHA256 = "9928a78e7de42f29dfc61783a2f31673b387d7d6ea27cda5bc4472e4338c1f7f"
+
+
+def main() -> None:
+    upstream = Path(os.environ["PWRIGHT_PYTHON_DUMMY_UPSTREAM"])
+    asset = upstream / "tests/assets/dummy_bad_browser_executable.js"
+    receipt = Path(os.environ["PWRIGHT_PYTHON_DUMMY_PROCESS_RECEIPT"])
+    actual_node = Path(os.environ["PWRIGHT_PYTHON_DUMMY_REAL_NODE"])
+    if (
+        len(sys.argv) < 2
+        or sys.argv[1] != str(asset)
+        or asset.is_symlink()
+        or not asset.is_file()
+        or asset.resolve() != asset
+        or hashlib.sha256(asset.read_bytes()).hexdigest() != ASSET_SHA256
+        or receipt.is_symlink()
+        or not receipt.is_file()
+        or actual_node.is_symlink()
+        or not actual_node.is_file()
+        or actual_node.resolve() != actual_node
+    ):
+        raise SystemExit("dummy Node wrapper rejected an unpinned process")
+    completed = subprocess.run([str(actual_node), *sys.argv[1:]], check=False, timeout=15)
+    if completed.returncode != 1:
+        raise SystemExit(
+            f"dummy Node process did not exit with the pinned status: {completed.returncode}"
+        )
+    with receipt.open("a", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps(
+                {
+                    "event": "dummy-node-exited",
+                    "api": os.environ["PWRIGHT_PYTHON_DUMMY_API"],
+                    "mode": os.environ["PWRIGHT_OFFICIAL_MODE"],
+                    "executablePath": str(asset),
+                    "assetSha256": ASSET_SHA256,
+                    "exitCode": 1,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        stream.flush()
+        os.fsync(stream.fileno())
+    raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

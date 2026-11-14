@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-frame-frame-element-public-chromium",
+      "role": "browser-backed-official-file",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": ["tests/page/frame-frame-element.spec.ts"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "oracleAdapter": "test-mode-playwright-core-cdp",
+      "project": "chromium-page",
+      "requiresBrowser": true,
+      "expectedTestsPerProject": 6,
+      "expectedFiles": 1,
+      "upstreamTestSourceSha256": "293a4dbe8c6f5468faabe02ce6e9d4f5a1c7862377eb5208c5080277b3fa444c",
+      "expectedSpecIdsSha256": "e40152b56c16f9c34581fc82527de8cdd1572257a9db1ecc3f3cea2368c9482c"
+    }
+  ]
+}

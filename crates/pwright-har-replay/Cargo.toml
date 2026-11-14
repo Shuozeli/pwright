@@ -1,0 +1,15 @@
+[package]
+name = "pwright-har-replay"
+description = "Backend-neutral bounded HAR replay policy for Pwright"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true

@@ -105,6 +105,13 @@ impl Browser {
         }
     }
 
+    /// Select a tracked tab and make it the visible Chrome target.
+    pub async fn activate_tab(&self, tab_id: &str) -> CdpResult<Tab> {
+        let tab = self.resolve_tab(tab_id).await?;
+        tab.session.page_bring_to_front().await?;
+        Ok(tab)
+    }
+
     /// Re-attach to an existing tab by target_id.
     /// This is used by the CLI to resume a session across invocations.
     pub async fn reattach_tab(self: &Arc<Self>, target_id: &str, tab_id: &str) -> CdpResult<Tab> {
@@ -192,6 +199,30 @@ mod tests {
 
         let result = browser.resolve_tab("nonexistent").await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn activate_tab_brings_the_resolved_page_to_front() {
+        // Arrange
+        let browser_client = Arc::new(MockCdpClient::new());
+        let page_client = Arc::new(MockCdpClient::new());
+        let browser = Browser::new_for_test(browser_client, Arc::new(FakeSessionFactory));
+        browser.tabs().write().await.insert(
+            "tab_0".into(),
+            Tab {
+                session: page_client.clone(),
+                tab_id: "tab_0".into(),
+                target_id: "target-0".into(),
+                created_at: Instant::now(),
+            },
+        );
+
+        // Act
+        let activated = browser.activate_tab("tab_0").await.unwrap();
+
+        // Assert
+        assert_eq!(activated.target_id, "target-0");
+        assert_eq!(page_client.calls_for("Page.bringToFront").len(), 1);
     }
 
     #[tokio::test]

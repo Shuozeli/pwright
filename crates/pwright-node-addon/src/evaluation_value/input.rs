@@ -64,7 +64,7 @@ impl PreparedInput {
             return Err(invalid("unused binary conversion slot"));
         }
         self.value
-            .validate(evaluation::value_limits())
+            .validate(evaluation::input_value_limits())
             .map_err(|error| invalid(error.to_string()))?;
         Ok(())
     }
@@ -90,9 +90,9 @@ pub fn read<'env>(
         #[cfg(feature = "handles")]
         disposed_handle: false,
     };
-    let result = reader.value(value, 0)?;
+    let result = reader.value(value, 0, &mut Vec::new())?;
     result
-        .validate(evaluation::value_limits())
+        .validate(evaluation::input_value_limits())
         .map_err(|error| invalid(error.to_string()))?;
     Ok(PreparedInput {
         value: result,
@@ -128,7 +128,7 @@ impl<'env> Reader<'env> {
         claim(
             &mut self.strings,
             bytes,
-            evaluation::STRING_BYTES,
+            evaluation::INPUT_STRING_BYTES,
             "string bytes",
         )?;
         string(value, bytes)
@@ -138,7 +138,12 @@ impl<'env> Reader<'env> {
         self.text(object.get_named_property(key)?)
     }
 
-    fn value(&mut self, value: Unknown<'env>, depth: usize) -> napi::Result<EvaluationValue> {
+    fn value(
+        &mut self,
+        value: Unknown<'env>,
+        depth: usize,
+        path: &mut Vec<DiagnosticAccessor>,
+    ) -> napi::Result<EvaluationValue> {
         if depth > evaluation::MAX_DEPTH {
             return Err(invalid("evaluation depth limit exceeded"));
         }
@@ -168,11 +173,13 @@ impl<'env> Reader<'env> {
             ValueType::BigInt => self
                 .text(value.coerce_to_string()?)
                 .map(EvaluationValue::Bigint)?,
-            ValueType::Object => self.object(value, depth)?,
+            ValueType::Object => self.object(value, depth, path)?,
             ValueType::Function => {
-                return Err(invalid(
-                    "Attempting to serialize unexpected function argument",
-                ));
+                let display = string(value.coerce_to_string()?, evaluation::SOURCE_BYTES)?;
+                return Err(invalid(format!(
+                    "Attempting to serialize unexpected value{}: {display}",
+                    diagnostic_position(path)
+                )));
             }
             ValueType::External | ValueType::Unknown => {
                 return Err(unsupported("external evaluation argument"));
@@ -180,7 +187,12 @@ impl<'env> Reader<'env> {
         })
     }
 
-    fn object(&mut self, value: Unknown<'env>, depth: usize) -> napi::Result<EvaluationValue> {
+    fn object(
+        &mut self,
+        value: Unknown<'env>,
+        depth: usize,
+        path: &mut Vec<DiagnosticAccessor>,
+    ) -> napi::Result<EvaluationValue> {
         #[cfg(feature = "handles")]
         if let Some(reference) = crate::handles::read_argument(self.env, value)? {
             match reference {
@@ -270,7 +282,10 @@ impl<'env> Reader<'env> {
             )?;
             let mut items = Vec::with_capacity(length as usize);
             for index in 0..length {
-                items.push(self.value(object.get_element(index)?, depth + 1)?);
+                path.push(DiagnosticAccessor::Index(index));
+                let item = self.value(object.get_element(index)?, depth + 1, path);
+                path.pop();
+                items.push(item?);
             }
             return Ok(EvaluationValue::Array {
                 id: Some(id),
@@ -290,10 +305,10 @@ impl<'env> Reader<'env> {
             let key: JsString<'_> = keys.get_element(index)?;
             let property = object.get_property(key)?;
             let key = self.text(key)?;
-            properties.push(EvaluationProperty::new(
-                key,
-                self.value(property, depth + 1)?,
-            ));
+            path.push(DiagnosticAccessor::Property(key.clone()));
+            let property = self.value(property, depth + 1, path);
+            path.pop();
+            properties.push(EvaluationProperty::new(key, property?));
         }
         Ok(EvaluationValue::Object {
             id: Some(id),
@@ -384,6 +399,40 @@ impl<'env> Reader<'env> {
             bytes: Vec::new(),
         }))
     }
+}
+
+enum DiagnosticAccessor {
+    Property(String),
+    Index(u32),
+}
+
+fn diagnostic_position(path: &[DiagnosticAccessor]) -> String {
+    if path.is_empty() {
+        return String::new();
+    }
+    let mut display = String::new();
+    for accessor in path {
+        let before = display.len();
+        match accessor {
+            DiagnosticAccessor::Property(key) => {
+                if !display.is_empty() {
+                    display.push('.');
+                }
+                display.push_str(key);
+            }
+            DiagnosticAccessor::Index(index) => {
+                display.push('[');
+                display.push_str(&index.to_string());
+                display.push(']');
+            }
+        }
+        if display.len() > evaluation::SOURCE_BYTES {
+            display.truncate(before);
+            display.push_str("...");
+            break;
+        }
+    }
+    format!(" at position \"{display}\"")
 }
 
 fn reference_id(index: usize) -> napi::Result<NonZeroU32> {

@@ -282,18 +282,23 @@ async fn capture_params(
     let needs_metrics = options.full_page.unwrap_or(false)
         || options.clip.is_some()
         || options.scale == Some(ScreenshotScale::Css);
-    let clip = if needs_metrics {
+    let (clip, capture_beyond_viewport) = if needs_metrics {
         let metrics = client
             .page_get_layout_metrics()
             .await
             .map_err(map_cdp_error)?;
-        Some(viewport_from_metrics(
-            &metrics,
-            options,
-            intersect_viewport_clip,
-        )?)
+        let clip = viewport_from_metrics(&metrics, options, intersect_viewport_clip)?;
+        let visual = &metrics.css_visual_viewport;
+        let fits_viewport = clip.x >= visual.page_x
+            && clip.y >= visual.page_y
+            && clip.x + clip.width <= visual.page_x + visual.client_width
+            && clip.y + clip.height <= visual.page_y + visual.client_height;
+        (
+            Some(clip),
+            options.full_page.unwrap_or(false) || !fits_viewport,
+        )
     } else {
-        None
+        (None, false)
     };
     let quality = match (format, options.quality) {
         (ScreenshotFormat::Png, _) => None,
@@ -304,7 +309,7 @@ async fn capture_params(
         format: Some(screenshot_format_for_cdp(format).to_owned()),
         quality,
         clip,
-        capture_beyond_viewport: options.full_page.unwrap_or(false).then_some(true),
+        capture_beyond_viewport: capture_beyond_viewport.then_some(true),
         ..Default::default()
     })
 }
@@ -332,25 +337,29 @@ fn viewport_from_metrics(
         height,
     }) = options.clip
     {
-        let (x, y, width, height) = if intersect_viewport_clip {
-            intersect_clip(
-                x,
-                y,
+        let (x, y, width, height) = if options.document_clip {
+            (x, y, width, height)
+        } else {
+            let (x, y, width, height) = if intersect_viewport_clip {
+                intersect_clip(
+                    x,
+                    y,
+                    width,
+                    height,
+                    metrics.css_visual_viewport.client_width,
+                    metrics.css_visual_viewport.client_height,
+                )?
+            } else {
+                (x, y, width, height)
+            };
+            (
+                metrics.css_visual_viewport.page_x + x,
+                metrics.css_visual_viewport.page_y + y,
                 width,
                 height,
-                metrics.css_visual_viewport.client_width,
-                metrics.css_visual_viewport.client_height,
-            )?
-        } else {
-            (x, y, width, height)
+            )
         };
-        (
-            metrics.css_visual_viewport.page_x + x,
-            metrics.css_visual_viewport.page_y + y,
-            width,
-            height,
-            metrics.visual_viewport.scale,
-        )
+        (x, y, width, height, metrics.visual_viewport.scale)
     } else {
         let viewport = &metrics.css_visual_viewport;
         (
@@ -429,6 +438,11 @@ fn validate_options(options: ScreenshotOptions) -> Result<(), OperationError<Con
             "full-page screenshot and clip are mutually exclusive",
         ));
     }
+    if options.document_clip && options.clip.is_none() {
+        return Err(invalid_options(
+            "document-space screenshot capture requires a clip",
+        ));
+    }
     if let Some(clip) = options.clip
         && (!clip.x.is_finite()
             || !clip.y.is_finite()
@@ -498,7 +512,9 @@ mod tests {
     use std::sync::Arc;
     use std::task::{Context, Poll, Waker};
 
-    use pwright_cap_content::{ScreenshotFormat, ScreenshotOptions, ScreenshotScale};
+    use pwright_cap_content::{
+        ScreenshotClip, ScreenshotFormat, ScreenshotOptions, ScreenshotScale,
+    };
     use pwright_core::{
         FailureKind, ObjectId, ProductionResourceLedger, ResourceClass, ResourceLimits, Service,
     };
@@ -606,6 +622,52 @@ mod tests {
                 .current,
             0
         );
+    }
+
+    #[tokio::test]
+    async fn document_clip_bypasses_viewport_intersection_and_captures_beyond_it() {
+        // Arrange
+        let profile = CdpScreenshotProductionProfile::new(32, 1).with_viewport_clip_intersection();
+        let requirement = profile.requirements().class(ResourceClass::ScreenshotBytes);
+        let resources = ProductionResourceLedger::new(
+            ResourceLimits::deny_all(1, 1).with_class(
+                ResourceClass::ScreenshotBytes,
+                requirement.global,
+                requirement.per_scope,
+            ),
+            profile.requirements(),
+        )
+        .unwrap();
+        let client = Arc::new(FakeCdpClient::from_html("<main>tall</main>"));
+        let service =
+            CdpScreenshotServiceFactory::new_with_production_resources(profile, &resources)
+                .unwrap()
+                .bind(client.clone(), ObjectId::new(9));
+
+        // Act
+        let result = service
+            .call(ScreenshotOptions {
+                clip: Some(ScreenshotClip {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 1_000.0,
+                }),
+                document_clip: true,
+                ..ScreenshotOptions::default()
+            })
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(result.as_bytes(), b"mock");
+        let capture = client
+            .calls()
+            .into_iter()
+            .find(|(method, _)| method == "Page.captureScreenshot")
+            .expect("capture call should be recorded");
+        assert_eq!(capture.1[0]["captureBeyondViewport"], true);
+        assert_eq!(capture.1[0]["clip"]["height"], 1_000.0);
     }
 
     #[tokio::test]

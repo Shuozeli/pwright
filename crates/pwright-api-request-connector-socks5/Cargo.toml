@@ -1,0 +1,20 @@
+[package]
+name = "pwright-api-request-connector-socks5"
+description = "Optional bounded SOCKS5 connector for Pwright API requests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+async-trait.workspace = true
+pwright-api-request-transport.workspace = true
+tokio-util.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

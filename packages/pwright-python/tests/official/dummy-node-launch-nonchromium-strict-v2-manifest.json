@@ -1,0 +1,71 @@
+{
+  "schema": 5,
+  "kind": "playwright-python-nonchromium-dummy-node-strict-v2",
+  "evidenceScope": "strict-public-behavior-nonchromium-dummy-exit-post-fix",
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "executionPolicy": "macos-sandbox-nonchromium-dummy-node-strict-v2",
+  "launchMode": "owned",
+  "requiresBrowser": false,
+  "requiresFixtureServers": true,
+  "tests": {
+    "async": {
+      "firefox": "tests/async/test_launcher.py::test_browser_type_launch_should_reject_if_launched_browser_fails_immediately[firefox]",
+      "webkit": "tests/async/test_launcher.py::test_browser_type_launch_should_reject_if_launched_browser_fails_immediately[webkit]"
+    },
+    "sync": {
+      "firefox": "tests/sync/test_launcher.py::test_browser_type_launch_should_reject_if_launched_browser_fails_immediately[firefox]",
+      "webkit": "tests/sync/test_launcher.py::test_browser_type_launch_should_reject_if_launched_browser_fails_immediately[webkit]"
+    }
+  },
+  "expectedOutcomes": {
+    "candidate": "passed",
+    "oracle": "passed"
+  },
+  "expectedErrorClass": {
+    "firefox": "Error",
+    "webkit": "TargetClosedError"
+  },
+  "upstreamSources": {
+    "tests/async/test_launcher.py": "648549470d4ba7f393c792b3774b45f358c1be63f1388509038a39a4e33564b3",
+    "tests/sync/test_launcher.py": "c5e1554d855450ef1c8aacb15eee7307401bb8a7878e8c1f77359d6110f0d94f",
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/assets/dummy_bad_browser_executable.js": "9928a78e7de42f29dfc61783a2f31673b387d7d6ea27cda5bc4472e4338c1f7f",
+    "pyproject.toml": "96e2d4dcd75b40a101c77d12b4e29ea4d91efc6fd58992a67ed8cc837e2e1e08"
+  },
+  "candidateWheelSha256": "904db7f0af2082451edfbe589afcedd9fdc77295ce627cbc391d9e60b9780367",
+  "candidatePackageTreeSha256": "10bc55281a946b09cedc4d9cc654e698d62e2f529013bfbf56a8b99db41121e6",
+  "candidateNativeSha256": "9b1934aabef87f5adf6b1054cf13863e7ffc836af8e0e52f91a2a4099d82fe8a",
+  "candidateRuntimeLibraries": {
+    "libcrypto-a12805a1.3.dylib": "bfa24a48f50688de796e559941e03882248d3b26bc3be1f78e3b9b560f6badbd",
+    "libssl-ffd8ac69.3.dylib": "a5486ffa809746d423d1f47bc6319664aba9560805fe1c923b6be4d6d3c22069"
+  },
+  "oraclePackageTreeSha256": "d7655707035107f13a81db0e1d52d839c2bf42bf2008478fba610299cd6da149",
+  "oracleDriverNodeSha256": "6f2e835e57feb7a29ffcd53a4d4eb60224ec264a1e002c3ba6d99999ea29807d",
+  "systemNodeSha256": "1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040",
+  "pythonRuntimeSha256": "bc56ea9cdc0fface1eb75712f871a454324f6cbfec4e30311b197f208a7f3d07",
+  "supportTrees": {
+    "packages/pwright-python/tests/official/shim": "91695bbdc103345adc694882c3f9dc02dfd39929ca138265d8e7769830d7c15b",
+    "packages/pwright-python/tests/official/runtime": "aa98681e0669136b62f940c53b7a405802a33fba6fbdd79a87efaabd6463eb44"
+  },
+  "supportSources": {
+    "scripts/run_playwright_python_dummy_node_strict.py": "8558e2200e8aed43760ca810dfbc161911f8349f1ef701e505e7f18a4a070d36",
+    "scripts/verify_playwright_python_dummy_node_strict.py": "61a45a04d61750499cb6a88c22848901ac6e5dbaa7764630010ff75c6995120f"
+  },
+  "captureReady": true,
+  "captureSourceSha256": {
+    "scripts/run_playwright_python_dummy_engine_strict_v2.py": "a4f0e0ef31fc5770eb4525710c61886e209b10c45794490aa24168a976304ba4",
+    "packages/pwright-python/tests/official/dummy_engine_guard_strict_v2/pwright_official_dummy_engine_guard_v2.py": "014a3f78d4087622ae96acb6ba92fe15d9c4f185aa66203bb2e5759bd805eadf",
+    "packages/pwright-python/tests/official/dummy_engine_guard_strict_v2/node": "7a41a91c7d26b363d7097eff5e28b0e47b1a46fe0d6a5c55496452b1ff31a766"
+  },
+  "captureSourcePaths": [
+    "scripts/run_playwright_python_dummy_engine_strict_v2.py",
+    "packages/pwright-python/tests/official/dummy_engine_guard_strict_v2/pwright_official_dummy_engine_guard_v2.py",
+    "packages/pwright-python/tests/official/dummy_engine_guard_strict_v2/node"
+  ]
+}

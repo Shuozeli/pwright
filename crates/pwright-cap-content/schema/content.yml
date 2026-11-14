@@ -112,6 +112,7 @@ types:
       - { tag: 3, name: full_page, type: bool, cardinality: optional }
       - { tag: 4, name: clip, type: message, target: pwright.content.screenshot_clip, cardinality: optional }
       - { tag: 5, name: scale, type: enum, target: pwright.content.screenshot_scale, cardinality: optional }
+      - { tag: 6, name: document_clip, type: bool, cardinality: optional }
 
   - kind: enum
     id: pwright.content.screenshot_scale

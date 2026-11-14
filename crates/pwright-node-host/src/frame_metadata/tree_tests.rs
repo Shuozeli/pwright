@@ -1,8 +1,8 @@
 use super::{FrameMetadata, FrameMetadataLimits};
 use crate::HostError;
 use crate::frame_tree::{FrameNode, FrameTree, FrameTreeFactory, FrameTreeLimits};
-use pwright_composition_chromium::ChromiumFrameUrlObserver;
 use pwright_core::ObjectId;
+use pwright_plugin_chromium_frame_observer::ChromiumFrameUrlObserver;
 use std::sync::Arc;
 
 struct Fixture {

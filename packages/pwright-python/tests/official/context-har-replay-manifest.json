@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_har.py": "e83ef4a6861262e71405b1666e86b6bbd489f4a7332750e90ab333fc9a7c6289",
+    "tests/sync/test_har.py": "a2a8d6d894ec79cb318bfb1d4531cb4f445dd3b69e8f2a173b3b50f1b8a299b5"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_har.py::test_should_context_route_from_har_matching_the_method_and_following_redirects",
+      "capabilities": [
+        "browser-context.route-from-har",
+        "har.replay",
+        "har.method-selection",
+        "har.redirect-resolution",
+        "route.fulfill",
+        "expect.locator.to-have-css"
+      ]
+    },
+    {
+      "id": "tests/async/test_har.py::test_fallback_continue_should_continue_when_not_found_in_har",
+      "capabilities": [
+        "browser-context.route-from-har",
+        "har.replay",
+        "har.not-found-fallback",
+        "expect.locator.to-have-css"
+      ]
+    },
+    {
+      "id": "tests/async/test_har.py::test_by_default_should_abort_requests_not_found_in_har",
+      "capabilities": [
+        "browser-context.route-from-har",
+        "har.replay",
+        "har.not-found-abort",
+        "page.goto-error"
+      ]
+    },
+    {
+      "id": "tests/sync/test_har.py::test_should_context_route_from_har_matching_the_method_and_following_redirects",
+      "capabilities": [
+        "sync.browser-context.route-from-har",
+        "har.replay",
+        "har.method-selection",
+        "har.redirect-resolution",
+        "route.fulfill",
+        "sync.expect.locator.to-have-css"
+      ]
+    },
+    {
+      "id": "tests/sync/test_har.py::test_fallback_continue_should_continue_when_not_found_in_har",
+      "capabilities": [
+        "sync.browser-context.route-from-har",
+        "har.replay",
+        "har.not-found-fallback",
+        "sync.expect.locator.to-have-css"
+      ]
+    },
+    {
+      "id": "tests/sync/test_har.py::test_by_default_should_abort_requests_not_found_in_har",
+      "capabilities": [
+        "sync.browser-context.route-from-har",
+        "har.replay",
+        "har.not-found-abort",
+        "sync.page.goto-error"
+      ]
+    }
+  ]
+}

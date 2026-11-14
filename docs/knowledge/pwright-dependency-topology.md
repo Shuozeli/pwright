@@ -1,4 +1,677 @@
-<!-- agent-updated: 2026-09-19T19:03:44Z -->
+<!-- agent-updated: 2026-10-10T17:46:09Z -->
+
+The Python Context-binding/media checkpoint adds no broad capability bundle.
+The default addon closure is anchored to 108 Pwright packages; media and
+`context-forced-colors` each preserve that exact closure. Page bindings and
+`context-bindings` each have the exact 109-package Page-event/Handle closure,
+with only the frame-lifecycle plugin beyond the base. These five anchored
+closure comparisons were executed locally, rather than only comparing two
+unanchored feature graphs. Standalone and combined addon release checks,
+combined host regressions and strict Clippy gates are wired into the existing
+Python boundary script/CI. Their execution evidence is recorded separately
+in `../python-official-conformance.md`.
+
+The optional Node `frame-navigation-burst-20` profile changes capacity policy,
+not the package closure. It remains absent from Python's addon aliases and
+from the full official Node Page artifact feature list; no default concurrency
+bound is silently widened. Minimal-feature compile checks also cover the
+selector-registration-only Handle creation helpers, keeping that optional
+world-routing branch out of Context-binding-only builds.
+
+The new `official-conformance-page-goto-burst-20` Node artifact selects the
+same 38 addon features as the existing full official Page artifact plus only
+`frame-navigation-burst-20`. It introduces no Cargo feature definition or
+package dependency; the burst flag reaches the existing host Frame-navigation
+capacity policy through the addon feature. The default, full official and
+standalone burst selections remain separate. The selected release addon
+SHA-256 is
+`3dfb2ac8698de70f5b2416688b2d15de879251d9d7bf5c5549474ecb9fbd5c83`.
+The selected native-load, 565 Node browserless units, strict types and Node
+dependency-boundary gate pass. No official Page.goto row advances from these
+browserless checks.
+
+NODE-427 makes device emulation explicit in the Node graph:
+`pwright-node-addon/device-emulation -> pwright-node-host/device-emulation`.
+The standalone profile proves the leaf without unrelated capabilities;
+`page-viewport` and `context-api-request` declare it as a prerequisite, while
+the official and Context-request-proxy artifact profiles list it explicitly.
+The default addon remains device-free. Exact-profile native identity checks
+require both the compiled marker and `NativeSession.newContextWithHasTouch`.
+
+NODE-399 adds one opt-in history path:
+`pwright-cap-history-navigation -> pwright-backend-cdp-navigation ->
+pwright-backend-cdp -> pwright-composition-chromium -> pwright-node-host`.
+`pwright-node-addon/history-navigation` and
+`pwright-python-addon/history-navigation` select that host feature independently.
+The default addon graphs contain no `pwright-cap-history-navigation`; the
+boundary matrix proves exact propagation across the five feature-bearing
+packages for standalone and frame-navigation compositions. The capability is
+an embedded-host contract in this checkpoint; it does not silently add a wire
+codec, client or server transport.
+
+NODE-370 adds the independently selectable
+`pwright-node-addon/bypass-csp = pwright-node-host/bypass-csp` feature. It adds
+no package and selects no handles, console events, browser provider or protocol
+transport. The official profile composes this leaf with its existing features;
+the standalone profile proves the same 251-package addon closure as default,
+with only the addon/host feature flags changed. JavaScript adds only validation
+and capability selection. Rust retains the fixed Context policy registry and
+owns session installation/teardown.
+
+The checkpoint also repairs a feature-boundary defect: `NativeFrameLocator`
+and console setter callbacks now live in handles-only and console-only N-API
+impl blocks. Default and `bypass-csp` builds no longer require their generated
+callbacks. The raw-class inventory now includes all 14 opaque classes and the
+handles registry includes `NativeFrameLocator`; Dialog remains its independent
+conditional class/tag. NODE-369 adds no source or graph change.
+
+NODE-368 adds the independently selectable addon `page-routes` feature and
+selects the existing `pwright-node-host/page-routes` leaf in the official
+profile. It adds no package: the Rust host still owns string matching, bounded
+call slots and terminal continue/fallback/abort settlement. The Node package
+adds one callback-identity registry and one native watcher, not a Fetch/CDP
+observer, matcher engine, request-history owner or network executor. Regex,
+predicate, override, fulfill and fetch support remain outside this selection.
+
+NODE-367 adds the independently selectable addon `page-dialogs` feature as
+`page-events + pwright-node-host/page-dialogs` and selects it only in the
+official profile. It adds no package, browser observer, callback registry or
+queue. The addon publishes a thin `NativeDialog` over the existing Rust action
+owner; Node supplies public event identity and automatic no-listener policy.
+
+NODE-366 adds no Cargo feature, Pwright package or native-profile dependency
+edge. Client-redirect lifecycle adoption and original-response preservation
+remain in the existing navigation backend/host selection. The new
+`navigation-error.cjs` module is presentation-only and owns no browser state,
+timer, protocol client or retry loop.
+
+NODE-365 adds no Cargo feature, Pwright package or native-profile dependency
+edge. The existing `console-events` selection gains two thin addon methods
+that forward bounded Page/BrowserContext identities to the already selected
+Rust host subscription owner. JavaScript retains only listener identity and
+mirrors the zero-to-one and one-to-zero transitions; it gains no CDP observer,
+publication queue, callback registry or browser-state owner. Artifact loading
+now proves the two methods as well as the existing feature marker. The owned
+Context automation override reuses the existing session initializer and CDP
+domain, so it adds no package edge and does not affect external/default
+Contexts.
+
+NODE-364 adds no Cargo feature, Pwright package or native-profile dependency
+edge. Under the existing `handles` selection, the addon now publishes the
+already present `HostFrameLocator` as a thin `NativeFrameLocator`; derived
+Locators retain the iframe-owner query graph in Rust rather than pinning a
+child Frame in JavaScript. The `_fetchLog` compatibility alias, matcher
+one-shot timing and CSS diagnostic mapping likewise reuse existing owners and
+add no Node HTTP client, selector engine, polling loop or browser provider.
+The complete unchanged official boolean matcher file passes 86/86 in both
+candidate and oracle lanes.
+
+NODE-362 adds the `ApiTunnelTlsUpgrader` port to the existing transport package
+and its implementation to the already-selected Rustls package. HTTP CONNECT
+and SOCKS5 accept that port by injection; neither gains a package edge to
+Rustls or another TLS stack. The two Node artifact profiles are exact unions:
+`api-request-client-certificates + api-request-http-proxy` and
+`api-request-client-certificates + api-request-socks5-proxy`. An executable
+closure comparison proves each combined graph equals the union of its two
+component graphs. No browser, CDP, Node HTTP client, Hyper, reqwest or second
+socket/TLS owner is added.
+
+NODE-361 adds no package, feature, ABI or runtime dependency edge. It executes
+the already proven `api-request-client-certificates` closure through the six
+official Bidi projects. The additional 48 candidate and 48 oracle outcomes are
+coverage evidence; the exact optional certificate edge remains unchanged.
+
+NODE-360 adds no package, feature, ABI or runtime dependency edge. It executes
+the already proven HTTP CONNECT and SOCKS5 leaves through the official Bidi
+project matrix. The additional 18 candidate and 18 oracle outcomes are
+coverage evidence only; the exact dependency closures proven in NODE-357/359
+remain unchanged.
+
+NODE-359 adds one optional package edge from
+`pwright-node-addon/api-request-socks5-proxy` to
+`pwright-api-request-connector-socks5`. The new leaf depends inward only on
+the existing transport connector port plus async-trait, URL parsing and
+cancellation. It wraps the already selected direct connector and adds no CDP,
+browser, Node HTTP client, Hyper, reqwest or second TLS implementation. The
+base request, certificate and HTTP CONNECT profiles do not select it. The
+executable dependency proof shows exactly this one Pwright-package delta.
+
+NODE-358 adds no package or feature edge. The existing optional CONNECT leaf
+now permits an `https:` proxy URL and delegates that outer TLS connection to
+the already selected `pwright-api-request-connector-rustls`. Its exact
+dependency delta over `api-request` remains the single
+`pwright-api-request-connector-http-proxy` package; HTTPS target tunneling,
+SOCKS and bypass remain later leaves or compositions.
+
+NODE-357 adds one optional package edge from
+`pwright-node-addon/api-request-http-proxy` to
+`pwright-api-request-connector-http-proxy`. That leaf depends inward only on
+the existing transport connector port plus async-trait, Base64, httparse, URL
+parsing, cancellation and zeroization. It wraps the already selected direct
+connector; it adds no browser, CDP, Node HTTP client, Hyper or reqwest edge.
+The base `api-request` and certificate profiles do not select it. The current
+monolithic addon still has its pre-existing unconditional host closure, so
+this is a feature boundary rather than a minimal-binary-size claim.
+
+NODE-356 changes no ABI, Cargo feature, Pwright package or dependency edge.
+The existing `page-routes + route-redirects + network-events` Rust path still
+owns effective fallback matching and native settlement. Python adds only
+public header lookup and bounded identity retention: at most 64 effective
+Request snapshots, matching the Rust live route-call capacity, retired on
+terminal request events. Moving sync callbacks to a worker keeps the existing
+single bounded bridge loop and introduces no second protocol or browser owner.
+
+NODE-355 advances Python to ABI 96 with two exact optional feature unions.
+At the host boundary, `context-api-request = context-cookies +
+device-emulation + context-http-credentials + ignore-https-errors`. At the
+addon boundary it also selects the existing `api-request` feature and its
+bounded Rust transport. `route-fetch = context-api-request + page-routes +
+route-fulfill-api-response`. The executable proof remains exactly 108 Pwright
+packages for the base and each union; neither feature adds Node, a bundled
+browser, a Python protocol client or a second HTTP implementation. Rust owns
+cookie and settings ports, typed request preparation, response lifetime and
+route settlement. Python owns only async/sync facade and callback identities.
+
+NODE-257 advances the Python ABI to 35 for the exported native `Locator`
+owner, but adds no Cargo feature, Pwright package or dependency edge. A root
+selector is admitted into the existing bounded Rust query registry; chained
+`locator()` uses typed `QueryCombination::Within`, and first/last/nth derive
+typed recipe nodes. Python retains only a facade reference and optional
+description metadata. Reads and count expectations execute through the native
+owner, so no selector grammar, chaining syntax, polling or browser state moves
+into Python. The executable dependency proof remains 108 base Pwright
+packages.
+
+NODE-256 adds no native ABI, Cargo feature, Pwright package or dependency edge.
+`Locator.description` is immutable language-facade metadata: describing a
+Locator returns a new Python wrapper over the same Page and selector and issues
+no browser/native call. Typed Locator chaining remains a separate Rust-owned
+capability and is not encoded in Python for this checkpoint.
+
+NODE-255 adds no Cargo feature, Pwright package or dependency edge. Python ABI
+34 adds one native `locator_expect_count` export over the already selected
+`pwright-python-addon -> pwright-node-host::HostLocator` path. Rust owns the
+typed collection-size read, total deadline, retry classification and bounded
+sleep. Python async/sync assertions and Node `_expect('to.have.count')` retain
+no polling state and issue no browser script.
+Pause-specific timeout guard symbols are now conditionally compiled with
+`page-pause`; strict feature-cold Clippy therefore remains clean when a binding
+selects `timeout-settings` alone.
+
+NODE-254 adds no ABI, Cargo feature, package or dependency edge. Async/sync
+Locator methods adapt directly to the already selected Rust locator read,
+action and evaluation routes. Collection text reads use existing typed
+`LocatorRead::{AllInnerTexts,AllTextContents}` operations rather than Python-
+authored browser scripts. The `:text()` repair extends the bounded Rust query
+recipe and selector-runtime closure already present in the base graph.
+
+NODE-253 adds the optional feature edge
+`pwright-python-addon/layout-selectors ->
+pwright-node-host/layout-selectors + locator-evaluation`. The executable
+dependency proof stays at the same 108-Pwright-package feature-cold closure:
+the parser/compiler is a bounded host leaf and adds no Pwright package, Node
+driver, bundled browser, Python protocol implementation or browser provider.
+The selected wheel reuses the existing ABI 33 browser-program count export;
+only the compiled plan kind changes. Rust owns the 256-part/256 KiB program
+admission and geometry scoring, while Python retains no grammar or layout
+state.
+
+NODE-252 adds no Cargo feature or package edge. Python ABI 33 extends the
+already selected path
+`pwright-python-addon/selector-registration ->
+pwright-node-host/selector-registration + locator-evaluation`. Rust turns the
+bounded immutable registry entry into a bounded selector program, installs
+referenced engine source in the selected execution world and evaluates it
+through the existing Chromium runtime owner. The registry admits 8 MiB of
+accounted name/source payload plus fixed 64-entry structural overhead; emitted
+programs are capped at 256 parts and 2 MiB. Python gains no engine registry,
+selector parser, JavaScript runtime, Node driver, provider or package edge.
+
+NODE-251 adds no Cargo feature or package edge. Python ABI 32 exports native
+`validate_selector` through the already selected
+`pwright-python-addon -> pwright-node-host::LocatorQuery` path. The immutable
+bounded query recipe surfaces deferred unknown-engine errors before the
+browser command, then releases its temporary lease. Python does not gain a
+selector parser, custom-engine runtime, Node driver or browser provider.
+
+Python ABI 31 adds the optional feature edge
+`pwright-python-addon/selector-registration ->
+pwright-node-host/selector-registration`. The executable dependency proof
+keeps the same 108-package feature-cold Pwright closure: the registry is a
+bounded host leaf and adds no Pwright package, Node driver, browser provider or
+Python protocol implementation. Rust owns 64 engine entries, 64-byte names,
+1 MiB per source and 8 MiB aggregate bytes; the thin Python facade retains no
+registry state. Custom-engine browser execution is a later capability and is
+not implied by this edge.
+
+NODE-249 adds no ABI, Cargo feature, package or dependency edge. It executes
+the async facade over the same ABI 30
+`pwright-python-addon -> pwright-node-host ->
+pwright-composition-chromium-locator-evaluation` path already proven by the
+sync row; the separate upstream result is binding evidence, not a new
+capability implementation.
+
+NODE-248 adds no Cargo feature or package edge. Python ABI 30 exports
+`eval_on_selector_all` through the already selected
+`pwright-python-addon -> pwright-node-host ->
+pwright-composition-chromium-locator-evaluation` path; Rust's typed selector
+model already owns intersection and collection evaluation. Raising the event
+item bound from 2,048 to 8,192 while independently retaining the existing
+512 MiB payload ceiling is a resource-profile change, not an unbounded queue,
+dependency change, Node driver, Python selector engine or recovery retry loop.
+When `concurrent-close` is also selected, its 256-topology-object declaration
+is combined by maximum with the 1,088 live objects required by bounded network
+Request/Response ownership; neither capability may erase the other's budget.
+
+NODE-247 adds no feature or package edge. The sync listener uses the same
+`pwright-python-addon/response-events -> pwright-node-host/response-events ->
+network-events` closure as the async listener. Reconnect now holds live
+network adapters while the topology snapshot is incomplete and reconciles
+them against the completed authoritative Page set. The host connection's
+bounded event replay window changes from 1,024 to 2,048 entries to cover the
+declared 16-Page/128-session/256-world profile; this is a resource-budget
+change, not an unbounded queue, dependency change, or retry loop.
+
+Python ABI 29 adds the optional feature edge
+`pwright-python-addon/response-events -> pwright-node-host/response-events ->
+network-events`. The executable proof shows exactly the same Pwright package
+closure as `network-events`; no Node driver, bundled browser, Python protocol
+client or new Pwright package is selected. Rust owns the 16-Context interest
+set, 256-notice FIFO and shared 16 MiB network byte budget. When
+`request-history` is also selected, the two leaves share the response tag with
+explicit interest coordination instead of disabling each other.
+Sticky topology event loss is recovered inside the existing host/topology
+closure by one same-connection authoritative reconstruction and one epoch
+advance. Materialized Page membership is a portable-identity relation and is
+therefore independent of the transient command-session route; this repair adds
+no dependency edge or retry loop.
+
+Python ABI 28 adds the optional feature edge
+`pwright-python-addon/device-emulation -> pwright-node-host/device-emulation`.
+The executable proof keeps the same 108-package feature-cold Pwright closure:
+the leaf adds no Pwright package, Node driver, bundled browser or Python
+protocol client. Rust embeds the immutable 143-entry catalog and owns 16
+Context slots plus 64 KiB of retained settings; Python only converts official
+camel-case descriptor keys to its public snake-case shape and forwards the
+bounded tuple at Context creation.
+
+Python ABI 27 adds the optional feature edge
+`pwright-python-addon/request-history -> pwright-node-host/request-history`.
+The executable proof shows exactly the same Pwright package closure as
+`network-events`; history reuses normalized Chromium lifecycle events and adds
+no package, Node driver or Python protocol client. Rust owns 16 Page slots,
+100 visible items per Page, 256 retained owners per Page, 4,096 owners globally
+and 64 MiB of event bytes. The Python FFI observation lane is bounded at 256
+while the unrelated command lane stays at 32.
+
+Python ABI 26 adds the optional feature edge
+`pwright-python-addon/console-history -> pwright-node-host/console-history`.
+It has the same Pwright package closure as `page-events`: the feature-cold
+108-package base plus `pwright-plugin-chromium-frame-lifecycle`. The history
+leaf reuses Chromium console observation/parsing but does not select
+`console-events`, a publication queue, a Python callback registry, or a Node
+driver. Rust owns 16 Page slots, 3,200 items and 16 MiB of retained console
+bytes; Python receives only bounded snapshots.
+
+Python ABI 25 adds no Pwright package edge. The existing optional
+`pwright-python-addon/page-errors -> pwright-node-host/page-errors` path now
+offers a native snapshot read over Rust-owned bounded history. The leaf owns
+16 Page slots, 200 errors per Page, 3,200 global items and 16 MiB of retained
+error bytes; Python retains only returned public `Error` values. The
+feature-cold dependency proof remains at 108 Pwright packages.
+
+Python ABI 24 adds no Pwright package edge. The optional
+`pwright-python-addon/request-gc -> pwright-node-host/request-gc` feature uses
+the already-present host and CDP connection. Rust owns Page/session lookup,
+command admission and `HeapProfiler.collectGarbage`; Python owns only async and
+sync method shapes and Page-ID forwarding.
+
+NODE-240's Page-route retirement fix adds no Pwright package edge. The existing
+`page-routes` host leaf retains at most 64 terminal call IDs, includes their
+bytes in `BackendStateBytes`, and consumes each receipt exactly once after Page
+retirement. Python keeps no route-settlement state.
+
+Python ABI 23 adds no Pwright package edge. The optional
+`pwright-python-addon/page-pause -> pwright-node-host/page-pause` feature reuses
+the existing timeout-settings, topology and lifecycle closure. Rust owns the
+scoped Page/Context timeout reset guard and typed internal-text parsing; Python
+adds no timer, browser process, protocol client, selector engine or persistent
+registry. The executable proof keeps the feature-cold closure at 108 Pwright
+packages.
+
+Python ABI 22 adds one optional edge:
+`pwright-python-addon/persistent-context -> pwright-node-host/owned-launch`.
+Relative to the 108-package feature-cold Python closure, the executable proof
+requires exactly five additional Pwright packages:
+`pwright-cap-browser-lifecycle`, `pwright-codec-browser-lifecycle`,
+`pwright-composition-chromium-launch`, `pwright-provider-chromium`, and
+`pwright-server-browser-lifecycle`. The facade adds no Node driver, browser
+binary, downloader or Python-owned launch engine. The provider owns executable
+selection and profile initialization; the host owns the one noncloneable
+connection/process lease and bounded shutdown sequence.
+
+Python ABI 19 adds one optional edge:
+`pwright-python-addon/drag-and-drop -> pwright-node-host/drag-and-drop`. The host
+feature composes the existing `drag-runtime` and `locator-bounding-box` leaves;
+relative to the 108-package feature-cold Python closure, the executable proof
+shows exactly one added Pwright package, `pwright-backend-cdp-drag`. The Python
+package adds no Node driver, browser binary, protocol client or language-owned
+input implementation.
+
+Python ABI 18 adds no Pwright package edge. `Request.sizes()` reuses the
+already-selected `network-events` path through `pwright-node-host`,
+`pwright-composition-chromium-network-events`,
+`pwright-backend-cdp-network-events` and `pwright-network-model`; PyO3 adds
+only an opaque owner class and one session method. The exact dependency proof
+still records 108 feature-cold Pwright packages and the ABI 17 Page-route delta
+is unchanged.
+
+Python ABI 17 adds only feature edges from
+`pwright-python-addon/page-routes` to the existing host and Chromium Frame
+observer/session-initialization path. The executable proof keeps the
+feature-cold base at 108 Pwright packages: `page-events` adds exactly
+`pwright-plugin-chromium-frame-lifecycle`, and `page-routes` adds no package
+beyond that closure. PyO3 and the Python facade add no CDP client, browser,
+server or routing implementation.
+
+Python ABI 16 adds only feature edges from
+`pwright-python-addon/page-errors` to the existing host and Page-event
+publication path. Relative to the feature-cold 108-package closure,
+`page-events` adds exactly the existing
+`pwright-plugin-chromium-frame-lifecycle` package; `page-errors` adds no package
+beyond that `page-events` closure. The observer uses the existing CDP event,
+topology and lifecycle-fence packages and adds no Python runtime dependency.
+
+Python ABI 15 adds only the `pwright-python-addon/page-events` feature edge to
+the existing `pwright-node-host/page-events` lifecycle publication leaf. The
+final selected profile also has `network-events`; the host therefore composes
+one observed close service with network retirement instead of rejecting the
+combination or installing parallel observers. PyO3 and the Python facade add
+no CDP, lifecycle-registry or browser-process dependency.
+
+Python ABI 14 adds only the `pwright-python-addon/page-bindings` feature edge
+to the existing host binding owner. It adds no Python execution engine or
+browser-owned registry.
+
+Python ABI 13 adds feature edges from `pwright-python-addon/handles` and
+`wait-for-function` to their existing `pwright-node-host` leaves. Because the
+host package edge is already present, the executable dependency proof shows no
+new Pwright package above the 108-package base. It adds no Python runtime
+dependency and no language-owned browser or polling engine.
+
+Python ABI 12 adds only a feature edge from
+`pwright-python-addon/init-scripts` to the already-present
+`pwright-node-host/init-scripts` leaf. It adds no package to the ABI 11
+dependency closure and no Python runtime dependency. Page and BrowserContext
+facades call two PyO3 methods backed by the same Rust registration store and
+Chromium session-initialization plugin. The dependency proof therefore keeps
+the feature-cold base and API-request/certificate deltas unchanged.
+
+NODE-223 adds one optional Pwright package edge from the Node addon to
+`pwright-api-request-client-certificates`. That leaf implements the existing
+Rustls identity-provider port and owns PEM/PFX decoding; the base request owner,
+HTTP codec, transport and Node facade do not depend on OpenSSL. The executable
+profile-delta proof requires exactly that one Pwright package plus
+`foreign-types`, `foreign-types-shared`, `openssl`, `openssl-macros` and
+`openssl-sys`, with no package removal. The profile remains browser/CDP cold.
+Python's ABI 11 certificate profile has the same exact delta: one additional
+Pwright leaf plus `foreign-types`, `foreign-types-shared`, `openssl`,
+`openssl-macros` and `openssl-sys`. The repaired wheel vendors the two OpenSSL
+dynamic libraries and rewrites the extension to load them relative to the
+wheel rather than from Homebrew.
+
+Python ABI 10 added one optional addon edge set from
+`pwright-python-addon/api-request` to the same browser-independent request
+owner and Basic, cookie, transport, Rustls and decompression leaves selected by
+Node. PyO3 converts tuples, bytes, cookies and awaitables only; it does not add
+an HTTP client, CDP, browser or Python networking dependency. The wheel profile
+appends `api-request`; ABI 11 appends the separately selectable certificate
+leaf, while the base addon remains feature-cold. The executable
+dependency proof keeps the base closure at 108 Pwright packages and requires
+the selected profile to add exactly the eight API-request packages with no
+base-package removal.
+
+NODE-221 adds optional addon edges from `pwright-node-addon/api-request` to the
+base request owner plus the selected Basic, cookie, transport, Rustls and
+decompression leaves. The Node facade converts public values and performs
+storage-state file I/O; it does not own an HTTP client, cookie jar, retry loop,
+socket, TLS state or browser. Resolver output crosses as bounded IP values;
+Rust keeps the original URL host authoritative for Host/SNI. Origin state is
+retained as bounded JSON by the native context and cookies remain in the Rust
+store. The `api-request` profile is browser-feature cold, but the current
+monolithic addon still has an unconditional package edge to
+`pwright-node-host`; splitting that package closure remains separate work and
+no feature-minimal binary-size claim is made.
+
+NODE-220 adds only the existing workspace `futures-util` edge to
+`pwright-api-request-connector-tokio`. One call-owned `FuturesUnordered` races
+TCP attempts; it spawns no task and is dropped with every losing future when a
+winner or cancellation is observed. Rustls already depends inward on this TCP
+leaf and automatically reuses the policy. No transport, HTTP codec, proxy,
+browser, CDP, Node or Python edge is added.
+
+NODE-219 changes no package or dependency edge. The final-head event remains in
+`pwright-api-request-http1`; `pwright-api-request-transport` alone owns the
+pending connection, decoder and fixed read buffer while it selects discard or
+completion. Cookie and authorization behavior still enter through base ports.
+No browser, CDP, Node or Python edge is added.
+
+NODE-218 adds `pwright-api-request-auth-basic -> pwright-api-request` plus
+Base64 and zeroization. The base owns only an authorization-provider port;
+transport depends only on that port in normal builds and uses the Basic leaf as
+a dev-only integration proof. The leaf has no HTTP codec, connector, TLS,
+proxy, CDP, browser, Node or Python edge, so deployments without Basic
+credentials do not select its encoding or retained credential state.
+
+NODE-217 adds `pwright-api-request-cookie -> pwright-api-request` with
+`httpdate` and URL parsing only. The base crate declares the store port and
+structured cookie values; it does not select this implementation. Transport
+depends only on the port in normal builds; its cookie-leaf edge is dev-only for
+integration proof. The cookie leaf has no connector, TLS, decompressor, CDP,
+browser, Node or Python edge. A future BrowserContext adapter depends inward on
+the same port rather than adding Chromium ownership to the global store.
+
+NODE-216 adds three optional leaves. `pwright-api-request-connector-tokio`
+depends on the connection contracts plus Tokio networking only.
+`pwright-api-request-connector-rustls` depends on that TCP leaf, Tokio Rustls
+and WebPKI roots; selecting plain TCP does not select TLS. The separate
+`pwright-api-request-decompress` leaf depends on the transport decoder port,
+pure-Rust `flate2` and Brotli; selecting HTTP transport does not select
+compression codecs. None has a CDP, browser, Node or Python edge. `rcgen` is a
+Rustls-leaf dev dependency only for its in-memory handshake proof.
+
+NODE-215 adds `pwright-api-request-transport -> pwright-api-request-http1 ->
+pwright-api-request`. The policy package also uses async traits, Tokio only for
+the cancellable retry delay, `tokio-util` cancellation and URL parsing. It has
+no concrete DNS, socket, TLS, proxy, decompressor, cookie, CDP, browser, Node
+or Python dependency. Those implementations enter through `ApiConnector` and
+`ApiConnection`, so selecting raw HTTP policy does not select a network stack.
+
+NODE-214 adds one independently selectable `pwright-api-request-http1` package.
+Its direct normal edges are only `pwright-api-request`, `httparse`, `thiserror`
+and URL parsing. It owns request/response wire bytes but no socket, executor,
+DNS, TLS, proxy, decompressor, cookie jar, CDP, browser, Node or Python edge.
+Keeping the raw HTTP/1 codec outside the base owner lets a distribution omit
+network execution, and keeping connector/TLS policy out of the codec lets
+future runtime stacks reuse exact raw-header semantics without inheriting each
+other.
+
+NODE-213 adds only `mime_guess` to `pwright-api-request` for Playwright-shaped
+multipart file content types. Query/form encoding reuses the existing URL
+dependency. The crate still has no reqwest/Hyper, socket runtime, CDP,
+Chromium, Node or Python edge. Header overlay, body serialization and
+deterministic multipart-boundary allocation happen before the injected
+transport port and add no task, queue or global owner.
+
+NODE-212 adds one independently selectable `pwright-api-request` package. Its
+normal closure contains `async-trait`, `thiserror`, Tokio synchronization,
+`tokio-util` cancellation and URL parsing; it has no edge to reqwest/Hyper,
+CDP, Chromium composition, browser ownership, Node or Python. Language bindings
+will depend inward on this crate only when their API-request profile is
+selected. A future HTTP backend implements `ApiRequestTransport` in a separate
+optional crate, and BrowserContext cookie sharing enters through a separate
+adapter rather than adding Chromium to the base owner. The current crate owns
+one semaphore, cancellation tree and bounded response registry; it creates no
+task or browser process.
+
+NODE-211 adds no package, Cargo feature, protocol method, browser owner, task,
+queue, timer or persistent registry. The existing
+`pwright-node-addon -> pwright-node-host ->
+pwright-composition-chromium-locator-evaluation` edge carries one Rust-selected
+bounded preview program only after an expectation mismatch and only inside the
+original deadline. The addon projects fixed result fields; Node formats public
+matcher text and has no DOM/CDP edge. The official runner remains blocked by
+its independent empty-browser safety gate until the restored unrelated page is
+gone.
+
+NODE-210 adds no package, Cargo feature, protocol method, browser owner, task,
+queue or timer. Checked, editable and enabled expectations reuse the existing
+`pwright-node-addon -> pwright-node-host -> pwright-cap-locator ->
+pwright-backend-cdp-locator` reads. Indeterminate and focused reuse the
+existing host Locator-evaluation path with Rust-selected bounded programs;
+Node performs only public option/result conversion. The official oracle
+preload and the loopback `/json/list` empty-browser guard are test
+infrastructure, not production dependencies. The selected conformance profile
+continues to compose existing leaves only.
+
+NODE-209 adds no package, Cargo feature, protocol method, browser owner, task,
+queue or timer. `pwright-runtime` gains a default-noop, synchronous/no-I/O
+terminal-error projection after successful typed cancellation. The existing
+exact route remains `pwright-node-addon -> pwright-node-host ->
+pwright-composition-chromium -> pwright-backend-cdp-locator`. That Locator
+service owns one fixed last-actionability enum and consumes it once after an
+original-deadline timeout; the composition only forwards the hook for the
+matching route. Node maps fixed bounded diagnostic keys to public error text
+and gains no browser/protocol dependency.
+
+NODE-208 adds the direct optional edges
+`pwright-node-addon/locator-bounding-box ->
+pwright-node-host/locator-bounding-box` and
+`pwright-node-addon/locator-highlight ->
+pwright-node-host/locator-highlight -> locator-bounding-box`. Both reuse the
+existing Locator evaluation, exact Page/Frame topology and CDP runtime path;
+neither adds a package, protocol method, browser owner, task, queue or registry.
+Rust selects both browser programs and owns strict resolution, geometry,
+same-origin Frame offset traversal and overlay lifetime. Node keeps only
+public descriptions, option/result conversion and error display.
+
+NODE-207 adds no package, Cargo feature, protocol method, browser owner, task,
+queue, timer or persistent table. Locator state, property and regular-expression
+text expectations reuse the existing
+`pwright-node-addon -> pwright-node-host -> pwright-composition-chromium-locator-evaluation`
+path and exact Page/Frame/selector registries. The addon converts one bounded
+expected value before async dispatch; Rust selects the browser program, owns
+serial polling, deadline/context-replacement semantics and result matching.
+Node keeps only public Locator descriptions and language-level error display.
+
+NODE-206 adds the direct optional edges
+`pwright-node-addon/response-body -> pwright-node-host/response-body ->
+pwright-cdp`. The leaf reuses the selected Frame-navigation result and exact
+Page/Frame registries; it adds no browser owner, task, timer, queue, event
+listener or persistent state table. Rust retains the completed document's
+bounded request identity, resolves the Page-scoped CDP session, chooses
+`Network.getResponseBody`, decodes base64 and owns the bounded bytes through
+FFI conversion. Node performs no protocol or browser routing and retains only
+one cached copied Buffer for `body`, `text` and `json` language semantics.
+
+NODE-205 adds no package, Cargo feature, protocol method, browser owner, task,
+queue or retry loop. Both legacy and v2 click scripts use the existing
+`pwright-backend-cdp-locator -> pwright-backend-cdp-selector-runtime` edge for
+enabled-state retargeting. The original matched element still owns stability,
+geometry and hit testing. `FrameDetached` is only a typed Rust host error
+projection variant and crosses the existing addon error port with the same
+`PWRIGHT_TARGET_CLOSED` class. Node adds no browser logic for either change.
+
+NODE-204 adds no Rust package, Cargo feature, protocol method, browser owner,
+timer, retry loop or state table. Page and Frame action facades now supply only
+their public API name to the existing Node Locator adapter; the typed action,
+timeout and browser work keep the existing
+`pwright-node-addon -> pwright-node-host -> pwright-cap-locator ->
+pwright-backend-cdp-locator` path. Rich actionability timeout progress remains
+missing and is not synthesized in Node.
+
+NODE-203 adds no package, Cargo feature, Node API surface, browser owner, task
+or queue. The already selected recursive-attachment profile now admits an
+exact five-owner paused-popup startup: caller Context settings, lifecycle
+observer setup, `Page.enable`, recursive auto-attach and debugger resume are
+polled together, with the first four branches queued before resume and every
+reply retained as a publication fence. The later Frame-tree/runtime/utility
+registration join remains a separate three-command phase. The existing
+selector-runtime edge advances to version 8 and gains descendant text plus
+submit/button input-value semantics; quoted text shorthand and `>>` become
+bounded typed recipes in the existing host parser. The selected profile
+reserves the corresponding five pending CDP command owners and, relative to
+the serial profile, exactly `16 * max_response_bytes` of declared response
+expansion. This is bounded admission, not preallocated RSS.
+
+The Node conformance artifact
+`official-conformance-page-bindings` selects exactly `set-content`,
+`page-events`, `console-events`, `page-bindings`, `handles`,
+`frame-navigation`, `init-scripts`, `timeout-settings`, `wait-for-function`,
+`wait-for-url`, `wait-for-timeout`, `large-evaluation-results`, `emulate-media`,
+`request-gc`, `response-body`, `extra-headers`, `api-request`, and
+`context-api-request`. The Context request edge reuses the same Rust request
+stack while adding the live Chromium cookie/settings bridge required by
+`page.request`; it is not a second transport. `emulate-media` is one direct
+addon-to-host edge and adds no production package; its fixed state and CDP
+work remain in the host.
+`extra-headers` reuses its existing optional addon/host/network composition and
+does not add a second header path. Navigation waiting uses the already selected
+`frame-navigation -> frame-lifecycle` edge, and Page click/type/focus add no
+Cargo feature because they reuse typed Locator actions. The profile still adds
+no file-input, drag, or concurrent-close dependency.
+
+`pwright-node-addon/wait-for-url -> pwright-node-host/url-wait ->
+frame-lifecycle`. The host leaf already existed for the Python binding; Node
+adds no protocol/backend package. Rust owns the event wait and accepts an exact
+Page-owned Frame id. N-API contributes only a bounded thread-safe matcher port
+so JavaScript RegExp and URL-predicate semantics remain language-correct.
+
+`pwright-node-addon/request-gc -> pwright-node-host/request-gc`. The host leaf
+uses the already selected CDP client and Page/session registry; it adds no
+package edge, persistent state, task, timer or queue. Rust owns the exact
+Chromium `HeapProfiler.collectGarbage` command and empty payload. Node owns only
+the public Page method facade.
+
+Python ABI 9 selected
+`wait-for-url+set-content+emulate-media+timeout-settings+network-events`.
+`timeout-settings` forwards from `pwright-python-addon` to the same-named host
+leaf and adds no package edge. `network-events` forwards through the addon and
+host to the existing Chromium network composition; the host's direct optional
+edges are `pwright-backend-cdp`, `pwright-cap-network-events`,
+`pwright-network-model`, and `pwright-runtime-control`. The Python language
+adapter adds no browser/protocol package and owns only typed value conversion
+and predicate invocation. The base addon's exact dependency closure remains
+separately checked.
+
+The historical bridge test clients now share
+`pwright-fake::CdpCallLog` instead of maintaining two call-recording paths.
+Their compatible persistent optional overrides share `CdpResponseSlot` without
+moving defaults, strict policy, queues, errors, or async gates into that type.
+The stateful fake's 11 configurable Runtime entry points also share
+`CdpResponseScript` for ordered errors, one-shot responses, and persistent
+fallbacks. One lock owns the complete script so configuration and consumption
+cannot observe partial cross-queue state; method defaults/gates and the canned
+mock's strict policy remain separate. The canned mock now rejects every absent
+configurable response slot in strict mode while retaining its fixed built-in
+responses and no-op methods.
+This support remains selected: `pwright-bridge` has a four-package ordinary
+Pwright closure (`bridge`, `cdp`, `core`, `js`), while
+`pwright-bridge/test-utils` adds exactly `pwright-fake` as the fifth package.
+`scripts/check-bridge-test-utils-dependencies.sh` checks both exact closures and
+both release builds, preventing test infrastructure from entering production
+by accident. Canned-response and stateful DOM behavior remain separate.
+
+NODE-004 begins with the command-free session-initialization leaf, the
+synchronous Frame event/metadata projection leaf, and the bounded Frame
+lifecycle/navigation-wait leaf. The first two exact normal Pwright closures
+contain five packages each; the lifecycle closure contains ten packages. The
+aggregate compatibility-reexports all three contracts, but Node settings,
+observer, and lifecycle adapters consume the plugins directly, reducing
+aggregate source coupling from 55 to 39 host files. These transitional package splits make the current default
+host/addon closures 236/251; they are ownership-boundary steps, not yet a
+binary-size or dependency-count reduction. Dedicated gates prevent the direct
+host implementations from returning to the aggregate.
 
 NODE-190 adds
 `pwright-node-addon/retained-serialized-payload-import ->

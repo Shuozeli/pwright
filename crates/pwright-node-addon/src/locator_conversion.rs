@@ -186,6 +186,23 @@ impl LocatorConversions {
         ))
     }
 
+    pub fn prepare_value<'env>(
+        &self,
+        env: &'env Env,
+        value: Unknown<'env>,
+    ) -> napi::Result<EvaluationValue> {
+        self.values.prepare(env, value)?.materialize(env)
+    }
+
+    #[cfg(feature = "locator-dom-actions")]
+    pub fn prepare_input<'env>(
+        &self,
+        env: &'env Env,
+        value: Unknown<'env>,
+    ) -> napi::Result<PreparedInput> {
+        self.values.prepare(env, value)
+    }
+
     fn dispatch(&self, env: &Env, id: u32) -> napi::Result<()> {
         let stage = {
             let mut state = self.state.borrow_mut();
@@ -289,6 +306,28 @@ impl LocatorConversions {
             // exception. Only the exact untouched conversion failure unwraps it.
             other => other
                 .map(evaluation_value::EvaluationOutput)
+                .map_err(binding_error),
+        }
+    }
+
+    #[cfg(feature = "handles")]
+    pub fn finish_handle(
+        &self,
+        id: u32,
+        result: Result<pwright_node_host::handles::PendingHandle, HostError>,
+    ) -> napi::Result<crate::deferred_conversion::EvaluationResult> {
+        let entry = self.state.borrow_mut().entries.remove(&id);
+        match result {
+            Err(HostError::Backend(ref message)) if message == CONVERSION_ERROR => Err(entry
+                .and_then(|entry| entry.error)
+                .unwrap_or_else(|| binding_error(HostError::Backend(CONVERSION_ERROR.into())))),
+            other => other
+                .map(|handle| {
+                    crate::deferred_conversion::EvaluationResult::Handle(
+                        handle,
+                        crate::handles::HandlePolicy::default(),
+                    )
+                })
                 .map_err(binding_error),
         }
     }

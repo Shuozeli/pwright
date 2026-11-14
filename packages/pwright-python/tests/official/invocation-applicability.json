@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "rules": [
+    {
+      "id": "tests/async/test_jshandle.py::test_jshandle_evaluate_work",
+      "applicability": "applicable",
+      "classification": "public-api-with-private-assertion-oracle",
+      "reason": "The behavior under test is the public repr(JSHandle); _impl_obj._preview is used only to construct the expected public string."
+    },
+    {
+      "id": "tests/async/test_page_evaluate.py::test_should_pass_exception_argument",
+      "applicability": "non-applicable",
+      "classification": "implementation-internal",
+      "reason": "The test constructs its input by mutating the private Error._name and Error._stack fields, which are not writable public Playwright Python API."
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_should_work_with_glob",
+      "applicability": "non-applicable",
+      "classification": "implementation-internal",
+      "reason": "The test directly unit-tests playwright._impl._glob.glob_to_regex_pattern and playwright._impl._helper.url_matches rather than a public routing call."
+    },
+    {
+      "id": "tests/async/test_selectors_misc.py::test_should_throw_already_registered_error_when_registering",
+      "applicability": "applicable",
+      "classification": "public-api-with-private-test-fixture",
+      "reason": "Duplicate selector registration and its public Error are observable public behavior; the upstream test reaches them through private Selectors and Browser fixture types."
+    },
+    {
+      "id": "tests/async/test_selectors_misc.py::test_should_work_with_internal_and",
+      "applicability": "non-applicable",
+      "classification": "implementation-internal",
+      "reason": "The test submits the undocumented internal:and selector-engine protocol directly instead of using a public Locator composition API."
+    },
+    {
+      "id": "tests/sync/test_selectors_misc.py::test_should_work_with_internal_and",
+      "applicability": "non-applicable",
+      "classification": "implementation-internal",
+      "reason": "The test submits the undocumented internal:and selector-engine protocol directly instead of using a public Locator composition API."
+    },
+    {
+      "id": "tests/sync/test_sync.py::test_browser_repr",
+      "applicability": "applicable",
+      "classification": "public-api-with-private-assertion-oracle",
+      "reason": "The behavior under test is the public repr(Browser); _impl_obj._browser_type is used only to construct the expected public string."
+    },
+    {
+      "id": "tests/sync/test_sync.py::test_browser_type_repr",
+      "applicability": "applicable",
+      "classification": "public-api-with-private-assertion-oracle",
+      "reason": "The behavior under test is the public repr(BrowserType); _impl_obj is used only to obtain the public BrowserType whose repr is asserted."
+    }
+  ]
+}

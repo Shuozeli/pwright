@@ -9,7 +9,9 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use pwright_cdp::connection::{CdpError, Result as CdpResult};
-use pwright_cdp::{CdpClient, KeyEventType, KeyboardEventParams, MouseButton, MouseEventType};
+use pwright_cdp::{
+    CdpClient, KeyEventType, KeyboardEventParams, MouseButton, MouseEventType, TouchEventType,
+};
 use pwright_input_model::INPUT_CHORD_MAX_KEYS;
 use tokio::sync::{Mutex, OwnedMutexGuard};
 
@@ -88,12 +90,20 @@ struct CdpInputState {
     pointer_x: f64,
     pointer_y: f64,
     pressed_button: Option<PressedMouseButton>,
+    active_touch: Option<ActiveTouch>,
 }
 
 #[derive(Clone, Copy)]
 struct PressedMouseButton {
     button: MouseButton,
     click_count: i32,
+}
+
+#[derive(Clone, Copy)]
+struct ActiveTouch {
+    x: f64,
+    y: f64,
+    modifiers: i32,
 }
 
 /// One Page-scoped serialization gate and fixed-size input-state record.
@@ -181,6 +191,36 @@ impl CdpInputCoordinator {
         }
     }
 
+    /// Reserves a Page-bound identity for one opt-in mouse click invocation.
+    /// No button is pressed until a transaction selects and dispatches it.
+    pub fn new_owned_mouse_press(&self) -> CdpResult<crate::CdpOwnedMousePress> {
+        match &self.state {
+            CoordinatorState::Interleaved(state) => {
+                crate::interleaved::PageState::new_owned_mouse_press(state, self._admission.clone())
+            }
+            CoordinatorState::Exclusive(_) => Err(CdpError::Other(
+                "owned mouse press requires the interleaved input policy".into(),
+            )),
+        }
+    }
+
+    /// Releases only the button still owned by this invocation. A later down
+    /// or up on the same button invalidates the claim; other buttons survive.
+    pub async fn release_owned_mouse_press(
+        &self,
+        client: &dyn CdpClient,
+        press: &crate::CdpOwnedMousePress,
+    ) -> CdpResult<()> {
+        match &self.state {
+            CoordinatorState::Interleaved(state) => {
+                state.release_owned_mouse_press(client, press).await
+            }
+            CoordinatorState::Exclusive(_) => Err(CdpError::Other(
+                "owned mouse press requires the interleaved input policy".into(),
+            )),
+        }
+    }
+
     /// Creates an effect-free raw input owner without waiting for native replies.
     /// Only explicitly selected Page-owned input can enter this path.
     pub fn begin_raw_mouse_transaction(
@@ -251,10 +291,9 @@ impl CdpInputCoordinator {
                 let mut state = state.lock().await;
                 cleanup_locked(client, &mut state).await
             }
-            // Interleaved input has no command-local key cleanup. Page state
-            // deliberately survives cancellation; native-call retirement is
-            // still the caller/runtime's responsibility, not this receipt.
-            CoordinatorState::Interleaved(_) => Ok(()),
+            // Keyboard and mouse state deliberately survive cancellation, but
+            // an acknowledged touchStart must never outlive its Page action.
+            CoordinatorState::Interleaved(state) => state.cleanup_touch(client).await,
         }
     }
 }
@@ -282,6 +321,20 @@ macro_rules! dispatch_input {
 }
 
 impl CdpInputTransaction {
+    /// Selects a Page-bound press owner before this transaction's first down.
+    /// Only opt-in retained click should call this; ordinary shared input keeps
+    /// its Page-owned lifetime and existing cancellation behavior. This token
+    /// owns no keyboard modifiers; cancellation of requested modifiers needs
+    /// a separate rollback policy.
+    pub fn set_owned_mouse_press(&mut self, press: &crate::CdpOwnedMousePress) -> CdpResult<()> {
+        match &mut self.inner {
+            TransactionMode::Interleaved(action) => action.set_owned_mouse_press(press),
+            TransactionMode::Exclusive(_) => Err(CdpError::Other(
+                "owned mouse press requires the interleaved input policy".into(),
+            )),
+        }
+    }
+
     /// Select once on this transaction only; never mutate shared Page bindings.
     /// The provider and its native retirement driver have separate owners/budgets.
     pub fn set_key_down_interceptor(
@@ -406,6 +459,16 @@ impl CdpInputTransaction {
         self.raw_pointer()?.raw_mouse_wheel(delta_x, delta_y).await
     }
 
+    /// Dispatches one atomic Page-scoped touch pair with the currently held
+    /// keyboard modifiers. The transaction owner must be retained through
+    /// completion so cancellation cannot abandon an acknowledged touchStart.
+    pub async fn touchscreen_tap(&mut self, x: f64, y: f64) -> CdpResult<()> {
+        match &mut self.inner {
+            TransactionMode::Exclusive(action) => action.touchscreen_tap(x, y).await,
+            TransactionMode::Interleaved(action) => action.touchscreen_tap(x, y).await,
+        }
+    }
+
     /// Resolves a raw key alias at its dispatch boundary, not at call creation.
     pub async fn key_down_named<'a>(
         &mut self,
@@ -454,6 +517,24 @@ impl CdpInputTransaction {
     dispatch_input!(mouse_down(button: MouseButton, click_count: i32));
     dispatch_input!(mouse_up());
 
+    /// Dispatch an opt-in owned press only if its source is still current after
+    /// acquiring the Page input gate. Ordinary mouseDown is unchanged.
+    pub async fn mouse_down_checked<E>(
+        &mut self,
+        button: MouseButton,
+        click_count: i32,
+        check: impl FnOnce() -> std::result::Result<(), E> + Send,
+    ) -> std::result::Result<(), crate::CdpCheckedMouseDownError<E>> {
+        match &mut self.inner {
+            TransactionMode::Interleaved(action) => {
+                action.mouse_down_checked(button, click_count, check).await
+            }
+            TransactionMode::Exclusive(_) => Err(crate::CdpCheckedMouseDownError::Input(
+                CdpError::Other("checked mouse down requires interleaved input".into()),
+            )),
+        }
+    }
+
     pub fn modifiers(&self) -> CdpModifiers {
         match &self.inner {
             TransactionMode::Exclusive(action) => action.modifiers(),
@@ -481,6 +562,35 @@ impl ExclusiveInputTransaction {
     /// Uses the same Page serialization owner as keyboard and pointer actions.
     pub async fn insert_text(&mut self, text: pwright_input_model::InputText<'_>) -> CdpResult<()> {
         self.client.input_insert_text(text.as_str()).await
+    }
+
+    async fn touchscreen_tap(&mut self, x: f64, y: f64) -> CdpResult<()> {
+        let modifiers = self.modifiers().mask();
+        self.state
+            .as_mut()
+            .expect("input transaction owns state")
+            .active_touch = Some(ActiveTouch { x, y, modifiers });
+        let start = self.client.input_dispatch_touch_event_with_modifiers(
+            TouchEventType::Start,
+            x,
+            y,
+            Some(modifiers),
+        );
+        let end = self.client.input_dispatch_touch_event_with_modifiers(
+            TouchEventType::End,
+            x,
+            y,
+            Some(modifiers),
+        );
+        let (start_result, end_result) = tokio::join!(start, end);
+        if end_result.is_ok() {
+            self.state
+                .as_mut()
+                .expect("input transaction owns state")
+                .active_touch = None;
+        }
+        start_result?;
+        end_result
     }
 
     pub fn modifiers(&self) -> CdpModifiers {
@@ -632,6 +742,7 @@ impl ExclusiveInputTransaction {
 }
 
 async fn cleanup_locked(client: &dyn CdpClient, state: &mut CdpInputState) -> CdpResult<()> {
+    release_active_touch(client, state).await?;
     while state.pressed_key_count > 0 {
         let key = state.pressed_keys[state.pressed_key_count - 1]
             .expect("pressed key slots form a dense prefix");
@@ -643,6 +754,22 @@ async fn cleanup_locked(client: &dyn CdpClient, state: &mut CdpInputState) -> Cd
     };
     transition_modifiers(client, state, restore).await?;
     state.pending_restore = None;
+    Ok(())
+}
+
+async fn release_active_touch(client: &dyn CdpClient, state: &mut CdpInputState) -> CdpResult<()> {
+    let Some(active) = state.active_touch else {
+        return Ok(());
+    };
+    client
+        .input_dispatch_touch_event_with_modifiers(
+            TouchEventType::End,
+            active.x,
+            active.y,
+            Some(active.modifiers),
+        )
+        .await?;
+    state.active_touch = None;
     Ok(())
 }
 
@@ -766,14 +893,16 @@ async fn transition_modifiers(
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
     use std::num::NonZeroU32;
     use std::sync::Arc;
+    use std::task::{Context, Poll, Waker};
     use std::time::Duration;
 
     use pwright_cdp::{CdpClient, MouseButton};
     use pwright_fake::FakeCdpClient;
 
-    use super::{CdpInputCoordinator, CdpModifiers};
+    use super::{CdpInputCoordinator, CdpInputPolicy, CdpModifiers};
     use crate::keyboard::resolve_key;
 
     #[tokio::test]
@@ -1021,6 +1150,128 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn exclusive_touch_with_unacknowledged_end_is_released_by_cleanup() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let stalled_end = Arc::new(tokio::sync::Notify::new());
+        client.set_pointer_gates([None, Some(stalled_end), None]);
+        let coordinator = CdpInputCoordinator::with_policy(CdpInputPolicy::Exclusive);
+        let mut transaction = coordinator
+            .begin_transaction(client.clone(), None)
+            .await
+            .expect("touch transaction should start");
+        let mut tap = Box::pin(transaction.touchscreen_tap(12.5, 19.25));
+        assert!(matches!(
+            tap.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+            Poll::Pending
+        ));
+        drop(tap);
+        drop(transaction);
+
+        // Act
+        coordinator
+            .cleanup_pending(client.as_ref())
+            .await
+            .expect("cleanup should release acknowledged touch state");
+
+        // Assert
+        let calls = client.calls();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0].1[0]["type"], "touchStart");
+        assert_eq!(calls[1].1[0]["type"], "touchEnd");
+        assert_eq!(calls[2].1[0]["type"], "touchEnd");
+        assert_eq!(calls[2].1[0]["modifiers"], 0);
+    }
+
+    #[tokio::test]
+    async fn interleaved_touch_with_unacknowledged_end_is_released_by_cleanup() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let stalled_end = Arc::new(tokio::sync::Notify::new());
+        client.set_pointer_gates([None, Some(stalled_end), None]);
+        let coordinator = CdpInputCoordinator::with_policy(CdpInputPolicy::Interleaved);
+        let mut transaction = coordinator
+            .begin_transaction(client.clone(), None)
+            .await
+            .expect("touch transaction should start");
+        let mut tap = Box::pin(transaction.touchscreen_tap(40.0, 60.0));
+        assert!(matches!(
+            tap.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+            Poll::Pending
+        ));
+        drop(tap);
+        drop(transaction);
+
+        // Act
+        coordinator
+            .cleanup_pending(client.as_ref())
+            .await
+            .expect("cleanup should release acknowledged touch state");
+
+        // Assert
+        let calls = client.calls();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0].1[0]["type"], "touchStart");
+        assert_eq!(calls[1].1[0]["type"], "touchEnd");
+        assert_eq!(calls[2].1[0]["type"], "touchEnd");
+        assert_eq!(calls[2].1[0]["modifiers"], 0);
+    }
+
+    #[tokio::test]
+    async fn exclusive_touch_submits_end_before_start_acknowledgement() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let stalled_start = Arc::new(tokio::sync::Notify::new());
+        client.set_pointer_gates([Some(stalled_start), None, None]);
+        let coordinator = CdpInputCoordinator::with_policy(CdpInputPolicy::Exclusive);
+        let mut transaction = coordinator
+            .begin_transaction(client.clone(), None)
+            .await
+            .expect("touch transaction should start");
+        let mut tap = Box::pin(transaction.touchscreen_tap(12.5, 19.25));
+
+        // Act
+        let state = tap.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+
+        // Assert
+        assert!(matches!(state, Poll::Pending));
+        let calls = client.calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].1[0]["type"], "touchStart");
+        assert_eq!(calls[1].1[0]["type"], "touchEnd");
+        drop(tap);
+        drop(transaction);
+        coordinator.cleanup_pending(client.as_ref()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn interleaved_touch_submits_end_before_start_acknowledgement() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let stalled_start = Arc::new(tokio::sync::Notify::new());
+        client.set_pointer_gates([Some(stalled_start), None, None]);
+        let coordinator = CdpInputCoordinator::with_policy(CdpInputPolicy::Interleaved);
+        let mut transaction = coordinator
+            .begin_transaction(client.clone(), None)
+            .await
+            .expect("touch transaction should start");
+        let mut tap = Box::pin(transaction.touchscreen_tap(40.0, 60.0));
+
+        // Act
+        let state = tap.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+
+        // Assert
+        assert!(matches!(state, Poll::Pending));
+        let calls = client.calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].1[0]["type"], "touchStart");
+        assert_eq!(calls[1].1[0]["type"], "touchEnd");
+        drop(tap);
+        drop(transaction);
+        coordinator.cleanup_pending(client.as_ref()).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn stepped_mouse_move_interpolates_from_the_page_cursor_and_lands_exactly() {
         // Arrange
         let client = Arc::new(FakeCdpClient::from_html(""));
@@ -1092,5 +1343,31 @@ mod tests {
             .finish()
             .await
             .expect("second transaction should finish");
+    }
+
+    #[tokio::test]
+    async fn checked_owned_press_dispatches_when_world_is_current() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let coordinator = CdpInputCoordinator::with_policy(CdpInputPolicy::Interleaved);
+        let owner = coordinator.new_owned_mouse_press().unwrap();
+        let mut transaction = coordinator
+            .begin_transaction(client.clone(), None)
+            .await
+            .unwrap();
+        transaction.set_owned_mouse_press(&owner).unwrap();
+
+        // Act
+        transaction
+            .mouse_down_checked(MouseButton::Left, 1, || Ok::<(), &'static str>(()))
+            .await
+            .unwrap();
+        transaction.mouse_up().await.unwrap();
+
+        // Assert
+        let calls = client.calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].1[0]["type"], "mousePressed");
+        assert_eq!(calls[1].1[0]["type"], "mouseReleased");
     }
 }

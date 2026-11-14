@@ -1,5 +1,7 @@
 //! Session-local ownership projection. Retained public trees/nodes never own
 //! this index, the URL book, the host, or a browser transport.
+#[cfg(feature = "frame-detach-events")]
+use crate::frame_metadata::TreeDetachReservation;
 use crate::frame_metadata::{FrameClosePermit, FrameMetadata};
 use crate::frame_tree::{
     FrameBinding, FrameConversion, FrameNode, FrameTree, FrameTreeBinding, FrameTreeFactory,
@@ -7,10 +9,11 @@ use crate::frame_tree::{
     Storage,
 };
 use crate::{FrameUrlSnapshot, HostError};
-use pwright_composition_chromium::{
+use pwright_backend_cdp_topology::CdpTopologyEffect;
+use pwright_core::ObjectId;
+use pwright_plugin_chromium_frame_observer::{
     ChromiumFrameOwnership, ChromiumFrameOwnershipView, ChromiumFrameUrlObserver,
 };
-use pwright_core::ObjectId;
 use std::{
     error::Error,
     sync::{Arc, Mutex},
@@ -18,6 +21,23 @@ use std::{
 
 const PAGES: usize = 16;
 const FRAMES: usize = 128;
+const BASE_REVISIONS: usize = if cfg!(any(feature = "console-events", feature = "page-errors")) {
+    512
+} else {
+    256
+};
+const DETACH_RESERVATIONS: usize = if cfg!(feature = "frame-detach-events") {
+    FRAMES - 1
+} else {
+    0
+};
+pub(crate) const FRAME_EVENT_RESERVATIONS: usize = if cfg!(feature = "frame-events") {
+    2 * (FRAMES - 1)
+} else {
+    0
+};
+const REVISIONS: usize = BASE_REVISIONS + 2 * DETACH_RESERVATIONS + FRAME_EVENT_RESERVATIONS;
+const STATES: usize = 256 + DETACH_RESERVATIONS;
 mod close_events;
 mod collections;
 mod external_close;
@@ -25,6 +45,7 @@ mod ready;
 use collections::CollectionState;
 struct PageEntry {
     id: ObjectId,
+    internal: bool,
     tree: FrameTree,
     close: Option<FrameClosePermit>,
     ready: Option<crate::frame_metadata::CreationDelivery>,
@@ -32,7 +53,22 @@ struct PageEntry {
 struct NodeEntry {
     page: ObjectId,
     node: FrameNode,
+    #[cfg(feature = "frame-detach-events")]
+    detach: Option<crate::LifecycleReservation>,
+    #[cfg(feature = "frame-detach-events")]
+    detach_tree: Option<TreeDetachReservation>,
 }
+#[cfg(feature = "frame-detach-events")]
+struct DetachedEntry {
+    page: ObjectId,
+    node: FrameNode,
+    reservation: crate::LifecycleReservation,
+    tree: Option<TreeDetachReservation>,
+}
+#[cfg(feature = "frame-detach-events")]
+const DETACH_SCRATCH_BYTES: usize = DETACH_RESERVATIONS * std::mem::size_of::<DetachedEntry>();
+#[cfg(not(feature = "frame-detach-events"))]
+const DETACH_SCRATCH_BYTES: usize = 0;
 struct State {
     pages: Vec<PageEntry>,
     nodes: Vec<NodeEntry>,
@@ -57,9 +93,9 @@ pub(crate) struct ReservedPage {
 impl FrameTrees {
     pub fn new(urls: Arc<FrameMetadata>) -> Result<Self, HostError> {
         let factory = FrameTreeFactory::new(FrameTreeLimits {
-            states: 256,
+            states: STATES,
             frames_per_page: FRAMES,
-            revisions: 256,
+            revisions: REVISIONS,
             bytes: 8 * 1024 * 1024,
         })?;
         // Fixed active vectors plus one mutex-serialized reconciliation's
@@ -70,7 +106,10 @@ impl FrameTrees {
             + FRAMES
                 * (std::mem::size_of::<NodeEntry>()
                     + std::mem::size_of::<ChromiumFrameOwnership>()
-                    + std::mem::size_of::<FrameNode>());
+                    + std::mem::size_of::<FrameNode>())
+            + DETACH_SCRATCH_BYTES;
+        #[cfg(feature = "frame-events")]
+        let index_bytes = index_bytes + FRAMES * std::mem::size_of::<(ObjectId, FrameNode)>();
         let bytes = urls
             .publication_storage_bytes()?
             .checked_add(index_bytes)
@@ -107,6 +146,239 @@ impl FrameTrees {
         self.factory.reserve_conversion(bytes)
     }
 
+    #[cfg(feature = "page-events")]
+    pub(crate) fn publish_page_lifecycle(
+        &self,
+        page: ObjectId,
+        dom_content_loaded: bool,
+    ) -> Result<(), HostError> {
+        let mut state = self.state.lock().map_err(HostError::backend)?;
+        if state.closed {
+            return Err(HostError::TargetClosed);
+        }
+        let collection = state.collections.as_mut().ok_or_else(|| {
+            HostError::Backend("Page lifecycle publication requires collections".into())
+        })?;
+        let before = collection.planned.clone().ok_or_else(|| {
+            HostError::Backend("Page lifecycle publication has no planned projection".into())
+        })?;
+        if !before.pages().iter().any(|entry| entry.id == page) {
+            return Ok(());
+        }
+        let reserved = self.urls.publications().reserve_lifecycle(&self.factory)?;
+        let cause = if dom_content_loaded {
+            crate::LifecycleCause::PageDomContentLoaded { page }
+        } else {
+            crate::LifecycleCause::PageLoad { page }
+        };
+        let after = self
+            .urls
+            .publications()
+            .stage_lifecycle(reserved, before, cause)?;
+        collection.planned = Some(after);
+        Ok(())
+    }
+
+    #[cfg(feature = "page-events")]
+    pub(crate) fn publish_main_frame_navigated(&self, page: ObjectId) -> Result<(), HostError> {
+        let mut state = self.state.lock().map_err(HostError::backend)?;
+        if state.closed {
+            return Err(HostError::TargetClosed);
+        }
+        let collection = state.collections.as_mut().ok_or_else(|| {
+            HostError::Backend("Page navigation publication requires collections".into())
+        })?;
+        let before = collection.planned.clone().ok_or_else(|| {
+            HostError::Backend("Page navigation publication has no planned projection".into())
+        })?;
+        if !before.pages().iter().any(|entry| entry.id == page) {
+            return Ok(());
+        }
+        let reserved = self.urls.publications().reserve_lifecycle(&self.factory)?;
+        let after = self.urls.publications().stage_lifecycle(
+            reserved,
+            before,
+            crate::LifecycleCause::PageMainFrameNavigated { page },
+        )?;
+        collection.planned = Some(after);
+        Ok(())
+    }
+
+    #[cfg(feature = "frame-events")]
+    pub(crate) fn publish_frame_navigated(
+        &self,
+        page: ObjectId,
+        frame: ObjectId,
+    ) -> Result<(), HostError> {
+        let mut state = self.state.lock().map_err(HostError::backend)?;
+        if state.closed {
+            return Err(HostError::TargetClosed);
+        }
+        let Some(node) = state
+            .nodes
+            .iter()
+            .find(|entry| entry.page == page && entry.node.id() == frame)
+            .map(|entry| entry.node.clone())
+        else {
+            return Ok(());
+        };
+        let Some(collection) = state.collections.as_mut() else {
+            return Ok(());
+        };
+        let Some(before) = collection.planned.clone() else {
+            return Ok(());
+        };
+        if !before.pages().iter().any(|entry| entry.id == page) {
+            return Ok(());
+        }
+        let reserved = self.urls.publications().reserve_lifecycle(&self.factory)?;
+        let after = self.urls.publications().stage_lifecycle(
+            reserved,
+            before,
+            crate::LifecycleCause::PageFrameNavigated { page, frame: node },
+        )?;
+        collection.planned = Some(after);
+        Ok(())
+    }
+
+    #[cfg(feature = "console-events")]
+    pub(crate) fn publish_page_console(
+        &self,
+        page: ObjectId,
+        payload_bytes: usize,
+        build: impl FnOnce() -> Result<Arc<crate::ConsoleMessage>, HostError>,
+    ) -> Result<(), HostError> {
+        let mut state = self.state.lock().map_err(HostError::backend)?;
+        if state.closed {
+            return Err(HostError::TargetClosed);
+        }
+        let collection = state.collections.as_mut().ok_or_else(|| {
+            HostError::Backend("Page console publication requires collections".into())
+        })?;
+        let before = collection.planned.clone().ok_or_else(|| {
+            HostError::Backend("Page console publication has no planned projection".into())
+        })?;
+        if !before.pages().iter().any(|entry| entry.id == page) {
+            return Ok(());
+        }
+        // The producer computes the exact bounded body size without allocating
+        // copied strings. Admit that body before crossing the publication fence.
+        let reserved = self
+            .urls
+            .publications()
+            .reserve_lifecycle_payload(&self.factory, payload_bytes)?;
+        let message = build()?;
+        let after = self.urls.publications().stage_lifecycle(
+            reserved,
+            before,
+            crate::LifecycleCause::PageConsole { page, message },
+        )?;
+        collection.planned = Some(after);
+        Ok(())
+    }
+
+    #[cfg(feature = "page-errors")]
+    pub(crate) fn publish_page_error(
+        &self,
+        page: ObjectId,
+        payload_bytes: usize,
+        build: impl FnOnce() -> Result<Arc<crate::PageError>, HostError>,
+    ) -> Result<(), HostError> {
+        let mut state = self.state.lock().map_err(HostError::backend)?;
+        if state.closed {
+            return Err(HostError::TargetClosed);
+        }
+        let collection = state.collections.as_mut().ok_or_else(|| {
+            HostError::Backend("Page error publication requires collections".into())
+        })?;
+        let before = collection.planned.clone().ok_or_else(|| {
+            HostError::Backend("Page error publication has no planned projection".into())
+        })?;
+        if !before.pages().iter().any(|entry| entry.id == page) {
+            return Ok(());
+        }
+        let reserved = self
+            .urls
+            .publications()
+            .reserve_lifecycle_payload(&self.factory, payload_bytes)?;
+        let error = build()?;
+        let after = self.urls.publications().stage_lifecycle(
+            reserved,
+            before,
+            crate::LifecycleCause::PageError { page, error },
+        )?;
+        collection.planned = Some(after);
+        Ok(())
+    }
+
+    #[cfg(feature = "page-dialogs")]
+    pub(crate) fn publish_page_dialog(
+        &self,
+        page: ObjectId,
+        payload_bytes: usize,
+        build: impl FnOnce() -> Result<crate::PageDialog, HostError>,
+    ) -> Result<(), HostError> {
+        let mut state = self.state.lock().map_err(HostError::backend)?;
+        if state.closed {
+            return Err(HostError::TargetClosed);
+        }
+        let collection = state.collections.as_mut().ok_or_else(|| {
+            HostError::Backend("Page dialog publication requires collections".into())
+        })?;
+        let before = collection.planned.clone().ok_or_else(|| {
+            HostError::Backend("Page dialog publication has no planned projection".into())
+        })?;
+        if !before.pages().iter().any(|entry| entry.id == page) {
+            return Ok(());
+        }
+        let reserved = self
+            .urls
+            .publications()
+            .reserve_lifecycle_payload(&self.factory, payload_bytes)?;
+        let dialog = Arc::new(build()?);
+        let after = self.urls.publications().stage_lifecycle(
+            reserved,
+            before,
+            crate::LifecycleCause::PageDialog { page, dialog },
+        )?;
+        collection.planned = Some(after);
+        Ok(())
+    }
+
+    #[cfg(feature = "file-chooser-events")]
+    pub(crate) fn publish_page_file_chooser(
+        &self,
+        page: ObjectId,
+        payload_bytes: usize,
+        build: impl FnOnce() -> Result<crate::PageFileChooser, HostError>,
+    ) -> Result<(), HostError> {
+        let mut state = self.state.lock().map_err(HostError::backend)?;
+        if state.closed {
+            return Err(HostError::TargetClosed);
+        }
+        let collection = state.collections.as_mut().ok_or_else(|| {
+            HostError::Backend("Page file chooser publication requires collections".into())
+        })?;
+        let before = collection.planned.clone().ok_or_else(|| {
+            HostError::Backend("Page file chooser publication has no planned projection".into())
+        })?;
+        if !before.pages().iter().any(|entry| entry.id == page) {
+            return Ok(());
+        }
+        let reserved = self
+            .urls
+            .publications()
+            .reserve_lifecycle_payload(&self.factory, payload_bytes)?;
+        let chooser = Arc::new(build()?);
+        let after = self.urls.publications().stage_lifecycle(
+            reserved,
+            before,
+            crate::LifecycleCause::PageFileChooser { page, chooser },
+        )?;
+        collection.planned = Some(after);
+        Ok(())
+    }
+
     pub fn reserve_page(&self, url: FrameUrlSnapshot) -> Result<ReservedPage, HostError> {
         let state = self.state.lock().map_err(HostError::backend)?;
         if state.closed {
@@ -133,6 +405,7 @@ impl FrameTrees {
         reservation: ReservedPage,
         page: ObjectId,
         main: ObjectId,
+        internal: bool,
     ) -> Result<(FrameTree, FrameBinding, FrameTreeBinding), HostError> {
         let mut state = self.state.lock().map_err(HostError::backend)?;
         if state.closed {
@@ -153,14 +426,51 @@ impl FrameTrees {
         let (node, tree) = reservation.tree.activate(main);
         let binding = reservation.binding.activate(node.clone());
         let tree_binding = reservation.tree_binding.activate(tree.clone());
-        state.nodes.push(NodeEntry { page, node });
+        state.nodes.push(NodeEntry {
+            page,
+            node,
+            #[cfg(feature = "frame-detach-events")]
+            detach: None,
+            #[cfg(feature = "frame-detach-events")]
+            detach_tree: None,
+        });
         state.pages.push(PageEntry {
             id: page,
+            internal,
             tree: tree.clone(),
             close: Some(reservation.close),
             ready: reservation.ready,
         });
         Ok((tree, binding, tree_binding))
+    }
+
+    #[cfg(any(feature = "context-storage-state", feature = "network-events", test))]
+    pub(crate) fn is_internal_page(&self, page: ObjectId) -> Result<bool, HostError> {
+        let state = self.state.lock().map_err(HostError::backend)?;
+        Ok(state
+            .pages
+            .iter()
+            .any(|entry| entry.id == page && entry.internal))
+    }
+
+    /// Public direct-ID operations require both an indexed non-internal Page
+    /// and its committed visibility, not merely native Context membership.
+    pub(crate) fn is_published_public_page(&self, page: ObjectId) -> Result<bool, HostError> {
+        let state = self.state.lock().map_err(HostError::backend)?;
+        if state.closed
+            || !state
+                .pages
+                .iter()
+                .any(|entry| entry.id == page && !entry.internal)
+        {
+            return Ok(false);
+        }
+        drop(state);
+        Ok(self
+            .urls
+            .publications()
+            .published_collections()?
+            .is_some_and(|view| view.pages().iter().any(|entry| entry.id == page)))
     }
 
     pub fn clear(&self) {
@@ -180,15 +490,31 @@ impl FrameTrees {
             self.urls.publications().close_for_teardown(pages);
         }
         state.pages.clear();
+        #[cfg(feature = "frame-detach-events")]
+        for entry in &state.nodes {
+            entry.node.release_retired_binding();
+        }
         state.nodes.clear();
         state.collections = None;
     }
 
+    #[cfg(test)]
     pub(crate) fn reconcile(
         &self,
         rows: impl Iterator<Item = ChromiumFrameOwnership>,
         contains_page: impl Fn(ObjectId) -> bool,
     ) -> Result<(), HostError> {
+        self.reconcile_with_effects(rows, contains_page, &[])
+    }
+
+    fn reconcile_with_effects(
+        &self,
+        rows: impl Iterator<Item = ChromiumFrameOwnership>,
+        contains_page: impl Fn(ObjectId) -> bool,
+        effects: &[CdpTopologyEffect],
+    ) -> Result<(), HostError> {
+        #[cfg(not(feature = "frame-detach-events"))]
+        let _ = effects;
         let mut state = self.state.lock().map_err(HostError::backend)?;
         if state.closed {
             return Err(HostError::TargetClosed);
@@ -203,6 +529,8 @@ impl FrameTrees {
             snapshot.push(row);
         }
         snapshot.sort_unstable_by_key(|row| (row.page, row.parent.is_some(), row.frame));
+        #[cfg(feature = "frame-events")]
+        let mut newly_attached = Vec::with_capacity(FRAMES);
         if snapshot.iter().filter(|row| row.parent.is_none()).count() > PAGES {
             return Err(HostError::ResourceExhausted(
                 "Page projection exceeds index capacity".into(),
@@ -216,10 +544,46 @@ impl FrameTrees {
             }
         }
         state.pages.retain(|entry| contains_page(entry.id));
-        // Retirement tokens preserve removed nodes independently of this index.
-        state
-            .nodes
-            .retain(|entry| snapshot.iter().any(|row| row.frame == entry.node.id()));
+        // Retired FrameNodes remain in staged tree revisions until publication.
+        #[cfg(feature = "frame-detach-events")]
+        let mut removed = Vec::with_capacity(DETACH_RESERVATIONS);
+        #[cfg(feature = "frame-detach-events")]
+        let mut missing_reservation = false;
+        state.nodes.retain_mut(|entry| {
+            if snapshot.iter().any(|row| row.frame == entry.node.id()) {
+                return true;
+            }
+            #[cfg(feature = "frame-detach-events")]
+            if entry.node.parent_id().is_some()
+                && effects.iter().any(|effect| {
+                    matches!(effect, CdpTopologyEffect::FrameRemoved { page, frame }
+                            if *page == entry.page && *frame == entry.node.id())
+                })
+            {
+                if let (Some(reservation), Some(tree)) =
+                    (entry.detach.take(), entry.detach_tree.take())
+                {
+                    removed.push(DetachedEntry {
+                        page: entry.page,
+                        node: entry.node.clone(),
+                        reservation,
+                        tree: Some(tree),
+                    });
+                    return false;
+                } else {
+                    missing_reservation = true;
+                }
+            }
+            #[cfg(feature = "frame-detach-events")]
+            entry.node.release_retired_binding();
+            false
+        });
+        #[cfg(feature = "frame-detach-events")]
+        if missing_reservation {
+            return Err(HostError::Backend(
+                "live child Frame lacks pre-admitted detach publication".into(),
+            ));
+        }
         for row in &snapshot {
             if let Some(prior) = state
                 .nodes
@@ -233,10 +597,37 @@ impl FrameTrees {
                 }
             } else {
                 let url = self.urls.ensure_attached(row.frame)?;
+                #[cfg(feature = "frame-detach-events")]
+                let detach = row
+                    .parent
+                    .map(|_| self.urls.publications().reserve_lifecycle(&self.factory))
+                    .transpose()?;
+                #[cfg(feature = "frame-detach-events")]
+                let detach_tree = row
+                    .parent
+                    .map(|_| self.urls.publications().reserve_tree_detach(&self.factory))
+                    .transpose()?;
+                #[cfg(feature = "frame-detach-events")]
+                let retired_binding = row
+                    .parent
+                    .map(|_| self.factory.reserve_detach_binding())
+                    .transpose()?;
                 let node = self.factory.frame(row.frame, row.parent, url)?;
+                #[cfg(feature = "frame-events")]
+                if row.parent.is_some() {
+                    newly_attached.push((row.page, node.clone()));
+                }
+                #[cfg(feature = "frame-detach-events")]
+                if let Some(binding) = retired_binding {
+                    node.install_retired_binding(binding)?;
+                }
                 state.nodes.push(NodeEntry {
                     page: row.page,
                     node,
+                    #[cfg(feature = "frame-detach-events")]
+                    detach,
+                    #[cfg(feature = "frame-detach-events")]
+                    detach_tree,
                 });
             }
         }
@@ -259,6 +650,7 @@ impl FrameTrees {
                 let ready = self.reserve_ready_delivery(&state)?;
                 state.pages.push(PageEntry {
                     id: row.page,
+                    internal: false,
                     tree,
                     close: Some(close),
                     ready,
@@ -277,8 +669,98 @@ impl FrameTrees {
                 desired.push(node.node.clone());
             }
             if !page.tree.matches_native(&desired)? {
+                #[cfg(feature = "frame-detach-events")]
+                if let Some(reserved) = removed
+                    .iter_mut()
+                    .find(|entry| entry.page == page.id)
+                    .and_then(|entry| entry.tree.take())
+                {
+                    self.urls
+                        .publications()
+                        .stage_tree_detach(&page.tree, &desired, reserved)?;
+                } else {
+                    self.urls.publications().stage_tree(&page.tree, &desired)?;
+                }
+                #[cfg(not(feature = "frame-detach-events"))]
                 self.urls.publications().stage_tree(&page.tree, &desired)?;
             }
+        }
+        #[cfg(feature = "frame-events")]
+        for (page, frame) in newly_attached {
+            let Some(collection) = state.collections.as_mut() else {
+                break;
+            };
+            let Some(before) = collection.planned.clone() else {
+                continue;
+            };
+            if !before.pages().iter().any(|entry| entry.id == page) {
+                continue;
+            }
+            let reserved = self.urls.publications().reserve_lifecycle(&self.factory)?;
+            let after = self.urls.publications().stage_lifecycle(
+                reserved,
+                before,
+                crate::LifecycleCause::PageFrameAttached { page, frame },
+            )?;
+            collection.planned = Some(after);
+        }
+        #[cfg(feature = "frame-detach-events")]
+        self.stage_frame_detaches(&mut state, &mut removed, effects)?;
+        Ok(())
+    }
+
+    #[cfg(feature = "frame-detach-events")]
+    fn stage_frame_detaches(
+        &self,
+        state: &mut State,
+        removed: &mut Vec<DetachedEntry>,
+        effects: &[CdpTopologyEffect],
+    ) -> Result<(), HostError> {
+        for effect in effects {
+            let CdpTopologyEffect::FrameRemoved { page, frame } = effect else {
+                continue;
+            };
+            let Some(index) = removed
+                .iter()
+                .position(|entry| entry.page == *page && entry.node.id() == *frame)
+            else {
+                if state
+                    .pages
+                    .iter()
+                    .any(|entry| entry.id == *page && !entry.internal)
+                {
+                    return Err(HostError::Backend(
+                        "detached Frame has no pre-admitted canonical identity".into(),
+                    ));
+                }
+                continue;
+            };
+            let retired = removed.swap_remove(index);
+            let Some(collection) = state.collections.as_mut() else {
+                retired.node.release_retired_binding();
+                continue;
+            };
+            let Some(before) = collection.planned.clone() else {
+                retired.node.release_retired_binding();
+                continue;
+            };
+            if !before.pages().iter().any(|entry| entry.id == *page) {
+                retired.node.release_retired_binding();
+                continue;
+            }
+            let after = self.urls.publications().stage_lifecycle(
+                retired.reservation,
+                before,
+                crate::LifecycleCause::PageFrameDetached {
+                    page: *page,
+                    frame: retired.node.clone(),
+                },
+            );
+            if after.is_err() {
+                retired.node.release_retired_binding();
+            }
+            let after = after?;
+            collection.planned = Some(after);
         }
         Ok(())
     }
@@ -294,12 +776,21 @@ mod tests;
 impl ChromiumFrameUrlObserver for FrameTrees {
     fn reconcile_committed(
         &self,
-        publication: pwright_composition_chromium::ChromiumCommittedFrameOwnership<'_>,
+        publication: pwright_plugin_chromium_frame_observer::ChromiumCommittedFrameOwnership<'_>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.external_disposals(publication.effects())?;
-        self.reconcile_collections(publication.ownership())?;
-        self.publish_ready_causes(publication.effects())?;
-        Ok(())
+        let result = (|| {
+            self.external_disposals(publication.effects())?;
+            self.reconcile_collections(publication.ownership(), publication.effects())?;
+            self.publish_ready_causes(publication.effects())
+        })();
+        #[cfg(any(feature = "frame-detach-events", feature = "frame-events"))]
+        if result.is_err() {
+            self.state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .closed = true;
+        }
+        result.map_err(Into::into)
     }
 
     fn update_navigation(
@@ -330,7 +821,7 @@ impl ChromiumFrameUrlObserver for FrameTrees {
         &self,
         view: ChromiumFrameOwnershipView<'_>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.reconcile_collections(view)?;
+        self.reconcile_collections(view, &[])?;
         Ok(())
     }
 }

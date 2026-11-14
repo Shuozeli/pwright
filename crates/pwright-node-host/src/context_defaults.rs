@@ -6,7 +6,7 @@ use std::sync::Arc;
 use pwright_backend_cdp_topology::CdpContextOwnership;
 use pwright_cdp::generated::browser;
 use pwright_cdp::{CdpConnection, CdpSession};
-use pwright_composition_chromium::{
+use pwright_plugin_chromium_session_initialization::{
     ChromiumSessionInitializationFuture, ChromiumSessionInitializer,
 };
 use serde::Serialize;
@@ -136,39 +136,43 @@ impl ChromiumSessionInitializer for OwnedContextDefaults {
                 session_id.to_owned(),
                 target_id.to_owned(),
             );
+            let media = session.send("Emulation.setEmulatedMedia", serde_json::to_value(media())?);
+            let automation = session.send(
+                "Emulation.setAutomationOverride",
+                serde_json::to_value(Enabled { enabled: true })?,
+            );
             if is_page {
-                let window = session
-                    .send(
-                        "Browser.getWindowForTarget",
-                        serde_json::to_value(browser::GetWindowForTargetParams::default())?,
-                    )
-                    .await?;
-                let window: browser::GetWindowForTargetReturns = serde_json::from_value(window)?;
-                session
-                    .send(
-                        "Browser.setWindowBounds",
-                        serde_json::to_value(browser::SetWindowBoundsParams {
-                            window_id: window.window_id,
-                            bounds: self.window_bounds.clone(),
-                        })?,
-                    )
-                    .await?;
-                session
-                    .send(
-                        "Emulation.setDeviceMetricsOverride",
-                        serde_json::to_value(viewport())?,
-                    )
-                    .await?;
-                session
-                    .send(
-                        "Emulation.setFocusEmulationEnabled",
-                        serde_json::to_value(Enabled { enabled: true })?,
-                    )
-                    .await?;
+                let window = async {
+                    let window = session
+                        .send(
+                            "Browser.getWindowForTarget",
+                            serde_json::to_value(browser::GetWindowForTargetParams::default())?,
+                        )
+                        .await?;
+                    let window: browser::GetWindowForTargetReturns =
+                        serde_json::from_value(window)?;
+                    session
+                        .send(
+                            "Browser.setWindowBounds",
+                            serde_json::to_value(browser::SetWindowBoundsParams {
+                                window_id: window.window_id,
+                                bounds: self.window_bounds.clone(),
+                            })?,
+                        )
+                        .await
+                };
+                let metrics = session.send(
+                    "Emulation.setDeviceMetricsOverride",
+                    serde_json::to_value(viewport())?,
+                );
+                let focus = session.send(
+                    "Emulation.setFocusEmulationEnabled",
+                    serde_json::to_value(Enabled { enabled: true })?,
+                );
+                tokio::try_join!(window, metrics, focus, media, automation)?;
+            } else {
+                tokio::try_join!(media, automation)?;
             }
-            session
-                .send("Emulation.setEmulatedMedia", serde_json::to_value(media())?)
-                .await?;
             Ok(())
         })
     }
@@ -237,5 +241,17 @@ mod tests {
             { "name": "prefers-contrast", "value": "no-preference" },
         ] })
         );
+    }
+
+    #[test]
+    fn owned_context_automation_override_is_explicitly_enabled() {
+        // Arrange
+        let enabled = Enabled { enabled: true };
+
+        // Act
+        let encoded = serde_json::to_value(enabled).unwrap();
+
+        // Assert
+        assert_eq!(encoded, serde_json::json!({ "enabled": true }));
     }
 }

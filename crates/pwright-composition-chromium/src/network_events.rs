@@ -843,6 +843,7 @@ mod tests {
         let shared = Arc::new(ChromiumNetworkEventDriverShared {
             state: Mutex::new(ChromiumNetworkEventDriverState {
                 adapters,
+                related_sessions: BTreeMap::new(),
                 pending_page_registration: None,
                 pending_page_replacement: None,
                 unpublished_batch: None,
@@ -852,6 +853,7 @@ mod tests {
             adapter_profile,
             resources,
             max_page_lanes: 1,
+            max_related_sessions: 0,
         });
         ChromiumNetworkEventDriver {
             receiver: source.subscribe_events().into(),
@@ -1039,6 +1041,7 @@ mod tests {
         let shared = Arc::new(ChromiumNetworkEventDriverShared {
             state: Mutex::new(ChromiumNetworkEventDriverState {
                 adapters,
+                related_sessions: BTreeMap::new(),
                 pending_page_registration: None,
                 pending_page_replacement: None,
                 unpublished_batch: None,
@@ -1048,6 +1051,7 @@ mod tests {
             adapter_profile,
             resources,
             max_page_lanes: 1,
+            max_related_sessions: 0,
         });
         let mut driver = ChromiumNetworkEventDriver {
             receiver: source.subscribe_events().into(),
@@ -1622,6 +1626,9 @@ mod tests {
     fn adapter_errors_remain_distinct_from_publication_errors() {
         // Arrange
         let mut adapter = adapter();
+        adapter
+            .map_event(&request("missing", "https://example.test/invalid"))
+            .expect("request should establish active native correlation");
         let invalid = cdp_event(
             "Network.responseReceived",
             json!({"requestId": "missing", "response": {}}),
@@ -1634,6 +1641,12 @@ mod tests {
         };
 
         // Assert
-        assert!(matches!(error, CdpNetworkEventError::InvalidEvent { .. }));
+        assert_eq!(
+            error,
+            CdpNetworkEventError::InvalidEvent {
+                method: "Network response",
+                field: "url",
+            }
+        );
     }
 }

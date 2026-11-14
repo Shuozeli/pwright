@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "collectionProfiles": [
+      {
+        "name": "core",
+        "selection": "tests",
+        "expandedTests": 6501
+      },
+      {
+        "name": "examples",
+        "selection": "examples/todomvc",
+        "expandedTests": 25,
+        "pythonVersion": "3.10",
+        "pytestVersion": "8.4.1",
+        "pytestPlaywrightVersion": "0.7.2",
+        "requirements": "packages/pwright-python/tests/official/examples-oracle-requirements.txt",
+        "requirementsSha256": "28a04972055dcaedcc64fa5b23d7bf0b31544cbb2bd79fccae388636fa866594"
+      }
+    ],
+    "defaultBrowsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "ciPlatforms": [
+      "linux",
+      "darwin",
+      "win32"
+    ],
+    "ciPythonVersions": [
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "stableChannels": [
+      "chrome",
+      "msedge"
+    ],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": true,
+  "files": {
+    "tests/async/test_navigation.py": "f04af8cbdee3dffb2c578d61d7685f02e5186ca565906323d71b6f92f96cd144",
+    "tests/async/test_page.py": "dc9f66af71064016947dd1682de787df7f585a2e8ec9fc14e5fb804b5dbd6ab8"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_navigation.py::test_goto_should_work",
+      "capabilities": [
+        "chromium.connect_over_cdp",
+        "browser.new_context",
+        "browser_context.new_page",
+        "page.goto",
+        "page.url",
+        "page.close",
+        "browser_context.close"
+      ]
+    },
+    {
+      "id": "tests/async/test_navigation.py::test_goto_should_navigate_to_about_blank",
+      "capabilities": [
+        "chromium.connect_over_cdp",
+        "browser.new_context",
+        "browser_context.new_page",
+        "page.goto",
+        "page.close",
+        "browser_context.close"
+      ]
+    },
+    {
+      "id": "tests/async/test_navigation.py::test_goto_should_work_when_navigating_to_valid_url",
+      "capabilities": [
+        "chromium.connect_over_cdp",
+        "browser.new_context",
+        "browser_context.new_page",
+        "page.goto",
+        "response.ok",
+        "page.close",
+        "browser_context.close"
+      ]
+    },
+    {
+      "id": "tests/async/test_navigation.py::test_goto_should_work_when_navigating_to_data_url",
+      "capabilities": [
+        "chromium.connect_over_cdp",
+        "browser.new_context",
+        "browser_context.new_page",
+        "page.goto",
+        "page.close",
+        "browser_context.close"
+      ]
+    },
+    {
+      "id": "tests/async/test_navigation.py::test_goto_should_work_when_navigating_to_404",
+      "capabilities": [
+        "chromium.connect_over_cdp",
+        "browser.new_context",
+        "browser_context.new_page",
+        "page.goto",
+        "response.ok",
+        "response.status",
+        "page.close",
+        "browser_context.close"
+      ]
+    },
+    {
+      "id": "tests/async/test_page.py::test_url_should_work",
+      "capabilities": [
+        "chromium.connect_over_cdp",
+        "browser.new_context",
+        "browser_context.new_page",
+        "page.goto",
+        "page.url",
+        "page.close",
+        "browser_context.close"
+      ]
+    },
+    {
+      "id": "tests/async/test_page.py::test_title_should_return_the_page_title",
+      "capabilities": [
+        "chromium.connect_over_cdp",
+        "browser.new_context",
+        "browser_context.new_page",
+        "page.goto",
+        "page.title",
+        "page.close",
+        "browser_context.close"
+      ]
+    }
+  ]
+}

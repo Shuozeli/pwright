@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/async/test_popup.py": "c7f0c08e57a874ffb7332663615123814b0e0a2ceef465e203206eff03a0cc3e"
+  },
+  "cases": [
+    { "id": "tests/async/test_popup.py::test_browser_context_add_init_script_should_apply_to_a_cross_process_popup", "capabilities": ["popup", "browser-context.add-init-script", "cross-origin"] },
+    { "id": "tests/async/test_popup.py::test_browser_context_add_init_script_should_apply_to_an_in_process_popup", "capabilities": ["popup", "browser-context.add-init-script"] },
+    { "id": "tests/async/test_popup.py::test_link_navigation_inherit_user_agent_from_browser_context", "capabilities": ["popup", "browser-context.user-agent", "page.click"] },
+    { "id": "tests/async/test_popup.py::test_link_navigation_respect_routes_from_browser_context", "capabilities": ["popup", "browser-context.route", "page.click"] },
+    { "id": "tests/async/test_popup.py::test_should_be_able_to_capture_alert", "capabilities": ["popup", "browser-context.dialog-event"] },
+    { "id": "tests/async/test_popup.py::test_should_emit_for_immediately_closed_popups", "capabilities": ["popup", "page.expect-popup", "page.evaluate"] },
+    { "id": "tests/async/test_popup.py::test_should_expose_function_from_browser_context", "capabilities": ["popup", "browser-context.expose-function"] },
+    { "id": "tests/async/test_popup.py::test_should_inherit_extra_headers_from_browser_context", "capabilities": ["popup", "browser-context.extra-http-headers"] },
+    { "id": "tests/async/test_popup.py::test_should_inherit_http_credentials_from_browser_context", "capabilities": ["popup", "browser-context.http-credentials"] },
+    { "id": "tests/async/test_popup.py::test_should_inherit_offline_from_browser_context", "capabilities": ["popup", "browser-context.set-offline"] },
+    { "id": "tests/async/test_popup.py::test_should_inherit_touch_support_from_browser_context", "capabilities": ["popup", "browser-context.has-touch"] },
+    { "id": "tests/async/test_popup.py::test_should_inherit_viewport_size_from_browser_context", "capabilities": ["popup", "browser-context.viewport"] },
+    { "id": "tests/async/test_popup.py::test_should_not_treat_navigations_as_new_popups", "capabilities": ["popup", "page.goto", "cross-origin"] },
+    { "id": "tests/async/test_popup.py::test_should_respect_routes_from_browser_context", "capabilities": ["popup", "browser-context.route"] },
+    { "id": "tests/async/test_popup.py::test_should_use_viewport_size_from_window_features", "capabilities": ["popup", "page.set-viewport-size", "window-features"] },
+    { "id": "tests/async/test_popup.py::test_should_work", "capabilities": ["popup", "page.expect-popup"] },
+    { "id": "tests/async/test_popup.py::test_should_work_with_clicking_target__blank", "capabilities": ["popup", "page.click", "window.opener"] },
+    { "id": "tests/async/test_popup.py::test_should_work_with_clicking_target__blank_and_rel_noopener", "capabilities": ["popup", "page.click", "window.noopener"] },
+    { "id": "tests/async/test_popup.py::test_should_work_with_empty_url", "capabilities": ["popup", "window.open.empty-url"] },
+    { "id": "tests/async/test_popup.py::test_should_work_with_fake_clicking_target__blank_and_rel_noopener", "capabilities": ["popup", "page.eval-on-selector", "window.noopener"] },
+    { "id": "tests/async/test_popup.py::test_should_work_with_noopener_and_about_blank", "capabilities": ["popup", "window.noopener", "about-blank"] },
+    { "id": "tests/async/test_popup.py::test_should_work_with_noopener_and_no_url", "capabilities": ["popup", "window.noopener", "about-blank"] },
+    { "id": "tests/async/test_popup.py::test_should_work_with_noopener_and_url", "capabilities": ["popup", "window.noopener"] },
+    { "id": "tests/async/test_popup.py::test_should_work_with_window_features", "capabilities": ["popup", "window-features"] },
+    { "id": "tests/async/test_popup.py::test_window_open_emit_for_immediately_closed_popups", "capabilities": ["popup", "page.expect-popup", "page.evaluate"] },
+    { "id": "tests/async/test_popup.py::test_window_open_inherit_user_agent_from_browser_context", "capabilities": ["popup", "browser-context.user-agent"] }
+  ]
+}

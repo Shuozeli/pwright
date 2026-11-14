@@ -79,6 +79,29 @@ fn header_capacity_errors_remain_resource_failures() {
     }
 }
 
+#[test]
+fn persistent_launch_input_rejects_count_and_byte_overflow() {
+    // Arrange
+    let too_many = (0..=MAX_EXTRA_HEADERS)
+        .map(|index| (format!("x-{index}"), String::new()))
+        .collect();
+    let too_large = vec![("x-large".to_owned(), "v".repeat(MAX_EXTRA_HEADER_BYTES))];
+
+    // Act
+    let count_result = PersistentContextExtraHeaders::new(too_many);
+    let byte_result = PersistentContextExtraHeaders::new(too_large);
+
+    // Assert
+    assert!(matches!(
+        count_result,
+        Err(HostError::ResourceExhausted(message)) if message.contains("count exceeds 256")
+    ));
+    assert!(matches!(
+        byte_result,
+        Err(HostError::ResourceExhausted(message)) if message.contains("bytes exceed 65536")
+    ));
+}
+
 pub(super) fn ledger() -> ProductionResourceLedger {
     let req = requirements().unwrap();
     let mut limits = ResourceLimits::deny_all(req.scopes, req.leases);
@@ -87,6 +110,74 @@ pub(super) fn ledger() -> ProductionResourceLedger {
         limits = limits.with_class(class, bound.global, bound.per_scope);
     }
     ProductionResourceLedger::new(limits, req).unwrap()
+}
+
+#[test]
+fn persistent_headers_seed_only_default_context_and_explicit_clear_wins() {
+    // Arrange
+    let resources = ledger();
+    {
+        let pool = HeaderPool::new(value_profile().unwrap(), &resources).unwrap();
+        let headers = pool
+            .page(&[HeaderRef {
+                name: "X-Persistent",
+                value: "selected",
+            }])
+            .unwrap();
+        let default = PersistentDefault::new(Some(headers));
+        let settings =
+            Mutex::new(HeaderSettings::new(settings_profile().unwrap(), pool, &resources).unwrap());
+        let default_context = ObjectId::new(1);
+        let owned_context = ObjectId::new(2);
+
+        // Act
+        default
+            .seed(&settings, owned_context, CdpContextOwnership::Owned)
+            .unwrap();
+        default
+            .seed(&settings, default_context, CdpContextOwnership::Default)
+            .unwrap();
+        default
+            .seed(&settings, default_context, CdpContextOwnership::Default)
+            .unwrap();
+        let selected = settings
+            .lock()
+            .unwrap()
+            .effective(default_context, ObjectId::new(11))
+            .unwrap();
+        let not_inherited = settings
+            .lock()
+            .unwrap()
+            .effective(owned_context, ObjectId::new(12))
+            .unwrap();
+        settings
+            .lock()
+            .unwrap()
+            .begin_context(default_context, &[])
+            .unwrap()
+            .commit()
+            .unwrap();
+        let cleared = settings
+            .lock()
+            .unwrap()
+            .effective(default_context, ObjectId::new(11))
+            .unwrap();
+
+        // Assert
+        let selected: Vec<_> = selected.iter().collect();
+        assert_eq!(
+            selected,
+            [HeaderRef {
+                name: "X-Persistent",
+                value: "selected",
+            }]
+        );
+        assert_eq!(not_inherited.iter().len(), 0);
+        assert_eq!(cleared.iter().len(), 0);
+    }
+    for class in ResourceClass::ALL {
+        assert_eq!(resources.metrics().unwrap().class(class).current, 0);
+    }
 }
 
 #[test]
@@ -117,6 +208,60 @@ fn native_parameters_preserve_page_winning_case_and_clear_to_empty_object() {
             serde_json::json!({"headers":{"x-a":"page"}}),
             serde_json::json!({"headers":{}})
         ]
+    );
+}
+
+#[test]
+#[cfg(feature = "page-routes")]
+fn route_request_adds_page_navigation_referrer_missing_from_fetch_headers() {
+    // Arrange
+    let resources = ledger();
+    let pool = HeaderPool::new(value_profile().unwrap(), &resources).unwrap();
+    let page = pool
+        .page(&[HeaderRef {
+            name: "Referer",
+            value: "https://example.test/empty.html",
+        }])
+        .unwrap();
+    let mut headers = vec![("accept".to_owned(), "*/*".to_owned())];
+
+    // Act
+    include_navigation_referrer(&mut headers, Some(&page)).unwrap();
+
+    // Assert
+    assert_eq!(
+        headers,
+        [
+            ("accept".to_owned(), "*/*".to_owned()),
+            (
+                "referer".to_owned(),
+                "https://example.test/empty.html".to_owned()
+            )
+        ]
+    );
+}
+
+#[test]
+#[cfg(feature = "page-routes")]
+fn route_request_keeps_native_referrer_instead_of_adding_a_second_value() {
+    // Arrange
+    let resources = ledger();
+    let pool = HeaderPool::new(value_profile().unwrap(), &resources).unwrap();
+    let page = pool
+        .page(&[HeaderRef {
+            name: "referer",
+            value: "https://configured.test/",
+        }])
+        .unwrap();
+    let mut headers = vec![("Referer".to_owned(), "https://native.test/".to_owned())];
+
+    // Act
+    include_navigation_referrer(&mut headers, Some(&page)).unwrap();
+
+    // Assert
+    assert_eq!(
+        headers,
+        [("Referer".to_owned(), "https://native.test/".to_owned())]
     );
 }
 

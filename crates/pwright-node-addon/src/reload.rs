@@ -1,4 +1,4 @@
-use crate::{NativeSession, NavigationResponse, NavigationResult, binding_error, boundary};
+use crate::{HostNavigationOutput, NativeSession, binding_error, boundary};
 use napi::{Env, JsString, Unknown, bindgen_prelude::PromiseRaw};
 use napi_derive::napi;
 use pwright_node_host::ffi_budget::FfiLane;
@@ -21,18 +21,16 @@ impl NativeSession {
         let page_id = boundary::bounded_string(page_id, 20, "page ID")?;
         let wait_until = boundary::bounded_string(wait_until, 32, "waitUntil")?;
         let host = Arc::clone(&self.host);
-        boundary::spawn_published(env, execution, self.publications.clone(), async move {
-            let result = host.page_reload(&page_id, &wait_until, timeout_ms).await?;
-            Ok(NavigationResult {
-                url: result.url,
-                response: result.response.map(|response| NavigationResponse {
-                    url: response.url,
-                    status: response.status,
-                    status_text: response.status_text,
-                    ok: response.ok,
-                    headers: response.headers.into_iter().collect(),
-                }),
-            })
-        })
+        boundary::spawn_published_sized(
+            env,
+            execution,
+            self.publications.clone(),
+            async move {
+                host.page_reload(&page_id, &wait_until, timeout_ms)
+                    .await
+                    .map(HostNavigationOutput)
+            },
+            HostNavigationOutput::response_request_foreign_copy_bytes,
+        )
     }
 }

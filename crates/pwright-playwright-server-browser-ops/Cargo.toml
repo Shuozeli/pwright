@@ -1,0 +1,23 @@
+[package]
+name = "pwright-playwright-server-browser-ops"
+description = "Opt-in typed Browser, Context, Page, and Frame protocol operations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+page-events = ["pwright-playwright-server-session/page-events"]
+close-state = ["pwright-playwright-server-session/close-notices"]
+frame-title = ["pwright-playwright-server-session/frame-title"]
+
+[dependencies]
+pwright-playwright-server-client-core = { workspace = true }
+pwright-playwright-server-session = { workspace = true, features = ["supervisor"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pwright-transport-ws = { workspace = true }
+tokio = { workspace = true }

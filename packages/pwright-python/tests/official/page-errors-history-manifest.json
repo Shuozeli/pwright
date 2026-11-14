@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_page_event_pageerror.py": "4f0885d39378c1549bb87f1faffcc70e95f2ddc97d3525684e400feb74cc739c",
+    "tests/sync/test_page_event_pageerror.py": "f36134e678c5b750c907adf32fc4b4b3945a63ba3c442b754755cd37b41b4d22"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_page_event_pageerror.py::test_page_errors_should_work",
+      "capabilities": ["page.page_errors", "page.error_history.last_200"]
+    },
+    {
+      "id": "tests/sync/test_page_event_pageerror.py::test_page_errors_should_work",
+      "capabilities": ["page.page_errors", "page.error_history.last_200"]
+    }
+  ]
+}

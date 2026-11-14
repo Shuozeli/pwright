@@ -1,0 +1,27 @@
+[package]
+name = "pwright-playwright-server-connect"
+description = "Opt-in browser-neutral Playwright Server connect composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+live = [
+    "pwright-playwright-server-endpoint-discovery/live-reqwest",
+    "pwright-playwright-server-session/live-tokio",
+]
+
+[dependencies]
+pwright-playwright-server-endpoint-discovery = { workspace = true }
+pwright-playwright-server-session = { workspace = true, features = ["supervisor"] }
+pwright-transport-ws = { workspace = true }
+
+[dev-dependencies]
+futures-util = { workspace = true }
+pwright-playwright-server-client-core = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }

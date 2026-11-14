@@ -22,6 +22,14 @@ use pwright_browser_provider::{BrowserProcessLease, LaunchBrowserProvider, Launc
 use pwright_cdp::connection::ConnectionConfig;
 use pwright_cdp::{CdpConnection, CdpSession};
 use pwright_provider_cdp::{CdpConnector, CdpWebSocketEndpoint, LiveCdpConnector};
+#[cfg(feature = "startup-logs")]
+use tokio::task::JoinHandle;
+
+#[cfg(feature = "startup-logs")]
+mod startup_logs;
+
+#[cfg(feature = "startup-logs")]
+use startup_logs::{StartupLogSink, StreamKind};
 
 const ACTIVE_PORT_FILE: &str = "DevToolsActivePort";
 const LOOPBACK_DEBUGGING_ADDRESS: &str = "127.0.0.1";
@@ -358,6 +366,18 @@ impl ChromiumPersistentProfile {
         let path = validate_profile_directory(path.into())?;
         validate_persistent_profile_marker(&path)?;
         Ok(Self { path })
+    }
+
+    /// Initializes an empty caller-owned directory or reopens an explicitly
+    /// marked Pwright profile. A nonempty unmarked directory is never adopted.
+    pub fn open_or_initialize(path: impl Into<PathBuf>) -> Result<Self, ChromiumProfileError> {
+        let path = validate_profile_directory(path.into())?;
+        if profile_has_entries(&path)? {
+            validate_persistent_profile_marker(&path)?;
+            Ok(Self { path })
+        } else {
+            Self::initialize(path)
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -767,6 +787,16 @@ pub trait ChromiumChildProcess: Send + 'static {
     fn try_wait(&mut self) -> io::Result<Option<ExitStatus>>;
     fn start_kill(&mut self) -> io::Result<()>;
     fn wait(&mut self) -> Self::WaitFuture<'_>;
+
+    /// Optional owned-process diagnostics. The default preserves lightweight
+    /// process providers and attach-only compositions without output capture.
+    fn recent_startup_logs(&self) -> Option<String> {
+        None
+    }
+
+    fn finish_startup_logs(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async {})
+    }
 }
 
 pub trait ChromiumProcessSpawner: Send + Sync {
@@ -778,9 +808,21 @@ pub trait ChromiumProcessSpawner: Send + Sync {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TokioChromiumProcessSpawner;
 
+/// Explicitly selected process-output diagnostics for an owned launch. The
+/// default `TokioChromiumProcessSpawner` still discards stdout and stderr.
+#[cfg(feature = "startup-logs")]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CapturingTokioChromiumProcessSpawner;
+
 pub struct TokioChromiumChild {
     child: tokio::process::Child,
     kill_on_drop: bool,
+    #[cfg(feature = "startup-logs")]
+    startup_logs: Option<StartupLogSink>,
+    #[cfg(feature = "startup-logs")]
+    output_drains: Option<[JoinHandle<()>; 2]>,
+    #[cfg(feature = "startup-logs")]
+    exit_logged: bool,
 }
 
 impl ChromiumProcessSpawner for TokioChromiumProcessSpawner {
@@ -796,7 +838,88 @@ impl ChromiumProcessSpawner for TokioChromiumProcessSpawner {
         command.spawn().map(|child| TokioChromiumChild {
             child,
             kill_on_drop: true,
+            #[cfg(feature = "startup-logs")]
+            startup_logs: None,
+            #[cfg(feature = "startup-logs")]
+            output_drains: None,
+            #[cfg(feature = "startup-logs")]
+            exit_logged: false,
         })
+    }
+}
+
+#[cfg(feature = "startup-logs")]
+impl ChromiumProcessSpawner for CapturingTokioChromiumProcessSpawner {
+    type Child = TokioChromiumChild;
+
+    fn spawn(&self, executable: &Path, arguments: &[OsString]) -> io::Result<Self::Child> {
+        let mut command = tokio::process::Command::new(executable);
+        command
+            .args(arguments)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = command.spawn()?;
+        let logs = StartupLogSink::new(child.id());
+        logs.record_event("<launching>");
+        logs.record_event(&format!(
+            "<launched> pid={}",
+            child.id().map_or("N/A".into(), |id| id.to_string())
+        ));
+        let stdout = child
+            .stdout
+            .take()
+            .expect("piped child stdout is available");
+        let stderr = child
+            .stderr
+            .take()
+            .expect("piped child stderr is available");
+        let stdout_logs = logs.clone();
+        let stderr_logs = logs.clone();
+        let output_drains = [
+            tokio::spawn(async move { stdout_logs.drain(stdout, StreamKind::Out).await }),
+            tokio::spawn(async move { stderr_logs.drain(stderr, StreamKind::Err).await }),
+        ];
+        Ok(TokioChromiumChild {
+            child,
+            kill_on_drop: true,
+            startup_logs: Some(logs),
+            output_drains: Some(output_drains),
+            exit_logged: false,
+        })
+    }
+}
+
+#[cfg(feature = "startup-logs")]
+impl TokioChromiumChild {
+    fn record_exit(&mut self, status: ExitStatus) {
+        if self.exit_logged {
+            return;
+        }
+        self.exit_logged = true;
+        if let Some(logs) = &self.startup_logs {
+            logs.record_event(&format!("<process did exit: exitCode={:?}>", status.code()));
+        }
+    }
+
+    async fn settle_output_drains(&mut self) {
+        let Some(mut drains) = self.output_drains.take() else {
+            return;
+        };
+        // Descendants may inherit pipe handles. Do not wait indefinitely for
+        // EOF after the owned process has exited or been killed.
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(250);
+        for drain in &mut drains {
+            if tokio::time::timeout_at(deadline, &mut *drain)
+                .await
+                .is_err()
+            {
+                drain.abort();
+            }
+        }
+        if let Some(logs) = &self.startup_logs {
+            logs.finish_all();
+        }
     }
 }
 
@@ -815,7 +938,12 @@ impl ChromiumChildProcess for TokioChromiumChild {
     }
 
     fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-        self.child.try_wait()
+        let status = self.child.try_wait()?;
+        #[cfg(feature = "startup-logs")]
+        if let Some(status) = status {
+            self.record_exit(status);
+        }
+        Ok(status)
     }
 
     fn start_kill(&mut self) -> io::Result<()> {
@@ -823,7 +951,25 @@ impl ChromiumChildProcess for TokioChromiumChild {
     }
 
     fn wait(&mut self) -> Self::WaitFuture<'_> {
-        Box::pin(self.child.wait())
+        Box::pin(async move {
+            let status = self.child.wait().await?;
+            #[cfg(feature = "startup-logs")]
+            {
+                self.record_exit(status);
+                self.settle_output_drains().await;
+            }
+            Ok(status)
+        })
+    }
+
+    #[cfg(feature = "startup-logs")]
+    fn recent_startup_logs(&self) -> Option<String> {
+        self.startup_logs.as_ref().map(StartupLogSink::snapshot)
+    }
+
+    #[cfg(feature = "startup-logs")]
+    fn finish_startup_logs(&mut self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(self.settle_output_drains())
     }
 }
 
@@ -831,7 +977,16 @@ impl Drop for TokioChromiumChild {
     fn drop(&mut self) {
         if self.kill_on_drop {
             let _ = self.child.start_kill();
+            #[cfg(feature = "startup-logs")]
+            if let Some(drains) = self.output_drains.take() {
+                for drain in drains {
+                    drain.abort();
+                }
+            }
         }
+        // A successful raw provider lease may intentionally outlive its Rust
+        // owner. Dropping JoinHandles detaches the bounded drains, keeping the
+        // child's output pipes open until it exits instead of causing EPIPE.
     }
 }
 
@@ -1027,8 +1182,17 @@ pub enum ChromiumLaunchError {
     InvalidRequest(ChromiumLaunchRequestError),
     Spawn(io::Error),
     Startup(ChromiumStartupError),
-    Connect { message: String },
-    CleanupAfterFailure { launch: String, cleanup: io::Error },
+    StartupWithProcessLogs {
+        startup: ChromiumStartupError,
+        logs: String,
+    },
+    Connect {
+        message: String,
+    },
+    CleanupAfterFailure {
+        launch: String,
+        cleanup: io::Error,
+    },
 }
 
 impl Display for ChromiumLaunchError {
@@ -1037,6 +1201,10 @@ impl Display for ChromiumLaunchError {
             Self::InvalidRequest(error) => Display::fmt(error, formatter),
             Self::Spawn(error) => write!(formatter, "could not spawn Chromium: {error}"),
             Self::Startup(error) => Display::fmt(error, formatter),
+            Self::StartupWithProcessLogs { logs, .. } => write!(
+                formatter,
+                "Failed to launch the browser process.\nBrowser logs:\n{logs}"
+            ),
             Self::Connect { message } => {
                 write!(formatter, "could not connect to Chromium CDP: {message}")
             }
@@ -1054,6 +1222,7 @@ impl Error for ChromiumLaunchError {
             Self::InvalidRequest(error) => Some(error),
             Self::Spawn(error) => Some(error),
             Self::Startup(error) => Some(error),
+            Self::StartupWithProcessLogs { startup, .. } => Some(startup),
             Self::CleanupAfterFailure { cleanup, .. } => Some(cleanup),
             Self::Connect { .. } => None,
         }
@@ -1179,7 +1348,18 @@ async fn cleanup_after_failure<Child: ChromiumChildProcess>(
     launch: ChromiumLaunchError,
 ) -> ChromiumLaunchError {
     child.set_kill_on_drop(true);
-    match terminate_process(&mut child).await {
+    let cleanup = terminate_process(&mut child).await;
+    child.finish_startup_logs().await;
+    let launch = match launch {
+        ChromiumLaunchError::Startup(startup @ ChromiumStartupError::ProcessExited { .. }) => {
+            match child.recent_startup_logs() {
+                Some(logs) => ChromiumLaunchError::StartupWithProcessLogs { startup, logs },
+                None => ChromiumLaunchError::Startup(startup),
+            }
+        }
+        other => other,
+    };
+    match cleanup {
         Ok(_) => launch,
         Err(cleanup) => ChromiumLaunchError::CleanupAfterFailure {
             launch: launch.to_string(),
@@ -1209,6 +1389,13 @@ impl<Child> ChromiumProcessLease<Child>
 where
     Child: ChromiumChildProcess,
 {
+    /// Arms cancellation-safe cleanup before transferring this lease into a
+    /// longer-lived composition owner. Explicit bounded shutdown still reaps
+    /// the process and disables the guard after observing exit.
+    pub fn arm_kill_on_drop(&mut self) {
+        self.child.set_kill_on_drop(true);
+    }
+
     /// Observes process exit without consuming termination authority or
     /// blocking for a running browser.
     pub fn try_status(&mut self) -> io::Result<Option<ExitStatus>> {
@@ -1634,6 +1821,8 @@ mod tests {
     use pwright_cdp::connection::ConnectionConfig;
     use pwright_provider_cdp::{CdpConnector, CdpWebSocketEndpoint};
 
+    #[cfg(feature = "startup-logs")]
+    use super::CapturingTokioChromiumProcessSpawner;
     use super::{
         ChromiumBrowserShutdown, ChromiumChannel, ChromiumChildProcess, ChromiumCloseAttempt,
         ChromiumEndpointWaiter, ChromiumExecutable, ChromiumExecutableError,
@@ -1642,7 +1831,7 @@ mod tests {
         ChromiumProcessLease, ChromiumProcessSpawner, ChromiumProfileError, ChromiumProfilePolicy,
         ChromiumShutdownError, ChromiumShutdownMethod, ChromiumShutdownPolicy,
         ChromiumShutdownPolicyError, ChromiumStartupError, DevToolsActivePortWaiter,
-        discover_candidates, parse_active_port,
+        TokioChromiumProcessSpawner, discover_candidates, parse_active_port,
     };
 
     static TEST_DIRECTORY_ID: AtomicUsize = AtomicUsize::new(0);
@@ -2066,6 +2255,170 @@ mod tests {
         (executable, profile)
     }
 
+    #[cfg(unix)]
+    fn exiting_script(tree: &TestDirectory, name: &str) -> ChromiumExecutable {
+        let path = tree.executable(name);
+        fs::write(
+            &path,
+            b"#!/bin/sh\nprintf 'startup stdout\\n'\nprintf 'startup stderr\\n' >&2\nexit 1\n",
+        )
+        .expect("synthetic process script should be written");
+        ChromiumExecutable::from_path(path, ChromiumChannel::Custom)
+            .expect("synthetic process script should validate")
+    }
+
+    #[cfg(all(unix, feature = "startup-logs"))]
+    #[tokio::test]
+    async fn opt_in_process_capture_retains_both_streams_on_early_exit() {
+        // Arrange
+        let tree = TestDirectory::new("startup-logs");
+        let executable = exiting_script(&tree, "synthetic-process");
+        let profile = tree.directory("profile");
+        let connector_requests = Arc::new(Mutex::new(Vec::new()));
+        let provider = ChromiumLaunchProvider::with_parts(
+            CapturingTokioChromiumProcessSpawner,
+            DevToolsActivePortWaiter::default(),
+            RecordingConnector {
+                requests: Arc::clone(&connector_requests),
+            },
+        );
+        let request = ChromiumLaunchRequest::new(executable, profile, ConnectionConfig::default())
+            .with_startup_timeout(Duration::from_secs(2));
+
+        // Act
+        let result = provider.launch(request).await;
+
+        // Assert
+        let error = match result {
+            Ok(_) => panic!("synthetic process must exit before CDP"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            &error,
+            ChromiumLaunchError::StartupWithProcessLogs {
+                startup: ChromiumStartupError::ProcessExited { code: Some(1) },
+                ..
+            }
+        ));
+        let message = error.to_string();
+        assert!(message.contains("Failed to launch the browser process.\nBrowser logs:\n"));
+        assert!(message.contains("[out] startup stdout"));
+        assert!(message.contains("[err] startup stderr"));
+        assert!(message.len() < 4096);
+        assert!(
+            connector_requests
+                .lock()
+                .expect("connector should lock")
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn default_process_spawner_keeps_legacy_error_without_output_capture() {
+        // Arrange
+        let tree = TestDirectory::new("default-no-startup-logs");
+        let executable = exiting_script(&tree, "synthetic-process");
+        let profile = tree.directory("profile");
+        let provider = ChromiumLaunchProvider::with_parts(
+            TokioChromiumProcessSpawner,
+            DevToolsActivePortWaiter::default(),
+            RecordingConnector {
+                requests: Arc::new(Mutex::new(Vec::new())),
+            },
+        );
+        let request = ChromiumLaunchRequest::new(executable, profile, ConnectionConfig::default())
+            .with_startup_timeout(Duration::from_secs(2));
+
+        // Act
+        let result = provider.launch(request).await;
+
+        // Assert
+        let error = match result {
+            Ok(_) => panic!("synthetic process must exit before CDP"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            &error,
+            ChromiumLaunchError::Startup(ChromiumStartupError::ProcessExited { code: Some(1) })
+        ));
+        assert!(!error.to_string().contains("Browser logs:"));
+    }
+
+    #[cfg(all(unix, feature = "startup-logs"))]
+    #[tokio::test]
+    async fn opt_in_process_capture_drains_large_unterminated_output_with_fixed_memory() {
+        // Arrange
+        let chunk = "x".repeat(1024);
+        let script = format!(
+            "i=0; while [ $i -lt 1024 ]; do printf '%s' '{chunk}'; printf '%s' '{chunk}' >&2; i=$((i+1)); done; exit 1"
+        );
+        let spawner = CapturingTokioChromiumProcessSpawner;
+        let mut child = spawner
+            .spawn(Path::new("/bin/sh"), &["-c".into(), script.into()])
+            .expect("synthetic shell should start");
+
+        // Act
+        let status = tokio::time::timeout(Duration::from_secs(10), child.wait())
+            .await
+            .expect("bounded output capture must not deadlock")
+            .expect("synthetic shell should exit");
+        let logs = child
+            .recent_startup_logs()
+            .expect("opt-in process must expose diagnostics");
+
+        // Assert
+        assert_eq!(status.code(), Some(1));
+        assert!(logs.contains("[out]"));
+        assert!(logs.contains("[err]"));
+        assert!(logs.contains("[line truncated]"));
+        assert!(logs.len() < 4096);
+    }
+
+    #[cfg(all(unix, feature = "startup-logs"))]
+    #[tokio::test]
+    async fn dropping_unguarded_captured_child_keeps_its_output_pipes_drained() {
+        // Arrange
+        let tree = TestDirectory::new("detached-startup-logs");
+        let ready = tree.path().join("ready");
+        let written = tree.path().join("written");
+        let script = "while [ ! -e \"$1\" ]; do sleep 0.01; done; \
+            printf 'stdout after drop\\n' || exit 23; \
+            printf 'stderr after drop\\n' >&2 || exit 24; \
+            printf 'done' > \"$2\"";
+        let spawner = CapturingTokioChromiumProcessSpawner;
+        let mut child = spawner
+            .spawn(
+                Path::new("/bin/sh"),
+                &[
+                    "-c".into(),
+                    script.into(),
+                    "sh".into(),
+                    ready.as_os_str().to_os_string(),
+                    written.as_os_str().to_os_string(),
+                ],
+            )
+            .expect("synthetic shell should start");
+        child.set_kill_on_drop(false);
+
+        // Act
+        drop(child);
+        fs::write(&ready, b"go").expect("release signal should be written");
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !written.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("detached output drains should let the child write and exit");
+
+        // Assert
+        assert_eq!(
+            fs::read(&written).expect("completion marker should exist"),
+            b"done"
+        );
+    }
+
     #[test]
     fn explicit_executable_and_discovery_are_absolute_deduplicated_values() {
         // Arrange
@@ -2211,6 +2564,41 @@ mod tests {
             invalid,
             Err(ChromiumProfileError::InvalidMarker(_))
         ));
+    }
+
+    #[test]
+    fn persistent_profile_open_or_initialize_never_adopts_unmarked_state() {
+        // Arrange
+        let tree = TestDirectory::new("persistent-profile-open-or-initialize");
+        let empty_path = tree.directory("empty");
+        let marked_path = tree.directory("marked");
+        let unmarked_path = tree.directory("unmarked");
+        ChromiumPersistentProfile::initialize(&marked_path)
+            .expect("marked profile should initialize");
+        fs::write(marked_path.join("Default"), b"browser state")
+            .expect("marked state should be written");
+        fs::write(unmarked_path.join("Default"), b"browser state")
+            .expect("unmarked state should be written");
+
+        // Act
+        let initialized = ChromiumPersistentProfile::open_or_initialize(&empty_path);
+        let reopened = ChromiumPersistentProfile::open_or_initialize(&marked_path);
+        let rejected = ChromiumPersistentProfile::open_or_initialize(&unmarked_path);
+
+        // Assert
+        assert!(initialized.is_ok());
+        assert!(reopened.is_ok());
+        assert!(matches!(
+            rejected,
+            Err(ChromiumProfileError::ReadMarker { .. })
+        ));
+        assert!(
+            empty_path
+                .join(super::PERSISTENT_PROFILE_MARKER_FILE)
+                .exists()
+        );
+        assert!(marked_path.join("Default").exists());
+        assert!(unmarked_path.join("Default").exists());
     }
 
     #[test]

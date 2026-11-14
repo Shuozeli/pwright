@@ -5,11 +5,13 @@
 //! selects no navigation, Locator, client, runtime, provider, or browser.
 
 mod element_adoption;
+mod frame_owner_element;
 mod handle_evaluation;
 mod handle_operations;
 mod owner_frame;
 mod program;
 pub use owner_frame::CdpHandleOwnerFrameService;
+pub use frame_owner_element::CdpFrameOwnerElementService;
 pub use program::CdpHandleEvaluationProgram;
 
 pub use element_adoption::{

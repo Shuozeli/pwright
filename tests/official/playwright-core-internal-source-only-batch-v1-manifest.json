@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "core460-private-batch-library",
+      "role": "implementation-internal-source-only",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/unit",
+        "tests/library/events",
+        "tests/library/component-parser.spec.ts",
+        "tests/library/css-parser.spec.ts",
+        "tests/library/proxy-pattern.spec.ts",
+        "tests/library/locator-generator.spec.ts:514",
+        "tests/library/locator-generator.spec.ts:521",
+        "tests/library/locator-generator.spec.ts:528",
+        "tests/library/locator-generator.spec.ts:535",
+        "tests/library/locator-generator.spec.ts:553",
+        "tests/library/locator-generator.spec.ts:572",
+        "tests/library/locator-generator.spec.ts:584",
+        "tests/library/locator-generator.spec.ts:589",
+        "tests/library/locator-generator.spec.ts:615",
+        "tests/library/locator-generator.spec.ts:658"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "private-internal-batch-v1",
+      "upstreamSourceSetSha256": "d644bf46c87115333eece4fba6cbfde08ed5b92e066ae656f114e9e1195853d4",
+      "expectedInvocationIdsSha256": "61624bddc42a9ec9aa964d1921fbf2258c964f2b974b67edc289ab73620c6ab5",
+      "expectedTestsPerProject": 284,
+      "expectedFiles": 26,
+      "expectedProjectIds": ["chromium-library", "firefox-library", "webkit-library"]
+    },
+    {
+      "id": "core460-private-batch-bidi",
+      "role": "implementation-internal-source-only",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/unit",
+        "tests/library/events",
+        "tests/library/component-parser.spec.ts",
+        "tests/library/css-parser.spec.ts",
+        "tests/library/proxy-pattern.spec.ts",
+        "tests/library/locator-generator.spec.ts:514",
+        "tests/library/locator-generator.spec.ts:521",
+        "tests/library/locator-generator.spec.ts:528",
+        "tests/library/locator-generator.spec.ts:535",
+        "tests/library/locator-generator.spec.ts:553",
+        "tests/library/locator-generator.spec.ts:572",
+        "tests/library/locator-generator.spec.ts:584",
+        "tests/library/locator-generator.spec.ts:589",
+        "tests/library/locator-generator.spec.ts:615",
+        "tests/library/locator-generator.spec.ts:658"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "private-internal-batch-v1",
+      "upstreamSourceSetSha256": "d644bf46c87115333eece4fba6cbfde08ed5b92e066ae656f114e9e1195853d4",
+      "expectedInvocationIdsSha256": "b655e9f2a151fc888d065ee374b6e9869ab2fc69763fac728339c253b328bd19",
+      "expectedTestsPerProject": 284,
+      "expectedFiles": 26,
+      "expectedProjectIds": ["bidi-chrome-canary-library", "bidi-chrome-stable-library", "bidi-chromium-library", "moz-firefox-beta-library", "moz-firefox-library", "moz-firefox-nightly-library"]
+    }
+  ]
+}

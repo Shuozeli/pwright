@@ -45,7 +45,9 @@ pub struct EvaluationCodecLimits {
     source_bytes: usize,
     error_string_bytes: usize,
     value: EvaluationValueLimits,
-    binary_value: BinaryValueLimits,
+    input_value: EvaluationValueLimits,
+    command_binary_value: BinaryValueLimits,
+    result_binary_value: BinaryValueLimits,
 }
 
 impl EvaluationCodecLimits {
@@ -54,36 +56,31 @@ impl EvaluationCodecLimits {
         error_string_bytes: usize,
         value: EvaluationValueLimits,
     ) -> Result<Self, EvaluationCodecLimitError> {
-        let command_strings = source_bytes
-            .checked_add(value.max_string_bytes())
-            .ok_or(EvaluationCodecLimitError::CapacityOverflow)?;
-        let error_strings = error_string_bytes
-            .checked_mul(4)
-            .ok_or(EvaluationCodecLimitError::CapacityOverflow)?;
-        let string_bytes = command_strings.max(error_strings);
-        let items = value.max_entries();
-        let depth = value
-            .max_depth()
-            .checked_mul(2)
-            .and_then(|count| count.checked_add(16))
-            .ok_or(EvaluationCodecLimitError::CapacityOverflow)?;
-        let nodes = value
-            .max_nodes()
-            .checked_add(value.max_entries())
-            .and_then(|count| count.checked_add(16))
-            .ok_or(EvaluationCodecLimitError::CapacityOverflow)?;
+        let binary_value = binary_limits(source_bytes, error_string_bytes, value)?;
         Ok(Self {
             source_bytes,
             error_string_bytes,
             value,
-            binary_value: BinaryValueLimits::new(
-                string_bytes,
-                value.max_binary_bytes(),
-                items,
-                depth,
-                nodes,
-            ),
+            input_value: value,
+            command_binary_value: binary_value,
+            result_binary_value: binary_value,
         })
+    }
+
+    /// Raise only command-argument capacity; result decoding keeps the
+    /// original value and wire bounds.
+    pub fn with_input_value_limits(
+        mut self,
+        input_value: EvaluationValueLimits,
+    ) -> Result<Self, EvaluationCodecLimitError> {
+        self.command_binary_value =
+            binary_limits(self.source_bytes, self.error_string_bytes, input_value)?;
+        self.input_value = input_value;
+        Ok(self)
+    }
+
+    pub const fn input_value_limits(self) -> EvaluationValueLimits {
+        self.input_value
     }
 
     pub const fn source_bytes(self) -> usize {
@@ -97,6 +94,38 @@ impl EvaluationCodecLimits {
     pub const fn value(self) -> EvaluationValueLimits {
         self.value
     }
+}
+
+fn binary_limits(
+    source_bytes: usize,
+    error_string_bytes: usize,
+    value: EvaluationValueLimits,
+) -> Result<BinaryValueLimits, EvaluationCodecLimitError> {
+    let command_strings = source_bytes
+        .checked_add(value.max_string_bytes())
+        .ok_or(EvaluationCodecLimitError::CapacityOverflow)?;
+    let error_strings = error_string_bytes
+        .checked_mul(4)
+        .ok_or(EvaluationCodecLimitError::CapacityOverflow)?;
+    let string_bytes = command_strings.max(error_strings);
+    let items = value.max_entries();
+    let depth = value
+        .max_depth()
+        .checked_mul(2)
+        .and_then(|count| count.checked_add(16))
+        .ok_or(EvaluationCodecLimitError::CapacityOverflow)?;
+    let nodes = value
+        .max_nodes()
+        .checked_add(value.max_entries())
+        .and_then(|count| count.checked_add(16))
+        .ok_or(EvaluationCodecLimitError::CapacityOverflow)?;
+    Ok(BinaryValueLimits::new(
+        string_bytes,
+        value.max_binary_bytes(),
+        items,
+        depth,
+        nodes,
+    ))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -239,8 +268,8 @@ impl WireCodec<Command<EvaluateValue>> for EvaluationCodec {
             metadata: empty_metadata(),
             params: params_to_wire(command.params()),
         };
-        let payload =
-            encode_value(&wire, self.limits.binary_value).map_err(EvaluationCodecError::Encode)?;
+        let payload = encode_value(&wire, self.limits.command_binary_value)
+            .map_err(EvaluationCodecError::Encode)?;
         Ok(EncodedParts::new(
             FrameRoute::Command {
                 call_id: command.call_id(),
@@ -255,7 +284,7 @@ impl WireCodec<Command<EvaluateValue>> for EvaluationCodec {
     fn decode_frame(&self, frame: WireFrame) -> Result<Command<EvaluateValue>, Self::Error> {
         let (outer_call_id, outer_object_id) = command_route::<EvaluateValue>(&frame)?;
         ensure_no_attachments(&frame)?;
-        match decode_value::<PwrightEvaluation>(frame.payload(), self.limits.binary_value)
+        match decode_value::<PwrightEvaluation>(frame.payload(), self.limits.command_binary_value)
             .map_err(EvaluationCodecError::Decode)?
         {
             PwrightEvaluation::EvaluateValueCommand {
@@ -315,8 +344,8 @@ impl WireCodec<CommandResult<EvaluateValue>> for EvaluationCodec {
             call_id: result.call_id().get(),
             outcome,
         };
-        let payload =
-            encode_value(&wire, self.limits.binary_value).map_err(EvaluationCodecError::Encode)?;
+        let payload = encode_value(&wire, self.limits.result_binary_value)
+            .map_err(EvaluationCodecError::Encode)?;
         Ok(EncodedParts::new(
             FrameRoute::Result {
                 call_id: result.call_id(),
@@ -329,7 +358,7 @@ impl WireCodec<CommandResult<EvaluateValue>> for EvaluationCodec {
     fn decode_frame(&self, frame: WireFrame) -> Result<CommandResult<EvaluateValue>, Self::Error> {
         let outer_call_id = result_route(&frame)?;
         ensure_no_attachments(&frame)?;
-        match decode_value::<PwrightEvaluation>(frame.payload(), self.limits.binary_value)
+        match decode_value::<PwrightEvaluation>(frame.payload(), self.limits.result_binary_value)
             .map_err(EvaluationCodecError::Decode)?
         {
             PwrightEvaluation::EvaluateValueResult { call_id, outcome } => {
@@ -373,7 +402,7 @@ fn validate_params(
     }
     if let Some(argument) = params.argument() {
         argument
-            .validate(limits.value)
+            .validate(limits.input_value)
             .map_err(EvaluationCodecError::InvalidValue)?;
     }
     Ok(())
@@ -798,6 +827,74 @@ mod tests {
         assert_eq!(decoded.call_id(), CallId::new(7));
         assert_eq!(decoded.object_id(), ObjectId::new(4));
         assert_eq!(decoded.params(), command.params());
+    }
+
+    #[test]
+    fn selected_large_input_round_trips_a_two_megabyte_post_body() {
+        // Arrange
+        let output = EvaluationValueLimits::new(8, 64, 64, 256 * 1024, 1024).unwrap();
+        let input = EvaluationValueLimits::new(8, 64, 64, 3 * 1024 * 1024, 1024).unwrap();
+        let limits = EvaluationCodecLimits::new(32 * 1024, 4096, output)
+            .unwrap()
+            .with_input_value_limits(input)
+            .unwrap();
+        let protocol = WireProtocol::new(
+            EvaluationCodec::new(limits),
+            VersionPolicy::new(ProtocolVersion::new(1, 0), ProtocolVersion::new(1, 0)).unwrap(),
+            ProtocolVersion::new(1, 0),
+            FrameLimits::new(4 * 1024 * 1024, 0, 0, 4 * 1024 * 1024),
+        )
+        .unwrap();
+        let command = Command::<EvaluateValue>::new(
+            CallId::new(7),
+            ObjectId::new(4),
+            CallMetadata::default(),
+            EvaluateParams::function(
+                "body => body.length",
+                EvaluationValue::String("0".repeat(2 * 1024 * 1024)),
+            ),
+        );
+
+        // Act
+        let frame = protocol
+            .encode(&command)
+            .expect("large command should encode");
+        let decoded = protocol
+            .decode::<Command<EvaluateValue>>(frame)
+            .expect("large command should decode");
+
+        // Assert
+        assert_eq!(decoded.params(), command.params());
+        assert_eq!(
+            limits.input_value_limits().max_string_bytes(),
+            3 * 1024 * 1024
+        );
+        assert_eq!(limits.value().max_string_bytes(), 256 * 1024);
+    }
+
+    #[test]
+    fn selected_large_input_does_not_raise_result_string_limit() {
+        // Arrange
+        let output = EvaluationValueLimits::new(8, 64, 64, 256 * 1024, 1024).unwrap();
+        let input = EvaluationValueLimits::new(8, 64, 64, 3 * 1024 * 1024, 1024).unwrap();
+        let codec = EvaluationCodec::new(
+            EvaluationCodecLimits::new(32 * 1024, 4096, output)
+                .unwrap()
+                .with_input_value_limits(input)
+                .unwrap(),
+        );
+        let result = CommandResult::<EvaluateValue>::new(
+            CallId::new(8),
+            Ok(EvaluateResult::new(EvaluationValue::String(
+                "0".repeat(256 * 1024 + 1),
+            ))),
+        );
+
+        // Act
+        let error = codec.encode_parts(&result).unwrap_err();
+
+        // Assert
+        assert!(matches!(error, EvaluationCodecError::InvalidValue(_)));
     }
 
     #[test]

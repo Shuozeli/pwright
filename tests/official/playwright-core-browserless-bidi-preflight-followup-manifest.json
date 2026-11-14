@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "bidi-browserless-launchserver-invalid-channel-six-projects",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch-server.spec.ts:29"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-browserless-proxy-invalid-server-six-projects",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/proxy.spec.ts:23"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-browserless-chromium-invalid-args",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:40",
+        "tests/library/browsertype-launch.spec.ts:56"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chromium-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-browserless-chrome-canary-invalid-args",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:40",
+        "tests/library/browsertype-launch.spec.ts:56"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chrome-canary-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-browserless-chrome-stable-invalid-args",
+      "role": "browser-independent-official-subset",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": [
+        "tests/library/browsertype-launch.spec.ts:40",
+        "tests/library/browsertype-launch.spec.ts:56"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chrome-stable-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    }
+  ]
+}

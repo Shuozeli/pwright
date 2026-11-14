@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "ciPlatforms": [
+      "linux",
+      "darwin",
+      "win32"
+    ],
+    "ciPythonVersions": [
+      "3.9",
+      "3.10",
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "stableChannels": [
+      "chrome",
+      "msedge"
+    ],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/async/utils.py": "ee618a20d789a28f953ba23a2c24249f3b21f7bd00b1a2d2435aa75ce9b0b478",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/async/test_page_evaluate.py": "888ed9c8e1a2e328051c542f885103d40c570765d08464be24246b6e5bdcf646"
+  },
+  "cases": [
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_accept_element_handle_as_an_argument", "capabilities": ["page.evaluate", "handle.argument", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_accept_none_as_one_of_multiple_parameters", "capabilities": ["page.evaluate", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_accept_string", "capabilities": ["page.evaluate", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_evaluate_date", "capabilities": ["page.evaluate", "serialization.date", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_evaluate_exception", "capabilities": ["page.evaluate", "serialization.error", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_jsonvalue_date", "capabilities": ["page.evaluate", "serialization.date", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_jsonvalue_url", "capabilities": ["page.evaluate", "serialization.url", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_properly_serialize_none_arguments", "capabilities": ["page.evaluate", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_reject_promise_with_exception", "capabilities": ["page.evaluate", "serialization.error", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_return_complex_objects", "capabilities": ["page.evaluate", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_return_none_for_null", "capabilities": ["page.evaluate", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_return_undefined_for_objects_with_symbols", "capabilities": ["page.evaluate", "serialization.symbol", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_roundtrip_date", "capabilities": ["page.evaluate", "serialization.date", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_roundtrip_date_with_tzinfo", "capabilities": ["page.evaluate", "serialization.date", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_roundtrip_date_without_tzinfo", "capabilities": ["page.evaluate", "serialization.date", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_roundtrip_unserializable_values", "capabilities": ["page.evaluate", "serialization.special-numbers", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_should_work_for_circular_object", "capabilities": ["page.evaluate", "serialization.cycles", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_support_thrown_numbers", "capabilities": ["page.evaluate", "serialization.error", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_support_thrown_strings", "capabilities": ["page.evaluate", "serialization.error", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_throw_if_underlying_element_was_disposed", "capabilities": ["page.evaluate", "handle.argument", "handle.dispose", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_throw_when_evaluation_triggers_reload", "capabilities": ["page.evaluate", "page.reload", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_transfer_arrays", "capabilities": ["page.evaluate", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_transfer_bigint", "capabilities": ["page.evaluate", "serialization.bigint", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_transfer_infinity", "capabilities": ["page.evaluate", "serialization.special-numbers", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_transfer_nan", "capabilities": ["page.evaluate", "serialization.special-numbers", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_transfer_neg_infinity", "capabilities": ["page.evaluate", "serialization.special-numbers", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_transfer_neg_zero", "capabilities": ["page.evaluate", "serialization.special-numbers", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_transfer_typed_arrays", "capabilities": ["page.evaluate", "serialization.typed-arrays", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_work", "capabilities": ["page.evaluate", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_work_with_exposed_function", "capabilities": ["page.evaluate", "page.expose-function", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_evaluate_work_with_unicode_chars", "capabilities": ["page.evaluate", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_should_alias_window_document_and_node", "capabilities": ["page.evaluate", "serialization.dom-objects", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_should_evaluate_url", "capabilities": ["page.evaluate", "serialization.url", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_should_pass_exception_argument", "capabilities": ["page.evaluate", "serialization.error", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_should_roundtrip_complex_url", "capabilities": ["page.evaluate", "serialization.url", "async-api"] },
+    { "id": "tests/async/test_page_evaluate.py::test_should_roundtrip_url", "capabilities": ["page.evaluate", "serialization.url", "async-api"] }
+  ]
+}

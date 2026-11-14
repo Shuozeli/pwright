@@ -7,11 +7,20 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = []
+touchscreen-input = ["dep:pwright-cap-touchscreen"]
+retained-element-click = []
+fill-navigation-commit = ["pwright-cdp/fill-navigation-commit"]
+select-option-navigation-commit = ["pwright-cdp/runtime-binding"]
+select-option-timeout-progress = ["pwright-cap-locator/select-option-timeout-progress"]
+
 [dependencies]
 pwright-backend-cdp-common = { workspace = true }
 pwright-backend-cdp-input = { workspace = true }
 pwright-backend-cdp-selector-runtime = { workspace = true }
 pwright-cap-locator = { workspace = true }
+pwright-cap-touchscreen = { workspace = true, optional = true }
 pwright-cdp = { workspace = true }
 pwright-core = { workspace = true }
 serde_json = { workspace = true }

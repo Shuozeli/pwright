@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-server-connect-version-mismatch-chromium-url-v1",
+      "role": "browser-independent-runserver-url-only-diagnostic",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": ["tests/library/browsertype-connect.spec.ts:1046"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "chromium-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "sourceFileSha256": "9de4d9c8c71b8509887c81220f2eb0042e89e146c65d0311b020d191814ed2bc",
+      "urlOnlyPreload": {
+        "path": "tests/official/playwright-core-runserver-url-only-v1-preload.cjs",
+        "sha256": "f8ad0fcc3aa6fdd606c81bb6b6f72d5e645fa312eb4fdeef63b80728cdc7f75f"
+      }
+    }
+  ]
+}

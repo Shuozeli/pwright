@@ -68,6 +68,7 @@ pub use all_capabilities_recipe::{
 pub use attach_factory::{ChromiumAttachFactory, ChromiumAttachFactoryError};
 pub use frame_world_access::{
     ChromiumFrameWorldAccess, ChromiumFrameWorldAccessProfile, ChromiumFrameWorldSnapshot,
+    ChromiumMainWorldSnapshot,
     FrameWorldAccessError,
 };
 pub use handle_operations::{
@@ -124,8 +125,11 @@ pub use pwright_composition_chromium_page_events::{
 mod frame_event_observer;
 pub use frame_event_observer::{ChromiumFrameEventObserver, FrameObservationResult};
 #[cfg(feature = "frame-lifecycle")]
-pub mod frame_lifecycle;
+pub mod frame_lifecycle {
+    pub use pwright_plugin_chromium_frame_lifecycle::*;
+}
 pub use topology_events::{
+    ChromiumAuxiliarySessionParent, ChromiumAuxiliarySessionParentError,
     ChromiumCdpLivenessBackend, ChromiumCdpLivenessBackendError, ChromiumCommittedFrameOwnership,
     ChromiumContextMembership, ChromiumEventfulCdpLivenessBackend,
     ChromiumEventfulCdpLivenessBackendError, ChromiumFrameOwnership, ChromiumFrameOwnershipView,
@@ -155,11 +159,12 @@ use std::sync::{Arc, Weak};
 use std::sync::{Mutex, MutexGuard};
 
 use pwright_backend_cdp::{
-    CdpBrowserContextCloseService, CdpBrowserContextCreationService, CdpContextCreationLimits,
-    CdpContextOwnership, CdpDomContentProductionProfile, CdpDomContentService,
-    CdpDomContentServiceFactory, CdpElementHandleAdoptionBatchService,
-    CdpElementHandleAdoptionProductionProfile, CdpEvaluatedHandle, CdpEvaluationProductionProfile,
-    CdpEvaluationService, CdpEvaluationServiceFactory, CdpFrameAttachment, CdpFrameClipTranslator,
+    CdpBrowserContextCloseService, CdpBrowserContextCreationOptions,
+    CdpBrowserContextCreationService, CdpContextCreationLimits, CdpContextOwnership,
+    CdpDomContentProductionProfile, CdpDomContentService, CdpDomContentServiceFactory,
+    CdpElementHandleAdoptionBatchService, CdpElementHandleAdoptionProductionProfile,
+    CdpEvaluatedHandle, CdpEvaluationProductionProfile, CdpEvaluationService,
+    CdpEvaluationServiceFactory, CdpFrameAttachment, CdpFrameClipTranslator,
     CdpHandleEvaluationLimits, CdpHandleEvaluationRequest, CdpHandleEvaluationService,
     CdpHandlePropertyLimits, CdpInputCoordinator, CdpLocatorProductionProfile,
     CdpLocatorScreenshotResolver, CdpLocatorScreenshotService, CdpLocatorService,
@@ -208,6 +213,8 @@ use pwright_cap_handle_lifecycle::{
     HANDLE_LIFECYCLE_CAPABILITY_ID, HandleDispose, HandleLifecycleCapability,
     HandleLifecycleErrorDetails,
 };
+#[cfg(feature = "history-navigation")]
+use pwright_cap_history_navigation::{GoBack, GoForward, HistoryNavigationCapability};
 use pwright_cap_locator::v2 as locator_v2;
 use pwright_cap_locator::{
     AllInnerTexts, AllInnerTextsParams, AllInnerTextsResult, AllTextContents,
@@ -246,6 +253,8 @@ use pwright_cap_page_events::{
 use pwright_cap_page_lifecycle::{
     PageClose, PageLifecycleCapability, PageLifecycleErrorDetails, PageRunBeforeUnload,
 };
+#[cfg(feature = "touchscreen-input")]
+use pwright_cap_touchscreen::SelectorTapParams;
 use pwright_cdp::connection::CdpError;
 use pwright_cdp::{
     CdpClient, CdpConnection, CdpConnectionProductionProfile, CdpEvent, CdpEventReceiver,
@@ -387,6 +396,7 @@ pub struct ChromiumCapabilitySelection {
     evaluation: bool,
     handle_evaluation: bool,
     handle_lifecycle: bool,
+    history_navigation: bool,
     navigation: bool,
     network_events: bool,
     locator: bool,
@@ -407,6 +417,7 @@ impl ChromiumCapabilitySelection {
             evaluation: false,
             handle_evaluation: false,
             handle_lifecycle: false,
+            history_navigation: false,
             navigation: false,
             network_events: false,
             locator: false,
@@ -494,6 +505,10 @@ impl ChromiumCapabilitySelection {
         self.navigation
     }
 
+    pub const fn history_navigation(self) -> bool {
+        self.history_navigation
+    }
+
     pub const fn network_events(self) -> bool {
         self.network_events
     }
@@ -561,6 +576,7 @@ impl ChromiumCapabilitySelection {
             && !self.evaluation
             && !self.handle_evaluation
             && !self.handle_lifecycle
+            && !self.history_navigation
             && !self.navigation
             && !self.network_events
             && !self.locator
@@ -579,6 +595,7 @@ impl ChromiumCapabilitySelection {
             + self.evaluation as usize
             + self.handle_evaluation as usize
             + self.handle_lifecycle as usize
+            + self.history_navigation as usize
             + self.navigation as usize
             + self.network_events as usize
             + self.locator as usize
@@ -1596,12 +1613,14 @@ const NETWORK_SUBSCRIPTION_CONTEXT_BOOKKEEPING_BYTES: usize = 24;
 const NETWORK_CONTEXT_TRANSITION_PAGE_BOOKKEEPING_BYTES: usize = 24;
 const NETWORK_PAGE_REGISTRATION_BOOKKEEPING_BYTES: usize = 64;
 const NETWORK_DRIVER_PAGE_CONTEXT_BYTES: usize = std::mem::size_of::<ObjectId>();
+const NETWORK_RELATED_SESSION_BOOKKEEPING_BYTES: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChromiumNetworkEventsProductionProfile {
     adapter: CdpNetworkEventProductionProfile,
     max_page_lanes: usize,
     max_browser_contexts: usize,
+    max_related_sessions: usize,
     subscription_retained_bytes: usize,
     subscription_requirements: ResourceRequirements,
     requirements: ResourceRequirements,
@@ -1620,6 +1639,20 @@ impl ChromiumNetworkEventsProductionProfile {
         max_page_lanes: usize,
         max_browser_contexts: usize,
     ) -> Result<Self, ChromiumCompositionError> {
+        Self::new_with_context_and_related_session_limit(
+            adapter,
+            max_page_lanes,
+            max_browser_contexts,
+            0,
+        )
+    }
+
+    pub fn new_with_context_and_related_session_limit(
+        adapter: CdpNetworkEventProductionProfile,
+        max_page_lanes: usize,
+        max_browser_contexts: usize,
+        max_related_sessions: usize,
+    ) -> Result<Self, ChromiumCompositionError> {
         if max_page_lanes == 0 {
             return Err(ChromiumCompositionError::InvalidNetworkEventsSetup(
                 "network events require at least one Page lane".to_owned(),
@@ -1628,6 +1661,11 @@ impl ChromiumNetworkEventsProductionProfile {
         if max_browser_contexts == 0 {
             return Err(ChromiumCompositionError::InvalidNetworkEventsSetup(
                 "network events require at least one BrowserContext slot".to_owned(),
+            ));
+        }
+        if max_related_sessions != 0 && adapter.limits().native_scope_bytes == 0 {
+            return Err(ChromiumCompositionError::InvalidNetworkEventsSetup(
+                "related network sessions require a non-zero native scope byte limit".to_owned(),
             ));
         }
         let page_retained_bytes = adapter
@@ -1662,6 +1700,17 @@ impl ChromiumNetworkEventsProductionProfile {
                     })
                     .and_then(|registration| bytes.checked_add(registration))
             })
+            .and_then(|bytes| {
+                adapter
+                    .limits()
+                    .native_scope_bytes
+                    .checked_mul(2)
+                    .and_then(|native_ids| {
+                        native_ids.checked_add(NETWORK_RELATED_SESSION_BOOKKEEPING_BYTES)
+                    })
+                    .and_then(|per_session| per_session.checked_mul(max_related_sessions))
+                    .and_then(|related| bytes.checked_add(related))
+            })
             .ok_or_else(|| {
                 ChromiumCompositionError::InvalidNetworkEventsSetup(
                     "network subscription Context registry size overflows usize".to_owned(),
@@ -1687,6 +1736,7 @@ impl ChromiumNetworkEventsProductionProfile {
             adapter,
             max_page_lanes,
             max_browser_contexts,
+            max_related_sessions,
             subscription_retained_bytes,
             subscription_requirements,
             requirements,
@@ -1703,6 +1753,10 @@ impl ChromiumNetworkEventsProductionProfile {
 
     pub const fn max_browser_contexts(self) -> usize {
         self.max_browser_contexts
+    }
+
+    pub const fn max_related_sessions(self) -> usize {
+        self.max_related_sessions
     }
 
     pub const fn subscription_retained_bytes(self) -> usize {
@@ -2041,6 +2095,7 @@ impl ChromiumAttachProductionProfile {
             evaluation: self.evaluation.is_some(),
             handle_evaluation: self.handle_evaluation.is_some(),
             handle_lifecycle: self.handle_lifecycle.is_some(),
+            history_navigation: cfg!(feature = "history-navigation") && self.navigation.is_some(),
             navigation: self.navigation.is_some(),
             network_events: self.network_events.is_some(),
             locator: self.locator.is_some(),
@@ -3504,6 +3559,8 @@ struct CdpFrameContextEntry {
     client: Arc<dyn CdpClient>,
     execution_context_id: i64,
     unique_context_id: Arc<str>,
+    #[cfg(feature = "select-option-navigation-commit")]
+    select_option_commit_frame_id: Option<Arc<str>>,
     locator: Option<Arc<CdpLocatorService>>,
     dom_content: Option<Arc<CdpDomContentService>>,
     page_crashed: bool,
@@ -3526,6 +3583,7 @@ struct CdpLocatorScreenshotContextEntry {
 #[derive(Default)]
 struct CdpServiceRoutes {
     epoch: Option<pwright_backend_cdp::ConnectionEpoch>,
+    network_reconnect_in_progress: bool,
     frame_navigation: Option<frame_navigation::Table>,
     native_world_retirement: Option<Arc<native_world_retirement::Registry>>,
     browser_contexts: BTreeSet<ObjectId>,
@@ -4072,16 +4130,18 @@ impl ChromiumNetworkSubscriptionRegistry {
         Arc::ptr_eq(&self.shared, &other.shared)
     }
 
-    fn retain_current_routes(&self, routes: &CdpServiceRoutes) {
+    fn retain_current_routes(&self, routes: &CdpServiceRoutes, reconnect_in_progress: bool) {
         let Ok(mut state) = self.shared.state.lock() else {
             return;
         };
-        state.lanes.retain(|page, lane| {
-            routes
-                .pages
-                .get(page)
-                .is_some_and(|route| route.session_id == lane.session_id)
-        });
+        if !reconnect_in_progress {
+            state.lanes.retain(|page, lane| {
+                routes
+                    .pages
+                    .get(page)
+                    .is_some_and(|route| route.session_id == lane.session_id)
+            });
+        }
         state
             .contexts
             .retain(|browser_context, _| routes.browser_contexts.contains(browser_context));
@@ -4790,7 +4850,8 @@ impl PreparedCdpPageRoutes<'_> {
             current.replace(next);
         }
         if let Some(subscriptions) = &self.network_subscriptions {
-            subscriptions.retain_current_routes(&self.next);
+            subscriptions
+                .retain_current_routes(&self.next, self.next.network_reconnect_in_progress);
         }
         *self.current = self.next;
         drop(self.current);
@@ -5009,6 +5070,7 @@ impl CdpPageServices {
             .map_err(|_| CdpPageRouteError::StatePoisoned)?;
         let mut next = CdpServiceRoutes {
             epoch: Some(topology.epoch()),
+            network_reconnect_in_progress: topology.reconnect_in_progress(),
             native_world_retirement: current.native_world_retirement.clone(),
             ..CdpServiceRoutes::default()
         };
@@ -5431,6 +5493,18 @@ impl CdpPageServices {
                 } else {
                     None
                 };
+                #[cfg(feature = "select-option-navigation-commit")]
+                let select_option_frame_id = if self.locator_uses_utility_world {
+                    let frame_id = topology.frame_native_id(route.object_id()).ok_or(
+                        CdpPageRouteError::FramePageUnavailable {
+                            frame_object_id: route.object_id(),
+                        },
+                    )?;
+                    validate_route_id("CDP Frame ID", frame_id, max_native_id_bytes)?;
+                    Some(frame_id)
+                } else {
+                    None
+                };
                 let entry = current
                     .frame_contexts
                     .get(&route.object_id())
@@ -5439,6 +5513,17 @@ impl CdpPageServices {
                             && entry.session_id == route.session_id()
                             && entry.execution_context_id == route.execution_context_id()
                             && entry.unique_context_id.as_ref() == route.unique_context_id()
+                            && {
+                                #[cfg(feature = "select-option-navigation-commit")]
+                                {
+                                    entry.select_option_commit_frame_id.as_deref()
+                                        == select_option_frame_id
+                                }
+                                #[cfg(not(feature = "select-option-navigation-commit"))]
+                                {
+                                    true
+                                }
+                            }
                             && entry.locator.is_some() == self.locator.is_some()
                             && entry.dom_content.is_some() == self.dom_content.is_some()
                             && entry.page_crashed == page_crashed
@@ -5458,6 +5543,8 @@ impl CdpPageServices {
                         session_id.shrink_to_fit();
                         unique_context_id.shrink_to_fit();
                         let unique_context_id: Arc<str> = Arc::from(unique_context_id);
+                        #[cfg(feature = "select-option-navigation-commit")]
+                        let select_option_commit_frame_id = select_option_frame_id.map(Arc::from);
                         let client = next
                             .pages
                             .values()
@@ -5470,16 +5557,32 @@ impl CdpPageServices {
                                     .create_session(session_id.clone(), target_id.clone())
                             });
                         let locator = self.locator.as_ref().map(|factory| {
-                            Arc::new(
-                                factory.bind_shared_unique_context_with_input(
-                                    Arc::clone(&client),
-                                    Arc::clone(&unique_context_id),
-                                    input
-                                        .as_ref()
-                                        .expect("selected locator owns Frame input")
-                                        .clone(),
-                                ),
-                            )
+                            let locator = factory.bind_shared_unique_context_with_input(
+                                Arc::clone(&client),
+                                Arc::clone(&unique_context_id),
+                                input
+                                    .as_ref()
+                                    .expect("selected locator owns Frame input")
+                                    .clone(),
+                            );
+                            #[cfg(feature = "fill-navigation-commit")]
+                            let locator = if self.locator_uses_utility_world {
+                                locator.with_fill_commit_execution_context(
+                                    route.execution_context_id(),
+                                )
+                            } else {
+                                locator
+                            };
+                            #[cfg(feature = "select-option-navigation-commit")]
+                            let locator = if let Some(frame_id) = &select_option_commit_frame_id {
+                                locator.with_select_option_commit_route(
+                                    route.execution_context_id(),
+                                    Arc::clone(frame_id),
+                                )
+                            } else {
+                                locator
+                            };
+                            Arc::new(locator)
                         });
                         let dom_content = self.dom_content.as_ref().map(|factory| {
                             Arc::new(factory.bind_shared_unique_context(
@@ -5495,6 +5598,8 @@ impl CdpPageServices {
                             locator,
                             dom_content,
                             unique_context_id,
+                            #[cfg(feature = "select-option-navigation-commit")]
+                            select_option_commit_frame_id,
                             page_crashed,
                         })
                     });
@@ -5506,6 +5611,16 @@ impl CdpPageServices {
                         u64::try_from(entry.unique_context_id.len()).unwrap_or(u64::MAX),
                     )
                     .saturating_add(std::mem::size_of::<i64>() as u64);
+                #[cfg(feature = "select-option-navigation-commit")]
+                let entry_bytes = entry_bytes.saturating_add(
+                    u64::try_from(
+                        entry
+                            .select_option_commit_frame_id
+                            .as_ref()
+                            .map_or(0, |frame_id| frame_id.len()),
+                    )
+                    .unwrap_or(u64::MAX),
+                );
                 frame_context_retained_bytes =
                     frame_context_retained_bytes.saturating_add(entry_bytes);
                 next.frame_contexts.insert(route.object_id(), entry);
@@ -5526,7 +5641,6 @@ impl CdpPageServices {
             } else {
                 topology.frame_execution_routes().collect::<Vec<_>>()
             };
-            let mut retained_bytes = 0_u64;
             for route in routes {
                 if next.locator_screenshot_contexts.len() >= route_profile.max_context_routes() {
                     return Err(CdpPageRouteError::LocatorCapacityExceeded {
@@ -5632,15 +5746,6 @@ impl CdpPageServices {
                             page_crashed,
                         })
                     });
-                let entry_bytes = u64::try_from(entry.target_id.capacity())
-                    .unwrap_or(u64::MAX)
-                    .saturating_add(u64::try_from(entry.session_id.capacity()).unwrap_or(u64::MAX))
-                    .saturating_mul(2)
-                    .saturating_add(u64::try_from(entry.frame_id.len()).unwrap_or(u64::MAX))
-                    .saturating_add(
-                        u64::try_from(entry.unique_context_id.len()).unwrap_or(u64::MAX),
-                    );
-                retained_bytes = retained_bytes.saturating_add(entry_bytes);
                 next.locator_screenshot_contexts
                     .insert(route.object_id(), entry);
             }
@@ -5683,22 +5788,34 @@ impl CdpPageServices {
                     .locator_screenshot_contexts
                     .iter()
                     .find(|(_, entry)| entry.clip_translator.is_none())
-                    .map(|(object_id, entry)| {
-                        (
-                            *object_id,
-                            entry
-                                .parent_frame_object_id
-                                .expect("only child Frames need clip translation"),
-                        )
-                    });
-                if let Some((frame_object_id, parent_frame_object_id)) = unresolved {
-                    return Err(CdpPageRouteError::LocatorScreenshotParentUnavailable {
-                        frame_object_id,
-                        parent_frame_object_id,
-                    });
+                    .map(|(object_id, _)| *object_id);
+                if let Some(frame_object_id) = unresolved {
+                    // CDP can publish a child execution world before the parent
+                    // execution world that is required to translate screenshot
+                    // geometry. Keep the rest of the route snapshot usable and
+                    // let the next topology event publish this route once its
+                    // parent chain is complete.
+                    next.locator_screenshot_contexts.remove(&frame_object_id);
+                    continue;
                 }
                 break;
             }
+            let retained_bytes =
+                next.locator_screenshot_contexts
+                    .values()
+                    .fold(0_u64, |retained_bytes, entry| {
+                        let entry_bytes = u64::try_from(entry.target_id.capacity())
+                            .unwrap_or(u64::MAX)
+                            .saturating_add(
+                                u64::try_from(entry.session_id.capacity()).unwrap_or(u64::MAX),
+                            )
+                            .saturating_mul(2)
+                            .saturating_add(u64::try_from(entry.frame_id.len()).unwrap_or(u64::MAX))
+                            .saturating_add(
+                                u64::try_from(entry.unique_context_id.len()).unwrap_or(u64::MAX),
+                            );
+                        retained_bytes.saturating_add(entry_bytes)
+                    });
             if retained_bytes > route_profile.maximum_route_retained_bytes() {
                 return Err(CdpPageRouteError::LocatorRetainedBytesInvariant {
                     actual: retained_bytes,
@@ -6526,6 +6643,38 @@ fn locator_route_state_error(error: CdpPageRouteError) -> OperationError<Locator
     )
 }
 
+#[cfg(feature = "touchscreen-input")]
+impl CdpPageServices {
+    /// Optional Node-facing leaf for Playwright-shaped selector tap. It reuses
+    /// the installed Frame locator route and Page-owned input coordinator.
+    pub async fn selector_tap_for(
+        &self,
+        object_id: ObjectId,
+        params: SelectorTapParams,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        let service = self
+            .ready_locator_route(object_id)
+            .await
+            .map_err(locator_route_state_error)?
+            .ok_or_else(|| missing_locator_route(object_id))?;
+        service.selector_tap(params, timeout).await
+    }
+
+    pub async fn cancel_selector_tap_for(
+        &self,
+        object_id: ObjectId,
+        trial: bool,
+    ) -> Result<(), OperationError<LocatorErrorDetails>> {
+        let service = self
+            .ready_locator_route(object_id)
+            .await
+            .map_err(locator_route_state_error)?
+            .ok_or_else(|| missing_locator_route(object_id))?;
+        service.cancel_selector_tap(trial).await
+    }
+}
+
 impl TargetedService<BeginNavigationParams> for CdpPageServices {
     type Response = BeginNavigationResult;
     type Error = OperationError<NavigationErrorDetails>;
@@ -6578,6 +6727,10 @@ impl TargetedService<GotoParams> for CdpPageServices {
     }
 }
 
+#[cfg(feature = "history-navigation")]
+mod navigation_history;
+#[cfg(feature = "history-navigation")]
+use navigation_history::history_navigation_route_state_error;
 mod navigation_reload;
 
 impl TargetedService<ClickParams> for CdpPageServices {
@@ -6763,6 +6916,20 @@ impl_page_cancellation!(
     CdpNavigationService,
     navigation_route_state_error
 );
+#[cfg(feature = "history-navigation")]
+impl_page_cancellation!(
+    GoBack,
+    navigation,
+    CdpNavigationService,
+    history_navigation_route_state_error
+);
+#[cfg(feature = "history-navigation")]
+impl_page_cancellation!(
+    GoForward,
+    navigation,
+    CdpNavigationService,
+    history_navigation_route_state_error
+);
 
 macro_rules! impl_locator_cancellation {
     ($command:ty) => {
@@ -6800,6 +6967,21 @@ macro_rules! impl_locator_cancellation {
                     )
                     .await
                 })
+            }
+
+            fn terminal_error_after_cancel(
+                &self,
+                context: OperationContext,
+                reason: CancellationReason,
+                timeout: Option<std::time::Duration>,
+            ) -> Option<OperationError<<$command as pwright_core::CommandSpec>::ErrorDetails>> {
+                let service = self.locator_route(context.object_id()).ok()??;
+                <CdpLocatorService as CommandCancellation<$command>>::terminal_error_after_cancel(
+                    service.as_ref(),
+                    context,
+                    reason,
+                    timeout,
+                )
             }
         }
     };
@@ -8004,10 +8186,11 @@ impl ChromiumBrowserNewContextCommandService {
         }
     }
 
-    async fn create(
+    async fn create_with_options(
         &self,
         target: ObjectId,
         metadata: CallMetadata,
+        options: CdpBrowserContextCreationOptions,
     ) -> Result<BrowserContextInitializer, OperationError<ContextCreationErrorDetails>> {
         if metadata != CallMetadata::default() {
             return Err(OperationError::new(
@@ -8053,7 +8236,7 @@ impl ChromiumBrowserNewContextCommandService {
                 BROWSER_CONTEXT_OBJECT_KIND.tag,
             )
             .map_err(map_runtime_context_creation_error)?;
-        let created = self.backend.call(()).await?;
+        let created = self.backend.call(options).await?;
         let native_id = created.browser_context_id();
         let publication = publish_created_context(
             &self.topology,
@@ -8087,7 +8270,13 @@ impl Service<Command<BrowserNewContext>> for ChromiumBrowserNewContextCommandSer
     fn call(&self, command: Command<BrowserNewContext>) -> Self::Future<'_> {
         let (call_id, object_id, metadata, ()) = command.into_parts();
         Box::pin(async move {
-            let outcome = self.create(object_id, metadata).await;
+            let outcome = self
+                .create_with_options(
+                    object_id,
+                    metadata,
+                    CdpBrowserContextCreationOptions::default(),
+                )
+                .await;
             Ok(CommandResult::new(call_id, outcome))
         })
     }
@@ -8213,7 +8402,9 @@ impl ChromiumBrowserContextNewPageCommandService {
                     page_object_id,
                     context_object_id,
                     created.session_id().to_owned(),
+                    vec![created.main_frame_id().to_owned()],
                     client,
+                    false,
                 )
                 .await
             {
@@ -10067,6 +10258,49 @@ impl<Inner, Continuation> ContinuableBrowserNewContextCommandService<Inner, Cont
     }
 }
 
+impl<Continuation>
+    ContinuableBrowserNewContextCommandService<
+        ChromiumBrowserNewContextCommandService,
+        Continuation,
+    >
+where
+    Continuation: ReservedCleanupExecutor,
+{
+    /// Execute an attachment-local Chromium creation with typed CDP options
+    /// while preserving the same bounded abandoned-future continuation as the
+    /// portable v1 no-options command.
+    pub fn call_with_cdp_options(
+        &self,
+        call_id: pwright_core::CallId,
+        target: ObjectId,
+        options: CdpBrowserContextCreationOptions,
+    ) -> ContinuableContextCreationFuture<Continuation::Reservation> {
+        let reservation = match self.continuation.try_reserve() {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                return ContinuableContextCreationFuture {
+                    inner: Some(Box::pin(std::future::ready(Ok(
+                        context_creation_continuation_failure(call_id, error),
+                    )))),
+                    reservation: None,
+                    started: false,
+                };
+            }
+        };
+        let service = Arc::clone(&self.service);
+        ContinuableContextCreationFuture {
+            inner: Some(Box::pin(async move {
+                let outcome = service
+                    .create_with_options(target, CallMetadata::default(), options)
+                    .await;
+                Ok(CommandResult::new(call_id, outcome))
+            })),
+            reservation: Some(reservation),
+            started: false,
+        }
+    }
+}
+
 impl<Inner, Continuation> Service<Command<BrowserNewContext>>
     for ContinuableBrowserNewContextCommandService<Inner, Continuation>
 where
@@ -11527,6 +11761,8 @@ impl PreparedChromiumAttach {
         }
         if profile.navigation.is_some() {
             registry.register::<NavigationCapability>()?;
+            #[cfg(feature = "history-navigation")]
+            registry.register::<HistoryNavigationCapability>()?;
         }
         if profile.network_events.is_some() {
             registry.register::<NetworkEventsCapability>()?;
@@ -11596,6 +11832,10 @@ impl PreparedChromiumAttach {
             inventory.register::<BeginNavigation>()?;
             inventory.register::<Goto>()?;
             inventory.register::<pwright_cap_navigation::Reload>()?;
+            #[cfg(feature = "history-navigation")]
+            inventory.register::<GoBack>()?;
+            #[cfg(feature = "history-navigation")]
+            inventory.register::<GoForward>()?;
         }
         if profile.network_events.is_some() {
             inventory.register_event::<NetworkRequest>()?;
@@ -13088,6 +13328,25 @@ impl PreparedChromiumAttach {
         self.bind_connection(connection, browser_object_id, epoch)
     }
 
+    /// Attach with bounded headers on the native WebSocket handshake.
+    #[cfg(feature = "cdp-handshake-headers")]
+    pub async fn attach_with_headers(
+        self,
+        endpoint: CdpWebSocketEndpoint,
+        browser_object_id: ObjectId,
+        epoch: pwright_backend_cdp::ConnectionEpoch,
+        headers: &pwright_cdp::CdpHandshakeHeaders,
+    ) -> Result<AttachedChromiumComposition, ChromiumAttachError> {
+        let request = CdpAttachRequest::new(endpoint, self.profile.connection.config().clone());
+        let connection = self
+            .provider
+            .attach_with_headers(request, headers)
+            .await
+            .map_err(ChromiumAttachError::Connection)?
+            .into_connection();
+        self.bind_connection(connection, browser_object_id, epoch)
+    }
+
     /// Binds a CDP connection created by another production provider, such as
     /// the optional Chromium launcher, to this exact prepared ledger and
     /// object namespace. The proof is consumed and rejected unless its
@@ -13253,13 +13512,20 @@ struct ChromiumNetworkEventDriverShared {
     adapter_profile: CdpNetworkEventProductionProfile,
     resources: ProductionResourceLedger,
     max_page_lanes: usize,
+    max_related_sessions: usize,
 }
 
 struct ChromiumNetworkEventDriverState {
     adapters: BTreeMap<ObjectId, ChromiumNetworkPageAdapter>,
+    related_sessions: BTreeMap<Box<str>, ChromiumRelatedNetworkSession>,
     pending_page_registration: Option<ChromiumPendingNetworkPageRegistration>,
     pending_page_replacement: Option<ChromiumPendingNetworkPageReplacement>,
     unpublished_batch: Option<ObjectId>,
+}
+
+struct ChromiumRelatedNetworkSession {
+    page: ObjectId,
+    parent_session_id: Box<str>,
 }
 
 struct ChromiumNetworkPageAdapter {
@@ -13283,12 +13549,23 @@ impl ChromiumNetworkPageAdapter {
         self.adapter.map_event(event)
     }
 
+    fn map_related_session_event(
+        &mut self,
+        event: &CdpEvent,
+    ) -> Result<CdpNetworkEventBatch, CdpNetworkEventError> {
+        self.adapter.map_related_session_event(event)
+    }
+
     fn active_request_cleanup(&self) -> Vec<ControlMessage> {
         self.adapter.active_request_cleanup()
     }
 
     fn drain_active(&mut self) -> Vec<ControlMessage> {
         self.adapter.drain_active()
+    }
+
+    fn drain_related_session(&mut self, session_id: &str) -> Vec<ControlMessage> {
+        self.adapter.drain_related_session(session_id)
     }
 
     fn active_request_count(&self) -> usize {
@@ -13330,6 +13607,16 @@ pub enum ChromiumNetworkEventDriverError {
     PageRoutes(CdpPageRouteError),
     PageLaneCapacityExceeded {
         limit: usize,
+    },
+    RelatedSessionCapacityExceeded {
+        limit: usize,
+    },
+    RelatedSessionConflict {
+        session_id: String,
+    },
+    InvalidRelatedSessionEvent {
+        method: &'static str,
+        field: &'static str,
     },
     UnknownPage {
         page: ObjectId,
@@ -13397,6 +13684,17 @@ impl Display for ChromiumNetworkEventDriverError {
                     formatter,
                     "the network driver Page-lane limit of {limit} was exceeded"
                 )
+            }
+            Self::RelatedSessionCapacityExceeded { limit } => write!(
+                formatter,
+                "the network driver related-session limit of {limit} was exceeded"
+            ),
+            Self::RelatedSessionConflict { session_id } => write!(
+                formatter,
+                "network related session `{session_id}` changed owning Page or parent"
+            ),
+            Self::InvalidRelatedSessionEvent { method, field } => {
+                write!(formatter, "{method} has an invalid or missing `{field}`")
             }
             Self::UnknownPage { page } => {
                 write!(
@@ -13486,6 +13784,9 @@ impl Error for ChromiumNetworkEventDriverError {
             Self::AlreadyInstalled
             | Self::RegistryNotInstalled
             | Self::PageLaneCapacityExceeded { .. }
+            | Self::RelatedSessionCapacityExceeded { .. }
+            | Self::RelatedSessionConflict { .. }
+            | Self::InvalidRelatedSessionEvent { .. }
             | Self::UnknownPage { .. }
             | Self::SessionReplacementRequiresRetirement { .. }
             | Self::EventStreamLagged { .. }
@@ -13526,6 +13827,18 @@ impl ChromiumNetworkEventDriver {
         self.shared.max_page_lanes
     }
 
+    pub fn related_session_count(&self) -> usize {
+        self.shared
+            .state
+            .lock()
+            .map(|state| state.related_sessions.len())
+            .unwrap_or_default()
+    }
+
+    pub fn max_related_sessions(&self) -> usize {
+        self.shared.max_related_sessions
+    }
+
     /// Returns the exact number of native Request correlations currently
     /// retained across every installed Page lane. The value is bounded by the
     /// selected network production profile.
@@ -13541,6 +13854,39 @@ impl ChromiumNetworkEventDriver {
                     .sum()
             })
             .unwrap_or_default()
+    }
+
+    /// Seeds Frames that were materialized before this driver's independent
+    /// CDP cursor began advancing. Callers must invoke this only at an explicit
+    /// topology snapshot boundary; later Frame lifecycle is event-driven.
+    #[cfg(feature = "request-frame")]
+    pub fn observe_existing_frames(
+        &mut self,
+        topology: &pwright_backend_cdp::CdpTopology,
+    ) -> Result<(), ChromiumNetworkEventDriverError> {
+        let frames = topology
+            .frame_page_routes()
+            .filter_map(|(frame, page)| {
+                topology
+                    .frame_native_id(frame)
+                    .map(|native_id| (page, native_id.to_owned()))
+            })
+            .collect::<Vec<_>>();
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| ChromiumNetworkEventDriverError::DriverUnavailable)?;
+        for (page, frame) in frames {
+            let Some(adapter) = state.adapters.get_mut(&page) else {
+                continue;
+            };
+            adapter
+                .adapter
+                .observe_existing_frame(&frame)
+                .map_err(|source| ChromiumNetworkEventDriverError::Native { page, source })?;
+        }
+        Ok(())
     }
 
     pub fn page_registration_in_progress(&self) -> Option<ObjectId> {
@@ -13692,17 +14038,41 @@ impl ChromiumNetworkEventDriver {
             self.held_event = Some(event);
             return Err(ChromiumNetworkEventDriverError::PageRegistrationInProgress { page });
         }
-        let Some(adapter) = state
-            .adapters
-            .values_mut()
-            .find(|adapter| event.session_id.as_deref() == Some(adapter.session_id()))
-        else {
+        if self.shared.max_related_sessions != 0 {
+            if event.method == "Target.attachedToTarget" {
+                register_related_network_session(&self.shared, &mut state, &event)?;
+                return Ok(None);
+            }
+            if event.method == "Target.detachedFromTarget" {
+                if let Some(batch) = retire_related_network_session(&mut state, &event)? {
+                    let page = batch
+                        .page()
+                        .expect("a related-session retirement batch retains its Page");
+                    state.unpublished_batch = Some(page);
+                    return Ok(Some(batch));
+                }
+                return Ok(None);
+            }
+        }
+        let event_session = event.session_id.as_deref();
+        let related_page = event_session.and_then(|session_id| {
+            state
+                .related_sessions
+                .get(session_id)
+                .map(|route| route.page)
+        });
+        let Some(adapter) = state.adapters.values_mut().find(|adapter| {
+            event_session == Some(adapter.session_id()) || related_page == Some(adapter.page())
+        }) else {
             return Ok(None);
         };
         let page = adapter.page();
-        let batch = adapter
-            .map_event(&event)
-            .map_err(|source| ChromiumNetworkEventDriverError::Native { page, source })?;
+        let batch = if related_page.is_some() {
+            adapter.map_related_session_event(&event)
+        } else {
+            adapter.map_event(&event)
+        }
+        .map_err(|source| ChromiumNetworkEventDriverError::Native { page, source })?;
         if batch.is_empty() {
             Ok(None)
         } else {
@@ -13748,7 +14118,9 @@ impl ChromiumNetworkPageRegistrationHandle {
         page: ObjectId,
         browser_context: ObjectId,
         session_id: String,
+        initial_frame_ids: Vec<String>,
         client: Arc<dyn CdpClient>,
+        network_domain_already_enabled: bool,
     ) -> Result<PreparedChromiumNetworkPageRegistration, ChromiumNetworkEventDriverError> {
         let driver = self.driver()?;
         let inherited_network_domain = {
@@ -13782,6 +14154,21 @@ impl ChromiumNetworkPageRegistrationHandle {
                 browser_context,
                 session_id.clone(),
             )?;
+            #[cfg(feature = "request-frame")]
+            {
+                let seeded = state
+                    .adapters
+                    .get_mut(&page)
+                    .expect("the exact Page lane was just registered")
+                    .adapter
+                    .observe_existing_frames(&initial_frame_ids);
+                if let Err(source) = seeded {
+                    retire_network_page(&driver, &mut state, page);
+                    return Err(ChromiumNetworkEventDriverError::Native { page, source });
+                }
+            }
+            #[cfg(not(feature = "request-frame"))]
+            let _ = &initial_frame_ids;
             state.pending_page_registration = Some(ChromiumPendingNetworkPageRegistration {
                 page,
                 session_id,
@@ -13790,7 +14177,10 @@ impl ChromiumNetworkPageRegistrationHandle {
             });
             inherited_network_domain
         };
-        if inherited_network_domain && let Err(activation) = client.network_enable().await {
+        if inherited_network_domain
+            && !network_domain_already_enabled
+            && let Err(activation) = client.network_enable().await
+        {
             if let Err(compensation) = client.network_disable().await {
                 return Err(ChromiumNetworkEventDriverError::InheritedCompensation {
                     page,
@@ -13845,12 +14235,77 @@ impl ChromiumNetworkPageRegistrationHandle {
         Ok(())
     }
 
+    /// Reconciles the single-cursor adapter table after an authoritative
+    /// topology reconnect has committed. Session replacements were already
+    /// validated transactionally while each rediscovered Page was published;
+    /// this final fence releases adapters for Pages whose runtime subtrees were
+    /// disposed by `finish_reconnect`.
+    pub(crate) fn reconcile_after_reconnect(
+        &self,
+        page_services: &CdpPageServices,
+    ) -> Result<usize, ChromiumNetworkEventDriverError> {
+        let driver = self.driver()?;
+        let mut state = driver
+            .state
+            .lock()
+            .map_err(|_| ChromiumNetworkEventDriverError::DriverUnavailable)?;
+        ensure_network_batch_published(&state)?;
+        if let Some(pending) = &state.pending_page_registration {
+            return Err(
+                ChromiumNetworkEventDriverError::PageRegistrationInProgress { page: pending.page },
+            );
+        }
+        if let Some(pending) = &state.pending_page_replacement {
+            return Err(
+                ChromiumNetworkEventDriverError::PageRegistrationInProgress { page: pending.page },
+            );
+        }
+        let subscriptions = page_services
+            .network_subscriptions
+            .as_ref()
+            .ok_or(ChromiumNetworkEventDriverError::RegistryNotInstalled)?;
+        if !driver.subscriptions.shares_state_with(subscriptions) {
+            return Err(ChromiumNetworkEventDriverError::PageServicesRegistryMismatch);
+        }
+        let routes = page_services.routes.lock().map_err(|_| {
+            ChromiumNetworkEventDriverError::PageRoutes(CdpPageRouteError::StatePoisoned)
+        })?;
+        for (page, adapter) in &state.adapters {
+            let Some(route) = routes.pages.get(page) else {
+                continue;
+            };
+            if adapter.session_id() != route.session_id {
+                return Err(
+                    ChromiumNetworkEventDriverError::SessionReplacementRequiresRetirement {
+                        page: *page,
+                    },
+                );
+            }
+        }
+        let retired = state
+            .adapters
+            .keys()
+            .filter(|page| !routes.pages.contains_key(page))
+            .copied()
+            .collect::<Vec<_>>();
+        drop(routes);
+        for page in &retired {
+            // The authoritative topology transaction already disposed the
+            // complete missing Page subtree, so only native correlation state
+            // remains to be released here.
+            let _already_disposed = retire_network_page(&driver, &mut state, *page);
+        }
+        Ok(retired.len())
+    }
+
     pub(crate) async fn prepare_page_replacement(
         &self,
         page: ObjectId,
         browser_context: ObjectId,
         new_session_id: String,
+        initial_frame_ids: Vec<String>,
         client: Arc<dyn CdpClient>,
+        network_domain_already_enabled: bool,
     ) -> Result<PreparedChromiumNetworkPageReplacement, ChromiumNetworkEventDriverError> {
         let driver = self.driver()?;
         let activate_network_domain = {
@@ -13892,6 +14347,16 @@ impl ChromiumNetworkPageRegistrationHandle {
                 &driver.resources,
             )
             .map_err(ChromiumNetworkEventDriverError::Production)?;
+            #[cfg(feature = "request-frame")]
+            let adapter = {
+                let mut adapter = adapter;
+                adapter
+                    .observe_existing_frames(&initial_frame_ids)
+                    .map_err(|source| ChromiumNetworkEventDriverError::Native { page, source })?;
+                adapter
+            };
+            #[cfg(not(feature = "request-frame"))]
+            let _ = &initial_frame_ids;
             let (registered_old_session, activate_network_domain) = driver
                 .subscriptions
                 .begin_page_session_replacement(page, browser_context)
@@ -13922,7 +14387,10 @@ impl ChromiumNetworkPageRegistrationHandle {
             });
             activate_network_domain
         };
-        if activate_network_domain && let Err(activation) = client.network_enable().await {
+        if activate_network_domain
+            && !network_domain_already_enabled
+            && let Err(activation) = client.network_enable().await
+        {
             if let Err(compensation) = client.network_disable().await {
                 return Err(ChromiumNetworkEventDriverError::InheritedCompensation {
                     page,
@@ -14421,11 +14889,150 @@ fn retire_network_page(
     page: ObjectId,
 ) -> Vec<ControlMessage> {
     driver.subscriptions.forget_page(page);
+    state.related_sessions.retain(|_, route| route.page != page);
     state
         .adapters
         .remove(&page)
         .map(|mut adapter| adapter.drain_active())
         .unwrap_or_default()
+}
+
+fn register_related_network_session(
+    driver: &ChromiumNetworkEventDriverShared,
+    state: &mut ChromiumNetworkEventDriverState,
+    event: &CdpEvent,
+) -> Result<(), ChromiumNetworkEventDriverError> {
+    let target_type = event
+        .params
+        .get("targetInfo")
+        .and_then(|value| value.get("type"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or(
+            ChromiumNetworkEventDriverError::InvalidRelatedSessionEvent {
+                method: "Target.attachedToTarget",
+                field: "targetInfo.type",
+            },
+        )?;
+    if target_type != "worker" {
+        return Ok(());
+    }
+    let parent_session_id = event.session_id.as_deref().ok_or(
+        ChromiumNetworkEventDriverError::InvalidRelatedSessionEvent {
+            method: "Target.attachedToTarget",
+            field: "parent sessionId",
+        },
+    )?;
+    let session_id = event
+        .params
+        .get("sessionId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(
+            ChromiumNetworkEventDriverError::InvalidRelatedSessionEvent {
+                method: "Target.attachedToTarget",
+                field: "sessionId",
+            },
+        )?;
+    let page = state
+        .adapters
+        .values()
+        .find_map(|adapter| (adapter.session_id() == parent_session_id).then_some(adapter.page()))
+        .or_else(|| {
+            state
+                .related_sessions
+                .get(parent_session_id)
+                .map(|route| route.page)
+        });
+    let Some(page) = page else {
+        return Ok(());
+    };
+    let native_scope_bytes = driver.adapter_profile.limits().native_scope_bytes;
+    for (field, value) in [
+        ("sessionId", session_id),
+        ("parent sessionId", parent_session_id),
+    ] {
+        if value.len() > native_scope_bytes {
+            return Err(ChromiumNetworkEventDriverError::Native {
+                page,
+                source: CdpNetworkEventError::FieldLimitExceeded {
+                    field,
+                    actual: value.len(),
+                    limit: native_scope_bytes,
+                },
+            });
+        }
+    }
+    if let Some(current) = state.related_sessions.get(session_id) {
+        if current.page == page && current.parent_session_id.as_ref() == parent_session_id {
+            return Ok(());
+        }
+        return Err(ChromiumNetworkEventDriverError::RelatedSessionConflict {
+            session_id: session_id.to_owned(),
+        });
+    }
+    if state.related_sessions.len() >= driver.max_related_sessions {
+        return Err(
+            ChromiumNetworkEventDriverError::RelatedSessionCapacityExceeded {
+                limit: driver.max_related_sessions,
+            },
+        );
+    }
+    state.related_sessions.insert(
+        session_id.into(),
+        ChromiumRelatedNetworkSession {
+            page,
+            parent_session_id: parent_session_id.into(),
+        },
+    );
+    Ok(())
+}
+
+fn retire_related_network_session(
+    state: &mut ChromiumNetworkEventDriverState,
+    event: &CdpEvent,
+) -> Result<Option<CdpNetworkEventBatch>, ChromiumNetworkEventDriverError> {
+    let session_id = event
+        .params
+        .get("sessionId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(
+            ChromiumNetworkEventDriverError::InvalidRelatedSessionEvent {
+                method: "Target.detachedFromTarget",
+                field: "sessionId",
+            },
+        )?;
+    let Some(route) = state.related_sessions.get(session_id) else {
+        return Ok(None);
+    };
+    let page = route.page;
+    let mut retired = vec![session_id.to_owned()];
+    let mut cursor = 0;
+    while cursor < retired.len() {
+        let parent = retired[cursor].as_str();
+        let children = state
+            .related_sessions
+            .iter()
+            .filter(|(_, route)| route.parent_session_id.as_ref() == parent)
+            .map(|(candidate, _)| candidate.to_string())
+            .collect::<Vec<_>>();
+        for child in children {
+            if !retired.contains(&child) {
+                retired.push(child);
+            }
+        }
+        cursor += 1;
+    }
+    for session in &retired {
+        state.related_sessions.remove(session.as_str());
+    }
+    let Some(adapter) = state.adapters.get_mut(&page) else {
+        return Ok(None);
+    };
+    let mut cleanup = Vec::new();
+    for session in retired {
+        cleanup.extend(adapter.drain_related_session(&session));
+    }
+    let batch = CdpNetworkEventBatch::from_retirement(page, cleanup);
+    Ok((!batch.is_empty()).then_some(batch))
 }
 
 impl Drop for ChromiumNetworkEventDriverShared {
@@ -14628,6 +15235,7 @@ impl AttachedChromiumComposition {
         let shared = Arc::new(ChromiumNetworkEventDriverShared {
             state: Mutex::new(ChromiumNetworkEventDriverState {
                 adapters: BTreeMap::new(),
+                related_sessions: BTreeMap::new(),
                 pending_page_registration: None,
                 pending_page_replacement: None,
                 unpublished_batch: None,
@@ -14637,6 +15245,7 @@ impl AttachedChromiumComposition {
             adapter_profile: profile.adapter(),
             resources: self.prepared.resources.clone(),
             max_page_lanes: profile.max_page_lanes(),
+            max_related_sessions: profile.max_related_sessions(),
         });
         let driver = ChromiumNetworkEventDriver {
             receiver: self
@@ -16875,6 +17484,7 @@ mod tests {
         let shared = Arc::new(super::ChromiumNetworkEventDriverShared {
             state: Mutex::new(super::ChromiumNetworkEventDriverState {
                 adapters: BTreeMap::new(),
+                related_sessions: BTreeMap::new(),
                 pending_page_registration: None,
                 pending_page_replacement: None,
                 unpublished_batch: None,
@@ -16884,6 +17494,7 @@ mod tests {
             adapter_profile: adapter,
             resources: prepared.resources().clone(),
             max_page_lanes: 1,
+            max_related_sessions: 0,
         });
         let driver = super::ChromiumNetworkEventDriver {
             receiver: browser.subscribe_events().into(),
@@ -18530,6 +19141,100 @@ mod tests {
         assert_eq!(frame_calls, ["DOM.getFrameOwner", "DOM.getBoxModel"]);
     }
 
+    #[test]
+    fn locator_screenshot_defers_child_route_until_parent_world_is_available() {
+        // Arrange
+        let profile = base_profile().with_locator_screenshot(locator_screenshot_profile());
+        let requirements = profile.requirements();
+        let prepared = PreparedChromiumAttach::new(profile.clone(), exact_limits(requirements))
+            .expect("Locator screenshot composition should prepare");
+        let epoch = ConnectionEpoch::new(1);
+        let mut topology = ProductionCdpTopology::new(
+            ObjectId::new(1),
+            epoch,
+            profile.topology(),
+            prepared.resources(),
+        )
+        .expect("production topology should build");
+        topology
+            .register_context(
+                epoch,
+                "context-a",
+                ObjectId::new(2),
+                CdpContextOwnership::External,
+            )
+            .expect("context should register");
+        topology
+            .attach_page(
+                epoch,
+                CdpPageTarget::new("target-a", "session-a", "context-a"),
+                CdpPageObjectIds::new(ObjectId::new(3), ObjectId::new(4)),
+            )
+            .expect("Page should attach");
+        topology
+            .attach_frame(
+                epoch,
+                CdpFrameAttachment::main("target-a", "frame-a"),
+                ObjectId::new(4),
+            )
+            .expect("main Frame should attach");
+        topology
+            .attach_frame(
+                epoch,
+                CdpFrameAttachment::local("target-a", "child-frame", "frame-a"),
+                ObjectId::new(5),
+            )
+            .expect("child Frame should attach");
+        topology
+            .attach_world(
+                epoch,
+                CdpWorldAttachment::new(
+                    "session-a",
+                    12,
+                    "child-context",
+                    "child-frame",
+                    CdpWorldKind::Main,
+                ),
+            )
+            .expect("child main world should attach first");
+        let services = CdpPageServices::new_with_production_resources(
+            Arc::new(RecordingSessionFactory::default()),
+            &profile,
+            prepared.resources(),
+        )
+        .expect("Locator screenshot services should use the production plan");
+
+        // Act
+        services
+            .synchronize(&topology)
+            .expect("an unresolved child screenshot route must not fail all synchronization");
+        let child_before_parent = services
+            .locator_screenshot_route(ObjectId::new(5))
+            .expect("route state should remain readable");
+        topology
+            .attach_world(
+                epoch,
+                CdpWorldAttachment::new(
+                    "session-a",
+                    11,
+                    "main-context",
+                    "frame-a",
+                    CdpWorldKind::Main,
+                ),
+            )
+            .expect("parent main world should attach");
+        services
+            .synchronize(&topology)
+            .expect("the completed parent chain should synchronize");
+        let child_after_parent = services
+            .locator_screenshot_route(ObjectId::new(5))
+            .expect("route state should remain readable");
+
+        // Assert
+        assert!(child_before_parent.is_none());
+        assert!(child_after_parent.is_some());
+    }
+
     #[tokio::test]
     async fn locator_screenshot_translates_nested_oopif_geometry_through_parent_sessions() {
         // Arrange
@@ -20142,9 +20847,17 @@ mod tests {
             .expect("all-capability profile should prepare as one exact resource plan");
 
         // Assert
-        assert_eq!(profile.capabilities().len(), 14);
+        let expected_capabilities = 14 + usize::from(cfg!(feature = "history-navigation"));
+        assert_eq!(profile.capabilities().len(), expected_capabilities);
         assert_eq!(profile.remote_events().len(), 3);
-        assert_eq!(prepared.capability_manifest().len(), 15);
+        assert_eq!(
+            prepared.capability_manifest().len(),
+            expected_capabilities + 1
+        );
+        assert_eq!(
+            profile.capabilities().history_navigation(),
+            cfg!(feature = "history-navigation")
+        );
         assert!(profile.page_discovery().is_some());
         assert!(profile.topology_events().is_some());
         assert!(profile.utility_world().is_some());
@@ -20246,7 +20959,7 @@ mod tests {
                 .capability_manifest()
                 .support_major(&WireCapabilityId::new("pwright.locator", 128).unwrap(), 2,),
             Some(VersionPolicy::compatible_through(ProtocolVersion::new(
-                2, 6
+                2, 7
             )))
         );
     }
@@ -22937,6 +23650,7 @@ mod tests {
             post_data: None,
             is_navigation_request: false,
             redirected_from: None,
+            timing: None,
         });
         let response = NetworkEventPayload::Response(ResponseInitializer {
             response: ObjectId::new(11),
@@ -22946,6 +23660,7 @@ mod tests {
             status_text: "OK".to_owned(),
             headers: Vec::new(),
             from_service_worker: false,
+            timing: None,
         });
         sender
             .emit(Event::<NetworkEventStream>::new(ObjectId::new(3), request))
@@ -23101,15 +23816,19 @@ mod tests {
         );
         assert_eq!(prepared.capability_manifest().len(), 2);
         assert_eq!(
+            v1_prepared.capability_manifest().support_major(&locator, 1),
+            prepared.capability_manifest().support_major(&locator, 1)
+        );
+        assert_eq!(
             prepared.capability_manifest().support_major(&locator, 1),
             Some(VersionPolicy::compatible_through(ProtocolVersion::new(
-                1, 23
+                1, 24
             )))
         );
         assert_eq!(
             prepared.capability_manifest().support_major(&locator, 2),
             Some(VersionPolicy::compatible_through(ProtocolVersion::new(
-                2, 6
+                2, 7
             )))
         );
         assert!(
@@ -23788,6 +24507,34 @@ mod tests {
         }
         assert_eq!(prepared.backend_manifest().event_features().len(), 4);
         assert_eq!(prepared.profile().network_events(), Some(network));
+    }
+
+    #[test]
+    fn related_network_sessions_add_registry_bytes_without_adding_adapter_lanes() {
+        // Arrange
+        let lifecycle = NetworkLifecycleLimits::new(2, 64, 256, 16, 32, 8, 256, 64, 64, 128)
+            .with_native_scope_bytes(64);
+        let adapter =
+            CdpNetworkEventProductionProfile::new(lifecycle, ResourceScope::extension(95, 2))
+                .expect("network adapter profile should validate");
+        let ordinary = ChromiumNetworkEventsProductionProfile::new(adapter, 1)
+            .expect("ordinary Page lane should validate");
+
+        // Act
+        let related =
+            ChromiumNetworkEventsProductionProfile::new_with_context_and_related_session_limit(
+                adapter, 1, 1, 4,
+            )
+            .expect("related Worker sessions should validate");
+
+        // Assert
+        assert_eq!(related.max_page_lanes(), ordinary.max_page_lanes());
+        assert_eq!(related.max_related_sessions(), 4);
+        assert_eq!(
+            related.adapter().requirements(),
+            ordinary.adapter().requirements()
+        );
+        assert!(related.subscription_retained_bytes() > ordinary.subscription_retained_bytes());
     }
 
     #[test]
@@ -26317,6 +27064,7 @@ mod tests {
         let shared = Arc::new(super::ChromiumNetworkEventDriverShared {
             state: Mutex::new(super::ChromiumNetworkEventDriverState {
                 adapters,
+                related_sessions: BTreeMap::new(),
                 pending_page_registration: None,
                 pending_page_replacement: None,
                 unpublished_batch: None,
@@ -26326,6 +27074,7 @@ mod tests {
             adapter_profile,
             resources,
             max_page_lanes: 2,
+            max_related_sessions: 0,
         });
         let mut driver = super::ChromiumNetworkEventDriver {
             receiver: source.subscribe_events().into(),
@@ -26384,6 +27133,123 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn network_driver_routes_and_retires_related_worker_session_on_the_page_lane() {
+        // Arrange
+        let limits = NetworkLifecycleLimits::new(2, 64, 256, 16, 32, 8, 256, 64, 64, 128)
+            .with_native_scope_bytes(64);
+        let source = Arc::new(FakeCdpClient::from_html("<title>worker network</title>"));
+        let subscriptions = super::ChromiumNetworkSubscriptionRegistry::new_unbudgeted(1);
+        subscriptions
+            .register_page_lane(ObjectId::new(3), ObjectId::new(2), "session-a".to_owned())
+            .expect("Page lane should register");
+        let object_ids: Arc<dyn ObjectIdSource> =
+            Arc::new(AtomicObjectIdSource::new(10).expect("network object IDs should validate"));
+        let mut adapters = BTreeMap::new();
+        adapters.insert(
+            ObjectId::new(3),
+            super::ChromiumNetworkPageAdapter {
+                browser_context_object_id: ObjectId::new(2),
+                adapter: CdpNetworkEventAdapter::new(
+                    ObjectId::new(3),
+                    "session-a".to_owned(),
+                    Arc::clone(&object_ids),
+                    limits,
+                )
+                .expect("Page adapter should build"),
+            },
+        );
+        let empty_requirements = ResourceRequirements::none();
+        let resources =
+            ProductionResourceLedger::new(ResourceLimits::deny_all(0, 0), empty_requirements)
+                .expect("empty retained driver plan should build");
+        let adapter_profile =
+            CdpNetworkEventProductionProfile::new(limits, ResourceScope::extension(95, 2))
+                .expect("adapter profile should validate");
+        let shared = Arc::new(super::ChromiumNetworkEventDriverShared {
+            state: Mutex::new(super::ChromiumNetworkEventDriverState {
+                adapters,
+                related_sessions: BTreeMap::new(),
+                pending_page_registration: None,
+                pending_page_replacement: None,
+                unpublished_batch: None,
+            }),
+            subscriptions,
+            object_ids,
+            adapter_profile,
+            resources,
+            max_page_lanes: 1,
+            max_related_sessions: 2,
+        });
+        let mut driver = super::ChromiumNetworkEventDriver {
+            receiver: source.subscribe_events().into(),
+            shared,
+            held_event: None,
+        };
+        source.send_event(CdpEvent::new(
+            "Target.attachedToTarget".to_owned(),
+            serde_json::json!({
+                "sessionId": "worker-a",
+                "targetInfo": {"type": "worker"}
+            }),
+            Some("session-a".to_owned()),
+        ));
+        source.send_event(CdpEvent::new(
+            "Network.requestWillBeSent".to_owned(),
+            serde_json::json!({
+                "requestId": "worker-request",
+                "type": "Fetch",
+                "request": {
+                    "url": "https://example.test/worker",
+                    "method": "GET",
+                    "headers": {}
+                }
+            }),
+            Some("worker-a".to_owned()),
+        ));
+
+        // Act
+        assert!(
+            driver
+                .receive_once()
+                .await
+                .expect("Worker attachment should route")
+                .is_none()
+        );
+        let request = driver
+            .receive_once()
+            .await
+            .expect("Worker request should route")
+            .expect("Worker request should publish");
+        driver
+            .acknowledge_batch_publication(ObjectId::new(3))
+            .expect("request publication should release the barrier");
+        source.send_event(CdpEvent::new(
+            "Target.detachedFromTarget".to_owned(),
+            serde_json::json!({"sessionId": "worker-a"}),
+            Some("session-a".to_owned()),
+        ));
+        let retirement = driver
+            .receive_once()
+            .await
+            .expect("Worker retirement should route")
+            .expect("active Worker request should publish cleanup");
+
+        // Assert
+        assert_eq!(request.page(), Some(ObjectId::new(3)));
+        assert_eq!(request.session_id(), Some("worker-a"));
+        assert_eq!(request.native_request_id(), Some("worker-request"));
+        assert_eq!(driver.related_session_count(), 0);
+        assert!(retirement.events().is_empty());
+        assert_eq!(retirement.page(), Some(ObjectId::new(3)));
+        assert_eq!(
+            retirement.retirement(),
+            [ControlMessage::Dispose {
+                object_id: ObjectId::new(10),
+            }]
+        );
+    }
+
     #[test]
     fn nonblocking_network_poll_distinguishes_ignored_event_from_empty_cursor() {
         // Arrange
@@ -26429,7 +27295,9 @@ mod tests {
             ObjectId::new(3),
             ObjectId::new(2),
             "session-new".to_owned(),
+            Vec::new(),
             client,
+            false,
         ));
         assert!(poll_now(prepare.as_mut()).is_pending());
         browser.send_event(CdpEvent::new(
@@ -26482,6 +27350,108 @@ mod tests {
     }
 
     #[test]
+    fn page_registration_inherits_pre_resume_network_activation_without_enabling_twice() {
+        // Arrange
+        let (_runtime, _topology, _browser, factory, services, driver, _service) =
+            network_page_creation_state();
+        let activator = ChromiumPageSubscriptionActivator::new(services);
+        let mut activation =
+            Box::pin(activator.set_subscription(ObjectId::new(2), NETWORK_REQUEST_EVENT_TAG, true));
+        assert!(matches!(poll_now(activation.as_mut()), Poll::Ready(Ok(()))));
+        let registration = driver.registration_handle();
+        let client = factory.create_session("session-new".to_owned(), "target-new".to_owned());
+        let mut prepare = Box::pin(registration.prepare_page_registration(
+            ObjectId::new(3),
+            ObjectId::new(2),
+            "session-new".to_owned(),
+            Vec::new(),
+            client,
+            true,
+        ));
+
+        // Act
+        let Poll::Ready(Ok(prepared)) = poll_now(prepare.as_mut()) else {
+            panic!("pre-enabled network registration should finish immediately");
+        };
+        drop(prepare);
+        registration
+            .commit_page_registration(prepared, || Ok::<_, Infallible>(()))
+            .expect("registration state should commit")
+            .expect("synthetic Page publication should commit");
+
+        // Assert
+        assert!(factory.client("target-new").method_names().is_empty());
+        assert_eq!(driver.page_count(), 1);
+        assert_eq!(driver.page_registration_in_progress(), None);
+    }
+
+    #[cfg(feature = "request-frame")]
+    #[test]
+    fn page_registration_seeds_the_preexisting_main_frame_for_network_events() {
+        // Arrange
+        let (_runtime, _topology, browser, factory, services, mut driver, _service) =
+            network_page_creation_state();
+        let activator = ChromiumPageSubscriptionActivator::new(services);
+        let mut activation =
+            Box::pin(activator.set_subscription(ObjectId::new(2), NETWORK_REQUEST_EVENT_TAG, true));
+        assert!(matches!(poll_now(activation.as_mut()), Poll::Ready(Ok(()))));
+        let registration = driver.registration_handle();
+        let client = factory.create_session("session-new".to_owned(), "target-new".to_owned());
+        let mut prepare = Box::pin(registration.prepare_page_registration(
+            ObjectId::new(3),
+            ObjectId::new(2),
+            "session-new".to_owned(),
+            vec!["frame-new".to_owned()],
+            client,
+            false,
+        ));
+        let Poll::Ready(Ok(prepared)) = poll_now(prepare.as_mut()) else {
+            panic!("network registration should finish immediately");
+        };
+        drop(prepare);
+        registration
+            .commit_page_registration(prepared, || Ok::<_, Infallible>(()))
+            .expect("registration state should commit")
+            .expect("synthetic Page publication should commit");
+        browser.send_event(CdpEvent::new(
+            "Network.requestWillBeSent".to_owned(),
+            serde_json::json!({
+                "requestId": "native-new",
+                "frameId": "frame-new",
+                "type": "Document",
+                "request": {
+                    "url": "https://example.test/new",
+                    "method": "GET",
+                    "headers": {}
+                }
+            }),
+            Some("session-new".to_owned()),
+        ));
+
+        // Act
+        let mut receive = Box::pin(driver.receive_once());
+        let Poll::Ready(Ok(Some(batch))) = poll_now(receive.as_mut()) else {
+            panic!("the seeded Page request should normalize");
+        };
+
+        // Assert
+        let pwright_backend_cdp::CdpNetworkEventEffect::Request(request) = &batch.events()[0]
+        else {
+            panic!("the normalized effect should be a request");
+        };
+        assert_eq!(
+            batch.request_frame_available(request.payload().request),
+            Some(true)
+        );
+        assert_eq!(
+            batch
+                .request_frame(request.payload().request)
+                .and_then(|frame| frame.native_id()),
+            Some("frame-new")
+        );
+    }
+
+    #[test]
     fn cancelled_page_registration_is_explicitly_recoverable() {
         // Arrange
         let (_runtime, _topology, _browser, factory, services, driver, _service) =
@@ -26500,7 +27470,9 @@ mod tests {
             ObjectId::new(3),
             ObjectId::new(2),
             "session-new".to_owned(),
+            Vec::new(),
             client,
+            false,
         ));
 
         // Act

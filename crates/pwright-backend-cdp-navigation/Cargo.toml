@@ -10,6 +10,7 @@ homepage.workspace = true
 [features]
 default = []
 frame-lifecycle = []
+history-navigation = ["dep:pwright-cap-history-navigation"]
 
 [[example]]
 name = "frame_lifecycle_trace"
@@ -23,6 +24,7 @@ required-features = ["frame-lifecycle"]
 pwright-backend-cdp-common = { workspace = true }
 pwright-browser-backend = { workspace = true }
 pwright-cap-navigation = { workspace = true }
+pwright-cap-history-navigation = { workspace = true, optional = true }
 pwright-cdp = { workspace = true }
 pwright-core = { workspace = true }
 serde_json = { workspace = true }

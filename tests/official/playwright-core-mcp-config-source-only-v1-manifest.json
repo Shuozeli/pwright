@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "core462-private-mcp-config-sandbox",
+      "role": "implementation-internal-source-only",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/mcp/playwright.config.ts",
+      "args": ["tests/mcp/config.spec.ts:82", "tests/mcp/config.spec.ts:87"],
+      "sourceOnlyAdapter": "upstream-private-source-only-no-pwright-runtime",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "private-mcp-config-sandbox-v1",
+      "upstreamSourceSetSha256": "f50fe7dec188ab2957f19b4681df621181821e296df251d940747e7fd297b0a8",
+      "expectedInvocationIdsSha256": "7be17705f68f69aca3afec656c3fe4142c71a49583c59a31b296d9c6a296b00c",
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1,
+      "expectedProjectIds": ["chrome", "chromium", "firefox", "webkit"],
+      "expectedInvocations": [
+        {"line": 82, "projectId": "chrome", "specId": "9196cb1f5e62547dc5c9-69a718c5f51fb8dc7faa"},
+        {"line": 82, "projectId": "chromium", "specId": "9196cb1f5e62547dc5c9-fd4a6ec16bc60a1e0666"},
+        {"line": 82, "projectId": "firefox", "specId": "9196cb1f5e62547dc5c9-f6eabc76476719c34bf5"},
+        {"line": 82, "projectId": "webkit", "specId": "9196cb1f5e62547dc5c9-ecaf9642b768357b001c"},
+        {"line": 87, "projectId": "chrome", "specId": "9196cb1f5e62547dc5c9-95d0ab28bd553b34dec5"},
+        {"line": 87, "projectId": "chromium", "specId": "9196cb1f5e62547dc5c9-28c2d94b2411e26d5592"},
+        {"line": 87, "projectId": "firefox", "specId": "9196cb1f5e62547dc5c9-bd861023e2299e369470"},
+        {"line": 87, "projectId": "webkit", "specId": "9196cb1f5e62547dc5c9-a52d59b5d1439fd414fb"}
+      ]
+    }
+  ]
+}

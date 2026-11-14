@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_page_event_console.py": "55d06d0935481623e6143e0120ba7921c4fcbef61f8072e7976db925e82660dd",
+    "tests/sync/test_page_event_console.py": "098c324a79cf8140669195083a146ae3f1b9eb1b1ea282ed1f1331abf8365ecc"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_page_event_console.py::test_console_messages_should_work",
+      "capabilities": ["page.console_messages", "page.console_history.last_200"]
+    },
+    {
+      "id": "tests/sync/test_page_event_console.py::test_console_messages_should_work",
+      "capabilities": ["page.console_messages", "page.console_history.last_200"]
+    }
+  ]
+}

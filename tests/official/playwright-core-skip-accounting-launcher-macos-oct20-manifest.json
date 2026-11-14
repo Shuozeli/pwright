@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "library-headed-no-xserver-macos-upstream-skip",
+      "role": "browser-independent-official-skip-accounting",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/library/playwright.config.ts",
+      "args": [
+        "tests/library/launcher.spec.ts:44"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 1,
+      "expectedFiles": 1,
+      "expectedSpecIds": [
+        "65bafd2a21c97b0ab9bf-815f60442079906561e1",
+        "65bafd2a21c97b0ab9bf-d15507a8640638e188ba",
+        "65bafd2a21c97b0ab9bf-94f6d39d0d1d548a8fc2"
+      ],
+      "upstreamSources": {
+        "tests/library/launcher.spec.ts": "217a2d9ca04d75e2ba1951d25998c223c153002af818f5a96e056dcc46ab91b9",
+        "tests/library/playwright.config.ts": "338eb705bb4a17322dfba39d1c6770613bf8cf62cfec5c43bf7cece3e5db8146",
+        "tests/config/browserTest.ts": "0ef5440e164d262e7c3d01523448b5d3c4d50b99060604c20f168f04419a13d5",
+        "tests/config/testMode.ts": "7c12e6bd3fa7e2e3e4ff296277f4a60656d4d8a0c536cb55d9d6c1e83016f575",
+        "tests/config/serverFixtures.ts": "4c0039a149bd61e8707adddc626b345632561bd343749293ddbe9458f6ac617b"
+      }
+    }
+  ]
+}

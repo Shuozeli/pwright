@@ -11,6 +11,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use pwright_browser_provider::{AttachBrowserProvider, AttachedBrowser};
+#[cfg(feature = "cdp-handshake-headers")]
+use pwright_cdp::CdpHandshakeHeaders;
 use pwright_cdp::connection::{CdpError, ConnectionConfig};
 use pwright_cdp::{CdpConnection, CdpConnectionProductionProfile, CdpProductionConnectError};
 use pwright_core::{
@@ -152,6 +154,33 @@ impl ProductionCdpConnector {
     pub const fn profile(&self) -> &CdpConnectionProductionProfile {
         &self.profile
     }
+
+    #[cfg(feature = "cdp-handshake-headers")]
+    pub async fn connect_with_headers(
+        &self,
+        endpoint: CdpWebSocketEndpoint,
+        config: ConnectionConfig,
+        headers: &CdpHandshakeHeaders,
+    ) -> Result<ProductionCdpConnection, CdpProductionConnectError> {
+        if config != *self.profile.config() {
+            return Err(CdpError::InvalidConfiguration(
+                "attach request does not match the production CDP profile",
+            )
+            .into());
+        }
+        let connection = CdpConnection::connect_with_production_resources_and_headers(
+            endpoint.as_str(),
+            self.profile.clone(),
+            &self.resources,
+            headers,
+        )
+        .await?;
+        Ok(ProductionCdpConnection {
+            connection,
+            ledger: self.ledger.clone(),
+            requirements: self.profile.requirements(),
+        })
+    }
 }
 
 /// A CDP connection carrying proof that its retained production state belongs
@@ -223,6 +252,20 @@ impl CdpAttachProvider<LiveCdpConnector> {
         Self {
             connector: LiveCdpConnector,
         }
+    }
+}
+
+#[cfg(feature = "cdp-handshake-headers")]
+impl CdpAttachProvider<ProductionCdpConnector> {
+    pub async fn attach_with_headers(
+        &self,
+        request: CdpAttachRequest,
+        headers: &CdpHandshakeHeaders,
+    ) -> Result<AttachedBrowser<ProductionCdpConnection>, CdpProductionConnectError> {
+        self.connector
+            .connect_with_headers(request.endpoint, request.connection_config, headers)
+            .await
+            .map(AttachedBrowser::new)
     }
 }
 

@@ -19,9 +19,10 @@ use pwright_cdp::CdpClient;
 use pwright_codec_control::ControlCodec;
 use pwright_composition_chromium_handle_evaluation::{
     CdpElementHandleAdoptionProductionProfile, CdpEvaluationLimits, CdpEvaluationProductionProfile,
-    CdpHandleEvaluationLimits, CdpHandlePropertyLimits, ChromiumHandleEvaluationBackendProfile,
-    ChromiumHandleEvaluationBindings, ChromiumHandleEvaluationCommandService,
-    ChromiumHandleEvaluationInstallation, ChromiumHandleEvaluationProfile,
+    CdpEvaluationService, CdpHandleEvaluationLimits, CdpHandlePropertyLimits,
+    ChromiumHandleEvaluationBackendProfile, ChromiumHandleEvaluationBindings,
+    ChromiumHandleEvaluationCommandService, ChromiumHandleEvaluationInstallation,
+    ChromiumHandleEvaluationProfile, ChromiumHandleEvaluationRoute,
     ChromiumHandleEvaluationRouteError, ChromiumHandleEvaluationRouteResolver,
     ChromiumHandleEvaluationRouteSpec, ChromiumHandleLifecycleProfile, ChromiumHandleRouteProfile,
     ContinuableHandleEvaluationService, FrameLimits, HandleEvaluationCodecLimits,
@@ -767,6 +768,99 @@ async fn cross_frame_handle_argument_is_rejected_before_cdp_io() {
             .unwrap()
             .current,
         1
+    );
+}
+
+#[tokio::test]
+async fn select_option_identity_check_sends_exact_same_world_handles_without_dom_requery() {
+    // Arrange
+    let fixture = fixture(2);
+    let service = fixture.installation.raw_service();
+    fixture.primary.set_evaluate_responses([
+        serde_json::json!({
+            "result": {"type": "object", "subtype": "node", "objectId": "select-A", "description": "select"}
+        }),
+        serde_json::json!({
+            "result": {"type": "object", "subtype": "node", "objectId": "option-A", "description": "option"}
+        }),
+        serde_json::json!({
+            "result": {"value": {"ok": true, "value": {"t": "str", "v": "1"}}}
+        }),
+    ]);
+    let select = service
+        .call(Command::<EvaluateHandle>::new(
+            CallId::new(1),
+            ObjectId::new(4),
+            CallMetadata::default(),
+            EvaluateHandleParams::expression("document.querySelector('select')"),
+        ))
+        .await
+        .unwrap()
+        .into_outcome()
+        .unwrap();
+    let option = service
+        .call(Command::<EvaluateHandle>::new(
+            CallId::new(2),
+            ObjectId::new(4),
+            CallMetadata::default(),
+            EvaluateHandleParams::expression("document.querySelector('option')"),
+        ))
+        .await
+        .unwrap()
+        .into_outcome()
+        .unwrap();
+
+    // Act
+    let result = service
+        .call(Command::<HandleEvaluate>::new(
+            CallId::new(3),
+            select.object_id,
+            CallMetadata::default(),
+            HandleEvaluateParams::function(
+                "(select, option) => String(Array.prototype.indexOf.call(select.options, option))",
+                HandleEvaluationValue::Handle(option.object_id),
+            ),
+        ))
+        .await
+        .unwrap()
+        .into_outcome()
+        .unwrap();
+
+    // Assert
+    assert_eq!(result.value, EvaluationValue::String("1".into()));
+    let calls = fixture.primary.calls();
+    assert_eq!(
+        fixture.primary.method_names(),
+        ["Runtime.callFunctionOn"; 3]
+    );
+    assert_eq!(calls[2].1[0]["arguments"][1]["objectId"], "select-A");
+    assert_eq!(calls[2].1[0]["arguments"][2]["objectId"], "option-A");
+    assert_eq!(fixture.secondary.calls().len(), 0);
+    for (call_id, handle) in [(4, select.object_id), (5, option.object_id)] {
+        fixture
+            .installation
+            .lifecycle()
+            .raw_dispose_service()
+            .call(Command::<HandleDispose>::new(
+                CallId::new(call_id),
+                handle,
+                CallMetadata::default(),
+                (),
+            ))
+            .await
+            .unwrap()
+            .into_outcome()
+            .unwrap();
+    }
+    assert_eq!(
+        fixture
+            .installation
+            .lifecycle()
+            .routes()
+            .metrics()
+            .unwrap()
+            .current,
+        0
     );
 }
 

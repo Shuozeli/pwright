@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "core461-private-image-tools",
+      "role": "implementation-internal-source-only",
+      "runner": "tests/playwright-test/stable-test-runner/node_modules/@playwright/test/cli.js",
+      "config": "tests/playwright-test/playwright.config.ts",
+      "args": [
+        "tests/image_tools/fixtures.spec.ts",
+        "tests/image_tools/unit.spec.ts"
+      ],
+      "candidateAdapter": "test-mode-playwright-core",
+      "requiresBrowser": false,
+      "fixtureMode": "pinned-private-source-only-no-io",
+      "sourceOnlyCase": "private-image-tools-batch-v1",
+      "upstreamSourceSetSha256": "850aaf28f80268352daaeaed5f58fd20af593956eabd551dae6412804f5353bb",
+      "expectedInvocationIdsSha256": "59b6aa848f07603093d68b74b2c9ccfaa6f10ea7ab239863a6e34b69a581ee74",
+      "expectedFileSpecIdsSha256": "909053ffba200a5d4db0ed53adaacfac8acb51be3abfcff0a4fad13df4a0f311",
+      "expectedTestsPerProject": 25,
+      "expectedFiles": 2,
+      "expectedProjectIds": ["image_tools"]
+    }
+  ]
+}

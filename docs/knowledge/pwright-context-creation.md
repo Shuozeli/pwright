@@ -1,4 +1,34 @@
-<!-- agent-updated: 2026-09-10T10:36:28Z -->
+<!-- agent-updated: 2026-10-06T21:07:32Z -->
+
+## NODE-427: independently selected Node touch emulation
+
+`pwright-node-addon/device-emulation` is now an explicit leaf over the
+existing host `DeviceContextOptions` registry. Its narrow
+`newContextWithHasTouch(baseURL, bool)` port constructs settings in Rust and
+uses the ordinary atomic Context creation/rollback path. The public Node
+adapter validates `hasTouch`, rejects currently uncomposed policy/header/proxy
+combinations before native work and delegates exactly once. The registry,
+16-Context capacity, session initialization and removal on close are unchanged
+and Rust-owned. The complete unchanged Chromium touch-dispatch file passes 1/1
+in both candidate and oracle lanes.
+
+## NODE-370: independently selected CSP-bypass creation policy
+
+The Node addon now exposes `browser.newContext({ bypassCSP: boolean })` through
+an independent `bypass-csp` feature. The thin language adapter validates the
+boolean and selects the native creation port. Rust retains the policy in its
+fixed 16-Context registry, installs `Page.setBypassCSP` for every owned Page or
+OOPIF session before it is resumed/published, and removes the Context entry on
+teardown. Header/proxy combinations remain explicitly unsupported until an
+exact composite creation port is selected; they are not silently ignored.
+
+The unchanged four-case official CSP file progresses from 0/4 to 4/4 candidate
+and passes 4/4 independent oracle, covering meta/header CSP, cross-process
+navigation and iframe application. The guarded oracle initially refused to run
+against another task's nonblank page and ran only after that page exited
+naturally. The standalone addon profile and default addon both compile after
+feature-gated FrameLocator/console callbacks were moved into their own
+conditional N-API impl blocks.
 
 NODE-119: Native ready events now publish Context.page, then their ordered popup linkage, using the precommit converter. New Context membership can be published independently while new Page descriptors remain hidden until ready. Creation rollback restores unused ready-source capacity; a throwing Context.page callback suppresses its dependent popup even when linkage arrives later.
 [Native ready-source contract and evidence](pwright-node-lifecycle-events.md#node-119-native-ready-and-popup-source).

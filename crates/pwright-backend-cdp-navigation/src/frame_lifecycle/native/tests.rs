@@ -209,6 +209,40 @@ fn changed_current_renderer_snapshot_commits_without_a_later_native_commit_event
 }
 
 #[test]
+fn explicit_document_reset_reuses_loader_for_following_lifecycle_events() {
+    // Arrange
+    let (mut observer, routes, _) = fixture(2);
+    apply(
+        &mut observer,
+        &routes,
+        0,
+        "main",
+        "Page.lifecycleEvent",
+        json!({"frameId":"left","loaderId":"document-2","name":"load"}),
+    );
+    let before = state(&observer, 2).document;
+
+    // Act
+    observer
+        .reset_document(Duration::from_millis(1), ObjectId::new(2))
+        .unwrap();
+
+    // Assert
+    assert_ne!(state(&observer, 2).document, before);
+    assert!(!state(&observer, 2).load);
+    assert!(observer.snapshot(ObjectId::new(4)).unwrap().is_none());
+    apply(
+        &mut observer,
+        &routes,
+        2,
+        "main",
+        "Page.lifecycleEvent",
+        json!({"frameId":"left","loaderId":"document-2","name":"load"}),
+    );
+    assert!(state(&observer, 2).load);
+}
+
+#[test]
 fn malformed_initial_document_seals_the_native_owner() {
     // Arrange
     let p = profile(2);

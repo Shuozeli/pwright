@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_page_route.py": "389149836f06148df13ee6075a31b3ade175adf24aac4eea3f5a10e157bfd303"
+  },
+  "cases": [
+    {
+      "id": "tests/async/test_page_route.py::test_Interception_should_work_with_request_interception",
+      "capabilities": ["page.route", "route.continue"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_create_a_redirect",
+      "capabilities": ["page.route", "route.fulfill", "navigation.redirect"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_fail_navigation_when_aborting_main_resource",
+      "capabilities": ["page.route", "route.abort", "navigation.failure"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_intercept_main_resource_during_cross_process_navigation",
+      "capabilities": ["page.route", "route.continue", "navigation.cross-process"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_navigate_to_URL_with_hash_and_and_fire_requests_without_hash",
+      "capabilities": ["page.route", "route.continue", "request.url"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_navigate_to_dataURL_and_not_fire_dataURL_requests",
+      "capabilities": ["page.route", "navigation.data-url"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_not_throw_Invalid_Interception_Id_if_the_request_was_cancelled",
+      "capabilities": ["page.route", "route.continue", "request.cancel-race"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_properly_return_navigation_response_when_URL_has_cookies",
+      "capabilities": ["page.route", "route.continue", "navigation.response"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_support_cors_with_GET",
+      "capabilities": ["page.route", "route.fulfill", "cors.get"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_work_when_POST_is_redirected_with_302",
+      "capabilities": ["page.route", "route.continue", "navigation.post-302"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_work_with_encoded_server",
+      "capabilities": ["page.route", "route.continue", "url.encoded"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_page_route_should_work_with_redirect_inside_sync_XHR",
+      "capabilities": ["page.route", "route.continue", "xhr.redirect"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_request_fulfill_should_allow_mocking_binary_responses",
+      "capabilities": ["page.route", "route.fulfill", "response.binary"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_request_fulfill_should_allow_mocking_svg_with_charset",
+      "capabilities": ["page.route", "route.fulfill", "response.content-type"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_request_fulfill_should_stringify_intercepted_request_response_headers",
+      "capabilities": ["page.route", "route.fulfill", "response.headers"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_request_fulfill_should_work_a",
+      "capabilities": ["page.route", "route.fulfill", "response.body"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_request_fulfill_should_work_with_request_interception",
+      "capabilities": ["page.route", "route.fulfill", "request.interception"]
+    },
+    {
+      "id": "tests/async/test_page_route.py::test_should_work_with_glob",
+      "capabilities": ["page.route", "url.glob"]
+    }
+  ]
+}

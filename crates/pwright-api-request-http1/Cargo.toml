@@ -1,0 +1,20 @@
+[package]
+name = "pwright-api-request-http1"
+description = "Bounded raw HTTP/1 codec for Pwright API request transports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+httparse.workspace = true
+pwright-api-request.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio-util.workspace = true

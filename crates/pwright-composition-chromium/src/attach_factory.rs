@@ -2,6 +2,8 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
 use pwright_backend_cdp::ConnectionEpoch;
+#[cfg(feature = "cdp-handshake-headers")]
+use pwright_cdp::CdpHandshakeHeaders;
 use pwright_core::{AtomicObjectIdSource, ObjectId, ObjectIdSourceError, ResourceLimits};
 use pwright_provider_cdp::CdpWebSocketEndpoint;
 
@@ -76,6 +78,24 @@ impl ChromiumAttachFactory {
     ) -> Result<AttachedChromiumComposition, ChromiumAttachFactoryError> {
         self.prepare()?
             .attach(endpoint, self.browser_object_id, self.initial_epoch())
+            .await
+            .map_err(ChromiumAttachFactoryError::Attachment)
+    }
+
+    /// Opens a fresh attachment with caller-supplied CDP upgrade headers.
+    #[cfg(feature = "cdp-handshake-headers")]
+    pub async fn attach_with_headers(
+        &self,
+        endpoint: CdpWebSocketEndpoint,
+        headers: &CdpHandshakeHeaders,
+    ) -> Result<AttachedChromiumComposition, ChromiumAttachFactoryError> {
+        self.prepare()?
+            .attach_with_headers(
+                endpoint,
+                self.browser_object_id,
+                self.initial_epoch(),
+                headers,
+            )
             .await
             .map_err(ChromiumAttachFactoryError::Attachment)
     }

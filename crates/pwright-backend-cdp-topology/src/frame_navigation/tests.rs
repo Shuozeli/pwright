@@ -22,14 +22,24 @@ fn document_commit_retires_only_selected_descendants_and_their_renderer_routes()
     assert!(topology.frame_navigation_route(ObjectId::new(6)).is_none());
     assert!(topology.frame_navigation_route(ObjectId::new(7)).is_none());
     assert!(topology.target_session_route("remote-session").is_none());
-    assert_eq!(
-        update.effects(),
-        &[crate::CdpTopologyEffect::Lifecycle(
-            pwright_core::ControlMessage::Dispose {
-                object_id: ObjectId::new(6)
-            }
-        )]
-    );
+    let mut expected = Vec::new();
+    #[cfg(feature = "frame-detach-events")]
+    expected.extend([
+        crate::CdpTopologyEffect::FrameRemoved {
+            page: ObjectId::new(3),
+            frame: ObjectId::new(7),
+        },
+        crate::CdpTopologyEffect::FrameRemoved {
+            page: ObjectId::new(3),
+            frame: ObjectId::new(6),
+        },
+    ]);
+    expected.push(crate::CdpTopologyEffect::Lifecycle(
+        pwright_core::ControlMessage::Dispose {
+            object_id: ObjectId::new(6),
+        },
+    ));
+    assert_eq!(update.effects(), expected.as_slice());
 }
 
 #[test]

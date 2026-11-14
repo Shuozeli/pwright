@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright.git",
+  "tag": "v1.58.0",
+  "commit": "961381ec73a9fa2661d92504eab1a6bd6eaffc75",
+  "suites": [
+    {
+      "id": "bidi-chromium-server-connect-close-error-strict-v6",
+      "role": "browser-independent-fixture-adapted-diagnostic",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": ["tests/library/browsertype-connect.spec.ts:130"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chromium-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-chrome-stable-server-connect-close-error-strict-v6",
+      "role": "browser-independent-fixture-adapted-diagnostic",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": ["tests/library/browsertype-connect.spec.ts:130"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chrome-stable-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    },
+    {
+      "id": "bidi-chrome-canary-server-connect-close-error-strict-v6",
+      "role": "browser-independent-fixture-adapted-diagnostic",
+      "runner": "packages/playwright/cli.js",
+      "config": "tests/bidi/playwright.config.ts",
+      "args": ["tests/library/browsertype-connect.spec.ts:130"],
+      "candidateAdapter": "test-mode-playwright-core",
+      "project": "bidi-chrome-canary-library",
+      "requiresBrowser": false,
+      "expectedTestsPerProject": 2,
+      "expectedFiles": 1
+    }
+  ]
+}

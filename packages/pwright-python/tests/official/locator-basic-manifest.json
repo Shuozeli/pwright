@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_locators.py": "6761dfaee418ceb9dc3cd21937d936db36db20ddeae15cd0c677586c5900ed77",
+    "tests/sync/test_locators.py": "5f4e47a3225669ef2328ada0c873114b2a9238a9a337b5dcb5328a3d4fc3c1e6"
+  },
+  "cases": [
+    {"id": "tests/async/test_locators.py::test_locators_get_attribute_should_work", "capabilities": ["locator.read", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_input_value_should_work", "capabilities": ["locator.read", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_inner_html_should_work", "capabilities": ["locator.read", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_inner_text_should_work", "capabilities": ["locator.read", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_text_content_should_work", "capabilities": ["locator.read", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_is_hidden_and_is_visible_should_work", "capabilities": ["locator.state", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_is_enabled_and_is_disabled_should_work", "capabilities": ["locator.state", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_is_editable_should_work", "capabilities": ["locator.state", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_is_checked_should_work", "capabilities": ["locator.state", "locator.evaluate", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_all_text_contents_should_work", "capabilities": ["locator.collection", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_all_inner_texts", "capabilities": ["locator.collection", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_fill_should_work", "capabilities": ["locator.fill", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_check_should_work", "capabilities": ["locator.set-checked", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_uncheck_should_work", "capabilities": ["locator.set-checked", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_focus_should_work", "capabilities": ["locator.focus", "locator.evaluate", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_should_press", "capabilities": ["locator.press", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_set_checked", "capabilities": ["locator.set-checked", "async-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_get_attribute_should_work", "capabilities": ["locator.read", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_input_value_should_work", "capabilities": ["locator.read", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_inner_html_should_work", "capabilities": ["locator.read", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_inner_text_should_work", "capabilities": ["locator.read", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_text_content_should_work", "capabilities": ["locator.read", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_is_hidden_and_is_visible_should_work", "capabilities": ["locator.state", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_is_enabled_and_is_disabled_should_work", "capabilities": ["locator.state", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_is_editable_should_work", "capabilities": ["locator.state", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_is_checked_should_work", "capabilities": ["locator.state", "locator.evaluate", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_all_text_contents_should_work", "capabilities": ["locator.collection", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_all_inner_texts", "capabilities": ["locator.collection", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_fill_should_work", "capabilities": ["locator.fill", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_check_should_work", "capabilities": ["locator.set-checked", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_uncheck_should_work", "capabilities": ["locator.set-checked", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_focus_should_work", "capabilities": ["locator.focus", "locator.evaluate", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_should_press", "capabilities": ["locator.press", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_set_checked", "capabilities": ["locator.set-checked", "sync-api"]}
+  ]
+}

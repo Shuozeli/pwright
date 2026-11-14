@@ -136,6 +136,9 @@ pub enum PwrightLocatorSelector {
         attributes: String,
         matcher: PwrightLocatorRegexMatcher,
     },
+    LegacyText {
+        matcher: PwrightLocatorTextMatcher,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -275,6 +278,9 @@ pub enum PwrightLocatorSelectorRef<'a> {
     TestIdRegex {
         attributes: &'a str,
         matcher: PwrightLocatorRegexMatcherRef<'a>,
+    },
+    LegacyText {
+        matcher: PwrightLocatorTextMatcherRef<'a>,
     },
 }
 
@@ -606,6 +612,11 @@ impl BinaryEncode for PwrightLocatorSelector {
                     <PwrightLocatorRegexMatcher as BinaryEncode>::encode_binary(matcher, writer, context)?;
                     Ok(())
                 }
+                Self::LegacyText { matcher } => {
+                    writer.u8(22)?;
+                    <PwrightLocatorTextMatcher as BinaryEncode>::encode_binary(matcher, writer, context)?;
+                    Ok(())
+                }
             }
         })
     }
@@ -778,6 +789,12 @@ impl BinaryDecode for PwrightLocatorSelector {
                     let matcher = <PwrightLocatorRegexMatcher as BinaryDecode>::decode_binary(reader, context)?;
                     Ok(Self::TestIdRegex {
                         attributes,
+                        matcher,
+                    })
+                },
+                22 => {
+                    let matcher = <PwrightLocatorTextMatcher as BinaryDecode>::decode_binary(reader, context)?;
+                    Ok(Self::LegacyText {
                         matcher,
                     })
                 },
@@ -1070,6 +1087,11 @@ impl BinaryEncode for PwrightLocatorSelectorRef<'_> {
                     <PwrightLocatorRegexMatcherRef as BinaryEncode>::encode_binary(matcher, writer, context)?;
                     Ok(())
                 }
+                Self::LegacyText { matcher } => {
+                    writer.u8(22)?;
+                    <PwrightLocatorTextMatcherRef as BinaryEncode>::encode_binary(matcher, writer, context)?;
+                    Ok(())
+                }
             }
         })
     }
@@ -1111,7 +1133,7 @@ const TYPE_0_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(3, "mixed"),
 ];
 
-pub const PWRIGHT_LOCATOR_OPTIONAL_ARIA_TRI_STATE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.optional_aria_tri_state", ProtocolVersion::new(1, 0), TYPE_0_VARIANTS);
+pub const PWRIGHT_LOCATOR_OPTIONAL_ARIA_TRI_STATE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.optional_aria_tri_state", ProtocolVersion::new(1, 1), TYPE_0_VARIANTS);
 
 const TYPE_1_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "absent"),
@@ -1119,14 +1141,14 @@ const TYPE_1_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(2, "true"),
 ];
 
-pub const PWRIGHT_LOCATOR_OPTIONAL_BOOL_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.optional_bool", ProtocolVersion::new(1, 0), TYPE_1_VARIANTS);
+pub const PWRIGHT_LOCATOR_OPTIONAL_BOOL_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.optional_bool", ProtocolVersion::new(1, 1), TYPE_1_VARIANTS);
 
 const TYPE_2_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("source", BinaryFieldKind::Utf8, BinaryCardinality::Required),
     BinaryFieldSchema::new("flags", BinaryFieldKind::Utf8, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_REGEX_MATCHER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.regex_matcher", ProtocolVersion::new(1, 0), TYPE_2_FIELDS);
+pub const PWRIGHT_LOCATOR_REGEX_MATCHER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.regex_matcher", ProtocolVersion::new(1, 1), TYPE_2_FIELDS);
 
 const TYPE_3_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("role", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -1141,7 +1163,7 @@ const TYPE_3_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("selected", "pwright.locator.optional_bool", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_ROLE_PATTERN_SELECTOR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.role_pattern_selector", ProtocolVersion::new(1, 0), TYPE_3_FIELDS);
+pub const PWRIGHT_LOCATOR_ROLE_PATTERN_SELECTOR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.role_pattern_selector", ProtocolVersion::new(1, 1), TYPE_3_FIELDS);
 
 const TYPE_4_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("role", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -1156,7 +1178,7 @@ const TYPE_4_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::enumeration("selected", "pwright.locator.optional_bool", BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_ROLE_SELECTOR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.role_selector", ProtocolVersion::new(1, 0), TYPE_4_FIELDS);
+pub const PWRIGHT_LOCATOR_ROLE_SELECTOR_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.role_selector", ProtocolVersion::new(1, 1), TYPE_4_FIELDS);
 
 const TYPE_5_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required),
@@ -1263,6 +1285,10 @@ const TYPE_5_VARIANT_21_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("matcher", "pwright.locator.regex_matcher", BinaryCardinality::Required),
 ];
 
+const TYPE_5_VARIANT_22_FIELDS: &[BinaryFieldSchema] = &[
+    BinaryFieldSchema::message("matcher", "pwright.locator.text_matcher", BinaryCardinality::Required),
+];
+
 const TYPE_5_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(0, "css", TYPE_5_VARIANT_0_FIELDS),
     BinaryVariantSchema::new(1, "nth", TYPE_5_VARIANT_1_FIELDS),
@@ -1286,16 +1312,17 @@ const TYPE_5_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(19, "attribute_regex", TYPE_5_VARIANT_19_FIELDS),
     BinaryVariantSchema::new(20, "test_id_text", TYPE_5_VARIANT_20_FIELDS),
     BinaryVariantSchema::new(21, "test_id_regex", TYPE_5_VARIANT_21_FIELDS),
+    BinaryVariantSchema::new(22, "legacy_text", TYPE_5_VARIANT_22_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_SELECTOR_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.selector", ProtocolVersion::new(1, 0), TYPE_5_VARIANTS);
+pub const PWRIGHT_LOCATOR_SELECTOR_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.selector", ProtocolVersion::new(1, 1), TYPE_5_VARIANTS);
 
 const TYPE_6_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::new("value", BinaryFieldKind::Utf8, BinaryCardinality::Required),
     BinaryFieldSchema::new("exact", BinaryFieldKind::Bool, BinaryCardinality::Required),
 ];
 
-pub const PWRIGHT_LOCATOR_TEXT_MATCHER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.text_matcher", ProtocolVersion::new(1, 0), TYPE_6_FIELDS);
+pub const PWRIGHT_LOCATOR_TEXT_MATCHER_SCHEMA: BinaryRecordSchema = BinaryRecordSchema::new("pwright.locator.text_matcher", ProtocolVersion::new(1, 1), TYPE_6_FIELDS);
 
 const TYPE_7_VARIANT_0_FIELDS: &[BinaryFieldSchema] = &[
     BinaryFieldSchema::message("matcher", "pwright.locator.text_matcher", BinaryCardinality::Required),
@@ -1310,7 +1337,7 @@ const TYPE_7_VARIANTS: &[BinaryVariantSchema] = &[
     BinaryVariantSchema::new(1, "regex", TYPE_7_VARIANT_1_FIELDS),
 ];
 
-pub const PWRIGHT_LOCATOR_TEXT_PATTERN_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.text_pattern", ProtocolVersion::new(1, 0), TYPE_7_VARIANTS);
+pub const PWRIGHT_LOCATOR_TEXT_PATTERN_SCHEMA: BinarySchema = BinarySchema::new("pwright.locator.text_pattern", ProtocolVersion::new(1, 1), TYPE_7_VARIANTS);
 
 const TYPE_8_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(0, "placeholder"),
@@ -1318,7 +1345,7 @@ const TYPE_8_VARIANTS: &[BinaryEnumVariantSchema] = &[
     BinaryEnumVariantSchema::new(2, "title"),
 ];
 
-pub const PWRIGHT_LOCATOR_USER_FACING_ATTRIBUTE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.user_facing_attribute", ProtocolVersion::new(1, 0), TYPE_8_VARIANTS);
+pub const PWRIGHT_LOCATOR_USER_FACING_ATTRIBUTE_SCHEMA: BinaryEnumSchema = BinaryEnumSchema::new("pwright.locator.user_facing_attribute", ProtocolVersion::new(1, 1), TYPE_8_VARIANTS);
 
 const TYPES: &[BinaryTypeSchema] = &[
     BinaryTypeSchema::Enumeration(PWRIGHT_LOCATOR_OPTIONAL_ARIA_TRI_STATE_SCHEMA),

@@ -9,7 +9,9 @@ use std::sync::Arc;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use pwright_browser_model::{ELEMENT_HANDLE_OBJECT_KIND, JS_HANDLE_OBJECT_KIND};
-use pwright_cap_evaluation::{EvaluationErrorDetails, EvaluationMode};
+use pwright_cap_evaluation::{
+    EvaluationErrorDetails, EvaluationMode, EvaluationNumber, EvaluationValue,
+};
 use pwright_cap_handle_evaluation::{
     EvaluateHandleParams, HandleEvaluationErrorDetails, HandleEvaluationValue,
 };
@@ -178,6 +180,17 @@ impl Debug for CdpEvaluatedHandle {
 }
 
 impl CdpEvaluatedHandle {
+    /// Retain one already-returned CDP `RemoteObject` without another browser
+    /// round trip. Event producers remain responsible for compensating the
+    /// native `objectId` when this validation fails before ownership transfers.
+    pub fn from_remote_object(
+        client: Arc<dyn CdpClient>,
+        remote: &Value,
+        limits: CdpHandleEvaluationLimits,
+    ) -> Result<Self, OperationError<HandleEvaluationErrorDetails>> {
+        parse_remote_object(client, remote, limits)
+    }
+
     pub(crate) fn element_reference(
         client: Arc<dyn CdpClient>,
         object_id: &str,
@@ -212,6 +225,75 @@ impl CdpEvaluatedHandle {
 
     pub fn preview(&self) -> &str {
         &self.preview
+    }
+
+    /// Reconstruct a retained primitive without another browser round trip.
+    /// Object Handles return `None`; their JSON projection still executes in
+    /// the exact source world. Keeping explicit null here also avoids CDP's
+    /// generated `Option<Value>` model collapsing `{ value: null }` into an
+    /// absent CallArgument field (which CDP interprets as `undefined`).
+    pub fn primitive_value(
+        &self,
+    ) -> Result<Option<EvaluationValue>, OperationError<HandleEvaluationErrorDetails>> {
+        if self.object_id.is_some() {
+            return Ok(None);
+        }
+        let Some(argument) = self.primitive_argument.as_ref() else {
+            return Err(invalid_response(
+                "primitive Handle omitted its retained CDP call argument",
+            ));
+        };
+        if let Some(value) = argument.get("value") {
+            let value = match value {
+                Value::Null => EvaluationValue::Null,
+                Value::Bool(value) => EvaluationValue::Bool(*value),
+                Value::Number(value) => EvaluationValue::Number(
+                    EvaluationNumber::new(value.as_f64().ok_or_else(|| {
+                        invalid_response("primitive Handle number is not representable as f64")
+                    })?)
+                    .map_err(|error| invalid_response(&error.to_string()))?,
+                ),
+                Value::String(value) => EvaluationValue::String(value.clone()),
+                Value::Array(_) | Value::Object(_) => {
+                    return Err(invalid_response(
+                        "primitive Handle contains a non-primitive CDP value",
+                    ));
+                }
+            };
+            return Ok(Some(value));
+        }
+        if let Some(value) = argument.get("unserializableValue").and_then(Value::as_str) {
+            let value = match value {
+                "NaN" => EvaluationValue::Nan,
+                "Infinity" => EvaluationValue::Infinity,
+                "-Infinity" => EvaluationValue::NegativeInfinity,
+                "-0" => EvaluationValue::NegativeZero,
+                value if value.ends_with('n') => {
+                    EvaluationValue::Bigint(value[..value.len() - 1].to_owned())
+                }
+                _ => {
+                    return Err(invalid_response(
+                        "primitive Handle contains an unknown unserializable CDP value",
+                    ));
+                }
+            };
+            return Ok(Some(value));
+        }
+        if argument.as_object().is_some_and(serde_json::Map::is_empty) {
+            return Ok(Some(EvaluationValue::Undefined));
+        }
+        Err(invalid_response(
+            "primitive Handle call argument has an invalid shape",
+        ))
+    }
+
+    /// Whether this retained result is exactly the JavaScript `null`
+    /// primitive. Object Handles and every other primitive return `false`.
+    /// This keeps optional-ElementHandle classification inside the backend
+    /// type that owns the retained CDP representation.
+    pub fn is_null_primitive(&self) -> Result<bool, OperationError<HandleEvaluationErrorDetails>> {
+        self.primitive_value()
+            .map(|value| matches!(value, Some(EvaluationValue::Null)))
     }
 
     pub const fn native_argument_bytes(&self) -> usize {
@@ -795,8 +877,18 @@ fn parse_borrowed_response(
 ) -> Result<CdpEvaluatedHandle, OperationError<HandleEvaluationErrorDetails>> {
     let remote = response
         .get("result")
-        .and_then(Value::as_object)
         .ok_or_else(|| invalid_response("CDP handle evaluation omitted result RemoteObject"))?;
+    parse_remote_object(client, remote, limits)
+}
+
+fn parse_remote_object(
+    client: Arc<dyn CdpClient>,
+    remote: &Value,
+    limits: CdpHandleEvaluationLimits,
+) -> Result<CdpEvaluatedHandle, OperationError<HandleEvaluationErrorDetails>> {
+    let remote = remote
+        .as_object()
+        .ok_or_else(|| invalid_response("CDP RemoteObject is not an object"))?;
     let remote_type = remote
         .get("type")
         .and_then(Value::as_str)
@@ -981,7 +1073,10 @@ mod tests {
     use pwright_core::{FailureKind, ObjectId, Service};
     use pwright_fake::FakeCdpClient;
 
-    use super::{CdpHandleEvaluationRequest, CdpHandleEvaluationService, CdpHandleKind};
+    use super::{
+        CdpEvaluatedHandle, CdpHandleEvaluationLimits, CdpHandleEvaluationRequest,
+        CdpHandleEvaluationService, CdpHandleKind,
+    };
     use pwright_backend_cdp_evaluation::CdpEvaluationService;
 
     #[tokio::test]
@@ -1039,6 +1134,83 @@ mod tests {
         assert_eq!(handle.kind(), CdpHandleKind::Js);
         assert_eq!(handle.object_id(), None);
         assert_eq!(client.method_names(), ["Runtime.evaluate"]);
+    }
+
+    #[test]
+    fn primitive_handle_reconstructs_explicit_null_without_cdp_call_argument_round_trip() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let client_dyn: Arc<dyn pwright_cdp::CdpClient> = client;
+        let handle = super::parse_response(
+            client_dyn,
+            serde_json::json!({
+                "result": { "type": "object", "subtype": "null", "value": null }
+            }),
+            Default::default(),
+        )
+        .expect("valid primitive null Handle");
+
+        // Act
+        let value = handle.primitive_value().expect("valid retained primitive");
+
+        // Assert
+        assert_eq!(value, Some(pwright_cap_evaluation::EvaluationValue::Null));
+    }
+
+    #[test]
+    fn existing_remote_object_becomes_a_retained_handle_without_browser_io() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let client_dyn: Arc<dyn pwright_cdp::CdpClient> = client.clone();
+        let remote = serde_json::json!({
+            "type": "object",
+            "description": "Object",
+            "objectId": "console-argument-1"
+        });
+
+        // Act
+        let handle = CdpEvaluatedHandle::from_remote_object(
+            client_dyn,
+            &remote,
+            CdpHandleEvaluationLimits::default(),
+        )
+        .expect("event RemoteObject should validate");
+
+        // Assert
+        assert_eq!(handle.kind(), CdpHandleKind::Js);
+        assert_eq!(handle.object_id(), Some("console-argument-1"));
+        assert_eq!(handle.preview(), "Object");
+        assert!(client.calls().is_empty());
+    }
+
+    #[test]
+    fn existing_remote_primitive_preserves_its_json_value_without_browser_io() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html(""));
+        let client_dyn: Arc<dyn pwright_cdp::CdpClient> = client.clone();
+        let remote = serde_json::json!({
+            "type": "number",
+            "value": 5,
+            "description": "5"
+        });
+
+        // Act
+        let handle = CdpEvaluatedHandle::from_remote_object(
+            client_dyn,
+            &remote,
+            CdpHandleEvaluationLimits::default(),
+        )
+        .expect("event primitive should validate");
+        let value = handle.primitive_value().expect("retained primitive");
+
+        // Assert
+        assert_eq!(
+            value,
+            Some(pwright_cap_evaluation::EvaluationValue::Number(
+                pwright_cap_evaluation::EvaluationNumber::new(5.0).unwrap()
+            ))
+        );
+        assert!(client.calls().is_empty());
     }
 
     #[tokio::test]

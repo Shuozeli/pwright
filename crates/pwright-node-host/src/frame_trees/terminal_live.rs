@@ -87,6 +87,20 @@ async fn native_session_teardown_publishes_independent_page_and_context_groups()
                         }
                         LifecycleNotice::PageClose { .. } | LifecycleNotice::ContextClose { .. } => {},
                         LifecycleNotice::ContextPage { .. } | LifecycleNotice::Popup { .. } => return Err("creation during terminal publication".into()),
+                        LifecycleNotice::PageDomContentLoaded { .. }
+                        | LifecycleNotice::PageLoad { .. }
+                        | LifecycleNotice::PageMainFrameNavigated { .. }
+                        | LifecycleNotice::PageConsole { .. }
+                        | LifecycleNotice::PageError { .. } => return Err("Page event during terminal publication".into()),
+                        #[cfg(feature = "frame-events")]
+                        LifecycleNotice::PageFrameAttached { .. }
+                        | LifecycleNotice::PageFrameNavigated { .. } => return Err("Page event during terminal publication".into()),
+                        #[cfg(feature = "frame-detach-events")]
+                        LifecycleNotice::PageFrameDetached { .. } => return Err("Page event during terminal publication".into()),
+                        #[cfg(feature = "page-dialogs")]
+                        LifecycleNotice::PageDialog { .. } => return Err("Page event during terminal publication".into()),
+                        #[cfg(feature = "file-chooser-events")]
+                        LifecycleNotice::PageFileChooser { .. } => return Err("Page event during terminal publication".into()),
                     }
                     if !publications.connection_is_published_open()? { return Err("early disconnected state".into()); }
                     owner.acknowledge_notice(delivery)?;

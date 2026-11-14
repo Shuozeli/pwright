@@ -1,0 +1,18 @@
+[package]
+name = "pwright-api-request-auth-basic"
+description = "Bounded HTTP Basic authorization policy for Pwright API requests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+base64.workspace = true
+pwright-api-request.workspace = true
+thiserror.workspace = true
+url.workspace = true
+zeroize.workspace = true

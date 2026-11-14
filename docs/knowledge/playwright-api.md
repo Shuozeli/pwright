@@ -1,4 +1,4 @@
-<!-- agent-updated: 2026-09-05T15:03:54Z -->
+<!-- agent-updated: 2026-10-06T21:07:32Z -->
 
 # Playwright API Compatibility
 
@@ -6,13 +6,149 @@ pwright aims to provide a Rust API with the same mental model as [Playwright](ht
 
 > **Constraint:** pwright only supports **remote CDP** — connecting to an externally-managed Chrome via WebSocket. No browser launch, no profiles, no tracing, no video.
 
+Node NODE-427 adds opt-in `Browser.newContext({ hasTouch: true })` over the
+existing Rust device-emulation registry and completes native TouchEvent
+initializer materialization for `Locator.dispatchEvent()`. The unchanged
+Chromium touch-dispatch file passes 1/1 candidate and oracle. Other nondefault
+device options and uncomposed Context-policy combinations remain explicit
+future boundaries.
+
+Python ABI 96 now covers the complete async/sync Chromium request-fallback
+files: source candidate and official Playwright 1.58.0 oracle pass 55/55.
+`Request.headers` exposes lowercase names, `all_headers()` returns a copy and
+`header_value()` is case-insensitive. Rust continues to own effective fallback
+matching and settlement; Python retains the published effective Request
+identity in a 64-entry bound through terminal network publication. Sync route
+handlers may call sync Page APIs without blocking their own bridge loop. Final
+installed-wheel browser promotion is pending until the shared CDP endpoint is
+available again.
+
+Python ABI 96 adds `BrowserContext.request`, `Page.request`, `Route.fetch()`
+and `Route.fulfill(json=...)` through two opt-in Rust compositions. The Context
+owner supplies live cookies and bounded base-URL/user-agent/credential/TLS
+settings to the existing API-request client; the route owner replays exact
+paused-request identity and can fulfill from its retained `APIResponse`.
+Python keeps public callback/value identity only. Final installed candidate
+and official Playwright 1.58.0 oracle pass all 108 selected expanded Chromium
+rows (51 + 47 + 6 + 4).
+
+Python ABI 87 completes Page `request`, `requestfinished` and `requestfailed`
+listeners. Rust owns the three native subscriptions, bounded notice FIFO,
+failure text and exact native-to-portable identity correlation. Python owns
+only one watcher and public callback dispatch. The unchanged abort rows pass
+candidate/oracle 2/2 and repeat 10/10.
+
+Python ABI 86 adds async/sync `set_extra_http_headers()` on Page and
+BrowserContext. Rust owns bounded settings, Page-over-Context precedence,
+native session fanout and implicit Page-referrer composition. CDP request
+header names are lowercased before route publication, matching Playwright's
+public mapping. The three unchanged official Chromium rows pass installed
+candidate/oracle 3/3 and candidate repeat 15/15. Two additional unchanged
+Page-route rows for native `Referer`/`Origin` lowercase publication pass
+candidate/oracle 2/2 and repeat 10/10 without another ABI change.
+
+Python ABI 86 also keeps route-fulfill status semantics in Rust. Every
+Chromium `Fetch.fulfillRequest` carries Playwright's pinned reason phrase,
+including `422 Unprocessable Entity`, rather than inheriting browser-version
+defaults. The unchanged 422 row passes candidate/oracle 1/1 and repeat 5/5.
+
+Python ABI 85 adds async/sync handler-specific `unroute()` on Page and
+BrowserContext plus composable `Route.fallback()` options. Rust owns the LIFO
+Page-before-Context traversal, effective-request rematching, field-wise
+override merge and terminal settlement. The eight unchanged official
+Chromium rows pass installed candidate/oracle 8/8 and repeat 40/40.
+
+Python ABI 84 adds finite positive `times` budgets to async/sync Page and
+BrowserContext bounded string routes. Rust atomically matches, decrements and
+removes the registration, refreshes affected Fetch patterns after the final
+terminal action and continues transient stale-pattern pauses without calling
+Python. `times=0` remains unlimited. The three unchanged official Chromium
+rows pass installed candidate/oracle 3/3 and candidate repeat 15/15.
+
+Python ABI 83 route globs now match Playwright's question-mark rule: `?` is a
+literal, not a one-character wildcard. Rust applies that rule during final
+selection and compiles the same bounded escaped pattern for Chromium's Fetch
+prefilter. The unchanged official row passes installed candidate/oracle 1/1
+and candidate repeat 5/5.
+
+Python ABI 83 adds complete async/sync `Route.continue_()` override values for
+the currently supported Chromium routing slice: URL, method, headers and POST
+data. Rust validates bounds and same-protocol URL replacement, owns the paused
+request identity and emits one `Fetch.continueRequest`; Python only normalizes
+public values. The ten unchanged request-continue rows pass installed
+candidate and independent oracle 10/10. Regex/predicate matchers,
+Regex/predicate matching and broader interception semantics remain planned.
+
+Python ABI 82 adds opt-in async/sync `Page.unroute_all()` and
+`BrowserContext.unroute_all()` with Playwright's default and `"wait"`
+behaviors. Rust removes exactly the selected Page or Context scope, refreshes
+Fetch across affected current sessions and, for `"wait"`, waits until both
+pending and callback-settling calls from that scope retire. Python clears its
+callback identities only after native removal completes. `"ignoreErrors"`
+remains explicitly unsupported. Six unchanged default-removal and in-flight-
+wait rows pass installed candidate and independent oracle 6/6.
+
+Python ABI 81 adds opt-in async/sync `BrowserContext.route()` for bounded
+string glob/path patterns. Rust owns Context scope, base-URL resolution,
+Page-over-Context precedence, current/future Page/OOPIF initialization and all
+Fetch state; Python retains only the callback keyed by an opaque registration.
+The four unchanged Context HAR URL-filter composition rows pass installed
+candidate/oracle 4/4 and candidate stress async 20/20 plus sync 20/20.
+
+Python ABI 80 also treats a present HAR `log` without `entries` as an empty
+archive. `not_found="fallback"` consequently continues the request; invalid
+JSON, malformed entries, external content and bound violations still fail.
+
+Python ABI 80 adds opt-in `BrowserContext.route_from_har()` over ABI 79's
+bounded plain embedded-HAR owner. Rust owns Page/Context scope, Page precedence,
+future-Page/OOPIF installation and a fixed 64-session initialization bridge.
+The six new unchanged rows pass installed candidate/oracle 6/6 and candidate
+stress async 30/30 plus sync 30/30. External content, ZIP/update archives,
+regex/predicate filters, handler-specific `unroute()` and
+`unroute_all(behavior="ignoreErrors")` remain planned.
+
+Python ABI 79 adds opt-in `Page.route_from_har()` plus Rust-owned computed-
+style polling for `expect(locator).to_have_css()`. The persistent-Context,
+async/sync Page method/redirect and async/sync Page URL-filter/ordinary-route-
+composition rows pass installed candidate/oracle 5/5.
+
+Python ABI 78 adds opt-in ordinary/persistent Context `http_credentials` and
+navigation `Response.body()`. Rust owns bounded credentials, origin matching,
+Fetch challenge settlement, request/session routing and response bytes; Python
+only adapts public values.
+
+Python ABI 19 adds async/sync `Page.drag_and_drop` and `Locator.drag_to` for
+the fixed Chromium center/position/step slice. Rust owns same-Page/same-Frame
+validation, locator geometry and bounded Mouse/HTML5 drag input. Full
+actionability/hit-target retry semantics, force mode and other browsers remain
+planned. Python ABI 18 additionally supports async/sync `Request.sizes()` through a
+bounded opaque Rust owner with Chromium raw-header correlation. Python ABI 17
+supports async Page `route` for bounded string
+glob/path patterns with `continue_()` and `abort()`. Rust owns interception,
+selection, pending-call capacity and terminal Page-close handling. Regex and
+predicate matchers, `times`, overrides, fulfill/fallback/unroute, Context and
+sync routes remain planned. ABI 16 supports Page `pageerror` with
+Chromium-compatible Error name, message, stack and thrown-value conversion.
+ABI 15 supports Page `load`, `domcontentloaded`, `close`
+and `popup` events, `opener`, event waiters/listeners, and the ABI 14 Page
+`expose_function` / `expose_binding` slice. Event observation, publication and
+close retirement remain Rust-owned; Python owns public wrapper/callback
+identity only.
+
+Python ABI 13 introduced a bounded first Handle slice:
+`Page`/`Frame.evaluate_handle`, direct Handle arguments, `json_value`,
+`as_element`, `wait_for_function`, `query_selector`, and Page script/style
+tags. Rust owns remote-object identity, capacity, polling and disposal. Nested
+Handle graphs, properties and most ElementHandle methods remain planned.
+
 ---
 
 ## Object Model
 
 ```
 Playwright
-  └─ BrowserType.connectOverCDP(wsEndpoint)  ← only entry point
+  ├─ request.newContext()                 ← browser-independent
+  └─ BrowserType.connectOverCDP(wsEndpoint)
        └─ Browser
             └─ BrowserContext
                  └─ Page
@@ -34,6 +170,8 @@ Playwright
 | `Keyboard` | `Keyboard` | ✅ Exists |
 | `Mouse` | `Mouse` | ✅ Exists |
 | `Touchscreen` | `Touchscreen` | ✅ Exists |
+| `APIRequestContext` | `pwright_api_request::ApiRequestContext` | ✅ Node/Python opt-in |
+| `APIResponse` | `pwright_api_request::ApiResponse` | ✅ Node/Python opt-in |
 
 ---
 
@@ -41,7 +179,7 @@ Playwright
 
 | Playwright API | pwright | Status | Notes |
 |---------------|---------|--------|-------|
-| `browser.newContext(opts)` | `browser.new_context()` | Planned | Single default context for remote CDP |
+| `browser.newContext(opts)` | `browser.new_context()` | Partial | Node opt-in Context creation supports selected base URL, headers, proxy/CSP and `hasTouch`; other nondefault device/policy options remain explicit |
 | `browser.newPage(opts)` | `browser.new_page()` | Planned | Shorthand: creates context + page |
 | `browser.contexts()` | `browser.contexts()` | Planned | Returns list of contexts |
 | `browser.isConnected()` | `browser.is_connected()` | Planned | Track WebSocket state |
@@ -58,28 +196,30 @@ Playwright
 
 | Playwright API | pwright | Status | CDP method |
 |---------------|---------|--------|------------|
-| `context.newPage()` | `context.new_page()` | Planned | `Target.createTarget` |
-| `context.pages()` | `context.pages()` | Planned | List open tabs |
+| `context.newPage()` | `context.new_page()` | ✅ Python | Rust-owned `Target.createTarget` lifecycle |
+| `context.pages()` | `context.pages()` | ✅ Python | Published Rust topology |
 | `context.cookies(urls)` | `context.cookies()` | ✅ Exists | `Network.getCookies` |
 | `context.addCookies(cookies)` | `context.add_cookies()` | ✅ Exists | `Network.setCookie` |
 | `context.clearCookies()` | `context.clear_cookies()` | Planned | `Network.clearBrowserCookies` |
-| `context.close()` | `context.close()` | Planned | Close all pages |
-| `context.setDefaultTimeout(ms)` | `context.set_default_timeout()` | Planned | Client-side config |
-| `context.setDefaultNavigationTimeout(ms)` | `context.set_default_navigation_timeout()` | Planned | Client-side config |
+| `context.close()` | `context.close()` | ✅ Python | Rust child-first lifecycle |
+| `context.setDefaultTimeout(ms)` | `context.set_default_timeout()` | ✅ Python ABI 8 opt-in | Fixed Rust timeout table |
+| `context.setDefaultNavigationTimeout(ms)` | `context.set_default_navigation_timeout()` | ✅ Python ABI 8 opt-in | Fixed Rust timeout table |
 | `context.grantPermissions(perms)` | `context.grant_permissions()` | Planned | `Browser.grantPermissions` |
 | `context.clearPermissions()` | `context.clear_permissions()` | Planned | `Browser.resetPermissions` |
 | `context.setGeolocation(geo)` | `context.set_geolocation()` | Planned | `Emulation.setGeolocationOverride` |
-| `context.setExtraHTTPHeaders(h)` | `context.set_extra_http_headers()` | Planned | `Network.setExtraHTTPHeaders` |
+| `context.setExtraHTTPHeaders(h)` | `context.set_extra_http_headers()` | ✅ Python ABI 86 opt-in | Bounded Rust settings + `Network.setExtraHTTPHeaders` fanout |
 | `context.setOffline(bool)` | `context.set_offline()` | Planned | `Network.emulateNetworkConditions` |
-| `context.setHTTPCredentials(c)` | — | Planned | `Fetch.enable` with credentials |
-| `context.addInitScript(script)` | `context.add_init_script()` | Planned | `Page.addScriptToEvaluateOnNewDocument` |
+| new/persistent Context `http_credentials` option | Rust Context policy | ✅ Python ABI 78 opt-in | Selected-session `Fetch.enable` + exact challenge settlement |
+| `context.addInitScript(script)` | `context.add_init_script()` | ✅ Node/Python opt-in | Bounded Rust scope + `Page.addScriptToEvaluateOnNewDocument` |
+| `context.routeFromHAR(har)` | `context.route_from_har()` | Partial: Python ABI 80 opt-in | Plain embedded HAR, bounded Rust Context scope and Page/OOPIF Fetch settlement |
 | `context.storageState()` | — | ❌ Out of scope | Requires local filesystem |
-| `context.route(url, handler)` | — | Planned (Tier 3) | `Fetch.enable` + intercept |
+| `context.route(url, handler)` | `context.route()` | Partial: Python ABI 81 opt-in | Bounded string patterns; Rust Context scope and Fetch settlement |
 | `context.unroute(url)` | — | Planned (Tier 3) | `Fetch.disable` |
+| `context.unrouteAll(opts)` | `context.unroute_all()` | Partial: Python ABI 82 opt-in | Default and `"wait"`; exact Context scope; `"ignoreErrors"` unsupported |
 | `context.exposeBinding()` | — | Planned (Tier 3) | `Runtime.addBinding` |
 | `context.exposeFunction()` | — | Planned (Tier 3) | `Runtime.addBinding` |
 | `context.tracing` | — | ❌ Out of scope | |
-| `context.request` (APIRequestContext) | — | ❌ Out of scope | |
+| `context.request` (APIRequestContext) | `pwright_api_request::ApiRequestContext` | Planned | Global `playwright.request` is public; BrowserContext cookie sharing is pending |
 
 ---
 
@@ -115,7 +255,7 @@ Playwright
 | `page.evaluate(fn, arg)` | `page.evaluate()` | ✅ Exists | `Runtime.evaluate` |
 | `page.evaluate(fn, arg)` (async) | `page.evaluate_async()` | ✅ Exists | `Runtime.evaluate` with `awaitPromise: true` |
 | `page.evaluateHandle(fn)` | `page.evaluate_handle()` | Planned | `Runtime.evaluate` `returnByValue:false` |
-| `page.addInitScript(s)` | `page.add_init_script()` | Partial | CDP method exists, no Page wrapper yet |
+| `page.addInitScript(s)` | `page.add_init_script()` | ✅ Node/Python opt-in | Bounded Rust scope + current/future target-session installation |
 | `page.addScriptTag(opts)` | `page.add_script_tag()` | Planned | JS eval inject `<script>` |
 | `page.addStyleTag(opts)` | `page.add_style_tag()` | Planned | JS eval inject `<style>` |
 | `page.exposeFunction()` | — | Planned (Tier 3) | `Runtime.addBinding` |
@@ -145,7 +285,7 @@ Playwright
 | `page.selectOption(selector, v)` | `page.select_option()` | ✅ Exists | Legacy value-only bridge; v2 Locator route is the semantic implementation |
 | `page.setInputFiles(sel, f)` | `page.set_input_files()` | ✅ Exists | `DOM.setFileInputFiles` |
 | `page.tap(selector)` | `page.touchscreen().tap()` | ✅ Exists | `Input.dispatchTouchEvent` |
-| `page.dragAndDrop(s, t)` | `page.drag_and_drop()` | Planned | Mouse event sequence |
+| `page.dragAndDrop(s, t)` | `page.drag_and_drop()` | Partial: Python ABI 19 | Rust-owned bounded locator/Mouse drag; force and complete actionability remain open |
 
 ### Locators (getBy)
 
@@ -183,7 +323,7 @@ Playwright
 |---------------|---------|--------|------------|
 | `page.setViewportSize(size)` | `page.set_viewport_size()` | Planned | `Emulation.setDeviceMetricsOverride` |
 | `page.viewportSize()` | `page.viewport_size()` | Planned | Cached locally |
-| `page.emulateMedia(opts)` | `page.emulate_media()` | Planned | `Emulation.setEmulatedMedia` |
+| `page.emulateMedia(opts)` | `page.emulate_media()` | ✅ Python ABI 7 opt-in | Rust-owned bounded override state + `Emulation.setEmulatedMedia` |
 
 ### Waiting
 
@@ -192,29 +332,31 @@ Playwright
 | `page.waitForTimeout(ms)` | `page.wait_for_timeout()` | ✅ Exists | `tokio::time::sleep` |
 | `page.waitForFunction(fn)` | `page.wait_for_function()` | Planned (Tier 3) | Poll `Runtime.evaluate` |
 | `page.waitForSelector(sel)` | `page.wait_for_selector()` | ✅ Exists | Poll `DOM.querySelector` |
-| `page.waitForRequest(url)` | `page.on_request()` | ✅ Exists | `Network.requestWillBeSent` via mpsc channel |
-| `page.waitForResponse(url)` | `page.on_response()` | ✅ Exists | `Network.responseReceived` via mpsc channel |
-| `page.waitForEvent(ev)` | `page.wait_for_event()` | Planned (Tier 2) | Internal event emitter |
+| `page.waitForRequest(url)` | `page.wait_for_request()` | ✅ Python ABI 9 opt-in | Bounded Rust subscription/waiter over normalized network events |
+| `page.waitForResponse(url)` | `page.wait_for_response()` | ✅ Python ABI 9 opt-in | Bounded Rust subscription/waiter over normalized network events |
+| `page.waitForEvent(ev)` | `page.wait_for_event()` | Partial: network events | ABI 9 request/response/finished/failed only |
 
 ### Network Interception
 
 | Playwright API | pwright | Status | CDP method |
 |---------------|---------|--------|------------|
-| `page.route(url, handler)` | — | Planned (Tier 3) | `Fetch.enable` + `Fetch.requestPaused` |
-| `page.unroute(url)` | — | Planned (Tier 3) | `Fetch.disable` |
-| `page.routeFromHAR(har)` | — | ❌ Out of scope | |
+| `page.route(url, handler)` | `page.route()` | Partial: Python ABI 86 opt-in | Bounded string patterns and finite `times`; continue/fallback URL/method/header/POST-data overrides, abort and fulfill with Playwright reason phrases; regex/predicate gaps |
+| `page.unroute(url, handler=None)` | `page.unroute()` | Partial: Python ABI 85 opt-in | Exact bounded string-pattern removal; optional original handler identity; regex/predicate gaps |
+| `page.unrouteAll(opts)` | `page.unroute_all()` | Partial: Python ABI 82 opt-in | Default and `"wait"`; exact Page scope; `"ignoreErrors"` unsupported |
+| `page.routeFromHAR(har)` | `page.route_from_har()` | Partial: Python ABI 79 opt-in | Plain embedded HAR, bounded Rust matching and Page Fetch settlement |
 | `page.routeWebSocket(url)` | — | ❌ Out of scope | |
-| `page.setExtraHTTPHeaders(h)` | `page.set_extra_http_headers()` | Planned | `Network.setExtraHTTPHeaders` |
-| `response.body()` | `session.network_get_response_body()` | ✅ Exists | `Network.getResponseBody` |
+| `page.setExtraHTTPHeaders(h)` | `page.set_extra_http_headers()` | ✅ Python ABI 86 opt-in | Bounded Rust Page override, navigation referer and route snapshot composition |
+| `response.body()` | `session.network_get_response_body()` | ✅ Node/Python opt-in | Bounded Rust-owned `Network.getResponseBody` settlement |
+| `request.sizes()` | `request.sizes()` | ✅ Python ABI 18 opt-in | Rust-owned terminal size settlement + raw request headers |
 
 ### Misc
 
 | Playwright API | pwright | Status | Notes |
 |---------------|---------|--------|-------|
 | `page.bringToFront()` | `page.bring_to_front()` | ✅ Exists | `Page.bringToFront` |
-| `page.mainFrame()` | `page.main_frame()` | Planned | Returns `Frame` |
-| `page.frames()` | `page.frames()` | Planned (Tier 3) | All frames incl. iframes |
-| `page.frame(name)` | `page.frame()` | Planned (Tier 3) | Find by name/URL |
+| `page.mainFrame()` | `page.main_frame()` | ✅ Python | Published Rust Frame tree |
+| `page.frames()` | `page.frames()` | ✅ Python | Published Rust Frame tree |
+| `page.frame(name)` | `page.frame()` | ✅ Python | Name/URL/regex/callable facade lookup |
 | `page.workers()` | — | ❌ Out of scope | |
 | `page.video()` | — | ❌ Out of scope | |
 | `page.coverage` | — | ❌ Out of scope | |
@@ -245,7 +387,7 @@ Playwright
 | `locator.setChecked(bool)` | `locator.set_checked()` | ✅ Exists | Desired-state primitive; check/uncheck compose over it |
 | `locator.selectOption(val)` | `locator.select_option()` | Partial | Locator 1.21/2.4 strings and descriptors; ElementHandle overload pending explicit adoption design |
 | `locator.tap(opts)` | `page.touchscreen().tap()` | ✅ Exists | `Input.dispatchTouchEvent` |
-| `locator.dragTo(target)` | `locator.drag_to()` | Planned (Tier 3) | Mouse event chain |
+| `locator.dragTo(target)` | `locator.drag_to()` | Partial: Python ABI 19 | Same selected drag leaf as Page; full actionability/force remain open |
 | `locator.setInputFiles(f)` | `locator.set_input_files()` | ✅ Exists | `DOM.setFileInputFiles` |
 | `locator.dispatchEvent(type)` | `locator.dispatch_event()` | ✅ Exists | `Runtime.callFunctionOn` |
 | `locator.scrollIntoViewIfNeeded()` | `locator.scroll_into_view_if_needed()` | Locator 1.22/2.5 | Strict lazy Locator route; stable-only wait and full-intersection no-op, implemented in the Chromium utility world |
@@ -324,6 +466,35 @@ Playwright
 |---------------|---------|--------|------------|
 | `touchscreen.tap(x, y)` | `touchscreen.tap()` | ✅ Exists | `Input.dispatchTouchEvent` |
 
+## APIRequest
+
+The optional Node and Python profiles expose browser-independent
+`playwright.request.newContext()`. Rust owns request construction, DNS/socket/TLS,
+redirects, retries, Basic authentication, cookies, storage state, decompression,
+timeouts, cancellation and disposal. Language facades only validate and convert
+public values. The separately selectable Node and Python client-certificate
+profiles add
+bounded exact-origin PEM/PFX mutual TLS with lazy Rust decoding and cached
+Rustls configurations. The official validation row passes 3/3 and seven direct
+request behaviors pass 21/21 in both candidate and oracle lanes. BrowserContext
+cookie/certificate sharing, proxy paths and multiple identities for one origin
+are still planned.
+
+| Playwright API | pwright | Status |
+|---------------|---------|--------|
+| `request.newContext(opts)` | `ApiRequestContext::new()` | ✅ Node/Python opt-in |
+| `context.fetch(url, opts)` | `ApiRequestContext::fetch()` | ✅ Node/Python opt-in |
+| `context.get/post/put/patch/delete/head(url, opts)` | Rust request pipeline | ✅ Node/Python opt-in |
+| `context.storageState(opts)` | Rust cookies/origins plus facade path I/O | ✅ Node/Python opt-in |
+| `context.dispose(opts)` | Rust cancellation and response reclamation | ✅ Node/Python opt-in |
+| `response.body/text/json()` | bounded Rust-owned response body | ✅ Node/Python opt-in |
+| `response.headers()/headersArray()` | preserved final response headers | ✅ Node/Python opt-in |
+| `context.request` | shared BrowserContext cookie store | Planned |
+| client-certificate input validation | thin Node/Python shape validators | ✅ Node/Python |
+| direct exact-origin PEM/PFX client certificate | optional Rust identity provider | ✅ Node/Python opt-in |
+| proxy / browser-context certificate transport | separate optional adapters | Planned |
+| multiple client identities for one origin | Playwright-compatible selection | Planned |
+
 ---
 
 ## Selector Engine
@@ -388,10 +559,8 @@ JS evaluation (`Runtime.callFunctionOn`) is used for:
 | `Electron` / `Android` | Different platforms |
 | `Clock` (fake timers) | Test utility, not bridge concern |
 | `Coverage` | Chrome profiler domains, niche |
-| `HAR` recording/replay | Requires filesystem |
 | Test runner / `expect` | Not a testing library |
 | `Selectors.register()` | Custom selector engines |
-| `APIRequestContext` | HTTP client, not browser automation |
 
 ---
 

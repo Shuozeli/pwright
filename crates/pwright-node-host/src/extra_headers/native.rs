@@ -1,13 +1,16 @@
 use super::{DispatchPlan, ID_BYTES, Installation, MAX_APPLIED};
-use crate::{HostError, context_defaults::OwnedContextDefaults};
+use crate::HostError;
 use pwright_backend_cdp_topology::CdpContextOwnership;
-use pwright_composition_chromium::{
+use pwright_network_model::extra_headers::EffectiveHeaders;
+use pwright_plugin_chromium_session_initialization::{
     ChromiumSessionInitializationFuture, ChromiumSessionInitializationTarget,
     ChromiumSessionInitializer,
 };
-use pwright_network_model::extra_headers::EffectiveHeaders;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use std::sync::Arc;
+use std::time::Duration;
+
+const HEADER_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(30);
 
 // One effective owner is shared by all sessions of a Page. Later Page groups
 // materialize this once when their first native future is polled.
@@ -57,6 +60,79 @@ impl Serialize for Headers<'_> {
     }
 }
 impl Installation {
+    async fn initialize_headers(
+        &self,
+        target: ChromiumSessionInitializationTarget<'_>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.persistent_default
+            .seed(&self.settings, target.context, target.ownership)?;
+        let headers = self
+            .settings
+            .lock()
+            .map_err(HostError::backend)?
+            .effective(target.context, target.page)?;
+        if let Err(error) = headers.validate_http_syntax() {
+            // Expected per-Page header rejection must not seal the shared
+            // topology/frame observer. The explicit creation transaction
+            // closes its exact Page before rejecting; Context stays usable.
+            self.failed_initializations
+                .lock()
+                .map_err(HostError::backend)?
+                .record(target.page, error)?;
+            return Ok(());
+        }
+        if headers.iter().len() == 0 {
+            // Empty desired settings must not erase another attachment's
+            // headers in a borrowed Page. Keep this path nonblocking at resume.
+            return self.enable(target.session_id).await;
+        }
+
+        // Admission of both commands is the only pre-resume requirement.
+        // Acknowledgements can be held by the popup's first navigation or an
+        // inline dialog, so keep their owners alive after the fence opens.
+        let params = serde_json::to_value(Parameters {
+            headers: Headers(&headers),
+        })
+        .map_err(HostError::backend)?;
+        self.remember(target.session_id)?;
+        if let Some(fence) = target.resume_fence {
+            fence.require_enqueue();
+        }
+        let admission = async {
+            let permit = self.native.acquire().await.map_err(HostError::backend)?;
+            let enable = self
+                .connection
+                .enqueue_command_with_session(
+                    "Network.enable",
+                    serde_json::Value::Object(serde_json::Map::new()),
+                    Some(target.session_id),
+                )
+                .await?;
+            let apply = self
+                .connection
+                .enqueue_command_with_session(
+                    "Network.setExtraHTTPHeaders",
+                    params,
+                    Some(target.session_id),
+                )
+                .await?;
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>((permit, enable, apply))
+        };
+        // Native slots and the write channel are both bounded. If all slots
+        // are held by acknowledgements from paused targets, fail this Page
+        // instead of waiting forever while its debugger is still paused.
+        let (_permit, enable, apply) = tokio::time::timeout(HEADER_ENQUEUE_TIMEOUT, admission)
+            .await
+            .map_err(|_| pwright_cdp::connection::CdpError::Timeout)??;
+        if let Some(fence) = target.resume_fence {
+            fence.command_enqueued();
+        }
+        let (enabled, applied) = tokio::join!(enable.response(), apply.response());
+        enabled?;
+        applied?;
+        Ok(())
+    }
+
     fn remember(&self, session: &str) -> Result<(), HostError> {
         let mut applied = self.applied.lock().map_err(HostError::backend)?;
         if applied.iter().any(|entry| entry == session) {
@@ -207,19 +283,22 @@ fn session_gone(error: &pwright_cdp::connection::CdpError) -> bool {
         if message == "Session with given id not found.")
 }
 
-pub(crate) struct Initializer {
-    defaults: OwnedContextDefaults,
+pub(crate) struct Initializer<Downstream> {
+    downstream: Downstream,
     installation: Arc<Installation>,
 }
-impl Initializer {
-    pub(crate) fn new(defaults: OwnedContextDefaults, installation: Arc<Installation>) -> Self {
+impl<Downstream> Initializer<Downstream> {
+    pub(crate) fn new(downstream: Downstream, installation: Arc<Installation>) -> Self {
         Self {
-            defaults,
+            downstream,
             installation,
         }
     }
 }
-impl ChromiumSessionInitializer for Initializer {
+impl<Downstream> ChromiumSessionInitializer for Initializer<Downstream>
+where
+    Downstream: ChromiumSessionInitializer,
+{
     fn initialize<'a>(
         &'a self,
         _session: &'a str,
@@ -236,34 +315,9 @@ impl ChromiumSessionInitializer for Initializer {
         target: ChromiumSessionInitializationTarget<'a>,
     ) -> ChromiumSessionInitializationFuture<'a> {
         Box::pin(async move {
-            self.defaults.initialize_scoped(target).await?;
-            // Enable belongs to attachment, as in the pinned network manager.
-            // Per-setter enable ACKs would reorder otherwise synchronous native
-            // header dispatch when multiple setters overlap.
-            self.installation.enable(target.session_id).await?;
-            let headers = self
-                .installation
-                .settings
-                .lock()
-                .map_err(HostError::backend)?
-                .effective(target.context, target.page)?;
-            if let Err(error) = headers.validate_http_syntax() {
-                // Expected per-Page header rejection must not seal the shared
-                // topology/frame observer. The explicit creation transaction
-                // closes its exact Page before rejecting; Context stays usable.
-                self.installation
-                    .failed_initializations
-                    .lock()
-                    .map_err(HostError::backend)?
-                    .record(target.page, error)?;
-                return Ok(());
-            }
-            // Fresh empty desired settings must not erase another attachment's
-            // headers in a borrowed Page. Explicit setters still send empties.
-            if headers.iter().len() != 0 {
-                self.installation.apply(target.session_id, &headers).await?;
-            }
-            Ok(())
+            let downstream = self.downstream.initialize_scoped(target);
+            let headers = self.installation.initialize_headers(target);
+            tokio::try_join!(downstream, headers).map(|_| ())
         })
     }
 }

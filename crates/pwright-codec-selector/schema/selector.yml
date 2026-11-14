@@ -1,6 +1,6 @@
 format: 1
 library: pwright.selector
-version: { major: 1, minor: 0 }
+version: { major: 1, minor: 1 }
 types:
   - kind: enum
     id: pwright.locator.optional_aria_tri_state
@@ -158,6 +158,10 @@ types:
         fields:
           - { name: attributes, type: utf8 }
           - { name: matcher, type: message, target: pwright.locator.regex_matcher }
+      - tag: 22
+        name: legacy_text
+        fields:
+          - { name: matcher, type: message, target: pwright.locator.text_matcher }
   - kind: record
     id: pwright.locator.text_matcher
     fields:

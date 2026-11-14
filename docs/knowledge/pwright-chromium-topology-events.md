@@ -1,4 +1,60 @@
-<!-- agent-updated: 2026-09-10T16:47:04Z -->
+<!-- agent-updated: 2026-10-12T04:22:44Z -->
+
+## Opt-in public Browser-root CDP topology boundary (2026-10-12)
+
+The auxiliary-parent discriminator now tracks exact public Browser-root
+session IDs separately from the private parent used for Page CDP children.
+It ignores nested `Target.attachedToTarget` events only for those registered
+parents. A root `Target.attachToBrowserTarget` browser-type attachment may
+arrive before its response registers the ID, so that browser-type root event
+is ignored without detaching it. A native ID collision with the private or
+another public parent is rejected; a public attach collision retires the
+connection, while a rejected private attach is detached or fail-closed if
+detach fails. The topology-driver release test target still requires a run;
+its attempted compile raised swap sharply and was stopped after revealing a
+test-only ownership error, now corrected in source but not rechecked. This is
+not an official browser conformance result.
+
+The Node host's separate Browser-root discovery fence now interprets CDP
+`TargetFilter` in first-match order for Page targets. Omitted filters and
+explicit Page inclusion enable the bounded target-created fence; an earlier
+matching exclusion or no Page match disables it. Malformed or oversized
+filters conservatively keep the bounded fence if Chromium accepts the
+command. Selected release host source and test compilation pass, and focused
+CDP host tests pass 32/32. No browser ordering result has been promoted.
+
+## NODE-367: selected Dialog publication into the Node facade
+
+The official Node profile now selects the existing Rust `page-dialogs` owner.
+The lifecycle conversion port publishes notice kind 9 with the exact Page,
+`NativeDialog` action owner, type, message and default value. Page and its
+BrowserContext receive the same public Dialog wrapper, preserving identity
+without putting a callback registry or Chromium observer in JavaScript. With
+no listeners the facade requests the public default policy—dismiss ordinary
+dialogs and accept `beforeunload`—through the same one-shot native owner.
+
+Rust still owns prompt-size validation, duplicate-action rejection, native
+settlement and revocation when topology teardown closes the target. The
+complete unchanged `page-click-react.spec.ts` file passes 3/3 candidate and
+3/3 oracle, including a click blocked on dialog handling. This exercises one
+Dialog path; it is not complete popup, beforeunload or all-dialog conformance.
+
+## NODE-353: dialog-blocked popup initialization
+
+Discovered popup initialization now owns a temporary exact-session cursor that
+races the existing recursive initializer against
+`Page.javascriptDialogOpening`. If the dialog arrives first, the driver
+publishes the already bounded provisional Page, popup relationship and Dialog,
+then records one resume marker keyed by the initialized session. The matching
+dialog-close event consumes that marker and resumes the same initializer. The
+driver neither invents a ready world nor detaches a live popup session merely
+because script execution is blocked by a prompt.
+
+The observer boundary also precedes native close compensation for console
+Handle batches. This keeps an immediately closed popup's public ConsoleMessage
+and exact Page identity available even while detach cleanup continues. Host
+teardown separately revokes every retained Dialog action before transport
+shutdown so no public wrapper can retain the last `CdpConnection` client.
 
 NODE-133: The driver handles Target.targetDestroyed as a selected native-world receipt update under topology/route/registry locks. It validates the current epoch and needs no surviving route. This returns Ignored without synthesizing topology/public events; unselected registries preserve prior ignored-event behavior.
 [Native Page world-retirement contract and evidence](pwright-close-cascade.md#node-133-retained-worlds-follow-exact-native-page-destruction).
@@ -1019,13 +1075,17 @@ samples mix test/oracle/Node/addon storage and do not establish a parser/RSS bud
 Native artifact hashes and foundation commit are unchanged. No push occurred;
 the exact owned preflight target was closed and unrelated Chrome Pages preserved.
 
-The Node recipe now opts into `with_parallel_recursive_attachment()`: after Page
-enable and Context initialization, one fixed join awaits frame-tree acquisition,
-Runtime enable, optional empty script registration and recursive auto-attach.
-All replies precede world creation, resume and publication. The option requires
-four pending slots and another four-times response expansion; default and older
-profiles remain unchanged. Earlier target events stay queued in the same bounded
-inbox; no cross-session scheduler or task is added. [Contract and verification](../node-ffi-compatibility-design.md#node-013-recursive-attachment-prerequisite-join-2026-09-07).
+The Node recipe opts into `with_parallel_recursive_attachment()`. NODE-013
+originally joined four post-settings prerequisites; NODE-203 supersedes the
+selected startup order after a real paused-popup deadlock. Caller Context
+settings, lifecycle setup, Page enable, recursive auto-attach and debugger
+resume are now one fixed five-owner batch, followed by the existing
+three-command Frame-tree/runtime/registration phase. All results still precede
+world completion and publication. The selected option requires five pending
+slots and its composed response declaration is exactly
+`16 * max_response_bytes` above the serial profile; default and older profiles
+remain unchanged. Earlier target events stay queued in the same bounded inbox;
+no cross-session scheduler or task is added. [Contract and verification](../node-ffi-compatibility-design.md#node-013-recursive-attachment-prerequisite-join-2026-09-07).
 
 Current evidence includes 287 offline composition checks, a live four-command
 overlap trace, Node screenshot 12/12 and lifecycle 45/45, and both serial and
@@ -1128,6 +1188,26 @@ for budgets, test evidence and the post-dispatch navigation-race boundary.
 
 ## Decision
 
+`with_frame_event_observer()` and `with_frame_url_observer()` optionally select
+caller-owned synchronous event and metadata projections. Their event, URL,
+ownership-view, and committed-effect contracts live in the independent
+`pwright-plugin-chromium-frame-observer` leaf, whose exact Pwright closure is
+the plugin, topology backend, browser model, CDP model, and core. It owns no
+connection, queue, subscriber, task, executor, native domain, browser process,
+or topology driver. The aggregate compatibility-reexports the contracts while
+it still owns driver integration; Node adapters import the leaf directly.
+The existing driver ordering remains unchanged: callbacks execute under the
+topology lock and must not reenter topology, their observer, or JavaScript.
+The bounded `FrameLifecycleRegistry`, Page observation, retained handles, and
+navigation-wait registration now live in
+`pwright-plugin-chromium-frame-lifecycle`. Its exact normal closure contains
+ten Pwright packages and consumes the frame-observer port directly. The
+aggregate `frame-lifecycle` feature is a compatibility re-export, while the
+Node lifecycle adapter imports the leaf directly. Forty-seven lifecycle-related
+aggregate regressions pass through that compatibility boundary; the separate
+committed-effect regressions remain 11/11. The Node extra-header wrapper passes
+5/5 and metadata projection passes 6/6 after these ownership moves.
+
 `with_session_initializer()` optionally selects a caller-owned
 `ChromiumSessionInitializer` port. The driver awaits it after Page enable and
 before debugger resume/readiness, supplying the exact native session/target,
@@ -1135,7 +1215,14 @@ registered Context ownership and Page-versus-OOPIF role. It covers both existing
 route synchronization and discovery. Failure prevents readiness publication;
 fake-CDP tests verify ordering and fail-closed behavior. No initializer or
 settings are installed by default, and the port adds no task or subscription.
-The Node host uses it for owned Context defaults; see
+The command-free port and its target/future types are owned by the
+`pwright-plugin-chromium-session-initialization` leaf. Its selected dependency
+closure is exactly that plugin, the topology backend, browser model, CDP model,
+and core (five Pwright packages). `pwright-composition-chromium` compatibility-
+reexports the types while it still owns driver integration; Node host adapters
+import the leaf directly so settings policy does not acquire the aggregate
+composition boundary. The Node host uses the port for owned Context defaults;
+see
 [the Context checkpoint](../node-ffi-compatibility-design.md#owned-context-lifecycle-and-initialization-checkpoint).
 
 The default still excludes Pages from unknown non-default browser contexts.

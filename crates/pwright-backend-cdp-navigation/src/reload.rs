@@ -110,7 +110,7 @@ impl CdpNavigationService {
     }
 }
 
-fn new_document_identity(
+pub(super) fn new_document_identity(
     event: &CdpEvent,
     frame_id: &str,
     old_loader: &str,

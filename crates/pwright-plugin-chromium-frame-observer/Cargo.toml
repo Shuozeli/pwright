@@ -1,0 +1,13 @@
+[package]
+name = "pwright-plugin-chromium-frame-observer"
+description = "Optional synchronous Chromium frame-topology observation contracts for Pwright drivers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-topology = { workspace = true }
+pwright-cdp = { workspace = true }
+pwright-core = { workspace = true }

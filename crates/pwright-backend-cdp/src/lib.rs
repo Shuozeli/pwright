@@ -91,8 +91,8 @@ pub use content::{
 };
 #[cfg(feature = "full")]
 pub use context_creation::{
-    CdpBrowserContextCreationService, CdpContextCreationLimits, CdpContextCreationSetupError,
-    CdpCreatedBrowserContext,
+    CdpBrowserContextCreationOptions, CdpBrowserContextCreationService, CdpContextCreationLimits,
+    CdpContextCreationSetupError, CdpCreatedBrowserContext,
 };
 #[cfg(feature = "full")]
 pub use context_lifecycle::{
@@ -136,6 +136,8 @@ pub use locator::{
 };
 #[cfg(feature = "full")]
 pub use locator_screenshot::CdpLocatorScreenshotResolver;
+#[cfg(all(feature = "full", feature = "response-security-details"))]
+pub use network_events::CdpResponseSecurityDetails;
 #[cfg(feature = "full")]
 pub use network_events::{
     CdpNetworkEventAdapter, CdpNetworkEventBatch, CdpNetworkEventEffect, CdpNetworkEventError,
@@ -249,6 +251,8 @@ pub use pwright_backend_cdp_navigation::{
     CDP_BEGIN_NAVIGATION_FEATURE, CDP_GOTO_FEATURE, CDP_RELOAD_FEATURE, CdpNavigationLimits,
     CdpNavigationProductionProfile,
 };
+#[cfg(feature = "history-navigation")]
+pub use pwright_backend_cdp_navigation::{CDP_GO_BACK_FEATURE, CDP_GO_FORWARD_FEATURE};
 use pwright_backend_cdp_navigation::{
     CdpNavigationService as LeafCdpNavigationService,
     CdpNavigationServiceFactory as LeafCdpNavigationServiceFactory, ChromiumCdpNavigationBackend,
@@ -481,6 +485,22 @@ pub const CHROMIUM_CDP_FEATURES: &[BackendFeatureDescriptor] = &[
         NAVIGATION_CAPABILITY_ID,
         ProtocolVersion::new(1, 1),
         pwright_cap_navigation::RELOAD_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
+    #[cfg(feature = "history-navigation")]
+    BackendFeatureDescriptor::new(
+        CDP_GO_BACK_FEATURE,
+        pwright_cap_history_navigation::HISTORY_NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 0),
+        pwright_cap_history_navigation::GO_BACK_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
+    #[cfg(feature = "history-navigation")]
+    BackendFeatureDescriptor::new(
+        CDP_GO_FORWARD_FEATURE,
+        pwright_cap_history_navigation::HISTORY_NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 1),
+        pwright_cap_history_navigation::GO_FORWARD_COMMAND_ID,
         BackendImplementation::Emulated,
     ),
     BackendFeatureDescriptor::new(
@@ -722,6 +742,22 @@ pub const CHROMIUM_CDP_FEATURES: &[BackendFeatureDescriptor] = &[
         pwright_cap_navigation::RELOAD_COMMAND_ID,
         BackendImplementation::Emulated,
     ),
+    #[cfg(feature = "history-navigation")]
+    BackendFeatureDescriptor::new(
+        CDP_GO_BACK_FEATURE,
+        pwright_cap_history_navigation::HISTORY_NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 0),
+        pwright_cap_history_navigation::GO_BACK_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
+    #[cfg(feature = "history-navigation")]
+    BackendFeatureDescriptor::new(
+        CDP_GO_FORWARD_FEATURE,
+        pwright_cap_history_navigation::HISTORY_NAVIGATION_CAPABILITY_ID,
+        ProtocolVersion::new(1, 1),
+        pwright_cap_history_navigation::GO_FORWARD_COMMAND_ID,
+        BackendImplementation::Emulated,
+    ),
 ];
 
 #[cfg(not(feature = "full"))]
@@ -880,6 +916,8 @@ impl NativeBackendAccess<ChromiumCdpBackend> for CdpNavigationService {
     }
 }
 
+#[cfg(feature = "history-navigation")]
+mod navigation_history;
 mod navigation_reload;
 
 impl Service<BeginNavigationParams> for CdpNavigationService {
@@ -1524,7 +1562,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn competing_document_commit_interrupts_the_expected_navigation() {
+    async fn started_competing_error_document_interrupts_the_expected_navigation() {
         // Arrange
         let client = Arc::new(FakeCdpClient::from_html("<title>test</title>"));
         client.set_navigate_response(json!({
@@ -1540,6 +1578,14 @@ mod tests {
                 .await
         });
         wait_until_navigate_was_sent(&client).await;
+        client.send_event(event(
+            "Page.frameStartedNavigating",
+            json!({
+                "frameId": "frame-1",
+                "loaderId": "loader-2",
+                "url": "https://example.com/second"
+            }),
+        ));
 
         // Act
         client.send_event(event(
@@ -1547,13 +1593,145 @@ mod tests {
             json!({"frame": {
                 "id": "frame-1",
                 "loaderId": "loader-2",
-                "url": "https://example.com/second"
+                "url": "chrome-error://chromewebdata/"
             }}),
         ));
         let error = task
             .await
             .expect("goto task should join")
             .expect_err("replacement navigation should interrupt the first");
+
+        // Assert
+        assert_eq!(error.kind(), FailureKind::Backend);
+        assert!(error.message().contains("interrupted"));
+    }
+
+    #[tokio::test]
+    async fn prior_error_document_commit_does_not_interrupt_newer_pending_navigation() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<title>test</title>"));
+        client.set_navigate_response(json!({
+            "frameId": "frame-1",
+            "loaderId": "loader-new"
+        }));
+        let service = CdpNavigationService::new(client.clone());
+        let task = tokio::spawn(async move {
+            service
+                .call(GotoParams::new("https://example.com/new").with_wait_until(WaitUntil::Commit))
+                .await
+        });
+        wait_until_navigate_was_sent(&client).await;
+
+        // Act
+        client.send_event(event(
+            "Page.frameNavigated",
+            json!({"frame": {
+                "id": "frame-1",
+                "loaderId": "loader-old-error",
+                "url": "chrome-error://chromewebdata/"
+            }}),
+        ));
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        client.send_event(event(
+            "Network.requestWillBeSent",
+            json!({
+                "requestId": "request-new",
+                "loaderId": "loader-new",
+                "frameId": "frame-1",
+                "type": "Document",
+                "request": {"url": "https://example.com/new"}
+            }),
+        ));
+        client.send_event(event(
+            "Network.responseReceived",
+            json!({
+                "requestId": "request-new",
+                "loaderId": "loader-new",
+                "frameId": "frame-1",
+                "type": "Document",
+                "response": {
+                    "url": "https://example.com/new",
+                    "status": 200,
+                    "statusText": "OK",
+                    "headers": {}
+                }
+            }),
+        ));
+        client.send_event(event(
+            "Page.frameNavigated",
+            json!({"frame": {
+                "id": "frame-1",
+                "loaderId": "loader-new",
+                "url": "https://example.com/new"
+            }}),
+        ));
+        let result = task
+            .await
+            .expect("goto task should join")
+            .expect("stale error-page commit should be ignored");
+
+        // Assert
+        assert_eq!(result.loader_id.as_deref(), Some("loader-new"));
+        assert_eq!(result.url, "https://example.com/new");
+        assert_eq!(result.response.expect("response should exist").status, 200);
+    }
+
+    #[tokio::test]
+    async fn newer_document_request_still_interrupts_expected_navigation() {
+        // Arrange
+        let client = Arc::new(FakeCdpClient::from_html("<title>test</title>"));
+        client.set_navigate_response(json!({
+            "frameId": "frame-1",
+            "loaderId": "loader-expected"
+        }));
+        let service = CdpNavigationService::new(client.clone());
+        let task = tokio::spawn(async move {
+            service
+                .call(
+                    GotoParams::new("https://example.com/expected")
+                        .with_wait_until(WaitUntil::Commit),
+                )
+                .await
+        });
+        wait_until_navigate_was_sent(&client).await;
+        for (request_id, loader_id, url) in [
+            (
+                "request-expected",
+                "loader-expected",
+                "https://example.com/expected",
+            ),
+            (
+                "request-replacement",
+                "loader-replacement",
+                "https://example.com/replacement",
+            ),
+        ] {
+            client.send_event(event(
+                "Network.requestWillBeSent",
+                json!({
+                    "requestId": request_id,
+                    "loaderId": loader_id,
+                    "frameId": "frame-1",
+                    "type": "Document",
+                    "request": {"url": url}
+                }),
+            ));
+        }
+
+        // Act
+        client.send_event(event(
+            "Page.frameNavigated",
+            json!({"frame": {
+                "id": "frame-1",
+                "loaderId": "loader-replacement",
+                "url": "chrome-error://chromewebdata/"
+            }}),
+        ));
+        let error = task
+            .await
+            .expect("goto task should join")
+            .expect_err("newer replacement should interrupt expected navigation");
 
         // Assert
         assert_eq!(error.kind(), FailureKind::Backend);

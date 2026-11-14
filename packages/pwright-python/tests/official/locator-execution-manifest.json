@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "files": {
+    "tests/async/test_locators.py": "6761dfaee418ceb9dc3cd21937d936db36db20ddeae15cd0c677586c5900ed77",
+    "tests/sync/test_locators.py": "5f4e47a3225669ef2328ada0c873114b2a9238a9a337b5dcb5328a3d4fc3c1e6"
+  },
+  "cases": [
+    {"id": "tests/async/test_locators.py::test_locators_click_should_work", "capabilities": ["locator.click", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_click_should_work_with_node_removed", "capabilities": ["locator.click", "isolated-world", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_evaluate_all_should_work", "capabilities": ["locator.collection-evaluate", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locators_evaluate_all_should_work_with_missing_selector", "capabilities": ["locator.collection-evaluate", "async-api"]},
+    {"id": "tests/async/test_locators.py::test_locator_count_should_work_with_deleted_map_in_main_world", "capabilities": ["locator.count", "isolated-world", "expect", "async-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_click_should_work", "capabilities": ["locator.click", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_click_should_work_with_node_removed", "capabilities": ["locator.click", "isolated-world", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_evaluate_all_should_work", "capabilities": ["locator.collection-evaluate", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locators_evaluate_all_should_work_with_missing_selector", "capabilities": ["locator.collection-evaluate", "sync-api"]},
+    {"id": "tests/sync/test_locators.py::test_locator_count_should_work_with_deleted_map_in_main_world", "capabilities": ["locator.count", "isolated-world", "expect", "sync-api"]}
+  ]
+}

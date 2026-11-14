@@ -20,9 +20,14 @@ pub(crate) struct Identity {
     // after route removal so a late real targetDestroyed event remains useful.
     pub page_target: Arc<str>,
     pub session: Arc<str>,
-    // None describes a utility-only snapshot, not an unobserved main world.
-    pub main: Option<Arc<str>>,
-    pub utility: Arc<str>,
+    pub worlds: IdentityWorlds,
+}
+/// A retirement receipt must require at least one exact world. No empty pair
+/// can become an already-satisfied native-destruction proof.
+pub(crate) enum IdentityWorlds {
+    Paired { main: Arc<str>, utility: Arc<str> },
+    Main(Arc<str>),
+    Utility(Arc<str>),
 }
 struct Receipt {
     identity: Identity,
@@ -34,7 +39,7 @@ struct Receipt {
     permit: Weak<Permit>,
 }
 
-/// A monotonic receipt for destruction of BOTH exact worlds on one connection.
+/// A monotonic receipt for destruction of the selected exact worlds on one connection.
 /// The retained snapshot permit follows every clone, even after snapshot drop.
 /// Only protocol destruction events and successful native-disposal acknowledgments
 /// can update it. No public caller can manufacture a destroyed receipt.
@@ -44,6 +49,9 @@ pub struct ChromiumNativeWorldLifetime {
     _permit: Arc<Permit>,
 }
 impl ChromiumNativeWorldLifetime {
+    /// Both receipt slots are settled. A world deliberately absent from a
+    /// single-world snapshot starts settled; paired snapshots still require
+    /// independent destruction of both exact worlds.
     pub fn both_worlds_destroyed(&self) -> bool {
         self.receipt.destroyed.load(Ordering::Acquire) == BOTH
     }
@@ -125,7 +133,11 @@ impl Registry {
                 limit: self.capacity,
             });
         }
-        let destroyed = if identity.main.is_none() { MAIN } else { 0 };
+        let destroyed = match &identity.worlds {
+            IdentityWorlds::Paired { .. } => 0,
+            IdentityWorlds::Main(_) => UTILITY,
+            IdentityWorlds::Utility(_) => MAIN,
+        };
         let receipt = Arc::new(Receipt {
             identity,
             destroyed: AtomicU8::new(destroyed),
@@ -288,12 +300,14 @@ impl Registry {
                 Destruction::PageTarget(target) if id.page_target.as_ref() == target => BOTH,
                 Destruction::SessionWorlds(session) if id.session.as_ref() == session => BOTH,
                 Destruction::World { session, unique } if id.session.as_ref() == session => {
-                    if id.main.as_deref() == Some(unique) {
-                        MAIN
-                    } else if id.utility.as_ref() == unique {
-                        UTILITY
-                    } else {
-                        0
+                    match &id.worlds {
+                        IdentityWorlds::Paired { main, .. } if main.as_ref() == unique => MAIN,
+                        IdentityWorlds::Paired { utility, .. } if utility.as_ref() == unique => {
+                            UTILITY
+                        }
+                        IdentityWorlds::Main(main) if main.as_ref() == unique => MAIN,
+                        IdentityWorlds::Utility(utility) if utility.as_ref() == unique => UTILITY,
+                        _ => 0,
                     }
                 }
                 _ => 0,

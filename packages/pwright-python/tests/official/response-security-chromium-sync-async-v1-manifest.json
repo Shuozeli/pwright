@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/microsoft/playwright-python.git",
+  "tag": "v1.58.0",
+  "commit": "47a5d35ef4f815a2021349f86ae391f7c20c02d6",
+  "corpus": {
+    "policy": "full-upstream-collection",
+    "testsTreeModules": 149,
+    "testsTreeTopLevelTestFunctions": 1990,
+    "examplesTreeModules": 8,
+    "expandedTests": 6526,
+    "defaultBrowsers": ["chromium", "firefox", "webkit"],
+    "ciPlatforms": ["linux", "darwin", "win32"],
+    "ciPythonVersions": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "stableChannels": ["chrome", "msedge"],
+    "nonCollectedModules": [
+      {
+        "path": "tests/common/test_collect_handles.py",
+        "classification": "empty-placeholder",
+        "reason": "The pinned upstream file is zero bytes and defines no pytest tests."
+      }
+    ]
+  },
+  "bootstrapSelectionOnly": false,
+  "execution": {
+    "requiresBrowser": true,
+    "requiresFixtureServers": true
+  },
+  "experiment": {
+    "scope": "paired-four-case-response-security-diagnostic",
+    "lanes": ["candidate", "oracle"],
+    "apis": ["sync", "async"],
+    "browser": "chromium",
+    "fixturePolicy": "unchanged-upstream-http-and-https-server-fixtures",
+    "ledgerPolicy": "focused-diagnostic-no-promotion-until-complete-source-files-rerun",
+    "candidatePrerequisites": {
+      "allFourCases": ["normal-page-navigation-response", "response-security-details"],
+      "httpsCasesOnly": ["ignore-https-errors", "response-finished-on-navigation-response"],
+      "note": "The inherited cases.capabilities labels classify upstream test topics, not a complete candidate feature closure. In the current candidate, Page.goto must yield a Response; navigation-response-finished supplies Response.finished() on that navigation Response and selects response-finished."
+    }
+  },
+  "files": {
+    "tests/conftest.py": "c4236e98ff1731fff1f7ef1c00b37fe3a0cb1e4a3fd07e89a491dc7129ea93cc",
+    "tests/sync/conftest.py": "9ec5a65a98c312de67590792e80d3d9ea45312d56188f45101e71df6f7773d0b",
+    "tests/async/conftest.py": "3001008bb97ba0cc1ddb397a53df530b6881e3e3ba69a1ed2cac0de94cab4cdb",
+    "tests/server.py": "2cf1a6b805f99c1c82c5351b67df995f06f2a9a18d21dbd48d4d4dc6079c3030",
+    "tests/utils.py": "60b7d0915ffdaec4dda729fc38658d55bb216ec8baaf9087d77cef4c3c34abea",
+    "tests/async/utils.py": "ee618a20d789a28f953ba23a2c24249f3b21f7bd00b1a2d2435aa75ce9b0b478",
+    "tests/sync/test_network.py": "db831f837f94b2ee4eefb9dd6b271e7af42c573a59e4c3f49c20d83c572128ff",
+    "tests/async/test_network.py": "06ce41cadf74e6109d09fa33fb12a2a96f70b577f8657b198dbdc0567d480c2a"
+  },
+  "assets": {
+    "tests/assets/empty.html": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/testserver/cert.pem": "402a4ecc40aba35f8143673ac7c20d02c742954a79dc94523b06a5bd9c5fb18e",
+    "tests/testserver/key.pem": "3302e5f7eb8485e832a10f54a63cc049f98e98a5a2d55671c9ed9b440c59053a"
+  },
+  "expandedChromiumIds": [
+    "tests/sync/test_network.py::test_response_security_details[chromium]",
+    "tests/sync/test_network.py::test_response_security_details_none_without_https[chromium]",
+    "tests/async/test_network.py::test_response_security_details[chromium]",
+    "tests/async/test_network.py::test_response_security_details_none_without_https[chromium]"
+  ],
+  "expandedChromiumIdsSha256": "63a8f90ea50272c0eec6c95b58ac218619a72bbbc4b36c10c71cc593e881b3e5",
+  "cases": [
+    {"id":"tests/sync/test_network.py::test_response_security_details","capabilities":["response-security","sync-api"]},
+    {"id":"tests/sync/test_network.py::test_response_security_details_none_without_https","capabilities":["response-security","sync-api"]},
+    {"id":"tests/async/test_network.py::test_response_security_details","capabilities":["response-security","async-api"]},
+    {"id":"tests/async/test_network.py::test_response_security_details_none_without_https","capabilities":["response-security","async-api"]}
+  ]
+}

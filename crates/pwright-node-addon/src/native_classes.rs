@@ -14,24 +14,67 @@ use napi_derive::napi;
 // proof. The source gate rejects newly exported classes missing from this list.
 macro_rules! native_classes {
     ($($name:ident),+ $(,)?) => {
-        const NAMES: &[&str] = &[$(stringify!($name)),+];
+        const NAMES: &[&str] = &[
+            $(stringify!($name)),+,
+            #[cfg(feature = "page-dialogs")]
+            stringify!(NativeDialog),
+            #[cfg(feature = "cdp-session")]
+            stringify!(NativeCdpEventBatch),
+            #[cfg(feature = "cdp-session")]
+            stringify!(NativeCdpSessionLease),
+            #[cfg(feature = "playwright-server-connect-session")]
+            stringify!(NativeRemoteBrowser),
+            #[cfg(feature = "playwright-server-connect-session")]
+            stringify!(NativeRemoteContext),
+            #[cfg(feature = "playwright-server-connect-session")]
+            stringify!(NativeRemotePage),
+        ];
         fn class_tag(name: &str) -> Option<sys::napi_type_tag> {
             match name {
                 $(stringify!($name) => Some(<$name as TypeTag>::type_tag()),)+
+                #[cfg(feature = "page-dialogs")]
+                stringify!(NativeDialog) => Some(<NativeDialog as TypeTag>::type_tag()),
+                #[cfg(feature = "cdp-session")]
+                stringify!(NativeCdpEventBatch) => Some(<NativeCdpEventBatch as TypeTag>::type_tag()),
+                #[cfg(feature = "cdp-session")]
+                stringify!(NativeCdpSessionLease) => Some(<NativeCdpSessionLease as TypeTag>::type_tag()),
+                #[cfg(feature = "playwright-server-connect-session")]
+                stringify!(NativeRemoteBrowser) => Some(<NativeRemoteBrowser as TypeTag>::type_tag()),
+                #[cfg(feature = "playwright-server-connect-session")]
+                stringify!(NativeRemoteContext) => Some(<NativeRemoteContext as TypeTag>::type_tag()),
+                #[cfg(feature = "playwright-server-connect-session")]
+                stringify!(NativeRemotePage) => Some(<NativeRemotePage as TypeTag>::type_tag()),
                 _ => None,
             }
         }
     };
 }
 
+#[cfg(feature = "page-dialogs")]
+use crate::page_dialogs::NativeDialog;
+
+#[cfg(feature = "cdp-session")]
+use crate::cdp_sessions::{NativeCdpEventBatch, NativeCdpSessionLease};
+
+#[cfg(feature = "playwright-server-connect-session")]
+use crate::remote_browser::{NativeRemoteBrowser, NativeRemoteContext, NativeRemotePage};
+
 #[cfg(feature = "handles")]
 use crate::handles::NativeHandle;
+
+#[cfg(feature = "handles")]
+use crate::locator::NativeFrameLocator;
+
+#[cfg(feature = "api-request")]
+use crate::api_request::{NativeApiRequestContext, NativeApiResponse};
 
 #[cfg(feature = "retained-file-input")]
 use crate::handles::file_input::{NativeFileInputPreparation, NativeFileInputTimeoutSettings};
 
-#[cfg(feature = "retained-file-input")]
+#[cfg(all(feature = "retained-file-input", feature = "api-request"))]
 native_classes!(
+    NativeApiRequestContext,
+    NativeApiResponse,
     NativeEnvironment,
     NativeSession,
     NativeSessionSignal,
@@ -39,12 +82,51 @@ native_classes!(
     NativeFrameTree,
     NativeContextSettings,
     NativeLocator,
+    NativeFrameLocator,
     NativeHandle,
     NativeFileInputPreparation,
     NativeFileInputTimeoutSettings
 );
 
-#[cfg(all(feature = "handles", not(feature = "retained-file-input")))]
+#[cfg(all(feature = "retained-file-input", not(feature = "api-request")))]
+native_classes!(
+    NativeEnvironment,
+    NativeSession,
+    NativeSessionSignal,
+    NativeFrameNode,
+    NativeFrameTree,
+    NativeContextSettings,
+    NativeLocator,
+    NativeFrameLocator,
+    NativeHandle,
+    NativeFileInputPreparation,
+    NativeFileInputTimeoutSettings
+);
+
+#[cfg(all(
+    feature = "handles",
+    not(feature = "retained-file-input"),
+    feature = "api-request"
+))]
+native_classes!(
+    NativeApiRequestContext,
+    NativeApiResponse,
+    NativeEnvironment,
+    NativeSession,
+    NativeSessionSignal,
+    NativeFrameTree,
+    NativeFrameNode,
+    NativeContextSettings,
+    NativeLocator,
+    NativeFrameLocator,
+    NativeHandle
+);
+
+#[cfg(all(
+    feature = "handles",
+    not(feature = "retained-file-input"),
+    not(feature = "api-request")
+))]
 native_classes!(
     NativeEnvironment,
     NativeSession,
@@ -53,10 +135,24 @@ native_classes!(
     NativeFrameNode,
     NativeContextSettings,
     NativeLocator,
+    NativeFrameLocator,
     NativeHandle
 );
 
-#[cfg(not(feature = "handles"))]
+#[cfg(all(not(feature = "handles"), feature = "api-request"))]
+native_classes!(
+    NativeApiRequestContext,
+    NativeApiResponse,
+    NativeEnvironment,
+    NativeSession,
+    NativeSessionSignal,
+    NativeFrameTree,
+    NativeFrameNode,
+    NativeContextSettings,
+    NativeLocator
+);
+
+#[cfg(all(not(feature = "handles"), not(feature = "api-request")))]
 native_classes!(
     NativeEnvironment,
     NativeSession,

@@ -1,0 +1,12 @@
+[package]
+name = "pwright-plugin-chromium-session-initialization"
+description = "Optional Chromium session-initialization contract for Pwright topology drivers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+pwright-backend-cdp-topology = { workspace = true }
+pwright-core = { workspace = true }

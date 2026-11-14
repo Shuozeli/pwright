@@ -376,6 +376,21 @@ impl CdpAdoptedElementHandleBatch {
         &self.handles
     }
 
+    /// Transfers the adopted native owners into an already-admitted persistent
+    /// Handle route. The caller must establish that durable ownership before
+    /// calling this method; consuming the batch releases only its temporary
+    /// adoption accounting, not the Chromium objects.
+    pub fn into_handles(self) -> Vec<CdpEvaluatedHandle> {
+        let Self {
+            handles,
+            _resources,
+            _active_batch,
+        } = self;
+        let handles = handles.into_iter().map(|handle| handle.handle).collect();
+        drop((_resources, _active_batch));
+        handles
+    }
+
     pub async fn release(self) -> Result<(), OperationError<HandleEvaluationErrorDetails>> {
         release_batch(self.handles).await
     }
